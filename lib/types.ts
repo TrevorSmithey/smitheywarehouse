@@ -29,11 +29,45 @@ export interface WarehouseMetrics {
   unfulfilled_count: number;
   partial_count: number;
   fulfilled_today: number;
+  // Enhanced metrics
+  fulfilled_7d: number;
+  fulfilled_30d: number;
+  avg_per_day_7d: number;
+  avg_per_day_30d: number;
+  fulfilled_this_week: number;
+  fulfilled_last_week: number;
+  week_over_week_change: number; // percentage
 }
 
 // Daily fulfillment data for charts
 export interface DailyFulfillment {
   date: string; // YYYY-MM-DD
+  warehouse: string;
+  count: number;
+}
+
+// Queue health - aging analysis
+export interface QueueHealth {
+  warehouse: string;
+  waiting_1_day: number;
+  waiting_3_days: number;
+  waiting_7_days: number;
+  oldest_order_days: number;
+  oldest_order_name: string | null;
+}
+
+// SKU breakdown in unfulfilled queue
+export interface SkuInQueue {
+  sku: string;
+  title: string | null;
+  warehouse: string;
+  quantity: number; // total units waiting
+  order_count: number; // number of orders containing this SKU
+}
+
+// Weekly totals for trend chart
+export interface WeeklyFulfillment {
+  week_start: string; // YYYY-MM-DD (Monday)
   warehouse: string;
   count: number;
 }
@@ -74,5 +108,8 @@ export interface ShopifyLineItem {
 export interface MetricsResponse {
   warehouses: WarehouseMetrics[];
   daily: DailyFulfillment[];
+  weekly: WeeklyFulfillment[];
+  queueHealth: QueueHealth[];
+  topSkusInQueue: SkuInQueue[];
   lastUpdated: string;
 }

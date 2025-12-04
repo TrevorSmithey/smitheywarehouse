@@ -12,8 +12,25 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { RefreshCw, Package, Clock, CheckCircle, AlertCircle } from "lucide-react";
-import type { MetricsResponse, WarehouseMetrics, DailyFulfillment } from "@/lib/types";
+import {
+  RefreshCw,
+  Package,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Calendar,
+  Box,
+} from "lucide-react";
+import type {
+  MetricsResponse,
+  WarehouseMetrics,
+  DailyFulfillment,
+  QueueHealth,
+  SkuInQueue,
+} from "@/lib/types";
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
@@ -109,8 +126,14 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Performance Comparison */}
+      <PerformanceComparison warehouses={metrics?.warehouses || []} loading={loading} />
+
+      {/* Queue Health */}
+      <QueueHealthSection queueHealth={metrics?.queueHealth || []} loading={loading} />
+
       {/* 30-Day Fulfillment Chart */}
-      <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover">
+      <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover mb-8">
         <h3 className="text-label font-medium text-text-tertiary mb-6 tracking-wide-sm">
           DAILY FULFILLMENTS (30 DAYS)
         </h3>
@@ -174,6 +197,9 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Top SKUs in Queue */}
+      <SkuQueueSection skus={metrics?.topSkusInQueue || []} loading={loading} />
     </div>
   );
 }
@@ -274,6 +300,7 @@ function WarehouseCard({
 }) {
   const warehouseName = data.warehouse.charAt(0).toUpperCase() + data.warehouse.slice(1);
   const totalQueue = data.unfulfilled_count + data.partial_count;
+  const weekChange = data.week_over_week_change;
 
   return (
     <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover">
@@ -295,8 +322,8 @@ function WarehouseCard({
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Primary Metrics Grid */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
         {/* Unfulfilled */}
         <div>
           <div className="text-metric font-light tracking-tight-sm text-text-primary">
@@ -332,6 +359,225 @@ function WarehouseCard({
             <CheckCircle className="w-3.5 h-3.5 text-text-muted" />
             <span className="text-context text-text-tertiary">Today</span>
           </div>
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-border mb-4" />
+
+      {/* Performance Metrics */}
+      <div className="grid grid-cols-4 gap-3">
+        {/* This Week */}
+        <div className="text-center">
+          <div className="text-lg font-medium text-text-primary">
+            {loading ? "-" : data.fulfilled_this_week.toLocaleString()}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">This Week</div>
+        </div>
+
+        {/* Last Week */}
+        <div className="text-center">
+          <div className="text-lg font-medium text-text-secondary">
+            {loading ? "-" : data.fulfilled_last_week.toLocaleString()}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">Last Week</div>
+        </div>
+
+        {/* 7-Day Avg */}
+        <div className="text-center">
+          <div className="text-lg font-medium text-text-primary">
+            {loading ? "-" : data.avg_per_day_7d}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">7d Avg/Day</div>
+        </div>
+
+        {/* Week Change */}
+        <div className="text-center">
+          <div className={`text-lg font-medium flex items-center justify-center gap-1 ${
+            weekChange > 0 ? "text-status-good" : weekChange < 0 ? "text-status-bad" : "text-text-secondary"
+          }`}>
+            {weekChange > 0 ? <TrendingUp className="w-4 h-4" /> : weekChange < 0 ? <TrendingDown className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
+            {loading ? "-" : `${Math.abs(weekChange)}%`}
+          </div>
+          <div className="text-xs text-text-muted mt-0.5">vs Last Week</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Performance Comparison Component
+function PerformanceComparison({
+  warehouses,
+  loading,
+}: {
+  warehouses: WarehouseMetrics[];
+  loading: boolean;
+}) {
+  if (warehouses.length === 0) return null;
+
+  const total7d = warehouses.reduce((sum, wh) => sum + wh.fulfilled_7d, 0);
+  const total30d = warehouses.reduce((sum, wh) => sum + wh.fulfilled_30d, 0);
+  const avgPerDay7d = Math.round((total7d / 7) * 10) / 10;
+  const avgPerDay30d = Math.round((total30d / 30) * 10) / 10;
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 mb-8 transition-all duration-200 hover:border-border-hover">
+      <h3 className="text-label font-medium text-text-tertiary mb-6 tracking-wide-sm">
+        PERFORMANCE OVERVIEW
+      </h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div>
+          <div className="text-3xl font-light text-text-primary">
+            {loading ? "-" : total7d.toLocaleString()}
+          </div>
+          <div className="text-sm text-text-tertiary mt-1">Last 7 Days</div>
+          <div className="text-xs text-text-muted mt-0.5">{avgPerDay7d}/day avg</div>
+        </div>
+        <div>
+          <div className="text-3xl font-light text-text-primary">
+            {loading ? "-" : total30d.toLocaleString()}
+          </div>
+          <div className="text-sm text-text-tertiary mt-1">Last 30 Days</div>
+          <div className="text-xs text-text-muted mt-0.5">{avgPerDay30d}/day avg</div>
+        </div>
+        {warehouses.map((wh) => (
+          <div key={wh.warehouse}>
+            <div className="text-3xl font-light text-text-primary">
+              {loading ? "-" : wh.fulfilled_30d.toLocaleString()}
+            </div>
+            <div className="text-sm text-text-tertiary mt-1">
+              {wh.warehouse.charAt(0).toUpperCase() + wh.warehouse.slice(1)} (30d)
+            </div>
+            <div className="text-xs text-text-muted mt-0.5">{wh.avg_per_day_30d}/day avg</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Queue Health Section
+function QueueHealthSection({
+  queueHealth,
+  loading,
+}: {
+  queueHealth: QueueHealth[];
+  loading: boolean;
+}) {
+  if (queueHealth.length === 0 && !loading) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 mb-8 transition-all duration-200 hover:border-border-hover">
+      <h3 className="text-label font-medium text-text-tertiary mb-6 tracking-wide-sm flex items-center gap-2">
+        <Calendar className="w-4 h-4" />
+        QUEUE AGING
+      </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {queueHealth.map((health) => (
+          <div key={health.warehouse} className="bg-bg-tertiary rounded p-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-medium text-text-secondary uppercase">
+                {health.warehouse}
+              </span>
+              {health.oldest_order_name && (
+                <span className="text-xs text-text-muted">
+                  Oldest: {health.oldest_order_name} ({health.oldest_order_days}d)
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className={`text-2xl font-light ${health.waiting_1_day > 0 ? "text-text-primary" : "text-text-muted"}`}>
+                  {loading ? "-" : health.waiting_1_day}
+                </div>
+                <div className="text-xs text-text-muted mt-1">&gt; 1 Day</div>
+              </div>
+              <div>
+                <div className={`text-2xl font-light ${health.waiting_3_days > 0 ? "text-status-warning" : "text-text-muted"}`}>
+                  {loading ? "-" : health.waiting_3_days}
+                </div>
+                <div className="text-xs text-text-muted mt-1">&gt; 3 Days</div>
+              </div>
+              <div>
+                <div className={`text-2xl font-light ${health.waiting_7_days > 0 ? "text-status-bad" : "text-text-muted"}`}>
+                  {loading ? "-" : health.waiting_7_days}
+                </div>
+                <div className="text-xs text-text-muted mt-1">&gt; 7 Days</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// SKU Queue Section
+function SkuQueueSection({
+  skus,
+  loading,
+}: {
+  skus: SkuInQueue[];
+  loading: boolean;
+}) {
+  if (skus.length === 0 && !loading) return null;
+
+  // Group by warehouse
+  const smitheySkus = skus.filter((s) => s.warehouse === "smithey").slice(0, 10);
+  const selerySkus = skus.filter((s) => s.warehouse === "selery").slice(0, 10);
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover">
+      <h3 className="text-label font-medium text-text-tertiary mb-6 tracking-wide-sm flex items-center gap-2">
+        <Box className="w-4 h-4" />
+        TOP SKUS IN QUEUE
+      </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Smithey */}
+        <div>
+          <div className="text-sm font-medium text-text-secondary uppercase mb-3">Smithey</div>
+          {smitheySkus.length > 0 ? (
+            <div className="space-y-2">
+              {smitheySkus.map((sku, i) => (
+                <div key={`${sku.sku}-${i}`} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-text-primary truncate">{sku.sku || "No SKU"}</div>
+                    <div className="text-xs text-text-muted truncate">{sku.title}</div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="text-sm font-medium text-text-primary">{sku.quantity}</div>
+                    <div className="text-xs text-text-muted">units</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-text-muted py-4 text-center">No SKUs in queue</div>
+          )}
+        </div>
+
+        {/* Selery */}
+        <div>
+          <div className="text-sm font-medium text-text-secondary uppercase mb-3">Selery</div>
+          {selerySkus.length > 0 ? (
+            <div className="space-y-2">
+              {selerySkus.map((sku, i) => (
+                <div key={`${sku.sku}-${i}`} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-text-primary truncate">{sku.sku || "No SKU"}</div>
+                    <div className="text-xs text-text-muted truncate">{sku.title}</div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="text-sm font-medium text-text-primary">{sku.quantity}</div>
+                    <div className="text-xs text-text-muted">units</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-text-muted py-4 text-center">No SKUs in queue</div>
+          )}
         </div>
       </div>
     </div>
