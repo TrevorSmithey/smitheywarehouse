@@ -336,10 +336,11 @@ interface SkuQueueRow {
     warehouse: string | null;
     fulfillment_status: string | null;
     canceled: boolean;
-  };
+  } | null;
 }
 
-function processSkuQueue(data: SkuQueueRow[]): SkuInQueue[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processSkuQueue(data: any[]): SkuInQueue[] {
   const grouped = new Map<string, {
     title: string | null;
     warehouse: string;
@@ -348,12 +349,13 @@ function processSkuQueue(data: SkuQueueRow[]): SkuInQueue[] {
   }>();
 
   for (const row of data) {
-    if (!row.sku || !row.orders?.warehouse) continue;
+    const orders = row.orders as SkuQueueRow["orders"];
+    if (!row.sku || !orders?.warehouse) continue;
 
     const unfulfilled = row.quantity - row.fulfilled_quantity;
     if (unfulfilled <= 0) continue;
 
-    const key = `${row.sku}|${row.orders.warehouse}`;
+    const key = `${row.sku}|${orders.warehouse}`;
     const existing = grouped.get(key);
 
     if (existing) {
@@ -362,7 +364,7 @@ function processSkuQueue(data: SkuQueueRow[]): SkuInQueue[] {
     } else {
       grouped.set(key, {
         title: row.title,
-        warehouse: row.orders.warehouse,
+        warehouse: orders.warehouse,
         quantity: unfulfilled,
         orderIds: new Set(),
       });
