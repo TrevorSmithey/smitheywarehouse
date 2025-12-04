@@ -542,8 +542,8 @@ function SkuQueueSection({
               {smitheySkus.map((sku, i) => (
                 <div key={`${sku.sku}-${i}`} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-text-primary truncate">{sku.sku || "No SKU"}</div>
-                    <div className="text-xs text-text-muted truncate">{sku.title}</div>
+                    <div className="text-sm text-text-primary truncate">{sku.title || "No Title"}</div>
+                    <div className="text-xs text-text-muted truncate">{sku.sku}</div>
                   </div>
                   <div className="text-right ml-4">
                     <div className="text-sm font-medium text-text-primary">{sku.quantity}</div>
@@ -565,8 +565,8 @@ function SkuQueueSection({
               {selerySkus.map((sku, i) => (
                 <div key={`${sku.sku}-${i}`} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-text-primary truncate">{sku.sku || "No SKU"}</div>
-                    <div className="text-xs text-text-muted truncate">{sku.title}</div>
+                    <div className="text-sm text-text-primary truncate">{sku.title || "No Title"}</div>
+                    <div className="text-xs text-text-muted truncate">{sku.sku}</div>
                   </div>
                   <div className="text-right ml-4">
                     <div className="text-sm font-medium text-text-primary">{sku.quantity}</div>
