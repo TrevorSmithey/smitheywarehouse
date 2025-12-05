@@ -723,7 +723,7 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
     }
   }
 
-  // Convert to array and sort by quantity
+  // Convert to array
   const result: SkuInQueue[] = [];
   for (const [, value] of grouped) {
     result.push({
@@ -735,10 +735,17 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
     });
   }
 
-  // Sort by quantity descending, take top 20 (10 per warehouse)
-  return result
+  // Get top 20 per warehouse (so both columns have scrollable lists)
+  const smithey = result
+    .filter((s) => s.warehouse === "smithey")
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 20);
+  const selery = result
+    .filter((s) => s.warehouse === "selery")
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 20);
+
+  return [...smithey, ...selery];
 }
 
 interface StuckShipmentRow {
