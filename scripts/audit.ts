@@ -139,8 +139,10 @@ async function audit() {
   let engravingUnits = 0;
   const engravingOrders = new Set<number>();
   for (const row of engravingData || []) {
-    const orders = row.orders as { fulfillment_status: string | null; canceled: boolean };
-    if (orders.fulfillment_status === "fulfilled") continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const orders = row.orders as any;
+    const order = Array.isArray(orders) ? orders[0] : orders;
+    if (!order || order.fulfillment_status === "fulfilled") continue;
     const unfulfilled = row.quantity - row.fulfilled_quantity;
     if (unfulfilled > 0) {
       engravingUnits += unfulfilled;
