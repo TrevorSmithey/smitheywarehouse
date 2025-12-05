@@ -46,6 +46,15 @@ export interface DailyFulfillment {
   count: number;
 }
 
+// Daily backlog data (net change in unfulfilled orders)
+export interface DailyBacklog {
+  date: string; // YYYY-MM-DD
+  created: number; // orders created
+  fulfilled: number; // orders fulfilled
+  netChange: number; // created - fulfilled (positive = backlog grew)
+  runningBacklog: number; // cumulative unfulfilled at end of day
+}
+
 // Daily orders created (for warehouse distribution analysis)
 export interface DailyOrders {
   date: string; // YYYY-MM-DD
@@ -186,6 +195,7 @@ export interface MetricsResponse {
   warehouses: WarehouseMetrics[];
   daily: DailyFulfillment[];
   dailyOrders: DailyOrders[];
+  dailyBacklog: DailyBacklog[];
   weekly: WeeklyFulfillment[];
   queueHealth: QueueHealth[];
   topSkusInQueue: SkuInQueue[];

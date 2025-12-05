@@ -30,6 +30,7 @@ import type {
   WarehouseMetrics,
   DailyFulfillment,
   DailyOrders,
+  DailyBacklog,
   StuckShipment,
   FulfillmentLeadTime,
   TransitAnalytics,
@@ -164,7 +165,7 @@ export default function Dashboard() {
   const avgTrend = getChange(totals.avg7d, totals.avg30d);
 
   const stuckCount = metrics?.stuckShipments?.length || 0;
-  const chartData = processChartData(metrics?.daily || []);
+  const chartData = processChartData(metrics?.daily || [], metrics?.dailyBacklog || []);
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary p-6">
@@ -333,11 +334,22 @@ export default function Dashboard() {
                   interval="preserveStartEnd"
                 />
                 <YAxis
+                  yAxisId="left"
                   stroke="#64748B"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                   width={35}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#EF4444"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  width={45}
+                  tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
                 />
                 <Tooltip
                   contentStyle={{
@@ -355,6 +367,7 @@ export default function Dashboard() {
                   stroke="#0EA5E9"
                   strokeWidth={2}
                   fill="url(#smitheyGradient)"
+                  yAxisId="left"
                 />
                 <Area
                   type="monotone"
@@ -362,6 +375,15 @@ export default function Dashboard() {
                   stroke="#64748B"
                   strokeWidth={2}
                   fill="url(#seleryGradient)"
+                  yAxisId="left"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Backlog"
+                  stroke="#EF4444"
+                  strokeWidth={2}
+                  dot={false}
+                  yAxisId="right"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -378,6 +400,10 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-text-tertiary" />
               <span className="text-context text-text-secondary">Selery</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-0.5 bg-[#EF4444]" />
+              <span className="text-context text-text-secondary">Backlog</span>
             </div>
           </div>
         </div>
@@ -1099,16 +1125,23 @@ function WarehouseSplitChart({
   );
 }
 
-function processChartData(daily: DailyFulfillment[]) {
-  const grouped = new Map<string, { Smithey: number; Selery: number }>();
+function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = []) {
+  const grouped = new Map<string, { Smithey: number; Selery: number; Backlog: number }>();
+
+  // Build backlog map by date
+  const backlogByDate = new Map<string, number>();
+  for (const b of backlog) {
+    backlogByDate.set(b.date, b.runningBacklog);
+  }
 
   for (const item of daily) {
-    const existing = grouped.get(item.date) || { Smithey: 0, Selery: 0 };
+    const existing = grouped.get(item.date) || { Smithey: 0, Selery: 0, Backlog: 0 };
     if (item.warehouse === "smithey") {
       existing.Smithey = item.count;
     } else if (item.warehouse === "selery") {
       existing.Selery = item.count;
     }
+    existing.Backlog = backlogByDate.get(item.date) || 0;
     grouped.set(item.date, existing);
   }
 

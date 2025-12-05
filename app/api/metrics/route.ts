@@ -5,6 +5,7 @@ import type {
   WarehouseMetrics,
   DailyFulfillment,
   DailyOrders,
+  DailyBacklog,
   WeeklyFulfillment,
   QueueHealth,
   SkuInQueue,
@@ -541,10 +542,17 @@ export async function GET(request: Request) {
     // Process engraving queue
     const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
 
+    // Calculate daily backlog (orders created - orders fulfilled)
+    // Get current total unfulfilled to calculate running backlog
+    const currentUnfulfilled = (unfulfilledSmitheyCount.count || 0) + (unfulfilledSeleryCount.count || 0) +
+                               (partialSmitheyCount.count || 0) + (partialSeleryCount.count || 0);
+    const dailyBacklog = calculateDailyBacklog(dailyOrders, daily, currentUnfulfilled);
+
     const response: MetricsResponse = {
       warehouses,
       daily,
       dailyOrders,
+      dailyBacklog,
       weekly,
       queueHealth,
       topSkusInQueue,
@@ -954,4 +962,52 @@ function processEngravingQueue(data: any[]): EngravingQueue {
     estimated_days: Math.round((totalUnfulfilled / ENGRAVING_DAILY_CAPACITY) * 10) / 10,
     order_count: orderIds.size,
   };
+}
+
+// Calculate daily backlog (created - fulfilled per day)
+// Uses current unfulfilled count and works backwards to calculate running total
+function calculateDailyBacklog(
+  dailyOrders: DailyOrders[],
+  dailyFulfillments: DailyFulfillment[],
+  currentUnfulfilled: number
+): DailyBacklog[] {
+  // Build maps for orders created and fulfilled by date
+  const createdByDate = new Map<string, number>();
+  for (const d of dailyOrders) {
+    createdByDate.set(d.date, d.total);
+  }
+
+  const fulfilledByDate = new Map<string, number>();
+  for (const d of dailyFulfillments) {
+    const existing = fulfilledByDate.get(d.date) || 0;
+    fulfilledByDate.set(d.date, existing + d.count);
+  }
+
+  // Get all unique dates and sort descending (newest first)
+  const allDates = new Set([...createdByDate.keys(), ...fulfilledByDate.keys()]);
+  const sortedDates = Array.from(allDates).sort((a, b) => b.localeCompare(a));
+
+  // Build backlog array from newest to oldest
+  const result: DailyBacklog[] = [];
+  let runningBacklog = currentUnfulfilled;
+
+  for (const date of sortedDates) {
+    const created = createdByDate.get(date) || 0;
+    const fulfilled = fulfilledByDate.get(date) || 0;
+    const netChange = created - fulfilled;
+
+    result.push({
+      date,
+      created,
+      fulfilled,
+      netChange,
+      runningBacklog,
+    });
+
+    // Move backwards: previous day's backlog was current - netChange
+    runningBacklog = runningBacklog - netChange;
+  }
+
+  // Reverse so oldest is first
+  return result.reverse();
 }
