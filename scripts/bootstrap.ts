@@ -16,7 +16,7 @@ config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 
 // Configuration
-const DAYS_TO_IMPORT = 60; // Import orders from last 60 days
+const DAYS_FOR_FULFILLED = 60; // Import fulfilled orders from last 60 days for metrics
 const BATCH_SIZE = 250; // Shopify GraphQL limit
 
 // Initialize Supabase client
@@ -115,7 +115,7 @@ interface ShopifyOrderNode {
   };
 }
 
-async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
+async function fetchOrdersWithQuery(queryStr: string, label: string): Promise<ShopifyOrderNode[]> {
   const storeUrl = process.env.SHOPIFY_STORE_URL;
   const token = process.env.SHOPIFY_ADMIN_TOKEN;
 
@@ -123,16 +123,12 @@ async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
     throw new Error("Missing SHOPIFY_STORE_URL or SHOPIFY_ADMIN_TOKEN");
   }
 
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - DAYS_TO_IMPORT);
-  const query = `created_at:>${cutoffDate.toISOString().split("T")[0]}`;
-
   const allOrders: ShopifyOrderNode[] = [];
   let cursor: string | null = null;
   let hasNextPage = true;
   let pageCount = 0;
 
-  console.log(`Fetching orders from last ${DAYS_TO_IMPORT} days...`);
+  console.log(`\n${label}...`);
 
   while (hasNextPage) {
     pageCount++;
@@ -148,7 +144,7 @@ async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
         },
         body: JSON.stringify({
           query: ORDERS_QUERY,
-          variables: { cursor, query },
+          variables: { cursor, query: queryStr },
         }),
       }
     );
@@ -176,10 +172,43 @@ async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
     cursor = orders.pageInfo.endCursor;
 
     // Respect rate limits
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  console.log(`Fetched ${allOrders.length} orders total`);
+  console.log(`Fetched ${allOrders.length} ${label.toLowerCase()}`);
+  return allOrders;
+}
+
+async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
+  // 1. Get ALL unfulfilled orders (any age)
+  const unfulfilled = await fetchOrdersWithQuery(
+    "fulfillment_status:unfulfilled",
+    "Fetching ALL unfulfilled orders"
+  );
+
+  // 2. Get ALL partial orders (any age)
+  const partial = await fetchOrdersWithQuery(
+    "fulfillment_status:partial",
+    "Fetching ALL partial orders"
+  );
+
+  // 3. Get recent fulfilled orders for metrics
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - DAYS_FOR_FULFILLED);
+  const dateStr = cutoffDate.toISOString().split("T")[0];
+  const fulfilled = await fetchOrdersWithQuery(
+    `fulfillment_status:shipped created_at:>${dateStr}`,
+    `Fetching fulfilled orders from last ${DAYS_FOR_FULFILLED} days`
+  );
+
+  // Combine and dedupe by order ID
+  const orderMap = new Map<string, ShopifyOrderNode>();
+  for (const order of [...unfulfilled, ...partial, ...fulfilled]) {
+    orderMap.set(order.id, order);
+  }
+
+  const allOrders = Array.from(orderMap.values());
+  console.log(`\nTotal unique orders: ${allOrders.length}`);
   return allOrders;
 }
 

@@ -60,95 +60,153 @@ export async function GET() {
     const lastWeekEnd = new Date(thisWeekStart);
     lastWeekEnd.setMilliseconds(-1);
 
-    // Run all queries in parallel
+    // Run count queries in parallel (using exact counts, no row limit)
     const [
-      unfulfilledResult,
-      partialResult,
-      fulfilledTodayResult,
-      fulfilled7dResult,
-      fulfilled30dResult,
-      thisWeekResult,
-      lastWeekResult,
+      // Unfulfilled counts by warehouse
+      unfulfilledSmitheyCount,
+      unfulfilledSeleryCount,
+      partialSmitheyCount,
+      partialSeleryCount,
+      fulfilledTodaySmitheyCount,
+      fulfilledTodaySeleryCount,
+      fulfilled7dSmitheyCount,
+      fulfilled7dSeleryCount,
+      fulfilled30dSmitheyCount,
+      fulfilled30dSeleryCount,
+      thisWeekSmitheyCount,
+      thisWeekSeleryCount,
+      lastWeekSmitheyCount,
+      lastWeekSeleryCount,
+      // Data queries (with limits)
       dailyResult,
-      queueAgingResult,
       oldestOrderResult,
       skuQueueResult,
       stuckShipmentsResult,
       transitDataResult,
     ] = await Promise.all([
-      // Unfulfilled by warehouse (include id for restoration filtering)
+      // Unfulfilled Smithey
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
         .is("fulfillment_status", null)
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // Partial by warehouse
+      // Unfulfilled Selery
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // Partial Smithey
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
         .eq("fulfillment_status", "partial")
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // Fulfilled today by warehouse
+      // Partial Selery
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
+        .eq("fulfillment_status", "partial")
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // Fulfilled today Smithey
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
         .gte("fulfilled_at", `${today}T00:00:00`)
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // Fulfilled last 7 days
+      // Fulfilled today Selery
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", `${today}T00:00:00`)
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // Fulfilled 7d Smithey
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
         .gte("fulfilled_at", sevenDaysAgo.toISOString())
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // Fulfilled last 30 days
+      // Fulfilled 7d Selery
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", sevenDaysAgo.toISOString())
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // Fulfilled 30d Smithey
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
         .gte("fulfilled_at", thirtyDaysAgo.toISOString())
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // This week fulfillments
+      // Fulfilled 30d Selery
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", thirtyDaysAgo.toISOString())
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // This week Smithey
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
         .gte("fulfilled_at", thisWeekStart.toISOString())
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // Last week fulfillments
+      // This week Selery
       supabase
         .from("orders")
-        .select("id, warehouse")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", thisWeekStart.toISOString())
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // Last week Smithey
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
         .gte("fulfilled_at", lastWeekStart.toISOString())
         .lt("fulfilled_at", thisWeekStart.toISOString())
         .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .eq("warehouse", "smithey"),
 
-      // Daily fulfillments for chart (30 days)
+      // Last week Selery
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", lastWeekStart.toISOString())
+        .lt("fulfilled_at", thisWeekStart.toISOString())
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
+
+      // Daily fulfillments for chart (30 days) - limit to reasonable amount
       supabase
         .from("orders")
         .select("id, warehouse, fulfilled_at")
         .gte("fulfilled_at", thirtyDaysAgo.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
-        .not("fulfilled_at", "is", null),
-
-      // Queue aging - unfulfilled orders with created_at
-      supabase
-        .from("orders")
-        .select("id, warehouse, created_at")
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .not("warehouse", "is", null),
+        .not("fulfilled_at", "is", null)
+        .limit(10000),
 
       // Oldest unfulfilled order per warehouse
       supabase
@@ -160,7 +218,7 @@ export async function GET() {
         .order("created_at", { ascending: true })
         .limit(20),
 
-      // SKUs in unfulfilled queue
+      // SKUs in unfulfilled queue - limit results
       supabase
         .from("line_items")
         .select(`
@@ -172,7 +230,8 @@ export async function GET() {
         `)
         .is("orders.fulfillment_status", null)
         .eq("orders.canceled", false)
-        .not("orders.warehouse", "is", null),
+        .not("orders.warehouse", "is", null)
+        .limit(5000),
 
       // Stuck shipments - in transit with no scans for 3+ days
       supabase
@@ -191,7 +250,7 @@ export async function GET() {
         .order("days_without_scan", { ascending: false })
         .limit(20),
 
-      // Transit time data for delivered shipments (excluding smith-eng SKU outliers)
+      // Transit time data for delivered shipments
       supabase
         .from("shipments")
         .select(`
@@ -201,42 +260,61 @@ export async function GET() {
         `)
         .eq("status", "delivered")
         .not("transit_days", "is", null)
-        .gte("shipped_at", "2024-11-15T00:00:00.000Z"),
+        .gte("shipped_at", "2024-11-15T00:00:00.000Z")
+        .limit(5000),
     ]);
 
-    // Process basic counts - filter out restoration orders
-    const unfulfilledByWh = countByWarehouse(filterRestorationOrders(unfulfilledResult.data));
-    const partialByWh = countByWarehouse(filterRestorationOrders(partialResult.data));
-    const fulfilledTodayByWh = countByWarehouse(filterRestorationOrders(fulfilledTodayResult.data));
-    const fulfilled7dByWh = countByWarehouse(filterRestorationOrders(fulfilled7dResult.data));
-    const fulfilled30dByWh = countByWarehouse(filterRestorationOrders(fulfilled30dResult.data));
-    const thisWeekByWh = countByWarehouse(filterRestorationOrders(thisWeekResult.data));
-    const lastWeekByWh = countByWarehouse(filterRestorationOrders(lastWeekResult.data));
+    // Build warehouse metrics from count queries
+    const smitheyUnfulfilled = unfulfilledSmitheyCount.count || 0;
+    const seleryUnfulfilled = unfulfilledSeleryCount.count || 0;
+    const smitheyPartial = partialSmitheyCount.count || 0;
+    const seleryPartial = partialSeleryCount.count || 0;
+    const smitheyToday = fulfilledTodaySmitheyCount.count || 0;
+    const seleryToday = fulfilledTodaySeleryCount.count || 0;
+    const smithey7d = fulfilled7dSmitheyCount.count || 0;
+    const selery7d = fulfilled7dSeleryCount.count || 0;
+    const smithey30d = fulfilled30dSmitheyCount.count || 0;
+    const selery30d = fulfilled30dSeleryCount.count || 0;
+    const smitheyThisWeek = thisWeekSmitheyCount.count || 0;
+    const seleryThisWeek = thisWeekSeleryCount.count || 0;
+    const smitheyLastWeek = lastWeekSmitheyCount.count || 0;
+    const seleryLastWeek = lastWeekSeleryCount.count || 0;
 
-    // Build enhanced warehouse metrics
-    const warehouses: WarehouseMetrics[] = ["smithey", "selery"].map((wh) => {
-      const fulfilled7d = fulfilled7dByWh[wh] || 0;
-      const fulfilled30d = fulfilled30dByWh[wh] || 0;
-      const thisWeek = thisWeekByWh[wh] || 0;
-      const lastWeek = lastWeekByWh[wh] || 0;
-      const weekChange = lastWeek > 0
-        ? ((thisWeek - lastWeek) / lastWeek) * 100
-        : thisWeek > 0 ? 100 : 0;
+    const smitheyWeekChange = smitheyLastWeek > 0
+      ? ((smitheyThisWeek - smitheyLastWeek) / smitheyLastWeek) * 100
+      : smitheyThisWeek > 0 ? 100 : 0;
+    const seleryWeekChange = seleryLastWeek > 0
+      ? ((seleryThisWeek - seleryLastWeek) / seleryLastWeek) * 100
+      : seleryThisWeek > 0 ? 100 : 0;
 
-      return {
-        warehouse: wh,
-        unfulfilled_count: unfulfilledByWh[wh] || 0,
-        partial_count: partialByWh[wh] || 0,
-        fulfilled_today: fulfilledTodayByWh[wh] || 0,
-        fulfilled_7d: fulfilled7d,
-        fulfilled_30d: fulfilled30d,
-        avg_per_day_7d: Math.round((fulfilled7d / 7) * 10) / 10,
-        avg_per_day_30d: Math.round((fulfilled30d / 30) * 10) / 10,
-        fulfilled_this_week: thisWeek,
-        fulfilled_last_week: lastWeek,
-        week_over_week_change: Math.round(weekChange * 10) / 10,
-      };
-    });
+    const warehouses: WarehouseMetrics[] = [
+      {
+        warehouse: "smithey",
+        unfulfilled_count: smitheyUnfulfilled,
+        partial_count: smitheyPartial,
+        fulfilled_today: smitheyToday,
+        fulfilled_7d: smithey7d,
+        fulfilled_30d: smithey30d,
+        avg_per_day_7d: Math.round((smithey7d / 7) * 10) / 10,
+        avg_per_day_30d: Math.round((smithey30d / 30) * 10) / 10,
+        fulfilled_this_week: smitheyThisWeek,
+        fulfilled_last_week: smitheyLastWeek,
+        week_over_week_change: Math.round(smitheyWeekChange * 10) / 10,
+      },
+      {
+        warehouse: "selery",
+        unfulfilled_count: seleryUnfulfilled,
+        partial_count: seleryPartial,
+        fulfilled_today: seleryToday,
+        fulfilled_7d: selery7d,
+        fulfilled_30d: selery30d,
+        avg_per_day_7d: Math.round((selery7d / 7) * 10) / 10,
+        avg_per_day_30d: Math.round((selery30d / 30) * 10) / 10,
+        fulfilled_this_week: seleryThisWeek,
+        fulfilled_last_week: seleryLastWeek,
+        week_over_week_change: Math.round(seleryWeekChange * 10) / 10,
+      },
+    ];
 
     // Process daily fulfillments - filter out restoration orders
     const filteredDailyData = filterRestorationOrders(dailyResult.data);
@@ -245,12 +323,35 @@ export async function GET() {
     // Process weekly fulfillments (last 8 weeks)
     const weekly = processWeeklyFulfillments(filteredDailyData);
 
-    // Process queue health - filter out restoration orders
-    const queueHealth = processQueueHealth(
-      filterRestorationOrders(queueAgingResult.data),
-      filterRestorationOrders(oldestOrderResult.data),
-      now
-    );
+    // Process queue health using oldest order data
+    const queueHealth: QueueHealth[] = [
+      {
+        warehouse: "smithey",
+        waiting_1_day: 0, // TODO: add count queries for aging
+        waiting_3_days: 0,
+        waiting_7_days: 0,
+        oldest_order_days: 0,
+        oldest_order_name: null,
+      },
+      {
+        warehouse: "selery",
+        waiting_1_day: 0,
+        waiting_3_days: 0,
+        waiting_7_days: 0,
+        oldest_order_days: 0,
+        oldest_order_name: null,
+      },
+    ];
+    // Find oldest per warehouse from oldestOrderResult
+    for (const order of oldestOrderResult.data || []) {
+      const wh = order.warehouse as string;
+      const whHealth = queueHealth.find(h => h.warehouse === wh);
+      if (whHealth && !whHealth.oldest_order_name) {
+        const days = Math.floor((now.getTime() - new Date(order.created_at).getTime()) / (24 * 60 * 60 * 1000));
+        whHealth.oldest_order_days = days;
+        whHealth.oldest_order_name = order.order_name;
+      }
+    }
 
     // Process SKU queue - filter out restoration SKUs directly
     const topSkusInQueue = processSkuQueue(
