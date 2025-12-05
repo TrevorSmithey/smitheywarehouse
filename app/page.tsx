@@ -646,12 +646,12 @@ function WarehousePanel({
               {loading ? "—" : formatNumber(data.fulfilled_today)}
             </div>
             <div className="text-label text-text-tertiary mt-2">
-              {dateRangeOption === "today" ? "Today" :
-               dateRangeOption === "yesterday" ? "Yesterday" :
-               dateRangeOption === "3days" ? "3 Days" :
-               dateRangeOption === "7days" ? "7 Days" :
-               dateRangeOption === "30days" ? "30 Days" :
-               "Selected"}
+              {dateRangeOption === "today" ? "Shipped Today" :
+               dateRangeOption === "yesterday" ? "Shipped Yesterday" :
+               dateRangeOption === "3days" ? "Shipped (3D)" :
+               dateRangeOption === "7days" ? "Shipped (7D)" :
+               dateRangeOption === "30days" ? "Shipped (30D)" :
+               "Shipped"}
             </div>
           </div>
           <div>
