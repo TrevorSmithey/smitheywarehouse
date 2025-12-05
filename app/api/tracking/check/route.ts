@@ -38,8 +38,8 @@ export async function POST() {
     // Get shipments that need checking:
     // - Status is 'in_transit' (not delivered/returned)
     // - Either never checked or checked more than 1 hour ago
-    // - Only shipments from Nov 15, 2024 onwards (to limit EasyPost costs)
-    const trackingStartDate = "2024-11-15T00:00:00.000Z";
+    // - Only shipments from Nov 15, 2025 onwards (to limit EasyPost costs)
+    const trackingStartDate = "2025-11-15T00:00:00.000Z";
 
     const { data: shipments, error: fetchError } = await supabase
       .from("shipments")

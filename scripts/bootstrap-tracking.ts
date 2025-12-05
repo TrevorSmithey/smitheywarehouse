@@ -16,8 +16,8 @@ config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 
 // Configuration
-// Only import from Nov 15, 2024 onwards to limit EasyPost API costs
-const TRACKING_START_DATE = "2024-11-15";
+// Only import from Nov 15, 2025 onwards to limit EasyPost API costs
+const TRACKING_START_DATE = "2025-11-15";
 const BATCH_SIZE = 250; // Shopify GraphQL limit
 
 // Initialize Supabase client
