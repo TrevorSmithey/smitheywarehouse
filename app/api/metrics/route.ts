@@ -356,7 +356,8 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: true })
         .limit(20),
 
-      // SKUs in unfulfilled queue - limit results
+      // SKUs in unfulfilled queue - get all line items from unfulfilled orders
+      // Increased limit from 5000 to 100000 to capture all data
       supabase
         .from("line_items")
         .select(`
@@ -369,7 +370,7 @@ export async function GET(request: Request) {
         .is("orders.fulfillment_status", null)
         .eq("orders.canceled", false)
         .not("orders.warehouse", "is", null)
-        .limit(5000),
+        .limit(100000),
 
       // Stuck shipments - in transit with no scans for 3+ days
       supabase
@@ -579,8 +580,9 @@ export async function GET(request: Request) {
     // Process engraving queue
     const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
 
-    // Process order aging for bar chart
-    const orderAging = processOrderAging(agingDataResult.data || [], now);
+    // Process order aging for bar chart - filter out restoration orders
+    const filteredAgingData = filterRestorationOrders(agingDataResult.data || []);
+    const orderAging = processOrderAging(filteredAgingData, now);
 
     // Calculate daily backlog (orders created - orders fulfilled)
     // Get current total unfulfilled to calculate running backlog
