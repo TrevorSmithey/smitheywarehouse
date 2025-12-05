@@ -144,7 +144,8 @@ export async function GET(request: Request) {
       waiting7dSelery,
       // Data queries (with limits)
       dailyResult,
-      oldestOrderResult,
+      oldestSmitheyResult,
+      oldestSeleryResult,
       skuQueueResult,
       stuckShipmentsResult,
       transitDataResult,
@@ -331,15 +332,25 @@ export async function GET(request: Request) {
         .not("fulfilled_at", "is", null)
         .limit(10000),
 
-      // Oldest unfulfilled order per warehouse
+      // Oldest unfulfilled order for Smithey
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
         .is("fulfillment_status", null)
         .eq("canceled", false)
-        .not("warehouse", "is", null)
+        .eq("warehouse", "smithey")
         .order("created_at", { ascending: true })
-        .limit(20),
+        .limit(1),
+
+      // Oldest unfulfilled order for Selery
+      supabase
+        .from("orders")
+        .select("id, warehouse, order_name, created_at")
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "selery")
+        .order("created_at", { ascending: true })
+        .limit(1),
 
       // SKUs in unfulfilled queue - limit results
       supabase
@@ -496,14 +507,25 @@ export async function GET(request: Request) {
         oldest_order_name: null,
       },
     ];
-    // Find oldest per warehouse from oldestOrderResult
-    for (const order of oldestOrderResult.data || []) {
-      const wh = order.warehouse as string;
-      const whHealth = queueHealth.find(h => h.warehouse === wh);
-      if (whHealth && !whHealth.oldest_order_name) {
-        const days = Math.floor((now.getTime() - new Date(order.created_at).getTime()) / (24 * 60 * 60 * 1000));
-        whHealth.oldest_order_days = days;
-        whHealth.oldest_order_name = order.order_name;
+    // Set oldest order for Smithey
+    const oldestSmithey = oldestSmitheyResult.data?.[0];
+    if (oldestSmithey) {
+      const smitheyHealth = queueHealth.find(h => h.warehouse === "smithey");
+      if (smitheyHealth) {
+        const days = Math.floor((now.getTime() - new Date(oldestSmithey.created_at).getTime()) / (24 * 60 * 60 * 1000));
+        smitheyHealth.oldest_order_days = days;
+        smitheyHealth.oldest_order_name = oldestSmithey.order_name;
+      }
+    }
+
+    // Set oldest order for Selery
+    const oldestSelery = oldestSeleryResult.data?.[0];
+    if (oldestSelery) {
+      const seleryHealth = queueHealth.find(h => h.warehouse === "selery");
+      if (seleryHealth) {
+        const days = Math.floor((now.getTime() - new Date(oldestSelery.created_at).getTime()) / (24 * 60 * 60 * 1000));
+        seleryHealth.oldest_order_days = days;
+        seleryHealth.oldest_order_name = oldestSelery.order_name;
       }
     }
 
