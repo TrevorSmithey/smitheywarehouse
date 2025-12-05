@@ -124,8 +124,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  // Global date range state - default to 7 days
-  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("7days");
+  // Global date range state - default to 3 days
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("3days");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
@@ -280,6 +280,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPICard
           label="IN QUEUE"
+          subtitle="(excluding restorations)"
           value={totals.queue}
           loading={loading}
           status={totals.queue > 500 ? "warning" : undefined}

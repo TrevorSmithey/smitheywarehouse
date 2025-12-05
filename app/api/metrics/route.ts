@@ -563,9 +563,12 @@ export async function GET(request: Request) {
         oldest_order_name: null,
       },
     ];
-    // Set oldest order for Smithey (filter out restoration orders)
+    // Set oldest order for Smithey (filter out restoration orders and excluded orders)
+    const excludedOrderNames = new Set(["S321703"]);
     const oldestSmithey = (oldestSmitheyResult.data || [])
-      .filter((o: { id: number }) => !restorationOrderIds.has(o.id))[0];
+      .filter((o: { id: number; order_name: string }) =>
+        !restorationOrderIds.has(o.id) && !excludedOrderNames.has(o.order_name)
+      )[0];
     if (oldestSmithey) {
       const smitheyHealth = queueHealth.find(h => h.warehouse === "smithey");
       if (smitheyHealth) {
