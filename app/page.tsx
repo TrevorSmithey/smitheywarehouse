@@ -318,6 +318,7 @@ export default function Dashboard() {
               (t) => t.warehouse === wh.warehouse
             )}
             loading={loading}
+            dateRangeOption={dateRangeOption}
           />
         ))}
       </div>
@@ -547,6 +548,7 @@ function WarehousePanel({
   queueHealth,
   transitData,
   loading,
+  dateRangeOption,
 }: {
   data: WarehouseMetrics;
   queueHealth?: {
@@ -557,6 +559,7 @@ function WarehousePanel({
     oldest_order_days: number;
   };
   transitData?: TransitAnalytics;
+  dateRangeOption: DateRangeOption;
   loading: boolean;
 }) {
   const name = data.warehouse.toUpperCase();
@@ -628,7 +631,14 @@ function WarehousePanel({
             <div className="text-3xl font-light text-status-good">
               {loading ? "—" : formatNumber(data.fulfilled_today)}
             </div>
-            <div className="text-label text-text-tertiary mt-2">Today</div>
+            <div className="text-label text-text-tertiary mt-2">
+              {dateRangeOption === "today" ? "Today" :
+               dateRangeOption === "yesterday" ? "Yesterday" :
+               dateRangeOption === "3days" ? "3 Days" :
+               dateRangeOption === "7days" ? "7 Days" :
+               dateRangeOption === "30days" ? "30 Days" :
+               "Selected"}
+            </div>
           </div>
           <div>
             <div className="text-3xl font-light text-text-primary">
