@@ -22,7 +22,16 @@ interface EasyPostTracker {
   }>;
 }
 
+// GET for Vercel cron, POST for manual triggers
+export async function GET() {
+  return checkTracking();
+}
+
 export async function POST() {
+  return checkTracking();
+}
+
+async function checkTracking() {
   if (!EASYPOST_API_KEY) {
     return NextResponse.json(
       { error: "EasyPost API key not configured" },
