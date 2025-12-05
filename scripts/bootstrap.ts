@@ -16,9 +16,9 @@ config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 
 // Configuration
-const DAYS_FOR_FULFILLED = 60; // Import fulfilled orders from last 60 days for metrics
+const DAYS_FOR_FULFILLED = 705; // Import fulfilled orders from Jan 1 2024 onwards
 const BATCH_SIZE = 250; // Shopify GraphQL limit
-const MIN_ORDER_DATE = "2025-09-01"; // Never import orders before this date
+const MIN_ORDER_DATE = "2024-01-01"; // Import all orders from 2024 onwards
 
 // Initialize Supabase client
 const supabase = createClient(
