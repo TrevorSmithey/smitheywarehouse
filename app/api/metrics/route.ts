@@ -619,7 +619,8 @@ function processDailyFulfillments(
 
   for (const row of data) {
     if (!row.warehouse || !row.fulfilled_at) continue;
-    const date = row.fulfilled_at.split("T")[0];
+    // Convert UTC timestamp to EST date for grouping
+    const date = utcToEstDate(row.fulfilled_at);
     const key = `${date}|${row.warehouse}`;
     grouped.set(key, (grouped.get(key) || 0) + 1);
   }
@@ -633,6 +634,14 @@ function processDailyFulfillments(
   return result.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// Convert UTC timestamp to EST date string (YYYY-MM-DD)
+function utcToEstDate(utcTimestamp: string): string {
+  const date = new Date(utcTimestamp);
+  // EST is UTC-5 (ignoring DST for simplicity - within 1 hour)
+  const estDate = new Date(date.getTime() - 5 * 60 * 60 * 1000);
+  return estDate.toISOString().split("T")[0];
+}
+
 function processWeeklyFulfillments(
   data: Array<{ warehouse: string | null; fulfilled_at: string | null; id?: number }>
 ): WeeklyFulfillment[] {
@@ -641,11 +650,13 @@ function processWeeklyFulfillments(
   for (const row of data) {
     if (!row.warehouse || !row.fulfilled_at) continue;
 
-    const date = new Date(row.fulfilled_at);
-    const dayOfWeek = date.getDay();
+    // Convert UTC to EST first, then calculate week
+    const utcDate = new Date(row.fulfilled_at);
+    const date = new Date(utcDate.getTime() - 5 * 60 * 60 * 1000); // EST
+    const dayOfWeek = date.getUTCDay(); // Use UTC methods since we already offset
     const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - mondayOffset);
+    weekStart.setUTCDate(date.getUTCDate() - mondayOffset);
     const weekKey = weekStart.toISOString().split("T")[0];
 
     const key = `${weekKey}|${row.warehouse}`;
@@ -832,7 +843,8 @@ function processDailyOrders(
 
   for (const row of data) {
     if (!row.warehouse || !row.created_at) continue;
-    const date = row.created_at.split("T")[0];
+    // Convert UTC timestamp to EST date for grouping
+    const date = utcToEstDate(row.created_at);
     const existing = grouped.get(date) || { smithey: 0, selery: 0 };
 
     if (row.warehouse === "smithey") {
@@ -1053,6 +1065,11 @@ function calculateDailyBacklog(
 
 // Process order aging for bar chart
 // Buckets: ≤1d, 2d, 3d, 4d, 5+d
+// "≤1d" = created in last 24 hours (day 1 of waiting)
+// "2d" = created 24-48 hours ago (day 2 of waiting)
+// "3d" = created 48-72 hours ago (day 3 of waiting)
+// "4d" = created 72-96 hours ago (day 4 of waiting)
+// "5+d" = created 96+ hours ago (day 5+ of waiting)
 function processOrderAging(
   data: Array<{ id: number; warehouse: string | null; created_at: string }>,
   now: Date
@@ -1073,13 +1090,18 @@ function processOrderAging(
     const createdAt = new Date(order.created_at).getTime();
     const ageDays = Math.floor((nowMs - createdAt) / oneDay);
 
-    if (ageDays <= 1) {
+    // ageDays 0 = 0-23 hours (day 1, ≤1d)
+    // ageDays 1 = 24-47 hours (day 2)
+    // ageDays 2 = 48-71 hours (day 3)
+    // ageDays 3 = 72-95 hours (day 4)
+    // ageDays 4+ = 96+ hours (day 5+)
+    if (ageDays === 0) {
       buckets[warehouse]["≤1d"]++;
-    } else if (ageDays === 2) {
+    } else if (ageDays === 1) {
       buckets[warehouse]["2d"]++;
-    } else if (ageDays === 3) {
+    } else if (ageDays === 2) {
       buckets[warehouse]["3d"]++;
-    } else if (ageDays === 4) {
+    } else if (ageDays === 3) {
       buckets[warehouse]["4d"]++;
     } else {
       buckets[warehouse]["5+d"]++;
