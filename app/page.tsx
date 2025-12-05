@@ -296,9 +296,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Order Aging Chart */}
-      <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
-
       {/* Stuck Shipments Alert */}
       {stuckCount > 0 && (
         <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
@@ -402,6 +399,9 @@ export default function Dashboard() {
 
       {/* Transit Analytics */}
       <TransitAnalyticsPanel analytics={metrics?.transitAnalytics || []} />
+
+      {/* Order Aging - at the bottom */}
+      <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
     </div>
   );
 }
@@ -1127,95 +1127,122 @@ function OrderAgingChart({
   // Calculate totals
   const totalSmithey = aging.reduce((sum, d) => sum + d.smithey, 0);
   const totalSelery = aging.reduce((sum, d) => sum + d.selery, 0);
-  const over5dSmithey = aging.find(d => d.bucket === "5+d")?.smithey || 0;
-  const over5dSelery = aging.find(d => d.bucket === "5+d")?.selery || 0;
-  const over5dTotal = over5dSmithey + over5dSelery;
+  const totalOrders = totalSmithey + totalSelery;
 
-  if (aging.length === 0) return null;
+  // Find max for each warehouse separately for better visual balance
+  const maxSmithey = Math.max(...aging.map(d => d.smithey), 1);
+  const maxSelery = Math.max(...aging.map(d => d.selery), 1);
 
-  return (
-    <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
-          <Clock className="w-3.5 h-3.5" />
-          ORDER AGING
-        </h3>
-        <div className="flex items-center gap-4 text-context">
-          <span className="text-text-secondary">
-            <span className="text-accent-blue font-medium">{formatNumber(totalSmithey)}</span>
-            <span className="text-text-muted ml-1">Smithey</span>
+  if (aging.length === 0 || totalOrders === 0) return null;
+
+  const AgingRow = ({
+    bucket,
+    isLast
+  }: {
+    bucket: OrderAging;
+    isLast: boolean;
+  }) => {
+    const isDanger = bucket.bucket === "5+d";
+    const smitheyPct = (bucket.smithey / maxSmithey) * 100;
+    const seleryPct = (bucket.selery / maxSelery) * 100;
+
+    return (
+      <div className={`grid grid-cols-[1fr_auto_1fr] gap-3 items-center py-2 ${
+        !isLast ? "border-b border-border-subtle" : ""
+      }`}>
+        {/* Smithey - right aligned bar */}
+        <div className="flex items-center justify-end gap-3">
+          <span className={`text-sm tabular-nums ${
+            isDanger && bucket.smithey > 0 ? "text-status-bad" : "text-text-secondary"
+          }`}>
+            {formatNumber(bucket.smithey)}
           </span>
-          <span className="text-text-secondary">
-            <span className="text-text-tertiary font-medium">{formatNumber(totalSelery)}</span>
-            <span className="text-text-muted ml-1">Selery</span>
+          <div className="w-32 h-5 bg-bg-tertiary/50 rounded-sm overflow-hidden flex justify-end">
+            <div
+              className={`h-full rounded-sm transition-all duration-500 ease-out ${
+                isDanger ? "bg-status-bad/70" : "bg-accent-blue/70"
+              }`}
+              style={{ width: `${smitheyPct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Center label */}
+        <div className={`w-12 text-center text-xs font-semibold tracking-wide ${
+          isDanger ? "text-status-bad" : "text-text-tertiary"
+        }`}>
+          {bucket.bucket}
+        </div>
+
+        {/* Selery - left aligned bar */}
+        <div className="flex items-center gap-3">
+          <div className="w-32 h-5 bg-bg-tertiary/50 rounded-sm overflow-hidden">
+            <div
+              className={`h-full rounded-sm transition-all duration-500 ease-out ${
+                isDanger ? "bg-status-bad/50" : "bg-slate-500/50"
+              }`}
+              style={{ width: `${seleryPct}%` }}
+            />
+          </div>
+          <span className={`text-sm tabular-nums ${
+            isDanger && bucket.selery > 0 ? "text-status-bad" : "text-text-secondary"
+          }`}>
+            {formatNumber(bucket.selery)}
           </span>
-          {over5dTotal > 0 && (
-            <span className="text-status-bad">
-              {formatNumber(over5dTotal)} aging 5+ days
-            </span>
-          )}
         </div>
       </div>
+    );
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 mt-6 transition-all hover:border-border-hover">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
+          <Clock className="w-3.5 h-3.5" />
+          QUEUE AGING
+        </h3>
+      </div>
+
       {loading ? (
-        <div className="h-[200px] flex items-center justify-center text-text-muted text-sm">
+        <div className="h-[160px] flex items-center justify-center text-text-muted text-sm">
           Loading...
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={aging} barGap={2} barCategoryGap="20%">
-            <XAxis
-              dataKey="bucket"
-              stroke="#64748B"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              stroke="#64748B"
-              fontSize={11}
-              tickLine={false}
-              axisLine={false}
-              width={40}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#12151F",
-                border: "1px solid rgba(255,255,255,0.06)",
-                borderRadius: "4px",
-                fontSize: "12px",
-              }}
-              labelStyle={{ color: "#94A3B8" }}
-              formatter={(value: number, name: string) => [
-                formatNumber(value),
-                name === "smithey" ? "Smithey" : "Selery",
-              ]}
-              labelFormatter={(label) => `${label} old`}
-            />
-            <Bar
-              dataKey="smithey"
-              name="Smithey"
-              fill="#0EA5E9"
-              radius={[2, 2, 0, 0]}
-            />
-            <Bar
-              dataKey="selery"
-              name="Selery"
-              fill="#64748B"
-              radius={[2, 2, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
+        <>
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-3 mb-2">
+            <div className="flex items-center justify-end gap-3">
+              <span className="text-xs font-medium text-accent-blue tracking-wide">
+                SMITHEY
+              </span>
+              <span className="text-lg font-light text-accent-blue tabular-nums">
+                {formatNumber(totalSmithey)}
+              </span>
+            </div>
+            <div className="w-12" />
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-light text-text-tertiary tabular-nums">
+                {formatNumber(totalSelery)}
+              </span>
+              <span className="text-xs font-medium text-text-tertiary tracking-wide">
+                SELERY
+              </span>
+            </div>
+          </div>
+
+          {/* Aging rows */}
+          <div className="mt-3">
+            {aging.map((bucket, idx) => (
+              <AgingRow
+                key={bucket.bucket}
+                bucket={bucket}
+                isLast={idx === aging.length - 1}
+              />
+            ))}
+          </div>
+        </>
       )}
-      <div className="flex justify-center gap-6 mt-4">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-accent-blue" />
-          <span className="text-context text-text-secondary">Smithey</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-text-tertiary" />
-          <span className="text-context text-text-secondary">Selery</span>
-        </div>
-      </div>
     </div>
   );
 }
