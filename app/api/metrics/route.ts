@@ -82,6 +82,10 @@ export async function GET(request: Request) {
     // Convert EST midnight to UTC for database queries
     const todayStartUTC = new Date(`${todayEST}T05:00:00.000Z`); // EST midnight = UTC 5am
 
+    // Fixed 30-day window for transit time data (independent of date selector)
+    // This ensures the map always has sufficient data to populate all states
+    const transit30dStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
     // Get restoration order IDs to exclude (SKUs containing "-Rest-")
     // These are a different fulfillment cycle - customer ships item back first
     // Join with orders to get warehouse and fulfillment_status for per-warehouse counts
@@ -387,7 +391,8 @@ export async function GET(request: Request) {
         .order("days_without_scan", { ascending: false })
         .limit(100),
 
-      // Transit time data for delivered shipments - filtered by date range
+      // Transit time data for delivered shipments - fixed 30-day window
+      // Uses transit30dStart to ensure sufficient data regardless of date selector
       supabase
         .from("shipments")
         .select(`
@@ -398,9 +403,9 @@ export async function GET(request: Request) {
         `)
         .eq("status", "delivered")
         .not("transit_days", "is", null)
-        .gte("delivered_at", rangeStart.toISOString())
-        .lte("delivered_at", rangeEnd.toISOString())
-        .limit(5000),
+        .gte("delivered_at", transit30dStart.toISOString())
+        .lte("delivered_at", now.toISOString())
+        .limit(10000),
 
       // Daily orders - will be fetched separately with pagination
       Promise.resolve({ data: [] }),
