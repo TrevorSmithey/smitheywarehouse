@@ -16,10 +16,19 @@ import type {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const now = new Date();
+
+    // Parse date range from query params
+    const { searchParams } = new URL(request.url);
+    const startParam = searchParams.get("start");
+    const endParam = searchParams.get("end");
+
+    // Default to 7 days if no params provided
+    const rangeStart = startParam ? new Date(startParam) : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const rangeEnd = endParam ? new Date(endParam) : now;
 
     // Use EST/EDT for "today" calculations (Smithey is US-based)
     const estOffset = -5 * 60; // EST is UTC-5
@@ -271,11 +280,12 @@ export async function GET() {
         .eq("warehouse", "selery")
         .lt("created_at", sevenDaysAgo.toISOString()),
 
-      // Daily fulfillments for chart (30 days) - limit to reasonable amount
+      // Daily fulfillments for chart - filtered by selected date range
       supabase
         .from("orders")
         .select("id, warehouse, fulfilled_at")
-        .gte("fulfilled_at", thirtyDaysAgo.toISOString())
+        .gte("fulfilled_at", rangeStart.toISOString())
+        .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
         .not("fulfilled_at", "is", null)
@@ -323,7 +333,7 @@ export async function GET() {
         .order("days_without_scan", { ascending: false })
         .limit(20),
 
-      // Transit time data for delivered shipments
+      // Transit time data for delivered shipments - filtered by date range
       supabase
         .from("shipments")
         .select(`
@@ -333,24 +343,27 @@ export async function GET() {
         `)
         .eq("status", "delivered")
         .not("transit_days", "is", null)
-        .gte("shipped_at", "2024-11-15T00:00:00.000Z")
+        .gte("delivered_at", rangeStart.toISOString())
+        .lte("delivered_at", rangeEnd.toISOString())
         .limit(5000),
 
-      // Daily orders created (last 30 days) for warehouse distribution
+      // Daily orders created - filtered by selected date range
       supabase
         .from("orders")
         .select("id, warehouse, created_at")
-        .gte("created_at", thirtyDaysAgo.toISOString())
+        .gte("created_at", rangeStart.toISOString())
+        .lte("created_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
         .limit(10000),
 
-      // Fulfillment lead time data (orders fulfilled in last 30 days)
+      // Fulfillment lead time data - filtered by selected date range
       supabase
         .from("orders")
         .select("id, warehouse, created_at, fulfilled_at")
         .not("fulfilled_at", "is", null)
-        .gte("fulfilled_at", thirtyDaysAgo.toISOString())
+        .gte("fulfilled_at", rangeStart.toISOString())
+        .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
         .limit(10000),
@@ -462,7 +475,9 @@ export async function GET() {
     const dailyOrders = processDailyOrders(dailyOrdersResult.data || []);
 
     // Process fulfillment lead time analytics
-    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], sevenDaysAgo);
+    // Calculate midpoint of range for trend comparison
+    const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
+    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
 
     const response: MetricsResponse = {
       warehouses,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, startOfDay, subDays } from "date-fns";
 import {
   AreaChart,
   Area,
@@ -19,6 +19,7 @@ import {
   Clock,
   MapPin,
   AlertTriangle,
+  Calendar,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -31,7 +32,54 @@ import type {
   SkuInQueue,
 } from "@/lib/types";
 
-type DateRange = 7 | 14 | 30;
+type DateRangeOption = "today" | "3days" | "7days" | "30days" | "custom";
+
+// Calculate date range bounds based on selection
+function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+
+  switch (option) {
+    case "today": {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
+    case "3days": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 2);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
+    case "7days": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
+    case "30days": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
+    case "custom": {
+      if (customStart && customEnd) {
+        const start = new Date(customStart);
+        start.setHours(0, 0, 0, 0);
+        const endDate = new Date(customEnd);
+        endDate.setHours(23, 59, 59, 999);
+        return { start, end: endDate };
+      }
+      // Default to 7 days if no custom dates
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
+  }
+}
 
 function formatNumber(num: number | undefined | null): string {
   if (num === undefined || num === null || isNaN(num)) return "0";
@@ -49,12 +97,28 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange>(7);
+
+  // Global date range state
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("7days");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
 
   const fetchMetrics = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/metrics");
+
+      // Calculate date bounds for the selected range
+      const customStart = customStartDate ? new Date(customStartDate) : undefined;
+      const customEnd = customEndDate ? new Date(customEndDate) : undefined;
+      const { start, end } = getDateBounds(dateRangeOption, customStart, customEnd);
+
+      // Build query string with date range
+      const params = new URLSearchParams({
+        start: start.toISOString(),
+        end: end.toISOString(),
+      });
+
+      const res = await fetch(`/api/metrics?${params}`);
       if (!res.ok) throw new Error("Failed to fetch metrics");
       const data: MetricsResponse = await res.json();
       setMetrics(data);
@@ -65,7 +129,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateRangeOption, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchMetrics();
@@ -95,29 +159,79 @@ export default function Dashboard() {
   const avgTrend = getChange(totals.avg7d, totals.avg30d);
 
   const stuckCount = metrics?.stuckShipments?.length || 0;
-  const chartData = processChartData(metrics?.daily || [], dateRange);
+  const chartData = processChartData(metrics?.daily || []);
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary p-6">
       {/* Header */}
-      <header className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
-            SMITHEY WAREHOUSE
-          </h1>
-          <p className="text-context text-text-muted mt-1">
-            {lastRefresh
-              ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
-              : "Loading..."}
-          </p>
+      <header className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
+              SMITHEY WAREHOUSE
+            </h1>
+            <p className="text-context text-text-muted mt-1">
+              {lastRefresh
+                ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
+                : "Loading..."}
+            </p>
+          </div>
+          <button
+            onClick={fetchMetrics}
+            disabled={loading}
+            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
-        <button
-          onClick={fetchMetrics}
-          disabled={loading}
-          className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
+
+        {/* Date Range Selector */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-2">
+            {(["today", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
+              const labels: Record<DateRangeOption, string> = {
+                today: "Today",
+                "3days": "3 Days",
+                "7days": "7 Days",
+                "30days": "30 Days",
+                custom: "Custom",
+              };
+              return (
+                <button
+                  key={option}
+                  onClick={() => setDateRangeOption(option)}
+                  className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
+                    dateRangeOption === option
+                      ? "bg-accent-blue text-white border-accent-blue"
+                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                  }`}
+                >
+                  {labels[option]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom Date Inputs */}
+          {dateRangeOption === "custom" && (
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-text-tertiary" />
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+              />
+              <span className="text-text-muted">to</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+              />
+            </div>
+          )}
+        </div>
       </header>
 
       {error && (
@@ -191,25 +305,10 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Fulfillment Trend Chart */}
         <div className="lg:col-span-2 bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6">
             <h3 className="text-label font-medium text-text-tertiary">
               FULFILLMENT TREND
             </h3>
-            <div className="flex gap-2">
-              {([7, 14, 30] as DateRange[]).map((days) => (
-                <button
-                  key={days}
-                  onClick={() => setDateRange(days)}
-                  className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
-                    dateRange === days
-                      ? "bg-accent-blue text-white border-accent-blue"
-                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                  }`}
-                >
-                  {days}d
-                </button>
-              ))}
-            </div>
           </div>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
@@ -851,7 +950,7 @@ function TransitAnalyticsPanel({
   );
 }
 
-function processChartData(daily: DailyFulfillment[], days: number = 7) {
+function processChartData(daily: DailyFulfillment[]) {
   const grouped = new Map<string, { Smithey: number; Selery: number }>();
 
   for (const item of daily) {
@@ -870,6 +969,5 @@ function processChartData(daily: DailyFulfillment[], days: number = 7) {
       rawDate: date,
       ...counts,
     }))
-    .sort((a, b) => a.rawDate.localeCompare(b.rawDate))
-    .slice(-days);
+    .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
 }
