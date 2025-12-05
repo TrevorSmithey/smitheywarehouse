@@ -513,11 +513,11 @@ interface SkuQueueRow {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processSkuQueue(data: any[]): SkuInQueue[] {
+  // Group by SKU only (combine across warehouses)
   const grouped = new Map<string, {
     title: string | null;
-    warehouse: string;
     quantity: number;
-    orderIds: Set<number>;
+    orderCount: number;
   }>();
 
   for (const row of data) {
@@ -527,39 +527,36 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
     const unfulfilled = row.quantity - row.fulfilled_quantity;
     if (unfulfilled <= 0) continue;
 
-    const key = `${row.sku}|${orders.warehouse}`;
-    const existing = grouped.get(key);
+    const existing = grouped.get(row.sku);
 
     if (existing) {
       existing.quantity += unfulfilled;
-      // We don't have order_id here, so we'll approximate order_count
+      existing.orderCount += 1;
     } else {
-      grouped.set(key, {
+      grouped.set(row.sku, {
         title: row.title,
-        warehouse: orders.warehouse,
         quantity: unfulfilled,
-        orderIds: new Set(),
+        orderCount: 1,
       });
     }
   }
 
   // Convert to array and sort by quantity
   const result: SkuInQueue[] = [];
-  for (const [key, value] of grouped) {
-    const [sku] = key.split("|");
+  for (const [sku, value] of grouped) {
     result.push({
       sku,
       title: value.title,
-      warehouse: value.warehouse,
+      warehouse: "all", // Combined across warehouses
       quantity: value.quantity,
-      order_count: Math.ceil(value.quantity / 2), // Approximate
+      order_count: value.orderCount,
     });
   }
 
-  // Sort by quantity descending, take top 20
+  // Sort by quantity descending, take top 10
   return result
     .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, 20);
+    .slice(0, 10);
 }
 
 interface StuckShipmentRow {
