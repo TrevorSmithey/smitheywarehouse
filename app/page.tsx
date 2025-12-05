@@ -26,6 +26,7 @@ import type {
   DailyFulfillment,
   StuckShipment,
   TransitAnalytics,
+  SkuInQueue,
 } from "@/lib/types";
 
 type DateRange = 7 | 14 | 30;
@@ -33,6 +34,12 @@ type DateRange = 7 | 14 | 30;
 function formatNumber(num: number | undefined | null): string {
   if (num === undefined || num === null || isNaN(num)) return "0";
   return num.toLocaleString("en-US");
+}
+
+// Calculate percentage change
+function getChange(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return ((current - previous) / previous) * 100;
 }
 
 export default function Dashboard() {
@@ -67,16 +74,23 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
-  // Totals
+  // Aggregate totals across warehouses
   const totals = metrics?.warehouses?.reduce(
     (acc, wh) => ({
       queue: acc.queue + wh.unfulfilled_count + wh.partial_count,
       today: acc.today + wh.fulfilled_today,
       week: acc.week + wh.fulfilled_this_week,
-      avg: acc.avg + wh.avg_per_day_7d,
+      lastWeek: acc.lastWeek + wh.fulfilled_last_week,
+      avg7d: acc.avg7d + wh.avg_per_day_7d,
+      avg30d: acc.avg30d + wh.avg_per_day_30d,
     }),
-    { queue: 0, today: 0, week: 0, avg: 0 }
-  ) || { queue: 0, today: 0, week: 0, avg: 0 };
+    { queue: 0, today: 0, week: 0, lastWeek: 0, avg7d: 0, avg30d: 0 }
+  ) || { queue: 0, today: 0, week: 0, lastWeek: 0, avg7d: 0, avg30d: 0 };
+
+  // Calculate change indicators
+  const todayVsAvg = getChange(totals.today, totals.avg7d);
+  const weekOverWeek = getChange(totals.week, totals.lastWeek);
+  const avgTrend = getChange(totals.avg7d, totals.avg30d);
 
   const stuckCount = metrics?.stuckShipments?.length || 0;
   const chartData = processChartData(metrics?.daily || [], dateRange);
@@ -87,7 +101,7 @@ export default function Dashboard() {
       <header className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
-            WAREHOUSE FULFILLMENT
+            SMITHEY WAREHOUSE
           </h1>
           <p className="text-context text-text-muted mt-1">
             {lastRefresh
@@ -110,7 +124,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI Cards - Match Lathe style */}
+      {/* KPI Cards - with change indicators like Lathe app */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPICard
           label="IN QUEUE"
@@ -123,16 +137,22 @@ export default function Dashboard() {
           value={totals.today}
           loading={loading}
           status="good"
+          change={todayVsAvg}
+          changeLabel="vs avg"
         />
         <KPICard
           label="THIS WEEK"
           value={totals.week}
           loading={loading}
+          change={weekOverWeek}
+          changeLabel="vs last week"
         />
         <KPICard
           label="AVG / DAY"
-          value={Math.round(totals.avg / 2)}
+          value={Math.round(totals.avg7d)}
           loading={loading}
+          change={avgTrend}
+          changeLabel="vs 30d avg"
           subtitle="7-day average"
         />
       </div>
@@ -159,86 +179,92 @@ export default function Dashboard() {
         <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
       )}
 
-      {/* Fulfillment Trend Chart */}
-      <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-label font-medium text-text-tertiary">
-            FULFILLMENT TREND
-          </h3>
-          <div className="flex gap-2">
-            {([7, 14, 30] as DateRange[]).map((days) => (
-              <button
-                key={days}
-                onClick={() => setDateRange(days)}
-                className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
-                  dateRange === days
-                    ? "bg-accent-blue text-white border-accent-blue"
-                    : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                }`}
-              >
-                {days}d
-              </button>
-            ))}
+      {/* Two-column layout: Chart + Top SKUs */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Fulfillment Trend Chart */}
+        <div className="lg:col-span-2 bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-label font-medium text-text-tertiary">
+              FULFILLMENT TREND
+            </h3>
+            <div className="flex gap-2">
+              {([7, 14, 30] as DateRange[]).map((days) => (
+                <button
+                  key={days}
+                  onClick={() => setDateRange(days)}
+                  className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
+                    dateRange === days
+                      ? "bg-accent-blue text-white border-accent-blue"
+                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                  }`}
+                >
+                  {days}d
+                </button>
+              ))}
+            </div>
+          </div>
+          {chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} barCategoryGap="20%">
+                <XAxis
+                  dataKey="date"
+                  stroke="#64748B"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  stroke="#64748B"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  width={35}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#12151F",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: "4px",
+                    fontSize: "12px",
+                  }}
+                  labelStyle={{ color: "#94A3B8" }}
+                  itemStyle={{ color: "#FFFFFF" }}
+                  cursor={{ fill: "rgba(14, 165, 233, 0.1)" }}
+                />
+                <Bar
+                  dataKey="Smithey"
+                  fill="#0EA5E9"
+                  radius={[2, 2, 0, 0]}
+                  stackId="a"
+                />
+                <Bar
+                  dataKey="Selery"
+                  fill="#64748B"
+                  radius={[2, 2, 0, 0]}
+                  stackId="a"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center text-text-muted text-sm">
+              No data available
+            </div>
+          )}
+          <div className="flex justify-center gap-6 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-accent-blue" />
+              <span className="text-context text-text-secondary">Smithey</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-text-tertiary" />
+              <span className="text-context text-text-secondary">Selery</span>
+            </div>
           </div>
         </div>
-        {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={chartData} barCategoryGap="20%">
-              <XAxis
-                dataKey="date"
-                stroke="#64748B"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                stroke="#64748B"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                width={35}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#12151F",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                }}
-                labelStyle={{ color: "#94A3B8" }}
-                itemStyle={{ color: "#FFFFFF" }}
-                cursor={{ fill: "rgba(14, 165, 233, 0.1)" }}
-              />
-              <Bar
-                dataKey="Smithey"
-                fill="#0EA5E9"
-                radius={[2, 2, 0, 0]}
-                stackId="a"
-              />
-              <Bar
-                dataKey="Selery"
-                fill="#64748B"
-                radius={[2, 2, 0, 0]}
-                stackId="a"
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="h-[200px] flex items-center justify-center text-text-muted text-sm">
-            No data available
-          </div>
-        )}
-        <div className="flex justify-center gap-6 mt-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-accent-blue" />
-            <span className="text-context text-text-secondary">Smithey</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-text-tertiary" />
-            <span className="text-context text-text-secondary">Selery</span>
-          </div>
-        </div>
+
+        {/* Top SKUs in Queue */}
+        <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
       </div>
 
       {/* Transit Analytics */}
@@ -253,12 +279,16 @@ function KPICard({
   loading,
   status,
   subtitle,
+  change,
+  changeLabel,
 }: {
   label: string;
   value: number;
   loading: boolean;
   status?: "good" | "warning" | "bad";
   subtitle?: string;
+  change?: number;
+  changeLabel?: string;
 }) {
   const statusColors = {
     good: "text-status-good",
@@ -278,7 +308,27 @@ function KPICard({
       >
         {loading ? "—" : formatNumber(value)}
       </div>
-      {subtitle && (
+      {/* Change indicator - like Lathe app */}
+      {change !== undefined && !loading && (
+        <div className="text-context text-text-secondary mt-1">
+          <span
+            className={
+              change > 0
+                ? "text-status-good"
+                : change < 0
+                ? "text-status-bad"
+                : "text-text-tertiary"
+            }
+          >
+            {change > 0 ? "↑" : change < 0 ? "↓" : "→"}{" "}
+            {Math.abs(change).toFixed(1)}%
+          </span>
+          {changeLabel && (
+            <span className="text-text-muted ml-1">{changeLabel}</span>
+          )}
+        </div>
+      )}
+      {subtitle && !change && (
         <div className="text-context text-text-muted mt-1">{subtitle}</div>
       )}
     </div>
@@ -311,7 +361,9 @@ function WarehousePanel({
       {/* Header */}
       <div
         className={`px-6 py-4 border-b border-border flex items-center justify-between ${
-          isSmithey ? "border-l-2 border-l-accent-blue" : "border-l-2 border-l-text-tertiary"
+          isSmithey
+            ? "border-l-2 border-l-accent-blue"
+            : "border-l-2 border-l-text-tertiary"
         }`}
       >
         <span className="text-label font-medium text-text-primary tracking-wide-sm">
@@ -353,7 +405,9 @@ function WarehousePanel({
           <div>
             <div
               className={`text-3xl font-light ${
-                data.partial_count > 0 ? "text-status-warning" : "text-text-primary"
+                data.partial_count > 0
+                  ? "text-status-warning"
+                  : "text-text-primary"
               }`}
             >
               {loading ? "—" : formatNumber(data.partial_count)}
@@ -380,13 +434,17 @@ function WarehousePanel({
         {/* Queue Aging */}
         {queueHealth && (
           <div className="bg-bg-tertiary rounded p-4 mb-4">
-            <div className="text-label text-text-tertiary mb-3">QUEUE AGING</div>
+            <div className="text-label text-text-tertiary mb-3">
+              QUEUE AGING
+            </div>
             <div className="flex gap-6">
               <div>
                 <span className="text-xl font-light text-text-primary">
                   {queueHealth.waiting_1_day}
                 </span>
-                <span className="text-context text-text-muted ml-1">&gt;1d</span>
+                <span className="text-context text-text-muted ml-1">
+                  &gt;1d
+                </span>
               </div>
               <div>
                 <span
@@ -398,7 +456,9 @@ function WarehousePanel({
                 >
                   {queueHealth.waiting_3_days}
                 </span>
-                <span className="text-context text-text-muted ml-1">&gt;3d</span>
+                <span className="text-context text-text-muted ml-1">
+                  &gt;3d
+                </span>
               </div>
               <div>
                 <span
@@ -410,7 +470,9 @@ function WarehousePanel({
                 >
                   {queueHealth.waiting_7_days}
                 </span>
-                <span className="text-context text-text-muted ml-1">&gt;7d</span>
+                <span className="text-context text-text-muted ml-1">
+                  &gt;7d
+                </span>
               </div>
             </div>
             {queueHealth.oldest_order_name && (
@@ -448,6 +510,69 @@ function WarehousePanel({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function TopSkusPanel({
+  skus,
+  loading,
+}: {
+  skus: SkuInQueue[];
+  loading: boolean;
+}) {
+  // Group by warehouse and get top 5 each
+  const smitheySkus = skus
+    .filter((s) => s.warehouse === "smithey")
+    .slice(0, 5);
+  const selerySkus = skus.filter((s) => s.warehouse === "selery").slice(0, 5);
+
+  const allSkus = [...smitheySkus, ...selerySkus].slice(0, 8);
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
+      <h3 className="text-label font-medium text-text-tertiary mb-4">
+        TOP SKUS IN QUEUE
+      </h3>
+      {loading ? (
+        <div className="text-text-muted text-sm">Loading...</div>
+      ) : allSkus.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 text-label text-text-tertiary opacity-50 font-medium">
+                  SKU
+                </th>
+                <th className="text-right py-2 text-label text-text-tertiary opacity-50 font-medium">
+                  UNITS
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {allSkus.map((sku) => (
+                <tr
+                  key={`${sku.warehouse}-${sku.sku}`}
+                  className="border-b border-border-subtle hover:bg-white/[0.02] transition-all"
+                >
+                  <td className="py-2.5 text-context text-text-primary">
+                    <div className="truncate max-w-[150px]" title={sku.title || sku.sku}>
+                      {sku.sku}
+                    </div>
+                  </td>
+                  <td className="py-2.5 text-right text-context text-text-secondary">
+                    {formatNumber(sku.quantity)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-context text-text-muted py-4">
+          No items in queue
+        </div>
+      )}
     </div>
   );
 }
@@ -538,7 +663,8 @@ function TransitAnalyticsPanel({
                 {wh.warehouse}
               </div>
               <div className="text-context text-text-muted">
-                Avg: <span className="text-text-primary">{wh.avg_transit_days}d</span>
+                Avg:{" "}
+                <span className="text-text-primary">{wh.avg_transit_days}d</span>
               </div>
             </div>
             {wh.by_state.length > 0 ? (
