@@ -184,33 +184,33 @@ export default function Dashboard() {
     <div className="min-h-screen bg-bg-primary text-text-primary p-6">
       {/* Header */}
       <header className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-6">
+        <div className="text-center mb-6">
+          <div className="mb-4 flex justify-center">
             <Image
               src="/smithey-logo-white.png"
               alt="Smithey Ironware Logo"
-              width={80}
-              height={80}
+              width={160}
+              height={160}
               className="object-contain"
             />
-            <div>
-              <p className="text-lg text-text-secondary uppercase tracking-wide">
-                RETAIL FULFILLMENT
-              </p>
-              <p className="text-context text-text-muted mt-1">
-                {lastRefresh
-                  ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
-                  : "Loading..."}
-              </p>
-            </div>
           </div>
-          <button
-            onClick={fetchMetrics}
-            disabled={loading}
-            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+          <p className="text-lg text-text-secondary uppercase tracking-wide">
+            RETAIL FULFILLMENT
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-2">
+            <p className="text-context text-text-muted">
+              {lastRefresh
+                ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
+                : "Loading..."}
+            </p>
+            <button
+              onClick={fetchMetrics}
+              disabled={loading}
+              className="p-1 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
         </div>
 
         {/* Date Range Selector */}
