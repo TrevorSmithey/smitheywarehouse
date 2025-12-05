@@ -400,8 +400,9 @@ export async function GET(request: Request) {
         .not("warehouse", "is", null)
         .limit(10000),
 
-      // Engraving queue - unfulfilled line items with SKU 'Smith-Eng' or 'Smith-Eng2'
-      // Only include orders that are not canceled and not fully fulfilled
+      // Engraving queue - line items with SKU 'Smith-Eng' or 'Smith-Eng2'
+      // Filter for non-canceled orders; exclude fulfilled orders client-side
+      // (PostgREST's .neq() doesn't include NULL, which is unfulfilled status)
       supabase
         .from("line_items")
         .select(`
@@ -413,8 +414,7 @@ export async function GET(request: Request) {
         `)
         .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
-        .neq("orders.fulfillment_status", "fulfilled")
-        .limit(5000),
+        .limit(10000),
     ]);
 
     // Build warehouse metrics from count queries
@@ -937,6 +937,10 @@ function processEngravingQueue(data: any[]): EngravingQueue {
   for (const row of data) {
     const typedRow = row as EngravingQueueRow;
     if (!typedRow.orders) continue;
+
+    // Skip fulfilled orders - they've already shipped
+    // (unfulfilled = NULL, partial = 'partial', so we only exclude 'fulfilled')
+    if (typedRow.orders.fulfillment_status === "fulfilled") continue;
 
     const unfulfilled = typedRow.quantity - typedRow.fulfilled_quantity;
     if (unfulfilled > 0) {
