@@ -70,6 +70,11 @@ export async function GET(request: Request) {
     const rangeStart = startParam ? new Date(startParam) : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const rangeEnd = endParam ? new Date(endParam) : now;
 
+    // Calculate previous period (same duration, shifted back)
+    const rangeDuration = rangeEnd.getTime() - rangeStart.getTime();
+    const prevRangeEnd = new Date(rangeStart.getTime() - 1); // 1ms before current range start
+    const prevRangeStart = new Date(prevRangeEnd.getTime() - rangeDuration);
+
     // Use EST/EDT for "today" calculations (Smithey is US-based)
     // EST = UTC - 5 hours, so subtract 5 hours from UTC to get EST time
     const estTime = new Date(now.getTime() - 5 * 60 * 60 * 1000);
@@ -121,17 +126,6 @@ export async function GET(request: Request) {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Week boundaries (Monday-based)
-    const dayOfWeek = now.getDay();
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const thisWeekStart = new Date(now);
-    thisWeekStart.setDate(now.getDate() - mondayOffset);
-    thisWeekStart.setHours(0, 0, 0, 0);
-
-    const lastWeekStart = new Date(thisWeekStart);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    const lastWeekEnd = new Date(thisWeekStart);
-    lastWeekEnd.setMilliseconds(-1);
 
     // Run count queries in parallel (using exact counts, no row limit)
     const [
@@ -146,10 +140,10 @@ export async function GET(request: Request) {
       fulfilled7dSeleryCount,
       fulfilled30dSmitheyCount,
       fulfilled30dSeleryCount,
-      thisWeekSmitheyCount,
-      thisWeekSeleryCount,
-      lastWeekSmitheyCount,
-      lastWeekSeleryCount,
+      prevPeriodSmitheyCount,
+      prevPeriodSeleryCount,
+      _placeholder1,
+      _placeholder2,
       // Queue aging counts
       waiting1dSmithey,
       waiting1dSelery,
@@ -251,39 +245,27 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
-      // This week Smithey
+      // Previous period Smithey (for period-over-period comparison)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", thisWeekStart.toISOString())
+        .gte("fulfilled_at", prevRangeStart.toISOString())
+        .lte("fulfilled_at", prevRangeEnd.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "smithey"),
 
-      // This week Selery
+      // Previous period Selery
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", thisWeekStart.toISOString())
+        .gte("fulfilled_at", prevRangeStart.toISOString())
+        .lte("fulfilled_at", prevRangeEnd.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
-      // Last week Smithey
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", lastWeekStart.toISOString())
-        .lt("fulfilled_at", thisWeekStart.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "smithey"),
-
-      // Last week Selery
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", lastWeekStart.toISOString())
-        .lt("fulfilled_at", thisWeekStart.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "selery"),
+      // Placeholders - keeping array structure consistent
+      Promise.resolve({ count: 0 }),
+      Promise.resolve({ count: 0 }),
 
       // Queue aging: unfulfilled orders older than 1 day (Smithey)
       supabase
@@ -471,17 +453,16 @@ export async function GET(request: Request) {
     const selery7d = fulfilled7dSeleryCount.count || 0;
     const smithey30d = fulfilled30dSmitheyCount.count || 0;
     const selery30d = fulfilled30dSeleryCount.count || 0;
-    const smitheyThisWeek = thisWeekSmitheyCount.count || 0;
-    const seleryThisWeek = thisWeekSeleryCount.count || 0;
-    const smitheyLastWeek = lastWeekSmitheyCount.count || 0;
-    const seleryLastWeek = lastWeekSeleryCount.count || 0;
+    const smitheyPrevPeriod = prevPeriodSmitheyCount.count || 0;
+    const seleryPrevPeriod = prevPeriodSeleryCount.count || 0;
 
-    const smitheyWeekChange = smitheyLastWeek > 0
-      ? ((smitheyThisWeek - smitheyLastWeek) / smitheyLastWeek) * 100
-      : smitheyThisWeek > 0 ? 100 : 0;
-    const seleryWeekChange = seleryLastWeek > 0
-      ? ((seleryThisWeek - seleryLastWeek) / seleryLastWeek) * 100
-      : seleryThisWeek > 0 ? 100 : 0;
+    // Period-over-period change (current vs previous period of same duration)
+    const smitheyPeriodChange = smitheyPrevPeriod > 0
+      ? ((smitheyToday - smitheyPrevPeriod) / smitheyPrevPeriod) * 100
+      : smitheyToday > 0 ? 100 : 0;
+    const seleryPeriodChange = seleryPrevPeriod > 0
+      ? ((seleryToday - seleryPrevPeriod) / seleryPrevPeriod) * 100
+      : seleryToday > 0 ? 100 : 0;
 
     const warehouses: WarehouseMetrics[] = [
       {
@@ -493,9 +474,9 @@ export async function GET(request: Request) {
         fulfilled_30d: smithey30d,
         avg_per_day_7d: Math.round((smithey7d / 7) * 10) / 10,
         avg_per_day_30d: Math.round((smithey30d / 30) * 10) / 10,
-        fulfilled_this_week: smitheyThisWeek,
-        fulfilled_last_week: smitheyLastWeek,
-        week_over_week_change: Math.round(smitheyWeekChange * 10) / 10,
+        fulfilled_this_week: smitheyToday, // Now uses selected period
+        fulfilled_last_week: smitheyPrevPeriod,
+        week_over_week_change: Math.round(smitheyPeriodChange * 10) / 10,
       },
       {
         warehouse: "selery",
@@ -506,9 +487,9 @@ export async function GET(request: Request) {
         fulfilled_30d: selery30d,
         avg_per_day_7d: Math.round((selery7d / 7) * 10) / 10,
         avg_per_day_30d: Math.round((selery30d / 30) * 10) / 10,
-        fulfilled_this_week: seleryThisWeek,
-        fulfilled_last_week: seleryLastWeek,
-        week_over_week_change: Math.round(seleryWeekChange * 10) / 10,
+        fulfilled_this_week: seleryToday, // Now uses selected period
+        fulfilled_last_week: seleryPrevPeriod,
+        week_over_week_change: Math.round(seleryPeriodChange * 10) / 10,
       },
     ];
 

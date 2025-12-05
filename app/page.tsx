@@ -131,6 +131,19 @@ function getDaysInRange(option: DateRangeOption): number {
   }
 }
 
+// Get comparison label based on date range
+function getComparisonLabel(option: DateRangeOption): string {
+  switch (option) {
+    case "today": return "vs yesterday";
+    case "yesterday": return "vs prev day";
+    case "3days": return "vs prev 3d";
+    case "7days": return "vs prev 7d";
+    case "30days": return "vs prev 30d";
+    case "custom": return "vs prev period";
+    default: return "vs prev period";
+  }
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -609,7 +622,7 @@ function WarehousePanel({
             }
           >
             {weekChange > 0 ? "+" : ""}
-            {weekChange.toFixed(1)}% vs last week
+            {weekChange.toFixed(1)}% {getComparisonLabel(dateRangeOption)}
           </span>
         </div>
       </div>
