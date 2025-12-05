@@ -18,6 +18,7 @@ import { createClient } from "@supabase/supabase-js";
 // Configuration
 const DAYS_FOR_FULFILLED = 60; // Import fulfilled orders from last 60 days for metrics
 const BATCH_SIZE = 250; // Shopify GraphQL limit
+const MIN_ORDER_DATE = "2025-09-01"; // Never import orders before this date
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -180,16 +181,16 @@ async function fetchOrdersWithQuery(queryStr: string, label: string): Promise<Sh
 }
 
 async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
-  // 1. Get ALL unfulfilled orders (any age)
+  // 1. Get unfulfilled orders (from MIN_ORDER_DATE onwards)
   const unfulfilled = await fetchOrdersWithQuery(
-    "fulfillment_status:unfulfilled",
-    "Fetching ALL unfulfilled orders"
+    `fulfillment_status:unfulfilled created_at:>=${MIN_ORDER_DATE}`,
+    "Fetching unfulfilled orders"
   );
 
-  // 2. Get ALL partial orders (any age)
+  // 2. Get partial orders (from MIN_ORDER_DATE onwards)
   const partial = await fetchOrdersWithQuery(
-    "fulfillment_status:partial",
-    "Fetching ALL partial orders"
+    `fulfillment_status:partial created_at:>=${MIN_ORDER_DATE}`,
+    "Fetching partial orders"
   );
 
   // 3. Get recent fulfilled orders for metrics
