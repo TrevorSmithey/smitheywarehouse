@@ -352,7 +352,7 @@ export async function GET(request: Request) {
         .order("fulfilled_at", { ascending: false })
         .limit(50000),
 
-      // Oldest unfulfilled orders for Smithey (get 20 so we can filter out restoration)
+      // Oldest unfulfilled orders for Smithey (get 100 so we can filter out restoration + excluded)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
@@ -360,7 +360,7 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "smithey")
         .order("created_at", { ascending: true })
-        .limit(20),
+        .limit(100),
 
       // Oldest unfulfilled orders for Selery (get 20 so we can filter out restoration)
       supabase
