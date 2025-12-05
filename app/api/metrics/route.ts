@@ -17,6 +17,43 @@ import type {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Helper to fetch all rows with pagination (Supabase caps at 1000 rows)
+async function fetchAllPaginated<T>(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: string,
+  select: string,
+  filters: { column: string; op: string; value: unknown }[],
+  pageSize = 1000
+): Promise<T[]> {
+  const allData: T[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    let query = supabase.from(table).select(select);
+
+    for (const f of filters) {
+      if (f.op === "gte") query = query.gte(f.column, f.value);
+      else if (f.op === "lte") query = query.lte(f.column, f.value);
+      else if (f.op === "eq") query = query.eq(f.column, f.value);
+      else if (f.op === "not.is.null") query = query.not(f.column, "is", null);
+    }
+
+    const { data, error } = await query.range(offset, offset + pageSize - 1);
+
+    if (error || !data) {
+      console.error("Pagination error:", error);
+      break;
+    }
+
+    allData.push(...(data as T[]));
+    hasMore = data.length === pageSize;
+    offset += pageSize;
+  }
+
+  return allData;
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
@@ -349,15 +386,8 @@ export async function GET(request: Request) {
         .lte("delivered_at", rangeEnd.toISOString())
         .limit(5000),
 
-      // Daily orders created - filtered by selected date range
-      supabase
-        .from("orders")
-        .select("id, warehouse, created_at")
-        .gte("created_at", rangeStart.toISOString())
-        .lte("created_at", rangeEnd.toISOString())
-        .eq("canceled", false)
-        .not("warehouse", "is", null)
-        .limit(10000),
+      // Daily orders - will be fetched separately with pagination
+      Promise.resolve({ data: [] }),
 
       // Fulfillment lead time data - filtered by selected date range
       supabase
@@ -489,8 +519,19 @@ export async function GET(request: Request) {
     // Process transit analytics
     const transitAnalytics = processTransitAnalytics(transitDataResult.data || []);
 
-    // Process daily orders for warehouse distribution
-    const dailyOrders = processDailyOrders(dailyOrdersResult.data || []);
+    // Process daily orders for warehouse distribution - fetch with pagination to bypass 1000 row limit
+    const dailyOrdersData = await fetchAllPaginated<{ id: number; warehouse: string | null; created_at: string }>(
+      supabase,
+      "orders",
+      "id, warehouse, created_at",
+      [
+        { column: "created_at", op: "gte", value: rangeStart.toISOString() },
+        { column: "created_at", op: "lte", value: rangeEnd.toISOString() },
+        { column: "canceled", op: "eq", value: false },
+        { column: "warehouse", op: "not.is.null", value: null },
+      ]
+    );
+    const dailyOrders = processDailyOrders(dailyOrdersData);
 
     // Process fulfillment lead time analytics
     // Calculate midpoint of range for trend comparison
