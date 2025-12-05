@@ -393,6 +393,7 @@ export async function GET(request: Request) {
       supabase
         .from("shipments")
         .select(`
+          order_id,
           transit_days,
           delivery_state,
           orders!inner(warehouse)
@@ -552,11 +553,20 @@ export async function GET(request: Request) {
       )
     );
 
-    // Process stuck shipments
-    const stuckShipments = processStuckShipments(stuckShipmentsResult.data || [], now);
+    // Process stuck shipments - filter out restoration orders
+    const stuckShipments = processStuckShipments(
+      (stuckShipmentsResult.data || []).filter(
+        (row: { order_id: number }) => !restorationOrderIds.has(row.order_id)
+      ),
+      now
+    );
 
-    // Process transit analytics
-    const transitAnalytics = processTransitAnalytics(transitDataResult.data || []);
+    // Process transit analytics - filter out restoration orders
+    const transitAnalytics = processTransitAnalytics(
+      (transitDataResult.data || []).filter(
+        (row: { order_id: number }) => !restorationOrderIds.has(row.order_id)
+      )
+    );
 
     // Process daily orders for warehouse distribution - fetch with pagination to bypass 1000 row limit
     const dailyOrdersData = await fetchAllPaginated<{ id: number; warehouse: string | null; created_at: string }>(
@@ -574,10 +584,11 @@ export async function GET(request: Request) {
     const filteredDailyOrdersData = filterRestorationOrders(dailyOrdersData);
     const dailyOrders = processDailyOrders(filteredDailyOrdersData);
 
-    // Process fulfillment lead time analytics
+    // Process fulfillment lead time analytics - filter out restoration orders
     // Calculate midpoint of range for trend comparison
     const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
-    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
+    const filteredLeadTimeData = filterRestorationOrders(leadTimeResult.data || []);
+    const fulfillmentLeadTime = processFulfillmentLeadTime(filteredLeadTimeData, rangeMidpoint);
 
     // Process engraving queue
     const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
