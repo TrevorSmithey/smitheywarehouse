@@ -383,9 +383,9 @@ export async function GET(request: Request) {
           orders!inner(order_name, warehouse)
         `)
         .eq("status", "in_transit")
-        .gte("days_without_scan", 3)
+        .gte("days_without_scan", 1)
         .order("days_without_scan", { ascending: false })
-        .limit(20),
+        .limit(100),
 
       // Transit time data for delivered shipments - filtered by date range
       supabase

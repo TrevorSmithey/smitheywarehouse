@@ -42,6 +42,7 @@ import type {
   EngravingQueue,
   OrderAging,
 } from "@/lib/types";
+import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
 type TabOption = "fulfillment" | "tracking";
@@ -175,6 +176,9 @@ export default function Dashboard() {
   // Tracking tab - shipped within filter (for stuck shipments)
   const [trackingShippedWithin, setTrackingShippedWithin] = useState<"7days" | "14days" | "30days" | "all">("14days");
 
+  // Stuck threshold - how many days without scan counts as "stuck"
+  const [stuckThreshold, setStuckThreshold] = useState<1 | 2 | 3>(2);
+
   const fetchMetrics = useCallback(async () => {
     try {
       setLoading(true);
@@ -232,10 +236,12 @@ export default function Dashboard() {
   const weekOverWeek = getChange(totals.week, totals.lastWeek);
   const avgTrend = getChange(totals.avg7d, totals.avg30d);
 
-  const stuckCount = metrics?.stuckShipments?.length || 0;
-
-  // Filter stuck shipments based on tracking date filter
+  // Filter stuck shipments based on threshold AND shipped-within filter
   const filteredStuckShipments = (metrics?.stuckShipments || []).filter((s) => {
+    // First: must meet stuck threshold
+    if (s.days_without_scan < stuckThreshold) return false;
+
+    // Second: apply shipped-within filter
     if (trackingShippedWithin === "all") return true;
     const shippedDate = new Date(s.shipped_at);
     const now = new Date();
@@ -243,6 +249,8 @@ export default function Dashboard() {
     const cutoff = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
     return shippedDate >= cutoff;
   });
+
+  const stuckCount = filteredStuckShipments.length;
 
   const chartData = processChartData(metrics?.daily || [], metrics?.dailyBacklog || []);
 
@@ -518,31 +526,51 @@ export default function Dashboard() {
       {/* TRACKING TAB */}
       {activeTab === "tracking" && (
         <>
-          {/* Tracking Date Filter */}
-          <div className="flex items-center gap-4 mb-6">
-            <span className="text-label text-text-tertiary">SHIPPED WITHIN</span>
-            <div className="flex gap-2">
-              {(["7days", "14days", "30days", "all"] as const).map((option) => {
-                const labels = {
-                  "7days": "7 Days",
-                  "14days": "14 Days",
-                  "30days": "30 Days",
-                  "all": "All Time",
-                };
-                return (
+          {/* Tracking Filters Row */}
+          <div className="flex flex-wrap items-center gap-6 mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-label text-text-tertiary">SHIPPED WITHIN</span>
+              <div className="flex gap-1">
+                {(["7days", "14days", "30days", "all"] as const).map((option) => {
+                  const labels = {
+                    "7days": "7d",
+                    "14days": "14d",
+                    "30days": "30d",
+                    "all": "All",
+                  };
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => setTrackingShippedWithin(option)}
+                      className={`px-2.5 py-1 text-sm font-medium transition-all border rounded ${
+                        trackingShippedWithin === option
+                          ? "bg-accent-blue text-white border-accent-blue"
+                          : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                      }`}
+                    >
+                      {labels[option]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-label text-text-tertiary">STUCK THRESHOLD</span>
+              <div className="flex gap-1">
+                {([1, 2, 3] as const).map((days) => (
                   <button
-                    key={option}
-                    onClick={() => setTrackingShippedWithin(option)}
-                    className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
-                      trackingShippedWithin === option
-                        ? "bg-accent-blue text-white border-accent-blue"
+                    key={days}
+                    onClick={() => setStuckThreshold(days)}
+                    className={`px-2.5 py-1 text-sm font-medium transition-all border rounded ${
+                      stuckThreshold === days
+                        ? "bg-status-warning text-bg-primary border-status-warning"
                         : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
                     }`}
                   >
-                    {labels[option]}
+                    {days}d
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
           </div>
 
@@ -554,10 +582,10 @@ export default function Dashboard() {
                 STUCK SHIPMENTS
               </div>
               <div className={`text-metric font-light ${stuckCount > 0 ? "text-status-warning" : "text-text-primary"}`}>
-                {formatNumber(filteredStuckShipments.length)}
+                {formatNumber(stuckCount)}
               </div>
               <div className="text-context text-text-muted mt-1">
-                No scans in 3+ days
+                No scans in {stuckThreshold}+ day{stuckThreshold > 1 ? "s" : ""}
               </div>
             </div>
             <div className="bg-bg-secondary rounded border border-border p-6">
@@ -592,10 +620,10 @@ export default function Dashboard() {
           </div>
 
           {/* Stuck Shipments */}
-          <StuckShipmentsPanel shipments={filteredStuckShipments} />
+          <StuckShipmentsPanel shipments={filteredStuckShipments} threshold={stuckThreshold} />
 
-          {/* Transit Analytics */}
-          <TransitAnalyticsPanel analytics={metrics?.transitAnalytics || []} />
+          {/* Transit Map */}
+          <USTransitMap analytics={metrics?.transitAnalytics || []} loading={loading} />
         </>
       )}
     </div>
@@ -1050,7 +1078,7 @@ function TopSkusPanel({
   );
 }
 
-function StuckShipmentsPanel({ shipments }: { shipments: StuckShipment[] }) {
+function StuckShipmentsPanel({ shipments, threshold }: { shipments: StuckShipment[]; threshold: number }) {
   const smithey = shipments.filter((s) => s.warehouse === "smithey");
   const selery = shipments.filter((s) => s.warehouse === "selery");
 
@@ -1086,7 +1114,7 @@ function StuckShipmentsPanel({ shipments }: { shipments: StuckShipment[] }) {
     <div className="bg-bg-secondary rounded border border-border p-6 mb-6">
       <h3 className="text-label font-medium text-status-warning mb-4 flex items-center gap-2">
         <AlertTriangle className="w-3.5 h-3.5" />
-        STUCK SHIPMENTS — NO SCANS 3+ DAYS
+        STUCK SHIPMENTS — NO SCANS {threshold}+ DAY{threshold > 1 ? "S" : ""}
       </h3>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
