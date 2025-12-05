@@ -62,13 +62,10 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
-  // Calculate alert conditions
+  // Calculate alert conditions - only stuck shipments warrant top-level alert
+  // Old orders in queue are normal during busy season
   const stuckCount = metrics?.stuckShipments?.length || 0;
-  const oldOrdersCount = metrics?.queueHealth?.reduce(
-    (sum, q) => sum + q.waiting_7_days,
-    0
-  ) || 0;
-  const hasAlerts = stuckCount > 0 || oldOrdersCount > 0;
+  const hasAlerts = stuckCount > 0;
 
   // Totals
   const totals = metrics?.warehouses?.reduce(
@@ -111,10 +108,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Alert Banner - Only shows if there are problems */}
-      {hasAlerts && (
-        <AlertBanner stuckCount={stuckCount} oldOrdersCount={oldOrdersCount} />
-      )}
+      {/* Alert Banner - Only shows for stuck shipments (actual shipping problems) */}
+      {hasAlerts && <AlertBanner stuckCount={stuckCount} />}
 
       {/* Quick Stats Bar */}
       <div className="grid grid-cols-3 gap-3 mb-6">
@@ -247,30 +242,15 @@ export default function Dashboard() {
   );
 }
 
-function AlertBanner({
-  stuckCount,
-  oldOrdersCount,
-}: {
-  stuckCount: number;
-  oldOrdersCount: number;
-}) {
+function AlertBanner({ stuckCount }: { stuckCount: number }) {
   return (
-    <div className="mb-6 p-4 bg-[#FEF3C7]/10 border border-[#F59E0B]/30 rounded-lg">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="w-5 h-5 text-[#F59E0B] flex-shrink-0 mt-0.5" />
-        <div>
-          <div className="font-medium text-[#F59E0B] text-sm">
-            ATTENTION REQUIRED
-          </div>
-          <div className="text-sm text-[#D1D5DB] mt-1 space-y-1">
-            {stuckCount > 0 && (
-              <p>{stuckCount} shipment{stuckCount > 1 ? "s" : ""} with no tracking scans for 3+ days</p>
-            )}
-            {oldOrdersCount > 0 && (
-              <p>{oldOrdersCount} order{oldOrdersCount > 1 ? "s" : ""} waiting 7+ days for fulfillment</p>
-            )}
-          </div>
-        </div>
+    <div className="mb-6 p-3 bg-[#1F2937] border-l-2 border-[#EF4444] rounded">
+      <div className="flex items-center gap-2 text-sm">
+        <Truck className="w-4 h-4 text-[#EF4444]" />
+        <span className="text-[#EF4444] font-medium">{stuckCount}</span>
+        <span className="text-[#9CA3AF]">
+          shipment{stuckCount > 1 ? "s" : ""} stuck — no tracking scans for 3+ days
+        </span>
       </div>
     </div>
   );
