@@ -144,6 +144,19 @@ function getComparisonLabel(option: DateRangeOption): string {
   }
 }
 
+// Get short range label for display (e.g., "today", "3d", "7d")
+function getShortRangeLabel(option: DateRangeOption): string {
+  switch (option) {
+    case "today": return "today";
+    case "yesterday": return "yesterday";
+    case "3days": return "3d";
+    case "7days": return "7d";
+    case "30days": return "30d";
+    case "custom": return "period";
+    default: return "period";
+  }
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,7 +219,9 @@ export default function Dashboard() {
   ) || { queue: 0, today: 0, week: 0, lastWeek: 0, avg7d: 0, avg30d: 0 };
 
   // Calculate change indicators
-  const todayVsAvg = getChange(totals.today, totals.avg7d);
+  // Compare current period avg/day to 7-day rolling avg (same units)
+  const currentAvgPerDay = totals.today / getDaysInRange(dateRangeOption);
+  const todayVsAvg = getChange(currentAvgPerDay, totals.avg7d);
   const weekOverWeek = getChange(totals.week, totals.lastWeek);
   const avgTrend = getChange(totals.avg7d, totals.avg30d);
 
@@ -358,7 +373,9 @@ export default function Dashboard() {
       {/* Fulfillment Lead Time Analytics */}
       <FulfillmentLeadTimePanel
         data={metrics?.fulfillmentLeadTime || []}
+        warehouses={metrics?.warehouses || []}
         loading={loading}
+        dateRangeOption={dateRangeOption}
       />
 
       {/* Two-column layout: Chart + Top SKUs */}
@@ -833,20 +850,28 @@ function TopSkusPanel({
 
 function FulfillmentLeadTimePanel({
   data,
+  warehouses,
   loading,
+  dateRangeOption,
 }: {
   data: FulfillmentLeadTime[];
+  warehouses: WarehouseMetrics[];
   loading: boolean;
+  dateRangeOption: DateRangeOption;
 }) {
-  const smithey = data.find((d) => d.warehouse === "smithey");
-  const selery = data.find((d) => d.warehouse === "selery");
+  const smitheyLead = data.find((d) => d.warehouse === "smithey");
+  const seleryLead = data.find((d) => d.warehouse === "selery");
+  const smitheyMetrics = warehouses.find((w) => w.warehouse === "smithey");
+  const seleryMetrics = warehouses.find((w) => w.warehouse === "selery");
 
   const WarehouseLeadTime = ({
     wh,
+    whMetrics,
     name,
     color,
   }: {
     wh: FulfillmentLeadTime | undefined;
+    whMetrics: WarehouseMetrics | undefined;
     name: string;
     color: string;
   }) => {
@@ -858,6 +883,12 @@ function FulfillmentLeadTimePanel({
         </div>
       );
     }
+
+    // Calculate expected lead time: queue size / avg fulfilled per day (3-day avg)
+    const queueSize = whMetrics ? whMetrics.unfulfilled_count + whMetrics.partial_count : 0;
+    const daysInRange = getDaysInRange(dateRangeOption);
+    const avgPerDay = whMetrics && daysInRange > 0 ? Math.round(whMetrics.fulfilled_today / daysInRange) : 0;
+    const expectedDays = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
 
     return (
       <div className={`p-4 rounded bg-bg-tertiary border-l-2 ${color}`}>
@@ -875,7 +906,7 @@ function FulfillmentLeadTimePanel({
                 >
                   {wh.trend_pct > 0 ? "↑" : "↓"} {Math.abs(wh.trend_pct).toFixed(1)}%
                 </span>
-                <span className="text-text-muted">vs last week</span>
+                <span className="text-text-muted">{getComparisonLabel(dateRangeOption)}</span>
               </>
             )}
           </div>
@@ -890,6 +921,21 @@ function FulfillmentLeadTimePanel({
           </span>
           <span className="text-context text-text-muted">avg lead time</span>
         </div>
+
+        {/* Expected Lead Time - like engraving card */}
+        {whMetrics && avgPerDay > 0 && (
+          <div className="flex items-center gap-3 mb-4 pb-3 border-b border-border-subtle">
+            <div className="text-context">
+              <span className={`font-medium ${expectedDays > 5 ? "text-status-warning" : expectedDays > 3 ? "text-status-warning" : "text-text-primary"}`}>
+                ~{expectedDays}d
+              </span>
+              <span className="text-text-muted ml-1">to clear queue</span>
+            </div>
+            <div className="text-context text-text-muted">
+              ({formatNumber(avgPerDay)}/day avg)
+            </div>
+          </div>
+        )}
 
         {/* SLA Distribution */}
         <div className="space-y-2">
@@ -919,7 +965,7 @@ function FulfillmentLeadTimePanel({
         </div>
 
         <div className="text-context text-text-muted mt-3 pt-3 border-t border-border-subtle">
-          {formatNumber(wh.total_fulfilled)} orders (30d)
+          {formatNumber(wh.total_fulfilled)} orders ({getShortRangeLabel(dateRangeOption)})
         </div>
       </div>
     );
@@ -936,12 +982,14 @@ function FulfillmentLeadTimePanel({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <WarehouseLeadTime
-            wh={smithey}
+            wh={smitheyLead}
+            whMetrics={smitheyMetrics}
             name="SMITHEY"
             color="border-l-accent-blue"
           />
           <WarehouseLeadTime
-            wh={selery}
+            wh={seleryLead}
+            whMetrics={seleryMetrics}
             name="SELERY"
             color="border-l-text-tertiary"
           />
@@ -1212,8 +1260,11 @@ function OrderAgingChart({
     isLast: boolean;
   }) => {
     const isDanger = bucket.bucket === "5+d";
-    const smitheyPct = (bucket.smithey / maxSmithey) * 100;
-    const seleryPct = (bucket.selery / maxSelery) * 100;
+    const smitheyBarPct = (bucket.smithey / maxSmithey) * 100;
+    const seleryBarPct = (bucket.selery / maxSelery) * 100;
+    // Percentage of total queue for each warehouse
+    const smitheyOfTotal = totalSmithey > 0 ? Math.round((bucket.smithey / totalSmithey) * 100) : 0;
+    const seleryOfTotal = totalSelery > 0 ? Math.round((bucket.selery / totalSelery) * 100) : 0;
 
     return (
       <div className={`grid grid-cols-[1fr_auto_1fr] gap-3 items-center py-2 ${
@@ -1225,13 +1276,14 @@ function OrderAgingChart({
             isDanger && bucket.smithey > 0 ? "text-status-bad" : "text-text-secondary"
           }`}>
             {formatNumber(bucket.smithey)}
+            <span className="text-text-muted ml-1 text-xs">({smitheyOfTotal}%)</span>
           </span>
           <div className="w-32 h-5 bg-bg-tertiary/50 rounded-sm overflow-hidden flex justify-end">
             <div
               className={`h-full rounded-sm transition-all duration-500 ease-out ${
                 isDanger ? "bg-status-bad/70" : "bg-accent-blue/70"
               }`}
-              style={{ width: `${smitheyPct}%` }}
+              style={{ width: `${smitheyBarPct}%` }}
             />
           </div>
         </div>
@@ -1250,13 +1302,14 @@ function OrderAgingChart({
               className={`h-full rounded-sm transition-all duration-500 ease-out ${
                 isDanger ? "bg-status-bad/50" : "bg-slate-500/50"
               }`}
-              style={{ width: `${seleryPct}%` }}
+              style={{ width: `${seleryBarPct}%` }}
             />
           </div>
           <span className={`text-sm tabular-nums ${
             isDanger && bucket.selery > 0 ? "text-status-bad" : "text-text-secondary"
           }`}>
             {formatNumber(bucket.selery)}
+            <span className="text-text-muted ml-1 text-xs">({seleryOfTotal}%)</span>
           </span>
         </div>
       </div>
