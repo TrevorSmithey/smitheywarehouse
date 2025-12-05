@@ -1001,7 +1001,7 @@ function calculateDailyBacklog(
       created,
       fulfilled,
       netChange,
-      runningBacklog,
+      runningBacklog: Math.max(0, runningBacklog), // Clamp to 0 - can't have negative backlog
     });
 
     // Move backwards: previous day's backlog was current - netChange

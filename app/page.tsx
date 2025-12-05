@@ -104,8 +104,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  // Global date range state - default to 30 days for more data visibility
-  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("30days");
+  // Global date range state - default to 7 days
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("7days");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
@@ -1134,14 +1134,19 @@ function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = [
     backlogByDate.set(b.date, b.runningBacklog);
   }
 
+  // First, add all dates from backlog (ensures all days show up even with 0 fulfillments)
+  for (const b of backlog) {
+    grouped.set(b.date, { Smithey: 0, Selery: 0, Backlog: b.runningBacklog });
+  }
+
+  // Then overlay fulfillment data
   for (const item of daily) {
-    const existing = grouped.get(item.date) || { Smithey: 0, Selery: 0, Backlog: 0 };
+    const existing = grouped.get(item.date) || { Smithey: 0, Selery: 0, Backlog: backlogByDate.get(item.date) || 0 };
     if (item.warehouse === "smithey") {
       existing.Smithey = item.count;
     } else if (item.warehouse === "selery") {
       existing.Selery = item.count;
     }
-    existing.Backlog = backlogByDate.get(item.date) || 0;
     grouped.set(item.date, existing);
   }
 
