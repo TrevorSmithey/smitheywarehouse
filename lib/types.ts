@@ -174,6 +174,13 @@ export interface StateTransitStats {
   shipment_count: number;
 }
 
+// Engraving queue metrics
+export interface EngravingQueue {
+  total_units: number; // total unfulfilled engraving units
+  estimated_days: number; // total_units / 250 (daily capacity)
+  order_count: number; // number of orders with engravings
+}
+
 // API response types
 export interface MetricsResponse {
   warehouses: WarehouseMetrics[];
@@ -185,5 +192,6 @@ export interface MetricsResponse {
   stuckShipments: StuckShipment[];
   fulfillmentLeadTime: FulfillmentLeadTime[];
   transitAnalytics: TransitAnalytics[];
+  engravingQueue: EngravingQueue;
   lastUpdated: string;
 }

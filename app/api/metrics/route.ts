@@ -11,6 +11,7 @@ import type {
   StuckShipment,
   FulfillmentLeadTime,
   TransitAnalytics,
+  EngravingQueue,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -111,6 +112,7 @@ export async function GET(request: Request) {
       transitDataResult,
       dailyOrdersResult,
       leadTimeResult,
+      engravingQueueResult,
     ] = await Promise.all([
       // Unfulfilled Smithey
       supabase
@@ -367,6 +369,21 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .not("warehouse", "is", null)
         .limit(10000),
+
+      // Engraving queue - unfulfilled line items with SKU 'smith-eng' or 'smith-eng2'
+      supabase
+        .from("line_items")
+        .select(`
+          order_id,
+          sku,
+          quantity,
+          fulfilled_quantity,
+          orders!inner(fulfillment_status, canceled)
+        `)
+        .or("sku.eq.smith-eng,sku.eq.smith-eng2")
+        .eq("orders.canceled", false)
+        .or("orders.fulfillment_status.is.null,orders.fulfillment_status.eq.partial")
+        .limit(5000),
     ]);
 
     // Build warehouse metrics from count queries
@@ -479,6 +496,9 @@ export async function GET(request: Request) {
     const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
     const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
 
+    // Process engraving queue
+    const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
+
     const response: MetricsResponse = {
       warehouses,
       daily,
@@ -489,6 +509,7 @@ export async function GET(request: Request) {
       stuckShipments,
       fulfillmentLeadTime,
       transitAnalytics,
+      engravingQueue,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -850,4 +871,41 @@ function processFulfillmentLeadTime(
       trend_pct: Math.round(trendPct * 10) / 10,
     };
   });
+}
+
+// Process engraving queue - count unfulfilled engravings
+const ENGRAVING_DAILY_CAPACITY = 250;
+
+interface EngravingQueueRow {
+  order_id: number;
+  sku: string;
+  quantity: number;
+  fulfilled_quantity: number;
+  orders: {
+    fulfillment_status: string | null;
+    canceled: boolean;
+  } | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processEngravingQueue(data: any[]): EngravingQueue {
+  const orderIds = new Set<number>();
+  let totalUnfulfilled = 0;
+
+  for (const row of data) {
+    const typedRow = row as EngravingQueueRow;
+    if (!typedRow.orders) continue;
+
+    const unfulfilled = typedRow.quantity - typedRow.fulfilled_quantity;
+    if (unfulfilled > 0) {
+      totalUnfulfilled += unfulfilled;
+      orderIds.add(typedRow.order_id);
+    }
+  }
+
+  return {
+    total_units: totalUnfulfilled,
+    estimated_days: Math.round((totalUnfulfilled / ENGRAVING_DAILY_CAPACITY) * 10) / 10,
+    order_count: orderIds.size,
+  };
 }

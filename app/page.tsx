@@ -1,14 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { format, formatDistanceToNow, startOfDay, subDays } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 import {
   RefreshCw,
@@ -20,6 +23,7 @@ import {
   MapPin,
   AlertTriangle,
   Calendar,
+  Pen,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -30,6 +34,7 @@ import type {
   FulfillmentLeadTime,
   TransitAnalytics,
   SkuInQueue,
+  EngravingQueue,
 } from "@/lib/types";
 
 type DateRangeOption = "today" | "3days" | "7days" | "30days" | "custom";
@@ -263,13 +268,9 @@ export default function Dashboard() {
           change={weekOverWeek}
           changeLabel="vs last week"
         />
-        <KPICard
-          label="AVG / DAY"
-          value={Math.round(totals.avg7d)}
+        <EngravingQueueCard
+          data={metrics?.engravingQueue}
           loading={loading}
-          change={avgTrend}
-          changeLabel="vs 30d avg"
-          subtitle="7-day average"
         />
       </div>
 
@@ -385,6 +386,9 @@ export default function Dashboard() {
         <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
       </div>
 
+      {/* Warehouse Distribution Chart */}
+      <WarehouseSplitChart dailyOrders={metrics?.dailyOrders || []} loading={loading} />
+
       {/* Transit Analytics */}
       <TransitAnalyticsPanel analytics={metrics?.transitAnalytics || []} />
     </div>
@@ -453,6 +457,50 @@ function KPICard({
   );
 }
 
+function EngravingQueueCard({
+  data,
+  loading,
+}: {
+  data: EngravingQueue | undefined;
+  loading: boolean;
+}) {
+  const totalUnits = data?.total_units || 0;
+  const estimatedDays = data?.estimated_days || 0;
+  const orderCount = data?.order_count || 0;
+
+  // Warning if lead time exceeds 3 days
+  const status = estimatedDays > 3 ? "warning" : estimatedDays > 5 ? "bad" : undefined;
+  const statusColors = {
+    warning: "text-status-warning",
+    bad: "text-status-bad",
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
+      <div className="text-label text-text-tertiary font-medium mb-2 flex items-center gap-1.5">
+        <Pen className="w-3 h-3" />
+        ENGRAVING QUEUE
+      </div>
+      <div
+        className={`text-metric font-light tracking-tight-sm ${
+          status ? statusColors[status] : "text-text-primary"
+        }`}
+      >
+        {loading ? "—" : formatNumber(totalUnits)}
+      </div>
+      <div className="text-context text-text-secondary mt-1">
+        <span className={status ? statusColors[status] : "text-text-primary"}>
+          ~{estimatedDays}d
+        </span>
+        <span className="text-text-muted ml-1">lead time</span>
+      </div>
+      <div className="text-context text-text-muted mt-1">
+        {formatNumber(orderCount)} orders
+      </div>
+    </div>
+  );
+}
+
 function WarehousePanel({
   data,
   queueHealth,
@@ -503,7 +551,7 @@ function WarehousePanel({
             }
           >
             {weekChange > 0 ? "+" : ""}
-            {weekChange}% vs last week
+            {weekChange.toFixed(1)}% vs last week
           </span>
         </div>
       </div>
@@ -558,7 +606,7 @@ function WarehousePanel({
             <div className="flex gap-6">
               <div>
                 <span className="text-xl font-light text-text-primary">
-                  {queueHealth.waiting_1_day}
+                  {formatNumber(queueHealth.waiting_1_day)}
                 </span>
                 <span className="text-context text-text-muted ml-1">
                   &gt;1d
@@ -572,7 +620,7 @@ function WarehousePanel({
                       : "text-text-primary"
                   }`}
                 >
-                  {queueHealth.waiting_3_days}
+                  {formatNumber(queueHealth.waiting_3_days)}
                 </span>
                 <span className="text-context text-text-muted ml-1">
                   &gt;3d
@@ -586,7 +634,7 @@ function WarehousePanel({
                       : "text-text-primary"
                   }`}
                 >
-                  {queueHealth.waiting_7_days}
+                  {formatNumber(queueHealth.waiting_7_days)}
                 </span>
                 <span className="text-context text-text-muted ml-1">
                   &gt;7d
@@ -623,7 +671,7 @@ function WarehousePanel({
               </div>
             </div>
             <div className="text-context text-text-muted">
-              {transitData.total_delivered.toLocaleString()} deliveries tracked
+              {formatNumber(transitData.total_delivered)} deliveries tracked
             </div>
           </div>
         )}
@@ -745,7 +793,7 @@ function FulfillmentLeadTimePanel({
                       : "text-status-warning"
                   }
                 >
-                  {wh.trend_pct > 0 ? "↑" : "↓"} {Math.abs(wh.trend_pct)}%
+                  {wh.trend_pct > 0 ? "↑" : "↓"} {Math.abs(wh.trend_pct).toFixed(1)}%
                 </span>
                 <span className="text-text-muted">vs last week</span>
               </>
@@ -791,7 +839,7 @@ function FulfillmentLeadTimePanel({
         </div>
 
         <div className="text-context text-text-muted mt-3 pt-3 border-t border-border-subtle">
-          {wh.total_fulfilled.toLocaleString()} orders (30d)
+          {formatNumber(wh.total_fulfilled)} orders (30d)
         </div>
       </div>
     );
@@ -864,7 +912,7 @@ function StuckShipmentsPanel({ shipments }: { shipments: StuckShipment[] }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
           <div className="text-label text-text-tertiary mb-3">
-            SMITHEY ({smithey.length})
+            SMITHEY ({formatNumber(smithey.length)})
           </div>
           {smithey.length > 0 ? (
             smithey.slice(0, 5).map(renderShipment)
@@ -874,7 +922,7 @@ function StuckShipmentsPanel({ shipments }: { shipments: StuckShipment[] }) {
         </div>
         <div>
           <div className="text-label text-text-tertiary mb-3">
-            SELERY ({selery.length})
+            SELERY ({formatNumber(selery.length)})
           </div>
           {selery.length > 0 ? (
             selery.slice(0, 5).map(renderShipment)
@@ -923,7 +971,7 @@ function TransitAnalyticsPanel({
                     <span className="text-text-secondary">{state.state}</span>
                     <div className="flex items-center gap-4">
                       <span className="text-text-muted">
-                        {state.shipment_count} shipments
+                        {formatNumber(state.shipment_count)} shipments
                       </span>
                       <span
                         className={`font-medium ${
@@ -945,6 +993,107 @@ function TransitAnalyticsPanel({
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function WarehouseSplitChart({
+  dailyOrders,
+  loading,
+}: {
+  dailyOrders: DailyOrders[];
+  loading: boolean;
+}) {
+  // Process data for the chart - show percentage over time
+  const chartData = dailyOrders
+    .map((d) => ({
+      date: format(new Date(d.date), "M/d"),
+      rawDate: d.date,
+      Smithey: d.smithey_pct,
+      Selery: d.selery_pct,
+      total: d.total,
+    }))
+    .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
+
+  // Calculate average split
+  const avgSmithey = dailyOrders.length > 0
+    ? Math.round(dailyOrders.reduce((sum, d) => sum + d.smithey_pct, 0) / dailyOrders.length)
+    : 0;
+
+  if (chartData.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-label font-medium text-text-tertiary">
+          WAREHOUSE SPLIT
+        </h3>
+        <div className="text-context text-text-muted">
+          Avg: <span className="text-accent-blue">{avgSmithey}%</span> Smithey / <span className="text-text-tertiary">{100 - avgSmithey}%</span> Selery
+        </div>
+      </div>
+      {loading ? (
+        <div className="h-[180px] flex items-center justify-center text-text-muted text-sm">
+          Loading...
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={chartData}>
+            <XAxis
+              dataKey="date"
+              stroke="#64748B"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              stroke="#64748B"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              width={35}
+              domain={[0, 100]}
+              tickFormatter={(value) => `${value}%`}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#12151F",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: "4px",
+                fontSize: "12px",
+              }}
+              labelStyle={{ color: "#94A3B8" }}
+              formatter={(value: number, name: string) => [`${value}%`, name]}
+            />
+            <ReferenceLine y={50} stroke="#374151" strokeDasharray="3 3" />
+            <Line
+              type="monotone"
+              dataKey="Smithey"
+              stroke="#0EA5E9"
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="Selery"
+              stroke="#64748B"
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+      <div className="flex justify-center gap-6 mt-4">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-accent-blue" />
+          <span className="text-context text-text-secondary">Smithey %</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-text-tertiary" />
+          <span className="text-context text-text-secondary">Selery %</span>
+        </div>
       </div>
     </div>
   );
