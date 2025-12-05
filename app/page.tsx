@@ -526,54 +526,6 @@ export default function Dashboard() {
       {/* TRACKING TAB */}
       {activeTab === "tracking" && (
         <>
-          {/* Tracking Filters Row */}
-          <div className="flex flex-wrap items-center gap-6 mb-6">
-            <div className="flex items-center gap-3">
-              <span className="text-label text-text-tertiary">SHIPPED WITHIN</span>
-              <div className="flex gap-1">
-                {(["7days", "14days", "30days", "all"] as const).map((option) => {
-                  const labels = {
-                    "7days": "7d",
-                    "14days": "14d",
-                    "30days": "30d",
-                    "all": "All",
-                  };
-                  return (
-                    <button
-                      key={option}
-                      onClick={() => setTrackingShippedWithin(option)}
-                      className={`px-2.5 py-1 text-sm font-medium transition-all border rounded ${
-                        trackingShippedWithin === option
-                          ? "bg-accent-blue text-white border-accent-blue"
-                          : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                      }`}
-                    >
-                      {labels[option]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-label text-text-tertiary">STUCK THRESHOLD</span>
-              <div className="flex gap-1">
-                {([1, 2, 3] as const).map((days) => (
-                  <button
-                    key={days}
-                    onClick={() => setStuckThreshold(days)}
-                    className={`px-2.5 py-1 text-sm font-medium transition-all border rounded ${
-                      stuckThreshold === days
-                        ? "bg-status-warning text-bg-primary border-status-warning"
-                        : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                    }`}
-                  >
-                    {days}d
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {/* Tracking Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-bg-secondary rounded border border-border p-6">
@@ -619,8 +571,15 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Stuck Shipments */}
-          <StuckShipmentsPanel shipments={filteredStuckShipments} threshold={stuckThreshold} />
+          {/* Stuck Shipments with integrated filters */}
+          <StuckShipmentsPanel
+            shipments={filteredStuckShipments}
+            threshold={stuckThreshold}
+            trackingShippedWithin={trackingShippedWithin}
+            setTrackingShippedWithin={setTrackingShippedWithin}
+            stuckThreshold={stuckThreshold}
+            setStuckThreshold={setStuckThreshold}
+          />
 
           {/* Transit Map */}
           <USTransitMap analytics={metrics?.transitAnalytics || []} loading={loading} />
@@ -1078,7 +1037,21 @@ function TopSkusPanel({
   );
 }
 
-function StuckShipmentsPanel({ shipments, threshold }: { shipments: StuckShipment[]; threshold: number }) {
+function StuckShipmentsPanel({
+  shipments,
+  threshold,
+  trackingShippedWithin,
+  setTrackingShippedWithin,
+  stuckThreshold,
+  setStuckThreshold,
+}: {
+  shipments: StuckShipment[];
+  threshold: number;
+  trackingShippedWithin: "7days" | "14days" | "30days" | "all";
+  setTrackingShippedWithin: (v: "7days" | "14days" | "30days" | "all") => void;
+  stuckThreshold: 1 | 2 | 3;
+  setStuckThreshold: (v: 1 | 2 | 3) => void;
+}) {
   const smithey = shipments.filter((s) => s.warehouse === "smithey");
   const selery = shipments.filter((s) => s.warehouse === "selery");
 
@@ -1112,10 +1085,59 @@ function StuckShipmentsPanel({ shipments, threshold }: { shipments: StuckShipmen
 
   return (
     <div className="bg-bg-secondary rounded border border-border p-6 mb-6">
-      <h3 className="text-label font-medium text-status-warning mb-4 flex items-center gap-2">
-        <AlertTriangle className="w-3.5 h-3.5" />
-        STUCK SHIPMENTS — NO SCANS {threshold}+ DAY{threshold > 1 ? "S" : ""}
-      </h3>
+      {/* Header with integrated filters */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <h3 className="text-label font-medium text-status-warning flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          STUCK SHIPMENTS — NO SCANS {threshold}+ DAY{threshold > 1 ? "S" : ""}
+        </h3>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-label text-text-tertiary">SHIPPED WITHIN</span>
+            <div className="flex gap-1">
+              {(["7days", "14days", "30days", "all"] as const).map((option) => {
+                const labels = {
+                  "7days": "7d",
+                  "14days": "14d",
+                  "30days": "30d",
+                  "all": "All",
+                };
+                return (
+                  <button
+                    key={option}
+                    onClick={() => setTrackingShippedWithin(option)}
+                    className={`px-2 py-0.5 text-xs font-medium transition-all border rounded ${
+                      trackingShippedWithin === option
+                        ? "bg-accent-blue text-white border-accent-blue"
+                        : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                    }`}
+                  >
+                    {labels[option]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-label text-text-tertiary">STUCK THRESHOLD</span>
+            <div className="flex gap-1">
+              {([1, 2, 3] as const).map((days) => (
+                <button
+                  key={days}
+                  onClick={() => setStuckThreshold(days)}
+                  className={`px-2 py-0.5 text-xs font-medium transition-all border rounded ${
+                    stuckThreshold === days
+                      ? "bg-status-warning text-bg-primary border-status-warning"
+                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                  }`}
+                >
+                  {days}d
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
           <div className="text-label text-text-tertiary mb-3">
