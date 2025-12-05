@@ -370,7 +370,8 @@ export async function GET(request: Request) {
         .not("warehouse", "is", null)
         .limit(10000),
 
-      // Engraving queue - unfulfilled line items with SKU 'smith-eng' or 'smith-eng2'
+      // Engraving queue - unfulfilled line items with SKU 'Smith-Eng' or 'Smith-Eng2'
+      // Only include orders that are not canceled and not fully fulfilled
       supabase
         .from("line_items")
         .select(`
@@ -380,9 +381,9 @@ export async function GET(request: Request) {
           fulfilled_quantity,
           orders!inner(fulfillment_status, canceled)
         `)
-        .or("sku.eq.smith-eng,sku.eq.smith-eng2")
+        .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
-        .or("orders.fulfillment_status.is.null,orders.fulfillment_status.eq.partial")
+        .neq("orders.fulfillment_status", "fulfilled")
         .limit(5000),
     ]);
 
