@@ -98,8 +98,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  // Global date range state
-  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("7days");
+  // Global date range state - default to 30 days for more data visibility
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("30days");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
