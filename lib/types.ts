@@ -46,6 +46,16 @@ export interface DailyFulfillment {
   count: number;
 }
 
+// Daily orders created (for warehouse distribution analysis)
+export interface DailyOrders {
+  date: string; // YYYY-MM-DD
+  total: number;
+  smithey: number;
+  selery: number;
+  smithey_pct: number;
+  selery_pct: number;
+}
+
 // Queue health - aging analysis
 export interface QueueHealth {
   warehouse: string;
@@ -134,6 +144,22 @@ export interface StuckShipment {
   last_scan_location: string | null;
 }
 
+// Fulfillment lead time analytics
+export interface FulfillmentLeadTime {
+  warehouse: string;
+  avg_hours: number;
+  avg_days: number;
+  median_hours: number;
+  total_fulfilled: number;
+  // SLA buckets - % of orders fulfilled within timeframe
+  within_24h: number;
+  within_48h: number;
+  within_72h: number;
+  over_72h: number;
+  // Trend: compare last 7 days vs previous 7 days
+  trend_pct: number; // positive = slower, negative = faster
+}
+
 // Transit time analytics
 export interface TransitAnalytics {
   warehouse: string;
@@ -152,10 +178,12 @@ export interface StateTransitStats {
 export interface MetricsResponse {
   warehouses: WarehouseMetrics[];
   daily: DailyFulfillment[];
+  dailyOrders: DailyOrders[];
   weekly: WeeklyFulfillment[];
   queueHealth: QueueHealth[];
   topSkusInQueue: SkuInQueue[];
   stuckShipments: StuckShipment[];
+  fulfillmentLeadTime: FulfillmentLeadTime[];
   transitAnalytics: TransitAnalytics[];
   lastUpdated: string;
 }

@@ -4,10 +4,12 @@ import type {
   MetricsResponse,
   WarehouseMetrics,
   DailyFulfillment,
+  DailyOrders,
   WeeklyFulfillment,
   QueueHealth,
   SkuInQueue,
   StuckShipment,
+  FulfillmentLeadTime,
   TransitAnalytics,
 } from "@/lib/types";
 
@@ -98,6 +100,8 @@ export async function GET() {
       skuQueueResult,
       stuckShipmentsResult,
       transitDataResult,
+      dailyOrdersResult,
+      leadTimeResult,
     ] = await Promise.all([
       // Unfulfilled Smithey
       supabase
@@ -331,6 +335,25 @@ export async function GET() {
         .not("transit_days", "is", null)
         .gte("shipped_at", "2024-11-15T00:00:00.000Z")
         .limit(5000),
+
+      // Daily orders created (last 30 days) for warehouse distribution
+      supabase
+        .from("orders")
+        .select("id, warehouse, created_at")
+        .gte("created_at", thirtyDaysAgo.toISOString())
+        .eq("canceled", false)
+        .not("warehouse", "is", null)
+        .limit(10000),
+
+      // Fulfillment lead time data (orders fulfilled in last 30 days)
+      supabase
+        .from("orders")
+        .select("id, warehouse, created_at, fulfilled_at")
+        .not("fulfilled_at", "is", null)
+        .gte("fulfilled_at", thirtyDaysAgo.toISOString())
+        .eq("canceled", false)
+        .not("warehouse", "is", null)
+        .limit(10000),
     ]);
 
     // Build warehouse metrics from count queries
@@ -435,13 +458,21 @@ export async function GET() {
     // Process transit analytics
     const transitAnalytics = processTransitAnalytics(transitDataResult.data || []);
 
+    // Process daily orders for warehouse distribution
+    const dailyOrders = processDailyOrders(dailyOrdersResult.data || []);
+
+    // Process fulfillment lead time analytics
+    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], sevenDaysAgo);
+
     const response: MetricsResponse = {
       warehouses,
       daily,
+      dailyOrders,
       weekly,
       queueHealth,
       topSkusInQueue,
       stuckShipments,
+      fulfillmentLeadTime,
       transitAnalytics,
       lastUpdated: new Date().toISOString(),
     };
@@ -519,9 +550,10 @@ interface SkuQueueRow {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processSkuQueue(data: any[]): SkuInQueue[] {
-  // Group by SKU only (combine across warehouses)
+  // Group by SKU AND warehouse (separate tables)
   const grouped = new Map<string, {
     title: string | null;
+    warehouse: string;
     quantity: number;
     orderCount: number;
   }>();
@@ -533,14 +565,16 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
     const unfulfilled = row.quantity - row.fulfilled_quantity;
     if (unfulfilled <= 0) continue;
 
-    const existing = grouped.get(row.sku);
+    const key = `${row.sku}|${orders.warehouse}`;
+    const existing = grouped.get(key);
 
     if (existing) {
       existing.quantity += unfulfilled;
       existing.orderCount += 1;
     } else {
-      grouped.set(row.sku, {
+      grouped.set(key, {
         title: row.title,
+        warehouse: orders.warehouse,
         quantity: unfulfilled,
         orderCount: 1,
       });
@@ -549,20 +583,20 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
 
   // Convert to array and sort by quantity
   const result: SkuInQueue[] = [];
-  for (const [sku, value] of grouped) {
+  for (const [, value] of grouped) {
     result.push({
-      sku,
+      sku: value.title || "Unknown SKU",
       title: value.title,
-      warehouse: "all", // Combined across warehouses
+      warehouse: value.warehouse,
       quantity: value.quantity,
       order_count: value.orderCount,
     });
   }
 
-  // Sort by quantity descending, take top 10
+  // Sort by quantity descending, take top 20 (10 per warehouse)
   return result
     .sort((a, b) => b.quantity - a.quantity)
-    .slice(0, 10);
+    .slice(0, 20);
 }
 
 interface StuckShipmentRow {
@@ -661,6 +695,144 @@ function processTransitAnalytics(data: any[]): TransitAnalytics[] {
         : 0,
       total_delivered: whData.count,
       by_state: stateStats,
+    };
+  });
+}
+
+// Process daily orders for warehouse distribution analysis
+function processDailyOrders(
+  data: Array<{ id: number; warehouse: string | null; created_at: string }>
+): DailyOrders[] {
+  const grouped = new Map<string, { smithey: number; selery: number }>();
+
+  for (const row of data) {
+    if (!row.warehouse || !row.created_at) continue;
+    const date = row.created_at.split("T")[0];
+    const existing = grouped.get(date) || { smithey: 0, selery: 0 };
+
+    if (row.warehouse === "smithey") {
+      existing.smithey++;
+    } else if (row.warehouse === "selery") {
+      existing.selery++;
+    }
+
+    grouped.set(date, existing);
+  }
+
+  const result: DailyOrders[] = [];
+  for (const [date, counts] of grouped) {
+    const total = counts.smithey + counts.selery;
+    result.push({
+      date,
+      total,
+      smithey: counts.smithey,
+      selery: counts.selery,
+      smithey_pct: total > 0 ? Math.round((counts.smithey / total) * 100) : 0,
+      selery_pct: total > 0 ? Math.round((counts.selery / total) * 100) : 0,
+    });
+  }
+
+  return result.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Calculate fulfillment lead time analytics
+function processFulfillmentLeadTime(
+  data: Array<{
+    id: number;
+    warehouse: string | null;
+    created_at: string;
+    fulfilled_at: string;
+  }>,
+  sevenDaysAgo: Date
+): FulfillmentLeadTime[] {
+  const byWarehouse = new Map<string, {
+    leadTimes: number[]; // in hours
+    recent: number[]; // last 7 days
+    older: number[]; // 7-30 days ago
+  }>();
+
+  // Initialize
+  byWarehouse.set("smithey", { leadTimes: [], recent: [], older: [] });
+  byWarehouse.set("selery", { leadTimes: [], recent: [], older: [] });
+
+  for (const row of data) {
+    if (!row.warehouse || !row.created_at || !row.fulfilled_at) continue;
+
+    const whData = byWarehouse.get(row.warehouse);
+    if (!whData) continue;
+
+    const created = new Date(row.created_at);
+    const fulfilled = new Date(row.fulfilled_at);
+    const leadTimeHours = (fulfilled.getTime() - created.getTime()) / (1000 * 60 * 60);
+
+    // Skip negative or unreasonable values
+    if (leadTimeHours < 0 || leadTimeHours > 720) continue; // max 30 days
+
+    whData.leadTimes.push(leadTimeHours);
+
+    // Categorize by recency for trend calculation
+    if (fulfilled >= sevenDaysAgo) {
+      whData.recent.push(leadTimeHours);
+    } else {
+      whData.older.push(leadTimeHours);
+    }
+  }
+
+  return ["smithey", "selery"].map((warehouse) => {
+    const whData = byWarehouse.get(warehouse)!;
+    const sorted = [...whData.leadTimes].sort((a, b) => a - b);
+    const count = sorted.length;
+
+    if (count === 0) {
+      return {
+        warehouse,
+        avg_hours: 0,
+        avg_days: 0,
+        median_hours: 0,
+        total_fulfilled: 0,
+        within_24h: 0,
+        within_48h: 0,
+        within_72h: 0,
+        over_72h: 0,
+        trend_pct: 0,
+      };
+    }
+
+    // Calculate stats
+    const sum = sorted.reduce((a, b) => a + b, 0);
+    const avgHours = sum / count;
+    const medianHours = count % 2 === 0
+      ? (sorted[count / 2 - 1] + sorted[count / 2]) / 2
+      : sorted[Math.floor(count / 2)];
+
+    // SLA buckets
+    const within24h = sorted.filter((h) => h <= 24).length;
+    const within48h = sorted.filter((h) => h <= 48).length;
+    const within72h = sorted.filter((h) => h <= 72).length;
+    const over72h = sorted.filter((h) => h > 72).length;
+
+    // Trend: compare recent vs older average
+    const recentAvg = whData.recent.length > 0
+      ? whData.recent.reduce((a, b) => a + b, 0) / whData.recent.length
+      : avgHours;
+    const olderAvg = whData.older.length > 0
+      ? whData.older.reduce((a, b) => a + b, 0) / whData.older.length
+      : avgHours;
+    const trendPct = olderAvg > 0
+      ? ((recentAvg - olderAvg) / olderAvg) * 100
+      : 0;
+
+    return {
+      warehouse,
+      avg_hours: Math.round(avgHours * 10) / 10,
+      avg_days: Math.round((avgHours / 24) * 10) / 10,
+      median_hours: Math.round(medianHours * 10) / 10,
+      total_fulfilled: count,
+      within_24h: Math.round((within24h / count) * 100),
+      within_48h: Math.round((within48h / count) * 100),
+      within_72h: Math.round((within72h / count) * 100),
+      over_72h: Math.round((over72h / count) * 100),
+      trend_pct: Math.round(trendPct * 10) / 10,
     };
   });
 }

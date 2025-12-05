@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -24,7 +24,9 @@ import type {
   MetricsResponse,
   WarehouseMetrics,
   DailyFulfillment,
+  DailyOrders,
   StuckShipment,
+  FulfillmentLeadTime,
   TransitAnalytics,
   SkuInQueue,
 } from "@/lib/types";
@@ -179,6 +181,12 @@ export default function Dashboard() {
         <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
       )}
 
+      {/* Fulfillment Lead Time Analytics */}
+      <FulfillmentLeadTimePanel
+        data={metrics?.fulfillmentLeadTime || []}
+        loading={loading}
+      />
+
       {/* Two-column layout: Chart + Top SKUs */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Fulfillment Trend Chart */}
@@ -205,7 +213,17 @@ export default function Dashboard() {
           </div>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData} barCategoryGap="20%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="smitheyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="seleryGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#64748B" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#64748B" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <XAxis
                   dataKey="date"
                   stroke="#64748B"
@@ -230,21 +248,22 @@ export default function Dashboard() {
                   }}
                   labelStyle={{ color: "#94A3B8" }}
                   itemStyle={{ color: "#FFFFFF" }}
-                  cursor={{ fill: "rgba(14, 165, 233, 0.1)" }}
                 />
-                <Bar
+                <Area
+                  type="monotone"
                   dataKey="Smithey"
-                  fill="#0EA5E9"
-                  radius={[2, 2, 0, 0]}
-                  stackId="a"
+                  stroke="#0EA5E9"
+                  strokeWidth={2}
+                  fill="url(#smitheyGradient)"
                 />
-                <Bar
+                <Area
+                  type="monotone"
                   dataKey="Selery"
-                  fill="#64748B"
-                  radius={[2, 2, 0, 0]}
-                  stackId="a"
+                  stroke="#64748B"
+                  strokeWidth={2}
+                  fill="url(#seleryGradient)"
                 />
-              </BarChart>
+              </AreaChart>
             </ResponsiveContainer>
           ) : (
             <div className="h-[220px] flex items-center justify-center text-text-muted text-sm">
@@ -521,56 +540,184 @@ function TopSkusPanel({
   skus: SkuInQueue[];
   loading: boolean;
 }) {
-  // Group by warehouse and get top 5 each
-  const smitheySkus = skus
-    .filter((s) => s.warehouse === "smithey")
-    .slice(0, 5);
-  const selerySkus = skus.filter((s) => s.warehouse === "selery").slice(0, 5);
+  // Split by warehouse
+  const smitheySkus = skus.filter((s) => s.warehouse === "smithey").slice(0, 8);
+  const selerySkus = skus.filter((s) => s.warehouse === "selery").slice(0, 8);
 
-  const allSkus = [...smitheySkus, ...selerySkus].slice(0, 8);
+  const SkuTable = ({ items, warehouse }: { items: SkuInQueue[]; warehouse: string }) => (
+    <div>
+      <div className={`text-label font-medium mb-3 ${
+        warehouse === "smithey" ? "text-accent-blue" : "text-text-tertiary"
+      }`}>
+        {warehouse.toUpperCase()}
+      </div>
+      {items.length > 0 ? (
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left py-1.5 text-label text-text-tertiary opacity-50 font-medium">
+                ITEM
+              </th>
+              <th className="text-right py-1.5 text-label text-text-tertiary opacity-50 font-medium">
+                QTY
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((sku) => (
+              <tr
+                key={`${sku.warehouse}-${sku.sku}`}
+                className="border-b border-border-subtle hover:bg-white/[0.02] transition-all"
+              >
+                <td className="py-2 text-context text-text-primary">
+                  <div className="truncate max-w-[140px]" title={sku.title || sku.sku}>
+                    {sku.title || sku.sku}
+                  </div>
+                </td>
+                <td className="py-2 text-right text-context text-text-secondary">
+                  {formatNumber(sku.quantity)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="text-context text-text-muted py-2">Queue clear</div>
+      )}
+    </div>
+  );
 
   return (
     <div className="bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
       <h3 className="text-label font-medium text-text-tertiary mb-4">
-        TOP SKUS IN QUEUE
+        TOP ITEMS IN QUEUE
       </h3>
       {loading ? (
         <div className="text-text-muted text-sm">Loading...</div>
-      ) : allSkus.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 text-label text-text-tertiary opacity-50 font-medium">
-                  SKU
-                </th>
-                <th className="text-right py-2 text-label text-text-tertiary opacity-50 font-medium">
-                  UNITS
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {allSkus.map((sku) => (
-                <tr
-                  key={`${sku.warehouse}-${sku.sku}`}
-                  className="border-b border-border-subtle hover:bg-white/[0.02] transition-all"
-                >
-                  <td className="py-2.5 text-context text-text-primary">
-                    <div className="truncate max-w-[150px]" title={sku.title || sku.sku}>
-                      {sku.sku}
-                    </div>
-                  </td>
-                  <td className="py-2.5 text-right text-context text-text-secondary">
-                    {formatNumber(sku.quantity)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       ) : (
-        <div className="text-context text-text-muted py-4">
-          No items in queue
+        <div className="grid grid-cols-2 gap-6">
+          <SkuTable items={smitheySkus} warehouse="smithey" />
+          <SkuTable items={selerySkus} warehouse="selery" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FulfillmentLeadTimePanel({
+  data,
+  loading,
+}: {
+  data: FulfillmentLeadTime[];
+  loading: boolean;
+}) {
+  const smithey = data.find((d) => d.warehouse === "smithey");
+  const selery = data.find((d) => d.warehouse === "selery");
+
+  const WarehouseLeadTime = ({
+    wh,
+    name,
+    color,
+  }: {
+    wh: FulfillmentLeadTime | undefined;
+    name: string;
+    color: string;
+  }) => {
+    if (!wh || wh.total_fulfilled === 0) {
+      return (
+        <div className={`p-4 rounded bg-bg-tertiary border-l-2 ${color}`}>
+          <div className="text-label text-text-tertiary mb-2">{name}</div>
+          <div className="text-context text-text-muted">No data available</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`p-4 rounded bg-bg-tertiary border-l-2 ${color}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-label text-text-tertiary">{name}</div>
+          <div className="flex items-center gap-1 text-context">
+            {wh.trend_pct !== 0 && (
+              <>
+                <span
+                  className={
+                    wh.trend_pct < 0
+                      ? "text-status-good"
+                      : "text-status-warning"
+                  }
+                >
+                  {wh.trend_pct > 0 ? "↑" : "↓"} {Math.abs(wh.trend_pct)}%
+                </span>
+                <span className="text-text-muted">vs last week</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Main Metric */}
+        <div className="flex items-baseline gap-2 mb-4">
+          <span className="text-3xl font-light text-text-primary">
+            {wh.avg_hours < 24
+              ? `${wh.avg_hours}h`
+              : `${wh.avg_days}d`}
+          </span>
+          <span className="text-context text-text-muted">avg lead time</span>
+        </div>
+
+        {/* SLA Distribution */}
+        <div className="space-y-2">
+          <div className="text-label text-text-tertiary opacity-75 mb-1">
+            SLA BREAKDOWN
+          </div>
+          <div className="flex gap-4 text-context">
+            <div>
+              <span className="text-status-good font-medium">{wh.within_24h}%</span>
+              <span className="text-text-muted ml-1">&lt;24h</span>
+            </div>
+            <div>
+              <span className="text-text-primary font-medium">{wh.within_48h}%</span>
+              <span className="text-text-muted ml-1">&lt;48h</span>
+            </div>
+            <div>
+              <span
+                className={`font-medium ${
+                  wh.over_72h > 10 ? "text-status-warning" : "text-text-secondary"
+                }`}
+              >
+                {wh.over_72h}%
+              </span>
+              <span className="text-text-muted ml-1">&gt;72h</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-context text-text-muted mt-3 pt-3 border-t border-border-subtle">
+          {wh.total_fulfilled.toLocaleString()} orders (30d)
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
+      <h3 className="text-label font-medium text-text-tertiary mb-4 flex items-center gap-2">
+        <Clock className="w-3.5 h-3.5" />
+        ORDER TO FULFILLMENT TIME
+      </h3>
+      {loading ? (
+        <div className="text-text-muted text-sm">Loading...</div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <WarehouseLeadTime
+            wh={smithey}
+            name="SMITHEY"
+            color="border-l-accent-blue"
+          />
+          <WarehouseLeadTime
+            wh={selery}
+            name="SELERY"
+            color="border-l-text-tertiary"
+          />
         </div>
       )}
     </div>
