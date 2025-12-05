@@ -18,7 +18,13 @@ export async function GET() {
   try {
     const supabase = await createClient();
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
+
+    // Use EST/EDT for "today" calculations (Smithey is US-based)
+    const estOffset = -5 * 60; // EST is UTC-5
+    const estNow = new Date(now.getTime() + (estOffset + now.getTimezoneOffset()) * 60 * 1000);
+    const todayEST = estNow.toISOString().split("T")[0];
+    // Convert EST midnight to UTC for database queries
+    const todayStartUTC = new Date(`${todayEST}T05:00:00.000Z`); // EST midnight = UTC 5am
 
     // Get restoration order IDs to exclude (SKUs containing "rest")
     // These are a different fulfillment cycle - customer ships item back first
@@ -125,19 +131,19 @@ export async function GET() {
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
-      // Fulfilled today Smithey
+      // Fulfilled today Smithey (using EST timezone)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", `${today}T00:00:00`)
+        .gte("fulfilled_at", todayStartUTC.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "smithey"),
 
-      // Fulfilled today Selery
+      // Fulfilled today Selery (using EST timezone)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", `${today}T00:00:00`)
+        .gte("fulfilled_at", todayStartUTC.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
