@@ -118,6 +118,19 @@ function getChange(current: number, previous: number): number {
   return ((current - previous) / previous) * 100;
 }
 
+// Get number of days in the selected date range
+function getDaysInRange(option: DateRangeOption): number {
+  switch (option) {
+    case "today": return 1;
+    case "yesterday": return 1;
+    case "3days": return 3;
+    case "7days": return 7;
+    case "30days": return 30;
+    case "custom": return 7; // Fallback for custom
+    default: return 7;
+  }
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -280,7 +293,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPICard
           label="IN QUEUE"
-          subtitle="(excluding restorations)"
+          subtitle="(running total, excl. restorations)"
           value={totals.queue}
           loading={loading}
           status={totals.queue > 500 ? "warning" : undefined}
@@ -643,7 +656,7 @@ function WarehousePanel({
           </div>
           <div>
             <div className="text-3xl font-light text-text-primary">
-              {loading ? "—" : formatNumber(data.avg_per_day_7d)}
+              {loading ? "—" : formatNumber(Math.round(data.fulfilled_today / getDaysInRange(dateRangeOption)))}
             </div>
             <div className="text-label text-text-tertiary mt-2">Avg/Day</div>
           </div>
