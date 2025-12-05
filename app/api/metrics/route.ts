@@ -79,14 +79,28 @@ export async function GET(request: Request) {
 
     // Get restoration order IDs to exclude (SKUs containing "-Rest-")
     // These are a different fulfillment cycle - customer ships item back first
+    // Join with orders to get warehouse and fulfillment_status for per-warehouse counts
     const { data: restorationItems } = await supabase
       .from("line_items")
-      .select("order_id")
+      .select("order_id, orders!inner(warehouse, fulfillment_status, canceled)")
       .ilike("sku", "%-Rest-%");
 
     const restorationOrderIds = new Set(
       (restorationItems || []).map((item) => item.order_id)
     );
+
+    // Count unfulfilled restoration orders per warehouse (to subtract from queue counts)
+    const restorationByWarehouse = { smithey: 0, selery: 0 };
+    const countedOrderIds = new Set<number>();
+    for (const item of restorationItems || []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const order = (item as any).orders;
+      if (!order || order.canceled || order.fulfillment_status === "fulfilled") continue;
+      if (countedOrderIds.has(item.order_id)) continue; // Don't double-count orders with multiple restoration items
+      countedOrderIds.add(item.order_id);
+      if (order.warehouse === "smithey") restorationByWarehouse.smithey++;
+      else if (order.warehouse === "selery") restorationByWarehouse.selery++;
+    }
 
     // Helper to filter out restoration orders from results
     // Works with order data that has an 'id' field or joined order data
@@ -472,7 +486,7 @@ export async function GET(request: Request) {
     const warehouses: WarehouseMetrics[] = [
       {
         warehouse: "smithey",
-        unfulfilled_count: smitheyUnfulfilled,
+        unfulfilled_count: smitheyUnfulfilled - restorationByWarehouse.smithey,
         partial_count: smitheyPartial,
         fulfilled_today: smitheyToday,
         fulfilled_7d: smithey7d,
@@ -485,7 +499,7 @@ export async function GET(request: Request) {
       },
       {
         warehouse: "selery",
-        unfulfilled_count: seleryUnfulfilled,
+        unfulfilled_count: seleryUnfulfilled - restorationByWarehouse.selery,
         partial_count: seleryPartial,
         fulfilled_today: seleryToday,
         fulfilled_7d: selery7d,
