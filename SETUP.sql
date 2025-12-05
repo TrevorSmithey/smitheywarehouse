@@ -35,6 +35,32 @@ CREATE INDEX IF NOT EXISTS idx_orders_canceled ON orders(canceled);
 CREATE INDEX IF NOT EXISTS idx_line_items_order_id ON line_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_line_items_sku ON line_items(sku);
 
+-- Shipments table (for tracking)
+CREATE TABLE IF NOT EXISTS shipments (
+  id BIGSERIAL PRIMARY KEY,
+  order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  tracking_number TEXT NOT NULL,
+  carrier TEXT,
+  shipped_at TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'in_transit',
+  last_scan_at TIMESTAMPTZ,
+  last_scan_location TEXT,
+  days_without_scan INTEGER DEFAULT 0,
+  easypost_tracker_id TEXT,
+  checked_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  delivery_state TEXT,
+  transit_days INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(order_id, tracking_number)
+);
+
+-- Indexes for shipments
+CREATE INDEX IF NOT EXISTS idx_shipments_order_id ON shipments(order_id);
+CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
+CREATE INDEX IF NOT EXISTS idx_shipments_shipped_at ON shipments(shipped_at);
+CREATE INDEX IF NOT EXISTS idx_shipments_checked_at ON shipments(checked_at);
+
 -- Enable Row Level Security (optional - disable for internal tool)
 -- ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE line_items ENABLE ROW LEVEL SECURITY;
@@ -45,3 +71,5 @@ GRANT SELECT ON orders TO anon;
 GRANT SELECT ON line_items TO anon;
 GRANT ALL ON orders TO service_role;
 GRANT ALL ON line_items TO service_role;
+GRANT SELECT ON shipments TO anon;
+GRANT ALL ON shipments TO service_role;

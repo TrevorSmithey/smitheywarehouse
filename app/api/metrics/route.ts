@@ -45,6 +45,8 @@ export async function GET() {
     };
 
     // Date calculations
+    const oneDayAgo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
@@ -77,6 +79,13 @@ export async function GET() {
       thisWeekSeleryCount,
       lastWeekSmitheyCount,
       lastWeekSeleryCount,
+      // Queue aging counts
+      waiting1dSmithey,
+      waiting1dSelery,
+      waiting3dSmithey,
+      waiting3dSelery,
+      waiting7dSmithey,
+      waiting7dSelery,
       // Data queries (with limits)
       dailyResult,
       oldestOrderResult,
@@ -197,6 +206,60 @@ export async function GET() {
         .lt("fulfilled_at", thisWeekStart.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "selery"),
+
+      // Queue aging: unfulfilled orders older than 1 day (Smithey)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "smithey")
+        .lt("created_at", oneDayAgo.toISOString()),
+
+      // Queue aging: unfulfilled orders older than 1 day (Selery)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "selery")
+        .lt("created_at", oneDayAgo.toISOString()),
+
+      // Queue aging: unfulfilled orders older than 3 days (Smithey)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "smithey")
+        .lt("created_at", threeDaysAgo.toISOString()),
+
+      // Queue aging: unfulfilled orders older than 3 days (Selery)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "selery")
+        .lt("created_at", threeDaysAgo.toISOString()),
+
+      // Queue aging: unfulfilled orders older than 7 days (Smithey)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "smithey")
+        .lt("created_at", sevenDaysAgo.toISOString()),
+
+      // Queue aging: unfulfilled orders older than 7 days (Selery)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .eq("warehouse", "selery")
+        .lt("created_at", sevenDaysAgo.toISOString()),
 
       // Daily fulfillments for chart (30 days) - limit to reasonable amount
       supabase
@@ -323,21 +386,21 @@ export async function GET() {
     // Process weekly fulfillments (last 8 weeks)
     const weekly = processWeeklyFulfillments(filteredDailyData);
 
-    // Process queue health using oldest order data
+    // Process queue health using aging count queries
     const queueHealth: QueueHealth[] = [
       {
         warehouse: "smithey",
-        waiting_1_day: 0, // TODO: add count queries for aging
-        waiting_3_days: 0,
-        waiting_7_days: 0,
+        waiting_1_day: waiting1dSmithey.count || 0,
+        waiting_3_days: waiting3dSmithey.count || 0,
+        waiting_7_days: waiting7dSmithey.count || 0,
         oldest_order_days: 0,
         oldest_order_name: null,
       },
       {
         warehouse: "selery",
-        waiting_1_day: 0,
-        waiting_3_days: 0,
-        waiting_7_days: 0,
+        waiting_1_day: waiting1dSelery.count || 0,
+        waiting_3_days: waiting3dSelery.count || 0,
+        waiting_7_days: waiting7dSelery.count || 0,
         oldest_order_days: 0,
         oldest_order_name: null,
       },
@@ -387,17 +450,6 @@ export async function GET() {
   }
 }
 
-function countByWarehouse(
-  data: Array<{ warehouse: string | null; id?: number }>
-): Record<string, number> {
-  return data.reduce((acc, row) => {
-    if (row.warehouse) {
-      acc[row.warehouse] = (acc[row.warehouse] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-}
-
 function processDailyFulfillments(
   data: Array<{ warehouse: string | null; fulfilled_at: string | null; id?: number }>
 ): DailyFulfillment[] {
@@ -445,57 +497,6 @@ function processWeeklyFulfillments(
   }
 
   return result.sort((a, b) => a.week_start.localeCompare(b.week_start));
-}
-
-function processQueueHealth(
-  queueData: Array<{ warehouse: string | null; created_at: string; id?: number }>,
-  oldestOrders: Array<{ warehouse: string | null; order_name: string; created_at: string; id?: number }>,
-  now: Date
-): QueueHealth[] {
-  const oneDayAgo = now.getTime() - 1 * 24 * 60 * 60 * 1000;
-  const threeDaysAgo = now.getTime() - 3 * 24 * 60 * 60 * 1000;
-  const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
-
-  const healthByWh: Record<string, {
-    waiting_1_day: number;
-    waiting_3_days: number;
-    waiting_7_days: number;
-  }> = {
-    smithey: { waiting_1_day: 0, waiting_3_days: 0, waiting_7_days: 0 },
-    selery: { waiting_1_day: 0, waiting_3_days: 0, waiting_7_days: 0 },
-  };
-
-  for (const row of queueData) {
-    if (!row.warehouse) continue;
-    const createdAt = new Date(row.created_at).getTime();
-
-    if (createdAt < oneDayAgo) healthByWh[row.warehouse].waiting_1_day++;
-    if (createdAt < threeDaysAgo) healthByWh[row.warehouse].waiting_3_days++;
-    if (createdAt < sevenDaysAgo) healthByWh[row.warehouse].waiting_7_days++;
-  }
-
-  // Find oldest per warehouse
-  const oldestByWh: Record<string, { days: number; name: string | null }> = {
-    smithey: { days: 0, name: null },
-    selery: { days: 0, name: null },
-  };
-
-  for (const order of oldestOrders) {
-    if (!order.warehouse) continue;
-    if (!oldestByWh[order.warehouse].name) {
-      const days = Math.floor((now.getTime() - new Date(order.created_at).getTime()) / (24 * 60 * 60 * 1000));
-      oldestByWh[order.warehouse] = { days, name: order.order_name };
-    }
-  }
-
-  return ["smithey", "selery"].map((wh) => ({
-    warehouse: wh,
-    waiting_1_day: healthByWh[wh]?.waiting_1_day || 0,
-    waiting_3_days: healthByWh[wh]?.waiting_3_days || 0,
-    waiting_7_days: healthByWh[wh]?.waiting_7_days || 0,
-    oldest_order_days: oldestByWh[wh]?.days || 0,
-    oldest_order_name: oldestByWh[wh]?.name || null,
-  }));
 }
 
 interface SkuQueueRow {
