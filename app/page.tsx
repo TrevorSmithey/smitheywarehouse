@@ -432,6 +432,7 @@ function KPICard({
   subtitle,
   change,
   changeLabel,
+  note,
 }: {
   label: string;
   value: number;
@@ -440,6 +441,7 @@ function KPICard({
   subtitle?: string;
   change?: number;
   changeLabel?: string;
+  note?: string;
 }) {
   const statusColors = {
     good: "text-status-good",
@@ -451,6 +453,7 @@ function KPICard({
     <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
       <div className="text-label text-text-tertiary font-medium mb-2">
         {label}
+        {note && <span className="text-text-muted font-normal text-xs ml-1">({note})</span>}
       </div>
       <div
         className={`text-metric font-light tracking-tight-sm ${
@@ -509,6 +512,7 @@ function EngravingQueueCard({
       <div className="text-label text-text-tertiary font-medium mb-2 flex items-center gap-1.5">
         <Pen className="w-3 h-3" />
         ENGRAVING QUEUE
+        <span className="text-text-muted font-normal text-xs ml-1">(running total)</span>
       </div>
       <div
         className={`text-metric font-light tracking-tight-sm ${
