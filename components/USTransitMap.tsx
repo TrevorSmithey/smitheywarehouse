@@ -92,14 +92,9 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
                 d={path}
                 fill={getColor(days, isSmithey)}
                 fillOpacity={getOpacity(hasStateData)}
-                stroke="#1F2937"
-                strokeWidth="0.5"
-                className="transition-all duration-200 cursor-pointer"
-                style={{
-                  filter: hoveredState?.state === abbr && hoveredState?.warehouse === warehouse
-                    ? "brightness(1.3)"
-                    : "none",
-                }}
+                stroke={hoveredState?.state === abbr && hoveredState?.warehouse === warehouse ? "#60A5FA" : "#1F2937"}
+                strokeWidth={hoveredState?.state === abbr && hoveredState?.warehouse === warehouse ? "2" : "0.5"}
+                className="transition-all duration-150 cursor-pointer hover:brightness-125"
                 onMouseEnter={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setHoveredState({
@@ -111,9 +106,7 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
                   });
                 }}
                 onMouseLeave={() => setHoveredState(null)}
-              >
-                <title>{name}</title>
-              </path>
+              />
             );
           })}
         </svg>
@@ -161,7 +154,7 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
       )}
 
       {/* Tooltip */}
-      {hoveredState && hoveredState.data && (
+      {hoveredState && (
         <div
           className="fixed z-50 pointer-events-none"
           style={{
@@ -171,18 +164,24 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
           }}
         >
           <div className="bg-bg-primary border border-border rounded px-3 py-2 shadow-lg">
-            <div className="text-label text-text-secondary mb-1">
+            <div className="text-sm font-medium text-text-primary mb-1">
               {US_STATES[hoveredState.state]?.name || hoveredState.state}
             </div>
-            <div className="text-context">
-              <span className="text-text-primary font-medium">
-                {hoveredState.data.avg_transit_days}d
-              </span>
-              <span className="text-text-muted ml-1">avg transit</span>
-            </div>
-            <div className="text-context text-text-muted">
-              {hoveredState.data.shipment_count.toLocaleString()} shipments
-            </div>
+            {hoveredState.data ? (
+              <>
+                <div className="text-context">
+                  <span className="text-text-primary font-medium">
+                    {hoveredState.data.avg_transit_days}d
+                  </span>
+                  <span className="text-text-muted ml-1">avg transit</span>
+                </div>
+                <div className="text-context text-text-muted">
+                  {hoveredState.data.shipment_count.toLocaleString()} shipments
+                </div>
+              </>
+            ) : (
+              <div className="text-context text-text-muted">No delivery data</div>
+            )}
           </div>
         </div>
       )}
