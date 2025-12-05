@@ -20,6 +20,30 @@ export async function GET() {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
 
+    // Get restoration order IDs to exclude (SKUs containing "rest")
+    // These are a different fulfillment cycle - customer ships item back first
+    const { data: restorationItems } = await supabase
+      .from("line_items")
+      .select("order_id")
+      .ilike("sku", "%rest%");
+
+    const restorationOrderIds = new Set(
+      (restorationItems || []).map((item) => item.order_id)
+    );
+
+    // Helper to filter out restoration orders from results
+    // Works with order data that has an 'id' field or joined order data
+    const filterRestorationOrders = <T extends Record<string, unknown>>(
+      data: T[] | null,
+      idField: keyof T = "id" as keyof T
+    ): T[] => {
+      if (!data || restorationOrderIds.size === 0) return data || [];
+      return data.filter((row) => {
+        const orderId = row[idField] as number | undefined;
+        return orderId ? !restorationOrderIds.has(orderId) : true;
+      });
+    };
+
     // Date calculations
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -52,10 +76,10 @@ export async function GET() {
       stuckShipmentsResult,
       transitDataResult,
     ] = await Promise.all([
-      // Unfulfilled by warehouse
+      // Unfulfilled by warehouse (include id for restoration filtering)
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .is("fulfillment_status", null)
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -63,7 +87,7 @@ export async function GET() {
       // Partial by warehouse
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .eq("fulfillment_status", "partial")
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -71,7 +95,7 @@ export async function GET() {
       // Fulfilled today by warehouse
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .gte("fulfilled_at", `${today}T00:00:00`)
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -79,7 +103,7 @@ export async function GET() {
       // Fulfilled last 7 days
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .gte("fulfilled_at", sevenDaysAgo.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -87,7 +111,7 @@ export async function GET() {
       // Fulfilled last 30 days
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .gte("fulfilled_at", thirtyDaysAgo.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -95,7 +119,7 @@ export async function GET() {
       // This week fulfillments
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .gte("fulfilled_at", thisWeekStart.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -103,7 +127,7 @@ export async function GET() {
       // Last week fulfillments
       supabase
         .from("orders")
-        .select("warehouse")
+        .select("id, warehouse")
         .gte("fulfilled_at", lastWeekStart.toISOString())
         .lt("fulfilled_at", thisWeekStart.toISOString())
         .eq("canceled", false)
@@ -112,7 +136,7 @@ export async function GET() {
       // Daily fulfillments for chart (30 days)
       supabase
         .from("orders")
-        .select("warehouse, fulfilled_at")
+        .select("id, warehouse, fulfilled_at")
         .gte("fulfilled_at", thirtyDaysAgo.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
@@ -121,7 +145,7 @@ export async function GET() {
       // Queue aging - unfulfilled orders with created_at
       supabase
         .from("orders")
-        .select("warehouse, created_at")
+        .select("id, warehouse, created_at")
         .is("fulfillment_status", null)
         .eq("canceled", false)
         .not("warehouse", "is", null),
@@ -129,12 +153,12 @@ export async function GET() {
       // Oldest unfulfilled order per warehouse
       supabase
         .from("orders")
-        .select("warehouse, order_name, created_at")
+        .select("id, warehouse, order_name, created_at")
         .is("fulfillment_status", null)
         .eq("canceled", false)
         .not("warehouse", "is", null)
         .order("created_at", { ascending: true })
-        .limit(10),
+        .limit(20),
 
       // SKUs in unfulfilled queue
       supabase
@@ -180,14 +204,14 @@ export async function GET() {
         .gte("shipped_at", "2024-11-15T00:00:00.000Z"),
     ]);
 
-    // Process basic counts
-    const unfulfilledByWh = countByWarehouse(unfulfilledResult.data || []);
-    const partialByWh = countByWarehouse(partialResult.data || []);
-    const fulfilledTodayByWh = countByWarehouse(fulfilledTodayResult.data || []);
-    const fulfilled7dByWh = countByWarehouse(fulfilled7dResult.data || []);
-    const fulfilled30dByWh = countByWarehouse(fulfilled30dResult.data || []);
-    const thisWeekByWh = countByWarehouse(thisWeekResult.data || []);
-    const lastWeekByWh = countByWarehouse(lastWeekResult.data || []);
+    // Process basic counts - filter out restoration orders
+    const unfulfilledByWh = countByWarehouse(filterRestorationOrders(unfulfilledResult.data));
+    const partialByWh = countByWarehouse(filterRestorationOrders(partialResult.data));
+    const fulfilledTodayByWh = countByWarehouse(filterRestorationOrders(fulfilledTodayResult.data));
+    const fulfilled7dByWh = countByWarehouse(filterRestorationOrders(fulfilled7dResult.data));
+    const fulfilled30dByWh = countByWarehouse(filterRestorationOrders(fulfilled30dResult.data));
+    const thisWeekByWh = countByWarehouse(filterRestorationOrders(thisWeekResult.data));
+    const lastWeekByWh = countByWarehouse(filterRestorationOrders(lastWeekResult.data));
 
     // Build enhanced warehouse metrics
     const warehouses: WarehouseMetrics[] = ["smithey", "selery"].map((wh) => {
@@ -214,21 +238,26 @@ export async function GET() {
       };
     });
 
-    // Process daily fulfillments
-    const daily = processDailyFulfillments(dailyResult.data || []);
+    // Process daily fulfillments - filter out restoration orders
+    const filteredDailyData = filterRestorationOrders(dailyResult.data);
+    const daily = processDailyFulfillments(filteredDailyData);
 
     // Process weekly fulfillments (last 8 weeks)
-    const weekly = processWeeklyFulfillments(dailyResult.data || []);
+    const weekly = processWeeklyFulfillments(filteredDailyData);
 
-    // Process queue health
+    // Process queue health - filter out restoration orders
     const queueHealth = processQueueHealth(
-      queueAgingResult.data || [],
-      oldestOrderResult.data || [],
+      filterRestorationOrders(queueAgingResult.data),
+      filterRestorationOrders(oldestOrderResult.data),
       now
     );
 
-    // Process SKU queue
-    const topSkusInQueue = processSkuQueue(skuQueueResult.data || []);
+    // Process SKU queue - filter out restoration SKUs directly
+    const topSkusInQueue = processSkuQueue(
+      (skuQueueResult.data || []).filter(
+        (row: { sku: string | null }) => !row.sku?.toLowerCase().includes("rest")
+      )
+    );
 
     // Process stuck shipments
     const stuckShipments = processStuckShipments(stuckShipmentsResult.data || [], now);
@@ -258,7 +287,7 @@ export async function GET() {
 }
 
 function countByWarehouse(
-  data: Array<{ warehouse: string | null }>
+  data: Array<{ warehouse: string | null; id?: number }>
 ): Record<string, number> {
   return data.reduce((acc, row) => {
     if (row.warehouse) {
@@ -269,7 +298,7 @@ function countByWarehouse(
 }
 
 function processDailyFulfillments(
-  data: Array<{ warehouse: string | null; fulfilled_at: string | null }>
+  data: Array<{ warehouse: string | null; fulfilled_at: string | null; id?: number }>
 ): DailyFulfillment[] {
   const grouped = new Map<string, number>();
 
@@ -290,7 +319,7 @@ function processDailyFulfillments(
 }
 
 function processWeeklyFulfillments(
-  data: Array<{ warehouse: string | null; fulfilled_at: string | null }>
+  data: Array<{ warehouse: string | null; fulfilled_at: string | null; id?: number }>
 ): WeeklyFulfillment[] {
   const grouped = new Map<string, number>();
 
@@ -318,8 +347,8 @@ function processWeeklyFulfillments(
 }
 
 function processQueueHealth(
-  queueData: Array<{ warehouse: string | null; created_at: string }>,
-  oldestOrders: Array<{ warehouse: string | null; order_name: string; created_at: string }>,
+  queueData: Array<{ warehouse: string | null; created_at: string; id?: number }>,
+  oldestOrders: Array<{ warehouse: string | null; order_name: string; created_at: string; id?: number }>,
   now: Date
 ): QueueHealth[] {
   const oneDayAgo = now.getTime() - 1 * 24 * 60 * 60 * 1000;
