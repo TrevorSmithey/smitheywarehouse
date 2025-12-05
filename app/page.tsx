@@ -1061,7 +1061,14 @@ function StuckShipmentsPanel({
       className="flex items-center justify-between py-3 border-b border-border-subtle last:border-0"
     >
       <div className="min-w-0">
-        <div className="text-context text-text-primary">{s.order_name}</div>
+        <a
+          href={`https://smithey-ironware.myshopify.com/admin/orders/${s.order_id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-context text-accent-blue hover:underline"
+        >
+          {s.order_name}
+        </a>
         <div className="text-label text-text-muted truncate">
           {s.carrier}: {s.tracking_number}
         </div>
@@ -1144,7 +1151,9 @@ function StuckShipmentsPanel({
             SMITHEY ({formatNumber(smithey.length)})
           </div>
           {smithey.length > 0 ? (
-            smithey.slice(0, 5).map(renderShipment)
+            <div className="max-h-[320px] overflow-y-auto pr-2">
+              {smithey.map(renderShipment)}
+            </div>
           ) : (
             <div className="text-context text-text-muted py-2">All clear</div>
           )}
@@ -1154,7 +1163,9 @@ function StuckShipmentsPanel({
             SELERY ({formatNumber(selery.length)})
           </div>
           {selery.length > 0 ? (
-            selery.slice(0, 5).map(renderShipment)
+            <div className="max-h-[320px] overflow-y-auto pr-2">
+              {selery.map(renderShipment)}
+            </div>
           ) : (
             <div className="text-context text-text-muted py-2">All clear</div>
           )}
