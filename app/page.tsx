@@ -334,22 +334,11 @@ export default function Dashboard() {
                   interval="preserveStartEnd"
                 />
                 <YAxis
-                  yAxisId="left"
                   stroke="#64748B"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                   width={35}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  stroke="#EF4444"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  width={45}
-                  tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
                 />
                 <Tooltip
                   contentStyle={{
@@ -367,7 +356,6 @@ export default function Dashboard() {
                   stroke="#0EA5E9"
                   strokeWidth={2}
                   fill="url(#smitheyGradient)"
-                  yAxisId="left"
                 />
                 <Area
                   type="monotone"
@@ -375,15 +363,6 @@ export default function Dashboard() {
                   stroke="#64748B"
                   strokeWidth={2}
                   fill="url(#seleryGradient)"
-                  yAxisId="left"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Backlog"
-                  stroke="#EF4444"
-                  strokeWidth={2}
-                  dot={false}
-                  yAxisId="right"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -401,16 +380,15 @@ export default function Dashboard() {
               <div className="w-3 h-3 rounded bg-text-tertiary" />
               <span className="text-context text-text-secondary">Selery</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-0.5 bg-[#EF4444]" />
-              <span className="text-context text-text-secondary">Backlog</span>
-            </div>
           </div>
         </div>
 
         {/* Top SKUs in Queue */}
         <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
       </div>
+
+      {/* Backlog Chart - separate, smaller, 10-day window */}
+      <BacklogChart backlog={metrics?.dailyBacklog || []} loading={loading} />
 
       {/* Warehouse Distribution Chart */}
       <WarehouseSplitChart dailyOrders={metrics?.dailyOrders || []} loading={loading} />
@@ -1020,6 +998,107 @@ function TransitAnalyticsPanel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function BacklogChart({
+  backlog,
+  loading,
+}: {
+  backlog: DailyBacklog[];
+  loading: boolean;
+}) {
+  // Take last 10 days of data
+  const chartData = backlog
+    .slice(-10)
+    .map((d) => ({
+      date: format(new Date(d.date), "M/d"),
+      rawDate: d.date,
+      backlog: d.runningBacklog,
+      created: d.created,
+      fulfilled: d.fulfilled,
+    }));
+
+  if (chartData.length === 0) return null;
+
+  // Get current backlog (most recent value)
+  const currentBacklog = chartData[chartData.length - 1]?.backlog || 0;
+  const startBacklog = chartData[0]?.backlog || 0;
+  const change = currentBacklog - startBacklog;
+  const changePercent = startBacklog > 0 ? Math.round((change / startBacklog) * 100) : 0;
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-4 mb-6 transition-all hover:border-border-hover">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
+          <Package className="w-3.5 h-3.5" />
+          BACKLOG (10 DAY)
+        </h3>
+        <div className="flex items-center gap-4 text-context">
+          <span className="text-text-primary font-medium">
+            {formatNumber(currentBacklog)} orders
+          </span>
+          {change !== 0 && (
+            <span className={change > 0 ? "text-status-bad" : "text-status-good"}>
+              {change > 0 ? "+" : ""}{formatNumber(change)} ({changePercent > 0 ? "+" : ""}{changePercent}%)
+            </span>
+          )}
+        </div>
+      </div>
+      {loading ? (
+        <div className="h-[100px] flex items-center justify-center text-text-muted text-sm">
+          Loading...
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={100}>
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="backlogGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="date"
+              stroke="#64748B"
+              fontSize={10}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              stroke="#64748B"
+              fontSize={10}
+              tickLine={false}
+              axisLine={false}
+              width={40}
+              tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#12151F",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: "4px",
+                fontSize: "11px",
+              }}
+              labelStyle={{ color: "#94A3B8" }}
+              formatter={(value: number, name: string) => {
+                if (name === "backlog") return [formatNumber(value), "Backlog"];
+                if (name === "created") return [formatNumber(value), "Created"];
+                if (name === "fulfilled") return [formatNumber(value), "Fulfilled"];
+                return [value, name];
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="backlog"
+              stroke="#EF4444"
+              strokeWidth={2}
+              fill="url(#backlogGradient)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }
