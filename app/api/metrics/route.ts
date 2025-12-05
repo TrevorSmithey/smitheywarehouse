@@ -332,7 +332,7 @@ export async function GET(request: Request) {
         .not("fulfilled_at", "is", null)
         .limit(10000),
 
-      // Oldest unfulfilled order for Smithey
+      // Oldest unfulfilled orders for Smithey (get 20 so we can filter out restoration)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
@@ -340,9 +340,9 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "smithey")
         .order("created_at", { ascending: true })
-        .limit(1),
+        .limit(20),
 
-      // Oldest unfulfilled order for Selery
+      // Oldest unfulfilled orders for Selery (get 20 so we can filter out restoration)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
@@ -350,7 +350,7 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "selery")
         .order("created_at", { ascending: true })
-        .limit(1),
+        .limit(20),
 
       // SKUs in unfulfilled queue - limit results
       supabase
@@ -507,8 +507,9 @@ export async function GET(request: Request) {
         oldest_order_name: null,
       },
     ];
-    // Set oldest order for Smithey
-    const oldestSmithey = oldestSmitheyResult.data?.[0];
+    // Set oldest order for Smithey (filter out restoration orders)
+    const oldestSmithey = (oldestSmitheyResult.data || [])
+      .filter((o: { id: number }) => !restorationOrderIds.has(o.id))[0];
     if (oldestSmithey) {
       const smitheyHealth = queueHealth.find(h => h.warehouse === "smithey");
       if (smitheyHealth) {
@@ -518,8 +519,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Set oldest order for Selery
-    const oldestSelery = oldestSeleryResult.data?.[0];
+    // Set oldest order for Selery (filter out restoration orders)
+    const oldestSelery = (oldestSeleryResult.data || [])
+      .filter((o: { id: number }) => !restorationOrderIds.has(o.id))[0];
     if (oldestSelery) {
       const seleryHealth = queueHealth.find(h => h.warehouse === "selery");
       if (seleryHealth) {
