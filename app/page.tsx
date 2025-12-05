@@ -105,6 +105,13 @@ function formatNumber(num: number | undefined | null): string {
   return num.toLocaleString("en-US");
 }
 
+// Parse date string (YYYY-MM-DD) as local date, not UTC
+// This fixes timezone issues where "2025-12-05" parsed as UTC shows as 12/4 in EST
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 // Calculate percentage change
 function getChange(current: number, previous: number): number {
   if (previous === 0) return current > 0 ? 100 : 0;
@@ -1043,7 +1050,7 @@ function BacklogChart({
 }) {
   // Use full date range from API (respects global date selector)
   const chartData = backlog.map((d) => ({
-    date: format(new Date(d.date), "M/d"),
+    date: format(parseLocalDate(d.date), "M/d"),
     rawDate: d.date,
     backlog: d.runningBacklog,
     created: d.created,
@@ -1282,7 +1289,7 @@ function WarehouseSplitChart({
   // Process data for the chart - show percentage over time
   const chartData = dailyOrders
     .map((d) => ({
-      date: format(new Date(d.date), "M/d"),
+      date: format(parseLocalDate(d.date), "M/d"),
       rawDate: d.date,
       Smithey: d.smithey_pct,
       Selery: d.selery_pct,
@@ -1400,7 +1407,7 @@ function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = [
 
   return Array.from(grouped.entries())
     .map(([date, counts]) => ({
-      date: format(new Date(date), "M/d"),
+      date: format(parseLocalDate(date), "M/d"),
       rawDate: date,
       ...counts,
     }))
