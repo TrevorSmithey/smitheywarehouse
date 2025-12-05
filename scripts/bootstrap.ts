@@ -249,12 +249,28 @@ function calculateFulfilledAt(
 }
 
 async function importOrders(orders: ShopifyOrderNode[]) {
-  console.log(`\nImporting ${orders.length} orders to Supabase...`);
+  // Filter out garbage orders - refunded/closed orders with nothing to fulfill
+  const validOrders = orders.filter((order) => {
+    // If it's fulfilled or canceled, keep it for metrics
+    if (order.displayFulfillmentStatus?.toLowerCase() === "fulfilled" || order.cancelledAt) {
+      return true;
+    }
+    // For unfulfilled/partial, only keep if there's actually something to fulfill
+    const totalFulfillable = order.lineItems.edges.reduce(
+      (sum, e) => sum + e.node.fulfillableQuantity,
+      0
+    );
+    return totalFulfillable > 0;
+  });
+
+  const skipped = orders.length - validOrders.length;
+  console.log(`\nFiltering out ${skipped} garbage orders (refunded/closed with nothing to fulfill)`);
+  console.log(`Importing ${validOrders.length} valid orders to Supabase...`);
 
   let successCount = 0;
   let errorCount = 0;
 
-  for (const order of orders) {
+  for (const order of validOrders) {
     try {
       const orderId = parseShopifyGid(order.id);
       const warehouse = extractWarehouse(order.tags);
