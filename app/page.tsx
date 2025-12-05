@@ -186,16 +186,15 @@ export default function Dashboard() {
       <header className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <Image
-                src="/quail-logo.jpg"
+                src="/smithey-logo-white.png"
                 alt="Smithey"
-                width={32}
-                height={32}
-                className="rounded"
+                width={48}
+                height={48}
               />
               <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
-                SMITHEY RETAIL FULFILLMENT
+                RETAIL FULFILLMENT
               </h1>
             </div>
             <p className="text-context text-text-muted mt-1">
