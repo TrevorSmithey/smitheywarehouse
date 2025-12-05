@@ -387,8 +387,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Top SKUs in Queue */}
-        <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
+        {/* Queue Aging */}
+        <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
       </div>
 
       {/* Backlog Chart - separate, smaller, 10-day window */}
@@ -400,8 +400,8 @@ export default function Dashboard() {
       {/* Transit Analytics */}
       <TransitAnalyticsPanel analytics={metrics?.transitAnalytics || []} />
 
-      {/* Order Aging - at the bottom */}
-      <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
+      {/* Top SKUs in Queue - full width at bottom */}
+      <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
     </div>
   );
 }
@@ -698,9 +698,9 @@ function TopSkusPanel({
   skus: SkuInQueue[];
   loading: boolean;
 }) {
-  // Split by warehouse
-  const smitheySkus = skus.filter((s) => s.warehouse === "smithey").slice(0, 8);
-  const selerySkus = skus.filter((s) => s.warehouse === "selery").slice(0, 8);
+  // Split by warehouse - no limit, we'll scroll
+  const smitheySkus = skus.filter((s) => s.warehouse === "smithey");
+  const selerySkus = skus.filter((s) => s.warehouse === "selery");
 
   const SkuTable = ({ items, warehouse }: { items: SkuInQueue[]; warehouse: string }) => (
     <div>
@@ -710,35 +710,37 @@ function TopSkusPanel({
         {warehouse.toUpperCase()}
       </div>
       {items.length > 0 ? (
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="text-left py-1.5 text-label text-text-tertiary opacity-50 font-medium">
-                ITEM
-              </th>
-              <th className="text-right py-1.5 text-label text-text-tertiary opacity-50 font-medium">
-                QTY
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((sku) => (
-              <tr
-                key={`${sku.warehouse}-${sku.sku}`}
-                className="border-b border-border-subtle hover:bg-white/[0.02] transition-all"
-              >
-                <td className="py-2 text-context text-text-primary">
-                  <div className="truncate max-w-[140px]" title={sku.title || sku.sku}>
-                    {sku.title || sku.sku}
-                  </div>
-                </td>
-                <td className="py-2 text-right text-context text-text-secondary">
-                  {formatNumber(sku.quantity)}
-                </td>
+        <div className="max-h-[300px] overflow-y-auto">
+          <table className="w-full">
+            <thead className="sticky top-0 bg-bg-secondary">
+              <tr className="border-b border-border">
+                <th className="text-left py-1.5 text-label text-text-tertiary opacity-50 font-medium">
+                  SKU
+                </th>
+                <th className="text-right py-1.5 text-label text-text-tertiary opacity-50 font-medium">
+                  QTY
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item, idx) => (
+                <tr
+                  key={`${item.warehouse}-${item.sku}-${idx}`}
+                  className="border-b border-border-subtle hover:bg-white/[0.02] transition-all"
+                >
+                  <td className="py-2 text-context text-text-primary">
+                    <div className="truncate max-w-[200px]" title={item.title || item.sku}>
+                      {item.sku}
+                    </div>
+                  </td>
+                  <td className="py-2 text-right text-context text-text-secondary tabular-nums">
+                    {formatNumber(item.quantity)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="text-context text-text-muted py-2">Queue clear</div>
       )}
@@ -746,9 +748,9 @@ function TopSkusPanel({
   );
 
   return (
-    <div className="bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
+    <div className="bg-bg-secondary rounded border border-border p-6 mt-6 transition-all hover:border-border-hover">
       <h3 className="text-label font-medium text-text-tertiary mb-4">
-        TOP ITEMS IN QUEUE
+        TOP SKUS IN QUEUE
       </h3>
       {loading ? (
         <div className="text-text-muted text-sm">Loading...</div>
@@ -1195,9 +1197,9 @@ function OrderAgingChart({
   };
 
   return (
-    <div className="bg-bg-secondary rounded border border-border p-6 mt-6 transition-all hover:border-border-hover">
+    <div className="bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
           <Clock className="w-3.5 h-3.5" />
           QUEUE AGING

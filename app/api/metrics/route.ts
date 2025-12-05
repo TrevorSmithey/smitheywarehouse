@@ -71,9 +71,9 @@ export async function GET(request: Request) {
     const rangeEnd = endParam ? new Date(endParam) : now;
 
     // Use EST/EDT for "today" calculations (Smithey is US-based)
-    const estOffset = -5 * 60; // EST is UTC-5
-    const estNow = new Date(now.getTime() + (estOffset + now.getTimezoneOffset()) * 60 * 1000);
-    const todayEST = estNow.toISOString().split("T")[0];
+    // EST = UTC - 5 hours, so subtract 5 hours from UTC to get EST time
+    const estTime = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+    const todayEST = estTime.toISOString().split("T")[0];
     // Convert EST midnight to UTC for database queries
     const todayStartUTC = new Date(`${todayEST}T05:00:00.000Z`); // EST midnight = UTC 5am
 
@@ -688,6 +688,7 @@ interface SkuQueueRow {
 function processSkuQueue(data: any[]): SkuInQueue[] {
   // Group by SKU AND warehouse (separate tables)
   const grouped = new Map<string, {
+    sku: string;
     title: string | null;
     warehouse: string;
     quantity: number;
@@ -709,6 +710,7 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
       existing.orderCount += 1;
     } else {
       grouped.set(key, {
+        sku: row.sku,
         title: row.title,
         warehouse: orders.warehouse,
         quantity: unfulfilled,
@@ -721,7 +723,7 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
   const result: SkuInQueue[] = [];
   for (const [, value] of grouped) {
     result.push({
-      sku: value.title || "Unknown SKU",
+      sku: value.sku,
       title: value.title,
       warehouse: value.warehouse,
       quantity: value.quantity,
