@@ -1009,16 +1009,14 @@ function BacklogChart({
   backlog: DailyBacklog[];
   loading: boolean;
 }) {
-  // Take last 10 days of data
-  const chartData = backlog
-    .slice(-10)
-    .map((d) => ({
-      date: format(new Date(d.date), "M/d"),
-      rawDate: d.date,
-      backlog: d.runningBacklog,
-      created: d.created,
-      fulfilled: d.fulfilled,
-    }));
+  // Use full date range from API (respects global date selector)
+  const chartData = backlog.map((d) => ({
+    date: format(new Date(d.date), "M/d"),
+    rawDate: d.date,
+    backlog: d.runningBacklog,
+    created: d.created,
+    fulfilled: d.fulfilled,
+  }));
 
   if (chartData.length === 0) return null;
 
@@ -1028,12 +1026,20 @@ function BacklogChart({
   const change = currentBacklog - startBacklog;
   const changePercent = startBacklog > 0 ? Math.round((change / startBacklog) * 100) : 0;
 
+  // Calculate Y-axis domain with padding (don't start at 0 - show actual range)
+  const backlogValues = chartData.map(d => d.backlog);
+  const minBacklog = Math.min(...backlogValues);
+  const maxBacklog = Math.max(...backlogValues);
+  const padding = Math.max(100, (maxBacklog - minBacklog) * 0.1); // 10% padding or 100 minimum
+  const yMin = Math.max(0, Math.floor((minBacklog - padding) / 100) * 100);
+  const yMax = Math.ceil((maxBacklog + padding) / 100) * 100;
+
   return (
     <div className="bg-bg-secondary rounded border border-border p-4 mb-6 transition-all hover:border-border-hover">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
           <Package className="w-3.5 h-3.5" />
-          BACKLOG (10 DAY)
+          BACKLOG
         </h3>
         <div className="flex items-center gap-4 text-context">
           <span className="text-text-primary font-medium">
@@ -1072,6 +1078,7 @@ function BacklogChart({
               tickLine={false}
               axisLine={false}
               width={40}
+              domain={[yMin, yMax]}
               tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
             />
             <Tooltip
