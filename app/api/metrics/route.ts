@@ -13,6 +13,7 @@ import type {
   FulfillmentLeadTime,
   TransitAnalytics,
   EngravingQueue,
+  OrderAging,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -152,6 +153,7 @@ export async function GET(request: Request) {
       dailyOrdersResult,
       leadTimeResult,
       engravingQueueResult,
+      agingDataResult,
     ] = await Promise.all([
       // Unfulfilled Smithey
       supabase
@@ -427,6 +429,15 @@ export async function GET(request: Request) {
         .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
         .limit(10000),
+
+      // Unfulfilled orders for aging analysis
+      supabase
+        .from("orders")
+        .select("id, warehouse, created_at")
+        .is("fulfillment_status", null)
+        .eq("canceled", false)
+        .not("warehouse", "is", null)
+        .limit(10000),
     ]);
 
     // Build warehouse metrics from count queries
@@ -566,6 +577,9 @@ export async function GET(request: Request) {
     // Process engraving queue
     const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
 
+    // Process order aging for bar chart
+    const orderAging = processOrderAging(agingDataResult.data || [], now);
+
     // Calculate daily backlog (orders created - orders fulfilled)
     // Get current total unfulfilled to calculate running backlog
     const currentUnfulfilled = (unfulfilledSmitheyCount.count || 0) + (unfulfilledSeleryCount.count || 0) +
@@ -584,6 +598,7 @@ export async function GET(request: Request) {
       fulfillmentLeadTime,
       transitAnalytics,
       engravingQueue,
+      orderAging,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -1034,4 +1049,48 @@ function calculateDailyBacklog(
 
   // Reverse so oldest is first
   return result.reverse();
+}
+
+// Process order aging for bar chart
+// Buckets: ≤1d, 2d, 3d, 4d, 5+d
+function processOrderAging(
+  data: Array<{ id: number; warehouse: string | null; created_at: string }>,
+  now: Date
+): OrderAging[] {
+  // Initialize buckets for each warehouse
+  const buckets = {
+    smithey: { "≤1d": 0, "2d": 0, "3d": 0, "4d": 0, "5+d": 0 },
+    selery: { "≤1d": 0, "2d": 0, "3d": 0, "4d": 0, "5+d": 0 },
+  };
+
+  const nowMs = now.getTime();
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  for (const order of data) {
+    const warehouse = order.warehouse as "smithey" | "selery";
+    if (!warehouse || !buckets[warehouse]) continue;
+
+    const createdAt = new Date(order.created_at).getTime();
+    const ageDays = Math.floor((nowMs - createdAt) / oneDay);
+
+    if (ageDays <= 1) {
+      buckets[warehouse]["≤1d"]++;
+    } else if (ageDays === 2) {
+      buckets[warehouse]["2d"]++;
+    } else if (ageDays === 3) {
+      buckets[warehouse]["3d"]++;
+    } else if (ageDays === 4) {
+      buckets[warehouse]["4d"]++;
+    } else {
+      buckets[warehouse]["5+d"]++;
+    }
+  }
+
+  // Convert to array format for chart
+  const bucketOrder = ["≤1d", "2d", "3d", "4d", "5+d"] as const;
+  return bucketOrder.map((bucket) => ({
+    bucket,
+    smithey: buckets.smithey[bucket],
+    selery: buckets.selery[bucket],
+  }));
 }

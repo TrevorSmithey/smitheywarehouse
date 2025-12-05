@@ -190,6 +190,13 @@ export interface EngravingQueue {
   order_count: number; // number of orders with engravings
 }
 
+// Order aging by bucket for bar chart
+export interface OrderAging {
+  bucket: string; // "0", "1", "2", "3", "4", "5+"
+  smithey: number;
+  selery: number;
+}
+
 // API response types
 export interface MetricsResponse {
   warehouses: WarehouseMetrics[];
@@ -203,5 +210,6 @@ export interface MetricsResponse {
   fulfillmentLeadTime: FulfillmentLeadTime[];
   transitAnalytics: TransitAnalytics[];
   engravingQueue: EngravingQueue;
+  orderAging: OrderAging[];
   lastUpdated: string;
 }

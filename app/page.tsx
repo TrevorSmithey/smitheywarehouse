@@ -7,11 +7,14 @@ import {
   Area,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  Legend,
 } from "recharts";
 import {
   RefreshCw,
@@ -36,6 +39,7 @@ import type {
   TransitAnalytics,
   SkuInQueue,
   EngravingQueue,
+  OrderAging,
 } from "@/lib/types";
 
 type DateRangeOption = "today" | "3days" | "7days" | "30days" | "custom";
@@ -291,6 +295,9 @@ export default function Dashboard() {
           />
         ))}
       </div>
+
+      {/* Order Aging Chart */}
+      <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
 
       {/* Stuck Shipments Alert */}
       {stuckCount > 0 && (
@@ -1106,6 +1113,109 @@ function BacklogChart({
           </AreaChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+function OrderAgingChart({
+  aging,
+  loading,
+}: {
+  aging: OrderAging[];
+  loading: boolean;
+}) {
+  // Calculate totals
+  const totalSmithey = aging.reduce((sum, d) => sum + d.smithey, 0);
+  const totalSelery = aging.reduce((sum, d) => sum + d.selery, 0);
+  const over5dSmithey = aging.find(d => d.bucket === "5+d")?.smithey || 0;
+  const over5dSelery = aging.find(d => d.bucket === "5+d")?.selery || 0;
+  const over5dTotal = over5dSmithey + over5dSelery;
+
+  if (aging.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
+          <Clock className="w-3.5 h-3.5" />
+          ORDER AGING
+        </h3>
+        <div className="flex items-center gap-4 text-context">
+          <span className="text-text-secondary">
+            <span className="text-accent-blue font-medium">{formatNumber(totalSmithey)}</span>
+            <span className="text-text-muted ml-1">Smithey</span>
+          </span>
+          <span className="text-text-secondary">
+            <span className="text-text-tertiary font-medium">{formatNumber(totalSelery)}</span>
+            <span className="text-text-muted ml-1">Selery</span>
+          </span>
+          {over5dTotal > 0 && (
+            <span className="text-status-bad">
+              {formatNumber(over5dTotal)} aging 5+ days
+            </span>
+          )}
+        </div>
+      </div>
+      {loading ? (
+        <div className="h-[200px] flex items-center justify-center text-text-muted text-sm">
+          Loading...
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={aging} barGap={2} barCategoryGap="20%">
+            <XAxis
+              dataKey="bucket"
+              stroke="#64748B"
+              fontSize={12}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              stroke="#64748B"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              width={40}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#12151F",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: "4px",
+                fontSize: "12px",
+              }}
+              labelStyle={{ color: "#94A3B8" }}
+              formatter={(value: number, name: string) => [
+                formatNumber(value),
+                name === "smithey" ? "Smithey" : "Selery",
+              ]}
+              labelFormatter={(label) => `${label} old`}
+            />
+            <Bar
+              dataKey="smithey"
+              name="Smithey"
+              fill="#0EA5E9"
+              radius={[2, 2, 0, 0]}
+            />
+            <Bar
+              dataKey="selery"
+              name="Selery"
+              fill="#64748B"
+              radius={[2, 2, 0, 0]}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+      <div className="flex justify-center gap-6 mt-4">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-accent-blue" />
+          <span className="text-context text-text-secondary">Smithey</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-text-tertiary" />
+          <span className="text-context text-text-secondary">Selery</span>
+        </div>
+      </div>
     </div>
   );
 }
