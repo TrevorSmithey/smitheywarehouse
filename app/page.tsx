@@ -28,11 +28,14 @@ import type {
   TransitAnalytics,
 } from "@/lib/types";
 
+type DateRange = 7 | 14 | 30;
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange>(7); // Default to 7 days
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -77,7 +80,7 @@ export default function Dashboard() {
     { queue: 0, today: 0, week: 0 }
   ) || { queue: 0, today: 0, week: 0 };
 
-  const chartData = processChartData(metrics?.daily || []);
+  const chartData = processChartData(metrics?.daily || [], dateRange);
 
   return (
     <div className="min-h-screen bg-[#0A0C0F] text-[#E8E6E3] p-4 md:p-6 font-mono">
@@ -156,11 +159,28 @@ export default function Dashboard() {
         <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
       )}
 
-      {/* Weekly Trend Chart */}
+      {/* Fulfillment Trend Chart */}
       <div className="bg-[#12151A] rounded-lg border border-[#1F2937] p-4 mb-6">
-        <h3 className="text-xs font-medium text-[#6B7280] mb-4 tracking-wide">
-          30-DAY FULFILLMENT TREND
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-medium text-[#6B7280] tracking-wide">
+            FULFILLMENT TREND
+          </h3>
+          <div className="flex gap-1">
+            {([7, 14, 30] as DateRange[]).map((days) => (
+              <button
+                key={days}
+                onClick={() => setDateRange(days)}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  dateRange === days
+                    ? "bg-[#C9A962] text-[#0A0C0F] font-medium"
+                    : "bg-[#1F2937] text-[#6B7280] hover:text-[#9CA3AF]"
+                }`}
+              >
+                {days}d
+              </button>
+            ))}
+          </div>
+        </div>
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={chartData} barCategoryGap="20%">
@@ -187,6 +207,8 @@ export default function Dashboard() {
                   fontSize: "11px",
                 }}
                 labelStyle={{ color: "#9CA3AF" }}
+                itemStyle={{ color: "#E8E6E3" }}
+                cursor={{ fill: "rgba(201, 169, 98, 0.1)" }}
               />
               <Bar
                 dataKey="Smithey"
@@ -534,7 +556,7 @@ function TransitAnalyticsPanel({ analytics }: { analytics: TransitAnalytics[] })
   );
 }
 
-function processChartData(daily: DailyFulfillment[]) {
+function processChartData(daily: DailyFulfillment[], days: number = 7) {
   const grouped = new Map<string, { Smithey: number; Selery: number }>();
 
   for (const item of daily) {
@@ -550,7 +572,9 @@ function processChartData(daily: DailyFulfillment[]) {
   return Array.from(grouped.entries())
     .map(([date, counts]) => ({
       date: format(new Date(date), "M/d"),
+      rawDate: date,
       ...counts,
     }))
-    .slice(-30);
+    .sort((a, b) => a.rawDate.localeCompare(b.rawDate))
+    .slice(-days);
 }
