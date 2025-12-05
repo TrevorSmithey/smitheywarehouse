@@ -324,7 +324,7 @@ export async function GET(request: Request) {
         .lt("created_at", sevenDaysAgo.toISOString()),
 
       // Daily fulfillments for chart - filtered by selected date range
-      // Higher limit to ensure all data for 30 days, sorted descending to ensure recent data first
+      // Limit increased to handle high volume periods (1500/day × 30 days = 45k)
       supabase
         .from("orders")
         .select("id, warehouse, fulfilled_at")
@@ -334,7 +334,7 @@ export async function GET(request: Request) {
         .not("warehouse", "is", null)
         .not("fulfilled_at", "is", null)
         .order("fulfilled_at", { ascending: false })
-        .limit(20000),
+        .limit(50000),
 
       // Oldest unfulfilled orders for Smithey (get 20 so we can filter out restoration)
       supabase
