@@ -12,13 +12,13 @@ import {
 } from "recharts";
 import {
   RefreshCw,
-  AlertTriangle,
   TrendingUp,
   TrendingDown,
   Package,
   Truck,
   Clock,
   MapPin,
+  AlertTriangle,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -30,12 +30,17 @@ import type {
 
 type DateRange = 7 | 14 | 30;
 
+function formatNumber(num: number | undefined | null): string {
+  if (num === undefined || num === null || isNaN(num)) return "0";
+  return num.toLocaleString("en-US");
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange>(7); // Default to 7 days
+  const [dateRange, setDateRange] = useState<DateRange>(7);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -62,32 +67,29 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
-  // Calculate alert conditions - only stuck shipments warrant top-level alert
-  // Old orders in queue are normal during busy season
-  const stuckCount = metrics?.stuckShipments?.length || 0;
-  const hasAlerts = stuckCount > 0;
-
   // Totals
   const totals = metrics?.warehouses?.reduce(
     (acc, wh) => ({
       queue: acc.queue + wh.unfulfilled_count + wh.partial_count,
       today: acc.today + wh.fulfilled_today,
       week: acc.week + wh.fulfilled_this_week,
+      avg: acc.avg + wh.avg_per_day_7d,
     }),
-    { queue: 0, today: 0, week: 0 }
-  ) || { queue: 0, today: 0, week: 0 };
+    { queue: 0, today: 0, week: 0, avg: 0 }
+  ) || { queue: 0, today: 0, week: 0, avg: 0 };
 
+  const stuckCount = metrics?.stuckShipments?.length || 0;
   const chartData = processChartData(metrics?.daily || [], dateRange);
 
   return (
-    <div className="min-h-screen bg-[#0A0C0F] text-[#E8E6E3] p-4 md:p-6 font-mono">
+    <div className="min-h-screen bg-bg-primary text-text-primary p-6">
       {/* Header */}
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-lg font-medium tracking-tight text-[#C9A962]">
-            SMITHEY WAREHOUSE
+          <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
+            WAREHOUSE FULFILLMENT
           </h1>
-          <p className="text-xs text-[#6B7280] mt-0.5">
+          <p className="text-context text-text-muted mt-1">
             {lastRefresh
               ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
               : "Loading..."}
@@ -96,44 +98,47 @@ export default function Dashboard() {
         <button
           onClick={fetchMetrics}
           disabled={loading}
-          className="p-2 text-[#6B7280] hover:text-[#C9A962] transition-colors disabled:opacity-50"
+          className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </header>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">
+        <div className="mb-6 p-4 bg-status-bad/10 border border-status-bad/30 rounded text-status-bad text-sm">
           {error}
         </div>
       )}
 
-      {/* Alert Banner - Only shows for stuck shipments (actual shipping problems) */}
-      {hasAlerts && <AlertBanner stuckCount={stuckCount} />}
-
-      {/* Quick Stats Bar */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <StatCard
+      {/* KPI Cards - Match Lathe style */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <KPICard
           label="IN QUEUE"
           value={totals.queue}
           loading={loading}
-          variant={totals.queue > 500 ? "warning" : "default"}
+          status={totals.queue > 500 ? "warning" : undefined}
         />
-        <StatCard
+        <KPICard
           label="SHIPPED TODAY"
           value={totals.today}
           loading={loading}
-          variant="success"
+          status="good"
         />
-        <StatCard
+        <KPICard
           label="THIS WEEK"
           value={totals.week}
           loading={loading}
         />
+        <KPICard
+          label="AVG / DAY"
+          value={Math.round(totals.avg / 2)}
+          loading={loading}
+          subtitle="7-day average"
+        />
       </div>
 
-      {/* Warehouse Comparison - The Core View */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      {/* Warehouse Panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {metrics?.warehouses?.map((wh) => (
           <WarehousePanel
             key={wh.warehouse}
@@ -149,26 +154,26 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Stuck Shipments - Actionable List */}
+      {/* Stuck Shipments Alert */}
       {stuckCount > 0 && (
         <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
       )}
 
       {/* Fulfillment Trend Chart */}
-      <div className="bg-[#12151A] rounded-lg border border-[#1F2937] p-4 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-medium text-[#6B7280] tracking-wide">
+      <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-label font-medium text-text-tertiary">
             FULFILLMENT TREND
           </h3>
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             {([7, 14, 30] as DateRange[]).map((days) => (
               <button
                 key={days}
                 onClick={() => setDateRange(days)}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
+                className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
                   dateRange === days
-                    ? "bg-[#C9A962] text-[#0A0C0F] font-medium"
-                    : "bg-[#1F2937] text-[#6B7280] hover:text-[#9CA3AF]"
+                    ? "bg-accent-blue text-white border-accent-blue"
+                    : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
                 }`}
               >
                 {days}d
@@ -177,61 +182,61 @@ export default function Dashboard() {
           </div>
         </div>
         {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={chartData} barCategoryGap="20%">
               <XAxis
                 dataKey="date"
-                stroke="#374151"
-                fontSize={10}
+                stroke="#64748B"
+                fontSize={11}
                 tickLine={false}
                 axisLine={false}
                 interval="preserveStartEnd"
               />
               <YAxis
-                stroke="#374151"
-                fontSize={10}
+                stroke="#64748B"
+                fontSize={11}
                 tickLine={false}
                 axisLine={false}
-                width={30}
+                width={35}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#1F2937",
-                  border: "1px solid #374151",
+                  backgroundColor: "#12151F",
+                  border: "1px solid rgba(255,255,255,0.06)",
                   borderRadius: "4px",
-                  fontSize: "11px",
+                  fontSize: "12px",
                 }}
-                labelStyle={{ color: "#9CA3AF" }}
-                itemStyle={{ color: "#E8E6E3" }}
-                cursor={{ fill: "rgba(201, 169, 98, 0.1)" }}
+                labelStyle={{ color: "#94A3B8" }}
+                itemStyle={{ color: "#FFFFFF" }}
+                cursor={{ fill: "rgba(14, 165, 233, 0.1)" }}
               />
               <Bar
                 dataKey="Smithey"
-                fill="#C9A962"
+                fill="#0EA5E9"
                 radius={[2, 2, 0, 0]}
                 stackId="a"
               />
               <Bar
                 dataKey="Selery"
-                fill="#4B5563"
+                fill="#64748B"
                 radius={[2, 2, 0, 0]}
                 stackId="a"
               />
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-[180px] flex items-center justify-center text-[#4B5563] text-sm">
+          <div className="h-[200px] flex items-center justify-center text-text-muted text-sm">
             No data available
           </div>
         )}
-        <div className="flex justify-center gap-6 mt-3">
+        <div className="flex justify-center gap-6 mt-4">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-[#C9A962]" />
-            <span className="text-xs text-[#6B7280]">Smithey</span>
+            <div className="w-3 h-3 rounded bg-accent-blue" />
+            <span className="text-context text-text-secondary">Smithey</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded bg-[#4B5563]" />
-            <span className="text-xs text-[#6B7280]">Selery</span>
+            <div className="w-3 h-3 rounded bg-text-tertiary" />
+            <span className="text-context text-text-secondary">Selery</span>
           </div>
         </div>
       </div>
@@ -242,43 +247,40 @@ export default function Dashboard() {
   );
 }
 
-function AlertBanner({ stuckCount }: { stuckCount: number }) {
-  return (
-    <div className="mb-6 p-3 bg-[#1F2937] border-l-2 border-[#EF4444] rounded">
-      <div className="flex items-center gap-2 text-sm">
-        <Truck className="w-4 h-4 text-[#EF4444]" />
-        <span className="text-[#EF4444] font-medium">{stuckCount}</span>
-        <span className="text-[#9CA3AF]">
-          shipment{stuckCount > 1 ? "s" : ""} stuck — no tracking scans for 3+ days
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({
+function KPICard({
   label,
   value,
   loading,
-  variant = "default",
+  status,
+  subtitle,
 }: {
   label: string;
   value: number;
   loading: boolean;
-  variant?: "default" | "success" | "warning";
+  status?: "good" | "warning" | "bad";
+  subtitle?: string;
 }) {
-  const variantStyles = {
-    default: "text-[#E8E6E3]",
-    success: "text-[#10B981]",
-    warning: "text-[#F59E0B]",
+  const statusColors = {
+    good: "text-status-good",
+    warning: "text-status-warning",
+    bad: "text-status-bad",
   };
 
   return (
-    <div className="bg-[#12151A] rounded-lg border border-[#1F2937] p-4">
-      <div className="text-xs text-[#6B7280] mb-1 tracking-wide">{label}</div>
-      <div className={`text-2xl font-light ${variantStyles[variant]}`}>
-        {loading ? "—" : value.toLocaleString()}
+    <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
+      <div className="text-label text-text-tertiary font-medium mb-2">
+        {label}
       </div>
+      <div
+        className={`text-metric font-light tracking-tight-sm ${
+          status ? statusColors[status] : "text-text-primary"
+        }`}
+      >
+        {loading ? "—" : formatNumber(value)}
+      </div>
+      {subtitle && (
+        <div className="text-context text-text-muted mt-1">{subtitle}</div>
+      )}
     </div>
   );
 }
@@ -290,36 +292,44 @@ function WarehousePanel({
   loading,
 }: {
   data: WarehouseMetrics;
-  queueHealth?: { waiting_1_day: number; waiting_3_days: number; waiting_7_days: number; oldest_order_name: string | null; oldest_order_days: number };
+  queueHealth?: {
+    waiting_1_day: number;
+    waiting_3_days: number;
+    waiting_7_days: number;
+    oldest_order_name: string | null;
+    oldest_order_days: number;
+  };
   transitData?: TransitAnalytics;
   loading: boolean;
 }) {
   const name = data.warehouse.toUpperCase();
   const isSmithey = data.warehouse === "smithey";
-  const accentColor = isSmithey ? "#C9A962" : "#6B7280";
   const weekChange = data.week_over_week_change;
 
   return (
-    <div className="bg-[#12151A] rounded-lg border border-[#1F2937] overflow-hidden">
+    <div className="bg-bg-secondary rounded border border-border overflow-hidden transition-all hover:border-border-hover">
       {/* Header */}
       <div
-        className="px-4 py-3 border-b border-[#1F2937] flex items-center justify-between"
-        style={{ borderLeftWidth: "3px", borderLeftColor: accentColor }}
+        className={`px-6 py-4 border-b border-border flex items-center justify-between ${
+          isSmithey ? "border-l-2 border-l-accent-blue" : "border-l-2 border-l-text-tertiary"
+        }`}
       >
-        <span className="font-medium text-sm tracking-wide">{name}</span>
-        <div className="flex items-center gap-1 text-xs">
+        <span className="text-label font-medium text-text-primary tracking-wide-sm">
+          {name}
+        </span>
+        <div className="flex items-center gap-1 text-context">
           {weekChange > 0 ? (
-            <TrendingUp className="w-3 h-3 text-[#10B981]" />
+            <TrendingUp className="w-3.5 h-3.5 text-status-good" />
           ) : weekChange < 0 ? (
-            <TrendingDown className="w-3 h-3 text-[#EF4444]" />
+            <TrendingDown className="w-3.5 h-3.5 text-status-bad" />
           ) : null}
           <span
             className={
               weekChange > 0
-                ? "text-[#10B981]"
+                ? "text-status-good"
                 : weekChange < 0
-                ? "text-[#EF4444]"
-                : "text-[#6B7280]"
+                ? "text-status-bad"
+                : "text-text-tertiary"
             }
           >
             {weekChange > 0 ? "+" : ""}
@@ -329,85 +339,110 @@ function WarehousePanel({
       </div>
 
       {/* Metrics Grid */}
-      <div className="p-4">
-        <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="p-6">
+        <div className="grid grid-cols-4 gap-6 mb-6">
           <div>
-            <div className="text-2xl font-light">
-              {loading ? "—" : data.unfulfilled_count}
+            <div className="text-3xl font-light text-text-primary">
+              {loading ? "—" : formatNumber(data.unfulfilled_count)}
             </div>
-            <div className="text-xs text-[#6B7280] flex items-center gap-1 mt-1">
+            <div className="text-label text-text-tertiary flex items-center gap-1 mt-2">
               <Package className="w-3 h-3" />
               Unfulfilled
             </div>
           </div>
           <div>
-            <div className={`text-2xl font-light ${data.partial_count > 0 ? "text-[#F59E0B]" : ""}`}>
-              {loading ? "—" : data.partial_count}
+            <div
+              className={`text-3xl font-light ${
+                data.partial_count > 0 ? "text-status-warning" : "text-text-primary"
+              }`}
+            >
+              {loading ? "—" : formatNumber(data.partial_count)}
             </div>
-            <div className="text-xs text-[#6B7280] flex items-center gap-1 mt-1">
+            <div className="text-label text-text-tertiary flex items-center gap-1 mt-2">
               <Clock className="w-3 h-3" />
               Partial
             </div>
           </div>
           <div>
-            <div className="text-2xl font-light text-[#10B981]">
-              {loading ? "—" : data.fulfilled_today}
+            <div className="text-3xl font-light text-status-good">
+              {loading ? "—" : formatNumber(data.fulfilled_today)}
             </div>
-            <div className="text-xs text-[#6B7280] mt-1">Today</div>
+            <div className="text-label text-text-tertiary mt-2">Today</div>
           </div>
           <div>
-            <div className="text-2xl font-light">
-              {loading ? "—" : data.avg_per_day_7d}
+            <div className="text-3xl font-light text-text-primary">
+              {loading ? "—" : formatNumber(data.avg_per_day_7d)}
             </div>
-            <div className="text-xs text-[#6B7280] mt-1">Avg/Day</div>
+            <div className="text-label text-text-tertiary mt-2">Avg/Day</div>
           </div>
         </div>
 
-        {/* Queue Aging - Compact */}
+        {/* Queue Aging */}
         {queueHealth && (
-          <div className="bg-[#0A0C0F] rounded p-3 mb-3">
-            <div className="text-xs text-[#6B7280] mb-2">Queue Aging</div>
-            <div className="flex gap-4">
+          <div className="bg-bg-tertiary rounded p-4 mb-4">
+            <div className="text-label text-text-tertiary mb-3">QUEUE AGING</div>
+            <div className="flex gap-6">
               <div>
-                <span className="text-lg font-light">{queueHealth.waiting_1_day}</span>
-                <span className="text-xs text-[#6B7280] ml-1">&gt;1d</span>
+                <span className="text-xl font-light text-text-primary">
+                  {queueHealth.waiting_1_day}
+                </span>
+                <span className="text-context text-text-muted ml-1">&gt;1d</span>
               </div>
               <div>
-                <span className={`text-lg font-light ${queueHealth.waiting_3_days > 0 ? "text-[#F59E0B]" : ""}`}>
+                <span
+                  className={`text-xl font-light ${
+                    queueHealth.waiting_3_days > 0
+                      ? "text-status-warning"
+                      : "text-text-primary"
+                  }`}
+                >
                   {queueHealth.waiting_3_days}
                 </span>
-                <span className="text-xs text-[#6B7280] ml-1">&gt;3d</span>
+                <span className="text-context text-text-muted ml-1">&gt;3d</span>
               </div>
               <div>
-                <span className={`text-lg font-light ${queueHealth.waiting_7_days > 0 ? "text-[#EF4444]" : ""}`}>
+                <span
+                  className={`text-xl font-light ${
+                    queueHealth.waiting_7_days > 0
+                      ? "text-status-bad"
+                      : "text-text-primary"
+                  }`}
+                >
                   {queueHealth.waiting_7_days}
                 </span>
-                <span className="text-xs text-[#6B7280] ml-1">&gt;7d</span>
+                <span className="text-context text-text-muted ml-1">&gt;7d</span>
               </div>
             </div>
             {queueHealth.oldest_order_name && (
-              <div className="text-xs text-[#6B7280] mt-2">
-                Oldest: <span className="text-[#9CA3AF]">{queueHealth.oldest_order_name}</span>
-                <span className="text-[#EF4444] ml-1">({queueHealth.oldest_order_days}d)</span>
+              <div className="text-context text-text-muted mt-3">
+                Oldest:{" "}
+                <span className="text-text-secondary">
+                  {queueHealth.oldest_order_name}
+                </span>
+                <span className="text-status-bad ml-1">
+                  ({queueHealth.oldest_order_days}d)
+                </span>
               </div>
             )}
           </div>
         )}
 
-        {/* Transit Time - Compact */}
+        {/* Transit Time */}
         {transitData && transitData.total_delivered > 0 && (
-          <div className="bg-[#0A0C0F] rounded p-3">
+          <div className="bg-bg-tertiary rounded p-4">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-[#6B7280] flex items-center gap-1">
+              <div className="text-label text-text-tertiary flex items-center gap-1">
                 <Truck className="w-3 h-3" />
-                Avg Transit
+                AVG TRANSIT
               </div>
-              <div className="text-sm">
-                <span className="text-[#E8E6E3] font-medium">{transitData.avg_transit_days}</span>
-                <span className="text-[#6B7280] ml-1">days</span>
+              <div className="text-context">
+                <span className="text-text-primary font-medium">
+                  {transitData.avg_transit_days}
+                </span>
+                <span className="text-text-muted ml-1">days</span>
               </div>
             </div>
-            <div className="text-xs text-[#6B7280]">
+            <div className="text-context text-text-muted">
               {transitData.total_delivered.toLocaleString()} deliveries tracked
             </div>
           </div>
@@ -418,59 +453,62 @@ function WarehousePanel({
 }
 
 function StuckShipmentsPanel({ shipments }: { shipments: StuckShipment[] }) {
-  // Group by warehouse
   const smithey = shipments.filter((s) => s.warehouse === "smithey");
   const selery = shipments.filter((s) => s.warehouse === "selery");
 
   const renderShipment = (s: StuckShipment) => (
     <div
       key={`${s.order_id}-${s.tracking_number}`}
-      className="flex items-center justify-between py-2 border-b border-[#1F2937] last:border-0"
+      className="flex items-center justify-between py-3 border-b border-border-subtle last:border-0"
     >
       <div className="min-w-0">
-        <div className="text-sm text-[#E8E6E3]">{s.order_name}</div>
-        <div className="text-xs text-[#6B7280] truncate">
+        <div className="text-context text-text-primary">{s.order_name}</div>
+        <div className="text-label text-text-muted truncate">
           {s.carrier}: {s.tracking_number}
         </div>
       </div>
-      <div className="text-right flex-shrink-0 ml-3">
+      <div className="text-right flex-shrink-0 ml-4">
         <div
-          className={`text-sm font-medium ${
+          className={`text-context font-medium ${
             s.days_without_scan >= 7
-              ? "text-[#EF4444]"
+              ? "text-status-bad"
               : s.days_without_scan >= 5
-              ? "text-[#F59E0B]"
-              : "text-[#E8E6E3]"
+              ? "text-status-warning"
+              : "text-text-primary"
           }`}
         >
           {s.days_without_scan}d
         </div>
-        <div className="text-xs text-[#6B7280]">no scan</div>
+        <div className="text-label text-text-muted">no scan</div>
       </div>
     </div>
   );
 
   return (
-    <div className="bg-[#12151A] rounded-lg border border-[#1F2937] p-4 mb-6">
-      <h3 className="text-xs font-medium text-[#F59E0B] mb-4 tracking-wide flex items-center gap-2">
-        <Truck className="w-3.5 h-3.5" />
+    <div className="bg-bg-secondary rounded border border-border p-6 mb-6">
+      <h3 className="text-label font-medium text-status-warning mb-4 flex items-center gap-2">
+        <AlertTriangle className="w-3.5 h-3.5" />
         STUCK SHIPMENTS — NO SCANS 3+ DAYS
       </h3>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
-          <div className="text-xs text-[#6B7280] mb-2">SMITHEY ({smithey.length})</div>
+          <div className="text-label text-text-tertiary mb-3">
+            SMITHEY ({smithey.length})
+          </div>
           {smithey.length > 0 ? (
             smithey.slice(0, 5).map(renderShipment)
           ) : (
-            <div className="text-xs text-[#4B5563] py-2">All clear</div>
+            <div className="text-context text-text-muted py-2">All clear</div>
           )}
         </div>
         <div>
-          <div className="text-xs text-[#6B7280] mb-2">SELERY ({selery.length})</div>
+          <div className="text-label text-text-tertiary mb-3">
+            SELERY ({selery.length})
+          </div>
           {selery.length > 0 ? (
             selery.slice(0, 5).map(renderShipment)
           ) : (
-            <div className="text-xs text-[#4B5563] py-2">All clear</div>
+            <div className="text-context text-text-muted py-2">All clear</div>
           )}
         </div>
       </div>
@@ -478,44 +516,48 @@ function StuckShipmentsPanel({ shipments }: { shipments: StuckShipment[] }) {
   );
 }
 
-function TransitAnalyticsPanel({ analytics }: { analytics: TransitAnalytics[] }) {
+function TransitAnalyticsPanel({
+  analytics,
+}: {
+  analytics: TransitAnalytics[];
+}) {
   const hasData = analytics.some((a) => a.total_delivered > 0);
   if (!hasData) return null;
 
   return (
-    <div className="bg-[#12151A] rounded-lg border border-[#1F2937] p-4">
-      <h3 className="text-xs font-medium text-[#6B7280] mb-4 tracking-wide flex items-center gap-2">
+    <div className="bg-bg-secondary rounded border border-border p-6">
+      <h3 className="text-label font-medium text-text-tertiary mb-4 flex items-center gap-2">
         <MapPin className="w-3.5 h-3.5" />
         TRANSIT TIME BY STATE
       </h3>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {analytics.map((wh) => (
           <div key={wh.warehouse}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-medium text-[#9CA3AF] uppercase">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-label font-medium text-text-secondary uppercase">
                 {wh.warehouse}
               </div>
-              <div className="text-xs text-[#6B7280]">
-                Avg: <span className="text-[#E8E6E3]">{wh.avg_transit_days}d</span>
+              <div className="text-context text-text-muted">
+                Avg: <span className="text-text-primary">{wh.avg_transit_days}d</span>
               </div>
             </div>
             {wh.by_state.length > 0 ? (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {wh.by_state.slice(0, 6).map((state) => (
                   <div
                     key={state.state}
-                    className="flex items-center justify-between text-xs py-1"
+                    className="flex items-center justify-between text-context py-1.5"
                   >
-                    <span className="text-[#9CA3AF]">{state.state}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[#6B7280]">
+                    <span className="text-text-secondary">{state.state}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-text-muted">
                         {state.shipment_count} shipments
                       </span>
                       <span
                         className={`font-medium ${
                           state.avg_transit_days > 5
-                            ? "text-[#F59E0B]"
-                            : "text-[#E8E6E3]"
+                            ? "text-status-warning"
+                            : "text-text-primary"
                         }`}
                       >
                         {state.avg_transit_days}d
@@ -525,7 +567,7 @@ function TransitAnalyticsPanel({ analytics }: { analytics: TransitAnalytics[] })
                 ))}
               </div>
             ) : (
-              <div className="text-xs text-[#4B5563] py-2">
+              <div className="text-context text-text-muted py-2">
                 No delivery data yet
               </div>
             )}
