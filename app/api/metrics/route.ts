@@ -7,6 +7,8 @@ import type {
   WeeklyFulfillment,
   QueueHealth,
   SkuInQueue,
+  StuckShipment,
+  TransitAnalytics,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +49,8 @@ export async function GET() {
       queueAgingResult,
       oldestOrderResult,
       skuQueueResult,
+      stuckShipmentsResult,
+      transitDataResult,
     ] = await Promise.all([
       // Unfulfilled by warehouse
       supabase
@@ -145,6 +149,35 @@ export async function GET() {
         .is("orders.fulfillment_status", null)
         .eq("orders.canceled", false)
         .not("orders.warehouse", "is", null),
+
+      // Stuck shipments - in transit with no scans for 3+ days
+      supabase
+        .from("shipments")
+        .select(`
+          order_id,
+          tracking_number,
+          carrier,
+          shipped_at,
+          days_without_scan,
+          last_scan_location,
+          orders!inner(order_name, warehouse)
+        `)
+        .eq("status", "in_transit")
+        .gte("days_without_scan", 3)
+        .order("days_without_scan", { ascending: false })
+        .limit(20),
+
+      // Transit time data for delivered shipments (excluding smith-eng SKU outliers)
+      supabase
+        .from("shipments")
+        .select(`
+          transit_days,
+          delivery_state,
+          orders!inner(warehouse)
+        `)
+        .eq("status", "delivered")
+        .not("transit_days", "is", null)
+        .gte("shipped_at", "2024-11-15T00:00:00.000Z"),
     ]);
 
     // Process basic counts
@@ -197,12 +230,20 @@ export async function GET() {
     // Process SKU queue
     const topSkusInQueue = processSkuQueue(skuQueueResult.data || []);
 
+    // Process stuck shipments
+    const stuckShipments = processStuckShipments(stuckShipmentsResult.data || [], now);
+
+    // Process transit analytics
+    const transitAnalytics = processTransitAnalytics(transitDataResult.data || []);
+
     const response: MetricsResponse = {
       warehouses,
       daily,
       weekly,
       queueHealth,
       topSkusInQueue,
+      stuckShipments,
+      transitAnalytics,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -388,4 +429,104 @@ function processSkuQueue(data: any[]): SkuInQueue[] {
   return result
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, 20);
+}
+
+interface StuckShipmentRow {
+  order_id: number;
+  tracking_number: string;
+  carrier: string | null;
+  shipped_at: string;
+  days_without_scan: number;
+  last_scan_location: string | null;
+  orders: {
+    order_name: string;
+    warehouse: string | null;
+  } | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processStuckShipments(data: any[], now: Date): StuckShipment[] {
+  return data
+    .filter((row) => row.orders?.warehouse)
+    .map((row: StuckShipmentRow) => {
+      const shippedAt = new Date(row.shipped_at);
+      const daysSinceShipped = Math.floor(
+        (now.getTime() - shippedAt.getTime()) / (24 * 60 * 60 * 1000)
+      );
+
+      return {
+        order_id: row.order_id,
+        order_name: row.orders?.order_name || `#${row.order_id}`,
+        warehouse: row.orders?.warehouse || "unknown",
+        tracking_number: row.tracking_number,
+        carrier: row.carrier,
+        shipped_at: row.shipped_at,
+        days_since_shipped: daysSinceShipped,
+        days_without_scan: row.days_without_scan,
+        last_scan_location: row.last_scan_location,
+      };
+    });
+}
+
+interface TransitDataRow {
+  transit_days: number;
+  delivery_state: string | null;
+  orders: {
+    warehouse: string | null;
+  } | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processTransitAnalytics(data: any[]): TransitAnalytics[] {
+  const byWarehouse = new Map<string, {
+    totalDays: number;
+    count: number;
+    byState: Map<string, { totalDays: number; count: number }>;
+  }>();
+
+  // Initialize warehouses
+  byWarehouse.set("smithey", { totalDays: 0, count: 0, byState: new Map() });
+  byWarehouse.set("selery", { totalDays: 0, count: 0, byState: new Map() });
+
+  for (const row of data) {
+    const typedRow = row as TransitDataRow;
+    const warehouse = typedRow.orders?.warehouse;
+    if (!warehouse || !typedRow.transit_days) continue;
+
+    const whData = byWarehouse.get(warehouse);
+    if (!whData) continue;
+
+    whData.totalDays += typedRow.transit_days;
+    whData.count++;
+
+    // Aggregate by state
+    const state = typedRow.delivery_state?.toUpperCase() || "UNKNOWN";
+    const stateData = whData.byState.get(state) || { totalDays: 0, count: 0 };
+    stateData.totalDays += typedRow.transit_days;
+    stateData.count++;
+    whData.byState.set(state, stateData);
+  }
+
+  return ["smithey", "selery"].map((warehouse) => {
+    const whData = byWarehouse.get(warehouse)!;
+
+    // Get top 10 states by shipment count
+    const stateStats = Array.from(whData.byState.entries())
+      .map(([state, data]) => ({
+        state,
+        avg_transit_days: Math.round((data.totalDays / data.count) * 10) / 10,
+        shipment_count: data.count,
+      }))
+      .sort((a, b) => b.shipment_count - a.shipment_count)
+      .slice(0, 10);
+
+    return {
+      warehouse,
+      avg_transit_days: whData.count > 0
+        ? Math.round((whData.totalDays / whData.count) * 10) / 10
+        : 0,
+      total_delivered: whData.count,
+      by_state: stateStats,
+    };
+  });
 }

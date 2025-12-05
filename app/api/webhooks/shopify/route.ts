@@ -107,6 +107,35 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     }
   }
 
+  // Upsert shipment tracking data
+  if (order.fulfillments) {
+    for (const fulfillment of order.fulfillments) {
+      // Get tracking numbers (can be single or array)
+      const trackingNumbers = fulfillment.tracking_numbers ||
+        (fulfillment.tracking_number ? [fulfillment.tracking_number] : []);
+
+      for (const trackingNumber of trackingNumbers) {
+        if (!trackingNumber) continue;
+
+        const { error: shipmentError } = await supabase.from("shipments").upsert(
+          {
+            order_id: order.id,
+            tracking_number: trackingNumber,
+            carrier: fulfillment.tracking_company || null,
+            shipped_at: fulfillment.created_at,
+            status: "in_transit",
+          },
+          { onConflict: "order_id,tracking_number" }
+        );
+
+        if (shipmentError) {
+          console.error("Error upserting shipment:", shipmentError);
+          // Don't throw - tracking is supplementary data
+        }
+      }
+    }
+  }
+
   console.log(`Processed order ${order.name} (${order.id})`);
 }
 

@@ -10,6 +10,9 @@
  * - SUPABASE_SERVICE_KEY
  */
 
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { createClient } from "@supabase/supabase-js";
 
 // Configuration
@@ -136,7 +139,7 @@ async function fetchShopifyOrders(): Promise<ShopifyOrderNode[]> {
     console.log(`Fetching page ${pageCount}...`);
 
     const response: Response = await fetch(
-      `https://${storeUrl}/admin/api/2024-01/graphql.json`,
+      `https://${storeUrl}/admin/api/2024-10/graphql.json`,
       {
         method: "POST",
         headers: {

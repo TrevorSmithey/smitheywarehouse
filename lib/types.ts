@@ -89,6 +89,9 @@ export interface ShopifyFulfillment {
   created_at: string;
   status: string;
   line_items: ShopifyFulfillmentLineItem[];
+  tracking_number?: string;
+  tracking_numbers?: string[];
+  tracking_company?: string;
 }
 
 export interface ShopifyFulfillmentLineItem {
@@ -104,6 +107,47 @@ export interface ShopifyLineItem {
   fulfillable_quantity: number;
 }
 
+// Shipment tracking
+export interface Shipment {
+  id: number;
+  order_id: number;
+  tracking_number: string;
+  carrier: string | null;
+  shipped_at: string;
+  status: string;
+  last_scan_at: string | null;
+  last_scan_location: string | null;
+  days_without_scan: number;
+  easypost_tracker_id: string | null;
+  checked_at: string | null;
+}
+
+export interface StuckShipment {
+  order_id: number;
+  order_name: string;
+  warehouse: string;
+  tracking_number: string;
+  carrier: string | null;
+  shipped_at: string;
+  days_since_shipped: number;
+  days_without_scan: number;
+  last_scan_location: string | null;
+}
+
+// Transit time analytics
+export interface TransitAnalytics {
+  warehouse: string;
+  avg_transit_days: number;
+  total_delivered: number;
+  by_state: StateTransitStats[];
+}
+
+export interface StateTransitStats {
+  state: string;
+  avg_transit_days: number;
+  shipment_count: number;
+}
+
 // API response types
 export interface MetricsResponse {
   warehouses: WarehouseMetrics[];
@@ -111,5 +155,7 @@ export interface MetricsResponse {
   weekly: WeeklyFulfillment[];
   queueHealth: QueueHealth[];
   topSkusInQueue: SkuInQueue[];
+  stuckShipments: StuckShipment[];
+  transitAnalytics: TransitAnalytics[];
   lastUpdated: string;
 }
