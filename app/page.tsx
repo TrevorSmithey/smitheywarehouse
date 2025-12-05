@@ -359,6 +359,9 @@ export default function Dashboard() {
             transitData={metrics.transitAnalytics?.find(
               (t) => t.warehouse === wh.warehouse
             )}
+            leadTimeData={metrics.fulfillmentLeadTime?.find(
+              (l) => l.warehouse === wh.warehouse
+            )}
             loading={loading}
             dateRangeOption={dateRangeOption}
           />
@@ -369,14 +372,6 @@ export default function Dashboard() {
       {stuckCount > 0 && (
         <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
       )}
-
-      {/* Fulfillment Lead Time Analytics */}
-      <FulfillmentLeadTimePanel
-        data={metrics?.fulfillmentLeadTime || []}
-        warehouses={metrics?.warehouses || []}
-        loading={loading}
-        dateRangeOption={dateRangeOption}
-      />
 
       {/* Two-column layout: Chart + Top SKUs */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -591,6 +586,7 @@ function WarehousePanel({
   data,
   queueHealth,
   transitData,
+  leadTimeData,
   loading,
   dateRangeOption,
 }: {
@@ -603,6 +599,7 @@ function WarehousePanel({
     oldest_order_days: number;
   };
   transitData?: TransitAnalytics;
+  leadTimeData?: FulfillmentLeadTime;
   dateRangeOption: DateRangeOption;
   loading: boolean;
 }) {
@@ -750,6 +747,81 @@ function WarehousePanel({
           </div>
         )}
 
+        {/* Lead Time + Expected Clear + SLA Breakdown */}
+        {leadTimeData && leadTimeData.total_fulfilled > 0 && (
+          <div className="bg-bg-tertiary rounded p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-label text-text-tertiary flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                FULFILLMENT SPEED
+              </div>
+              {leadTimeData.trend_pct !== 0 && (
+                <div className="flex items-center gap-1 text-context">
+                  <span
+                    className={
+                      leadTimeData.trend_pct < 0
+                        ? "text-status-good"
+                        : "text-status-warning"
+                    }
+                  >
+                    {leadTimeData.trend_pct > 0 ? "+" : ""}{leadTimeData.trend_pct.toFixed(1)}%
+                  </span>
+                  <span className="text-text-muted">{getComparisonLabel(dateRangeOption)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Main metrics row */}
+            <div className="flex items-center gap-6 mb-3">
+              <div>
+                <span className="text-xl font-light text-text-primary">
+                  {leadTimeData.avg_hours < 24
+                    ? `${leadTimeData.avg_hours}h`
+                    : `${leadTimeData.avg_days}d`}
+                </span>
+                <span className="text-context text-text-muted ml-1">avg lead</span>
+              </div>
+              {(() => {
+                const queueSize = data.unfulfilled_count + data.partial_count;
+                const daysInRange = getDaysInRange(dateRangeOption);
+                const avgPerDay = daysInRange > 0 ? Math.round(data.fulfilled_today / daysInRange) : 0;
+                const expectedDays = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
+
+                return avgPerDay > 0 ? (
+                  <div>
+                    <span className={`text-xl font-light ${expectedDays > 5 ? "text-status-warning" : "text-text-primary"}`}>
+                      ~{expectedDays}d
+                    </span>
+                    <span className="text-context text-text-muted ml-1">to clear</span>
+                  </div>
+                ) : null;
+              })()}
+            </div>
+
+            {/* SLA Distribution */}
+            <div className="flex gap-4 text-context pt-2 border-t border-border-subtle">
+              <div>
+                <span className="text-status-good font-medium">{leadTimeData.within_24h}%</span>
+                <span className="text-text-muted ml-1">&lt;24h</span>
+              </div>
+              <div>
+                <span className="text-text-primary font-medium">{leadTimeData.within_48h}%</span>
+                <span className="text-text-muted ml-1">&lt;48h</span>
+              </div>
+              <div>
+                <span
+                  className={`font-medium ${
+                    leadTimeData.over_72h > 10 ? "text-status-warning" : "text-text-secondary"
+                  }`}
+                >
+                  {leadTimeData.over_72h}%
+                </span>
+                <span className="text-text-muted ml-1">&gt;72h</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Transit Time */}
         {transitData && transitData.total_delivered > 0 && (
           <div className="bg-bg-tertiary rounded p-4">
@@ -842,157 +914,6 @@ function TopSkusPanel({
         <div className="grid grid-cols-2 gap-6">
           <SkuTable items={smitheySkus} warehouse="smithey" />
           <SkuTable items={selerySkus} warehouse="selery" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FulfillmentLeadTimePanel({
-  data,
-  warehouses,
-  loading,
-  dateRangeOption,
-}: {
-  data: FulfillmentLeadTime[];
-  warehouses: WarehouseMetrics[];
-  loading: boolean;
-  dateRangeOption: DateRangeOption;
-}) {
-  const smitheyLead = data.find((d) => d.warehouse === "smithey");
-  const seleryLead = data.find((d) => d.warehouse === "selery");
-  const smitheyMetrics = warehouses.find((w) => w.warehouse === "smithey");
-  const seleryMetrics = warehouses.find((w) => w.warehouse === "selery");
-
-  const WarehouseLeadTime = ({
-    wh,
-    whMetrics,
-    name,
-    color,
-  }: {
-    wh: FulfillmentLeadTime | undefined;
-    whMetrics: WarehouseMetrics | undefined;
-    name: string;
-    color: string;
-  }) => {
-    if (!wh || wh.total_fulfilled === 0) {
-      return (
-        <div className={`p-4 rounded bg-bg-tertiary border-l-2 ${color}`}>
-          <div className="text-label text-text-tertiary mb-2">{name}</div>
-          <div className="text-context text-text-muted">No data available</div>
-        </div>
-      );
-    }
-
-    // Calculate expected lead time: queue size / avg fulfilled per day (3-day avg)
-    const queueSize = whMetrics ? whMetrics.unfulfilled_count + whMetrics.partial_count : 0;
-    const daysInRange = getDaysInRange(dateRangeOption);
-    const avgPerDay = whMetrics && daysInRange > 0 ? Math.round(whMetrics.fulfilled_today / daysInRange) : 0;
-    const expectedDays = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
-
-    return (
-      <div className={`p-4 rounded bg-bg-tertiary border-l-2 ${color}`}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-label text-text-tertiary">{name}</div>
-          <div className="flex items-center gap-1 text-context">
-            {wh.trend_pct !== 0 && (
-              <>
-                <span
-                  className={
-                    wh.trend_pct < 0
-                      ? "text-status-good"
-                      : "text-status-warning"
-                  }
-                >
-                  {wh.trend_pct > 0 ? "↑" : "↓"} {Math.abs(wh.trend_pct).toFixed(1)}%
-                </span>
-                <span className="text-text-muted">{getComparisonLabel(dateRangeOption)}</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Main Metric */}
-        <div className="flex items-baseline gap-2 mb-4">
-          <span className="text-3xl font-light text-text-primary">
-            {wh.avg_hours < 24
-              ? `${wh.avg_hours}h`
-              : `${wh.avg_days}d`}
-          </span>
-          <span className="text-context text-text-muted">avg lead time</span>
-        </div>
-
-        {/* Expected Lead Time - like engraving card */}
-        {whMetrics && avgPerDay > 0 && (
-          <div className="flex items-center gap-3 mb-4 pb-3 border-b border-border-subtle">
-            <div className="text-context">
-              <span className={`font-medium ${expectedDays > 5 ? "text-status-warning" : expectedDays > 3 ? "text-status-warning" : "text-text-primary"}`}>
-                ~{expectedDays}d
-              </span>
-              <span className="text-text-muted ml-1">to clear queue</span>
-            </div>
-            <div className="text-context text-text-muted">
-              ({formatNumber(avgPerDay)}/day avg)
-            </div>
-          </div>
-        )}
-
-        {/* SLA Distribution */}
-        <div className="space-y-2">
-          <div className="text-label text-text-tertiary opacity-75 mb-1">
-            SLA BREAKDOWN
-          </div>
-          <div className="flex gap-4 text-context">
-            <div>
-              <span className="text-status-good font-medium">{wh.within_24h}%</span>
-              <span className="text-text-muted ml-1">&lt;24h</span>
-            </div>
-            <div>
-              <span className="text-text-primary font-medium">{wh.within_48h}%</span>
-              <span className="text-text-muted ml-1">&lt;48h</span>
-            </div>
-            <div>
-              <span
-                className={`font-medium ${
-                  wh.over_72h > 10 ? "text-status-warning" : "text-text-secondary"
-                }`}
-              >
-                {wh.over_72h}%
-              </span>
-              <span className="text-text-muted ml-1">&gt;72h</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-context text-text-muted mt-3 pt-3 border-t border-border-subtle">
-          {formatNumber(wh.total_fulfilled)} orders ({getShortRangeLabel(dateRangeOption)})
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
-      <h3 className="text-label font-medium text-text-tertiary mb-4 flex items-center gap-2">
-        <Clock className="w-3.5 h-3.5" />
-        ORDER TO FULFILLMENT TIME
-      </h3>
-      {loading ? (
-        <div className="text-text-muted text-sm">Loading...</div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <WarehouseLeadTime
-            wh={smitheyLead}
-            whMetrics={smitheyMetrics}
-            name="SMITHEY"
-            color="border-l-accent-blue"
-          />
-          <WarehouseLeadTime
-            wh={seleryLead}
-            whMetrics={seleryMetrics}
-            name="SELERY"
-            color="border-l-text-tertiary"
-          />
         </div>
       )}
     </div>
