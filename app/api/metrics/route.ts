@@ -503,21 +503,46 @@ export async function GET(request: Request) {
     // Process weekly fulfillments (last 8 weeks)
     const weekly = processWeeklyFulfillments(filteredDailyData);
 
-    // Process queue health using aging count queries
+    // Process order aging data - filter out restoration orders FIRST
+    // This filtered data is used for both queue health counts and the aging bar chart
+    const filteredAgingData = filterRestorationOrders(agingDataResult.data || []);
+
+    // Calculate queue health counts from filtered aging data (not raw count queries)
+    // This ensures consistency with the order aging bar chart
+    const nowMs = now.getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    const queueHealthCounts = {
+      smithey: { waiting1d: 0, waiting3d: 0, waiting7d: 0 },
+      selery: { waiting1d: 0, waiting3d: 0, waiting7d: 0 },
+    };
+
+    for (const order of filteredAgingData) {
+      const warehouse = order.warehouse as "smithey" | "selery";
+      if (!warehouse || !queueHealthCounts[warehouse]) continue;
+
+      const createdAt = new Date(order.created_at).getTime();
+      const ageMs = nowMs - createdAt;
+
+      if (ageMs > oneDayMs) queueHealthCounts[warehouse].waiting1d++;
+      if (ageMs > 3 * oneDayMs) queueHealthCounts[warehouse].waiting3d++;
+      if (ageMs > 7 * oneDayMs) queueHealthCounts[warehouse].waiting7d++;
+    }
+
     const queueHealth: QueueHealth[] = [
       {
         warehouse: "smithey",
-        waiting_1_day: waiting1dSmithey.count || 0,
-        waiting_3_days: waiting3dSmithey.count || 0,
-        waiting_7_days: waiting7dSmithey.count || 0,
+        waiting_1_day: queueHealthCounts.smithey.waiting1d,
+        waiting_3_days: queueHealthCounts.smithey.waiting3d,
+        waiting_7_days: queueHealthCounts.smithey.waiting7d,
         oldest_order_days: 0,
         oldest_order_name: null,
       },
       {
         warehouse: "selery",
-        waiting_1_day: waiting1dSelery.count || 0,
-        waiting_3_days: waiting3dSelery.count || 0,
-        waiting_7_days: waiting7dSelery.count || 0,
+        waiting_1_day: queueHealthCounts.selery.waiting1d,
+        waiting_3_days: queueHealthCounts.selery.waiting3d,
+        waiting_7_days: queueHealthCounts.selery.waiting7d,
         oldest_order_days: 0,
         oldest_order_name: null,
       },
@@ -593,8 +618,7 @@ export async function GET(request: Request) {
     // Process engraving queue
     const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
 
-    // Process order aging for bar chart - filter out restoration orders
-    const filteredAgingData = filterRestorationOrders(agingDataResult.data || []);
+    // Process order aging for bar chart - uses filteredAgingData created earlier
     const orderAging = processOrderAging(filteredAgingData, now);
 
     // Calculate daily backlog (orders created - orders fulfilled)
