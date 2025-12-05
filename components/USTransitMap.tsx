@@ -30,14 +30,14 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
 
   // Color scale: 1-3 days = green, 4-5 = yellow, 6+ = red
   const getColor = (days: number | null, isSmithey: boolean): string => {
-    if (days === null) return "#1A1D2A"; // No data
+    if (days === null) return "#374151"; // No data - visible gray
     if (days <= 3) return isSmithey ? "#10B981" : "#059669"; // Green
     if (days <= 5) return "#F59E0B"; // Yellow/Warning
     return "#DC2626"; // Red/Bad
   };
 
   const getOpacity = (hasData: boolean): number => {
-    return hasData ? 0.85 : 0.3;
+    return hasData ? 0.9 : 0.5;
   };
 
   const hasData = analytics.some((a) => a.total_delivered > 0);
@@ -92,8 +92,8 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
                 d={path}
                 fill={getColor(days, isSmithey)}
                 fillOpacity={getOpacity(hasStateData)}
-                stroke="#0B0E1A"
-                strokeWidth="1"
+                stroke="#1F2937"
+                strokeWidth="0.5"
                 className="transition-all duration-200 cursor-pointer"
                 style={{
                   filter: hoveredState?.state === abbr && hoveredState?.warehouse === warehouse
@@ -153,7 +153,7 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
               <span className="text-context text-text-muted">6+ days</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-bg-tertiary opacity-30" />
+              <div className="w-3 h-3 rounded-sm bg-gray-600 opacity-50" />
               <span className="text-context text-text-muted">No data</span>
             </div>
           </div>
