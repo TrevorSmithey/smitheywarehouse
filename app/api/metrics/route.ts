@@ -76,12 +76,12 @@ export async function GET(request: Request) {
     // Convert EST midnight to UTC for database queries
     const todayStartUTC = new Date(`${todayEST}T05:00:00.000Z`); // EST midnight = UTC 5am
 
-    // Get restoration order IDs to exclude (SKUs containing "rest")
+    // Get restoration order IDs to exclude (SKUs containing "-Rest-")
     // These are a different fulfillment cycle - customer ships item back first
     const { data: restorationItems } = await supabase
       .from("line_items")
       .select("order_id")
-      .ilike("sku", "%rest%");
+      .ilike("sku", "%-Rest-%");
 
     const restorationOrderIds = new Set(
       (restorationItems || []).map((item) => item.order_id)
@@ -532,7 +532,7 @@ export async function GET(request: Request) {
     // Process SKU queue - filter out restoration SKUs directly
     const topSkusInQueue = processSkuQueue(
       (skuQueueResult.data || []).filter(
-        (row: { sku: string | null }) => !row.sku?.toLowerCase().includes("rest")
+        (row: { sku: string | null }) => !row.sku?.includes("-Rest-")
       )
     );
 
