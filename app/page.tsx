@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   AreaChart,
@@ -42,7 +43,7 @@ import type {
   OrderAging,
 } from "@/lib/types";
 
-type DateRangeOption = "today" | "3days" | "7days" | "30days" | "custom";
+type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
 
 // Calculate date range bounds based on selection
 function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
@@ -55,6 +56,14 @@ function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: 
       const start = new Date(now);
       start.setHours(0, 0, 0, 0);
       return { start, end };
+    }
+    case "yesterday": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 1);
+      start.setHours(0, 0, 0, 0);
+      const yesterdayEnd = new Date(start);
+      yesterdayEnd.setHours(23, 59, 59, 999);
+      return { start, end: yesterdayEnd };
     }
     case "3days": {
       const start = new Date(now);
@@ -177,9 +186,18 @@ export default function Dashboard() {
       <header className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
-              SMITHEY WAREHOUSE
-            </h1>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/quail-logo.jpg"
+                alt="Smithey"
+                width={32}
+                height={32}
+                className="rounded"
+              />
+              <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
+                SMITHEY RETAIL FULFILLMENT
+              </h1>
+            </div>
             <p className="text-context text-text-muted mt-1">
               {lastRefresh
                 ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
@@ -198,9 +216,10 @@ export default function Dashboard() {
         {/* Date Range Selector */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex gap-2">
-            {(["today", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
+            {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
               const labels: Record<DateRangeOption, string> = {
                 today: "Today",
+                yesterday: "Yesterday",
                 "3days": "3 Days",
                 "7days": "7 Days",
                 "30days": "30 Days",

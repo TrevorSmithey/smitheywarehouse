@@ -12,8 +12,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Smithey Warehouse Dashboard",
-  description: "Fulfillment tracking for Smithey Ironware warehouses",
+  title: "Smithey Retail Fulfillment",
+  description: "Retail fulfillment tracking for Smithey Ironware",
 };
 
 export const viewport: Viewport = {
