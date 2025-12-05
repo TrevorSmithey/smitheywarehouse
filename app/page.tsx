@@ -185,23 +185,24 @@ export default function Dashboard() {
       {/* Header */}
       <header className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-4">
-              <Image
-                src="/smithey-logo-white.png"
-                alt="Smithey"
-                width={48}
-                height={48}
-              />
-              <h1 className="text-label font-medium text-text-tertiary tracking-wide-sm">
+          <div className="flex items-center gap-6">
+            <Image
+              src="/smithey-logo-white.png"
+              alt="Smithey Ironware Logo"
+              width={80}
+              height={80}
+              className="object-contain"
+            />
+            <div>
+              <p className="text-lg text-text-secondary uppercase tracking-wide">
                 RETAIL FULFILLMENT
-              </h1>
+              </p>
+              <p className="text-context text-text-muted mt-1">
+                {lastRefresh
+                  ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
+                  : "Loading..."}
+              </p>
             </div>
-            <p className="text-context text-text-muted mt-1">
-              {lastRefresh
-                ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
-                : "Loading..."}
-            </p>
           </div>
           <button
             onClick={fetchMetrics}
