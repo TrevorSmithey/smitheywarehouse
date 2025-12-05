@@ -1062,7 +1062,7 @@ function StuckShipmentsPanel({
     >
       <div className="min-w-0">
         <a
-          href={`https://smithey-ironware.myshopify.com/admin/orders/${s.order_id}`}
+          href={`https://admin.shopify.com/store/smithey-ironware/orders/${s.order_id}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-context text-accent-blue hover:underline"
