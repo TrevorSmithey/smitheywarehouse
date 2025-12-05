@@ -278,19 +278,19 @@ export default function Dashboard() {
           status={totals.queue > 500 ? "warning" : undefined}
         />
         <KPICard
-          label="SHIPPED TODAY"
+          label={
+            dateRangeOption === "today" ? "SHIPPED TODAY" :
+            dateRangeOption === "yesterday" ? "SHIPPED YESTERDAY" :
+            dateRangeOption === "3days" ? "SHIPPED (3D)" :
+            dateRangeOption === "7days" ? "SHIPPED (7D)" :
+            dateRangeOption === "30days" ? "SHIPPED (30D)" :
+            "SHIPPED"
+          }
           value={totals.today}
           loading={loading}
           status="good"
           change={todayVsAvg}
           changeLabel="vs avg"
-        />
-        <KPICard
-          label="THIS WEEK"
-          value={totals.week}
-          loading={loading}
-          change={weekOverWeek}
-          changeLabel="vs last week"
         />
         <EngravingQueueCard
           data={metrics?.engravingQueue}

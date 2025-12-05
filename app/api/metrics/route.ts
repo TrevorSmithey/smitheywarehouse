@@ -187,19 +187,21 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
-      // Fulfilled today Smithey (using EST timezone)
+      // Fulfilled in selected range - Smithey
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", todayStartUTC.toISOString())
+        .gte("fulfilled_at", rangeStart.toISOString())
+        .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "smithey"),
 
-      // Fulfilled today Selery (using EST timezone)
+      // Fulfilled in selected range - Selery
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", todayStartUTC.toISOString())
+        .gte("fulfilled_at", rangeStart.toISOString())
+        .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
