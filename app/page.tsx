@@ -44,6 +44,7 @@ import type {
 } from "@/lib/types";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
+type TabOption = "fulfillment" | "tracking";
 
 // Calculate date range bounds based on selection
 function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
@@ -168,6 +169,12 @@ export default function Dashboard() {
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabOption>("fulfillment");
+
+  // Tracking tab - shipped within filter (for stuck shipments)
+  const [trackingShippedWithin, setTrackingShippedWithin] = useState<"7days" | "14days" | "30days" | "all">("14days");
+
   const fetchMetrics = useCallback(async () => {
     try {
       setLoading(true);
@@ -226,6 +233,17 @@ export default function Dashboard() {
   const avgTrend = getChange(totals.avg7d, totals.avg30d);
 
   const stuckCount = metrics?.stuckShipments?.length || 0;
+
+  // Filter stuck shipments based on tracking date filter
+  const filteredStuckShipments = (metrics?.stuckShipments || []).filter((s) => {
+    if (trackingShippedWithin === "all") return true;
+    const shippedDate = new Date(s.shipped_at);
+    const now = new Date();
+    const daysAgo = trackingShippedWithin === "7days" ? 7 : trackingShippedWithin === "14days" ? 14 : 30;
+    const cutoff = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+    return shippedDate >= cutoff;
+  });
+
   const chartData = processChartData(metrics?.daily || [], metrics?.dailyBacklog || []);
 
   return (
@@ -309,6 +327,37 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Tab Selector */}
+        <div className="flex gap-1 mt-4 border-b border-border">
+          <button
+            onClick={() => setActiveTab("fulfillment")}
+            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
+              activeTab === "fulfillment"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Package className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+            Fulfillment
+          </button>
+          <button
+            onClick={() => setActiveTab("tracking")}
+            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
+              activeTab === "tracking"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Truck className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+            Tracking
+            {stuckCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-status-warning/20 text-status-warning rounded">
+                {stuckCount}
+              </span>
+            )}
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -317,8 +366,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI Cards - with change indicators like Lathe app */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* FULFILLMENT TAB */}
+      {activeTab === "fulfillment" && (
+        <>
+          {/* KPI Cards - with change indicators like Lathe app */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KPICard
           label="IN QUEUE"
           subtitle="(running total, excl. restorations)"
@@ -367,11 +419,6 @@ export default function Dashboard() {
           />
         ))}
       </div>
-
-      {/* Stuck Shipments Alert */}
-      {stuckCount > 0 && (
-        <StuckShipmentsPanel shipments={metrics?.stuckShipments || []} />
-      )}
 
       {/* Two-column layout: Chart + Top SKUs */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -463,11 +510,94 @@ export default function Dashboard() {
       {/* Warehouse Distribution Chart */}
       <WarehouseSplitChart dailyOrders={metrics?.dailyOrders || []} loading={loading} />
 
-      {/* Transit Analytics */}
-      <TransitAnalyticsPanel analytics={metrics?.transitAnalytics || []} />
-
       {/* Top SKUs in Queue - full width at bottom */}
       <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
+        </>
+      )}
+
+      {/* TRACKING TAB */}
+      {activeTab === "tracking" && (
+        <>
+          {/* Tracking Date Filter */}
+          <div className="flex items-center gap-4 mb-6">
+            <span className="text-label text-text-tertiary">SHIPPED WITHIN</span>
+            <div className="flex gap-2">
+              {(["7days", "14days", "30days", "all"] as const).map((option) => {
+                const labels = {
+                  "7days": "7 Days",
+                  "14days": "14 Days",
+                  "30days": "30 Days",
+                  "all": "All Time",
+                };
+                return (
+                  <button
+                    key={option}
+                    onClick={() => setTrackingShippedWithin(option)}
+                    className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
+                      trackingShippedWithin === option
+                        ? "bg-accent-blue text-white border-accent-blue"
+                        : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                    }`}
+                  >
+                    {labels[option]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tracking Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-bg-secondary rounded border border-border p-6">
+              <div className="text-label text-text-tertiary mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-3 h-3 text-status-warning" />
+                STUCK SHIPMENTS
+              </div>
+              <div className={`text-metric font-light ${stuckCount > 0 ? "text-status-warning" : "text-text-primary"}`}>
+                {formatNumber(filteredStuckShipments.length)}
+              </div>
+              <div className="text-context text-text-muted mt-1">
+                No scans in 3+ days
+              </div>
+            </div>
+            <div className="bg-bg-secondary rounded border border-border p-6">
+              <div className="text-label text-text-tertiary mb-2 flex items-center gap-1.5">
+                <Package className="w-3 h-3" />
+                DELIVERED
+              </div>
+              <div className="text-metric font-light text-status-good">
+                {formatNumber((metrics?.transitAnalytics || []).reduce((sum, t) => sum + t.total_delivered, 0))}
+              </div>
+              <div className="text-context text-text-muted mt-1">
+                Shipments delivered
+              </div>
+            </div>
+            <div className="bg-bg-secondary rounded border border-border p-6">
+              <div className="text-label text-text-tertiary mb-2 flex items-center gap-1.5">
+                <Truck className="w-3 h-3" />
+                AVG TRANSIT
+              </div>
+              <div className="text-metric font-light text-text-primary">
+                {(() => {
+                  const analytics = metrics?.transitAnalytics || [];
+                  const totalDelivered = analytics.reduce((sum, t) => sum + t.total_delivered, 0);
+                  const weightedSum = analytics.reduce((sum, t) => sum + (t.avg_transit_days * t.total_delivered), 0);
+                  return totalDelivered > 0 ? (weightedSum / totalDelivered).toFixed(1) : "—";
+                })()}d
+              </div>
+              <div className="text-context text-text-muted mt-1">
+                Average delivery time
+              </div>
+            </div>
+          </div>
+
+          {/* Stuck Shipments */}
+          <StuckShipmentsPanel shipments={filteredStuckShipments} />
+
+          {/* Transit Analytics */}
+          <TransitAnalyticsPanel analytics={metrics?.transitAnalytics || []} />
+        </>
+      )}
     </div>
   );
 }
