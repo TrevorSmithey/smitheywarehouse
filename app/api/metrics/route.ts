@@ -570,7 +570,9 @@ export async function GET(request: Request) {
         { column: "warehouse", op: "not.is.null", value: null },
       ]
     );
-    const dailyOrders = processDailyOrders(dailyOrdersData);
+    // Filter out restoration orders from daily orders (for consistent backlog calculation)
+    const filteredDailyOrdersData = filterRestorationOrders(dailyOrdersData);
+    const dailyOrders = processDailyOrders(filteredDailyOrdersData);
 
     // Process fulfillment lead time analytics
     // Calculate midpoint of range for trend comparison
@@ -588,7 +590,13 @@ export async function GET(request: Request) {
     // Get current total unfulfilled to calculate running backlog
     const currentUnfulfilled = (unfulfilledSmitheyCount.count || 0) + (unfulfilledSeleryCount.count || 0) +
                                (partialSmitheyCount.count || 0) + (partialSeleryCount.count || 0);
-    const dailyBacklog = calculateDailyBacklog(dailyOrders, daily, currentUnfulfilled);
+    // For backlog, exclude restoration orders (they're waiting on customer, not warehouse)
+    // Count unfulfilled restoration orders from aging data
+    const restorationUnfulfilledCount = (agingDataResult.data || []).filter(
+      (o: { id: number }) => restorationOrderIds.has(o.id)
+    ).length;
+    const currentUnfulfilledExcludingRestoration = currentUnfulfilled - restorationUnfulfilledCount;
+    const dailyBacklog = calculateDailyBacklog(dailyOrders, daily, currentUnfulfilledExcludingRestoration);
 
     const response: MetricsResponse = {
       warehouses,
