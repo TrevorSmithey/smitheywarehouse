@@ -875,15 +875,14 @@ function processTransitAnalytics(data: any[]): TransitAnalytics[] {
   return ["smithey", "selery"].map((warehouse) => {
     const whData = byWarehouse.get(warehouse)!;
 
-    // Get top 10 states by shipment count
+    // Get all states with data (for map visualization)
     const stateStats = Array.from(whData.byState.entries())
       .map(([state, data]) => ({
         state,
         avg_transit_days: Math.round((data.totalDays / data.count) * 10) / 10,
         shipment_count: data.count,
       }))
-      .sort((a, b) => b.shipment_count - a.shipment_count)
-      .slice(0, 10);
+      .sort((a, b) => b.shipment_count - a.shipment_count);
 
     return {
       warehouse,
