@@ -1,188 +1,475 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { TransitAnalytics, StateTransitStats } from "@/lib/types";
 import { US_STATES } from "@/lib/us-states";
+
+type ViewMode = "combined" | "smithey" | "selery";
 
 interface USTransitMapProps {
   analytics: TransitAnalytics[];
   loading?: boolean;
 }
 
+interface CombinedStateData {
+  state: string;
+  avg_transit_days: number;
+  shipment_count: number;
+  smithey_days: number | null;
+  selery_days: number | null;
+  smithey_count: number;
+  selery_count: number;
+}
+
+// Color stops for smooth gradient interpolation
+// Using a sophisticated teal → gold → coral gradient
+const GRADIENT_STOPS = [
+  { value: 1, color: [16, 185, 129] },   // Emerald - fastest
+  { value: 2, color: [52, 211, 153] },   // Light emerald
+  { value: 3, color: [134, 239, 172] },  // Mint
+  { value: 4, color: [253, 224, 71] },   // Yellow
+  { value: 5, color: [251, 191, 36] },   // Amber
+  { value: 6, color: [249, 115, 22] },   // Orange
+  { value: 7, color: [239, 68, 68] },    // Red - slowest
+];
+
+// Smooth interpolation between color stops
+function interpolateColor(days: number): string {
+  if (days <= GRADIENT_STOPS[0].value) return rgbToHex(GRADIENT_STOPS[0].color);
+  if (days >= GRADIENT_STOPS[GRADIENT_STOPS.length - 1].value) {
+    return rgbToHex(GRADIENT_STOPS[GRADIENT_STOPS.length - 1].color);
+  }
+
+  // Find the two stops we're between
+  for (let i = 0; i < GRADIENT_STOPS.length - 1; i++) {
+    const start = GRADIENT_STOPS[i];
+    const end = GRADIENT_STOPS[i + 1];
+
+    if (days >= start.value && days <= end.value) {
+      // Calculate interpolation factor (0-1)
+      const t = (days - start.value) / (end.value - start.value);
+
+      // Lerp each RGB component
+      const r = Math.round(start.color[0] + (end.color[0] - start.color[0]) * t);
+      const g = Math.round(start.color[1] + (end.color[1] - start.color[1]) * t);
+      const b = Math.round(start.color[2] + (end.color[2] - start.color[2]) * t);
+
+      return rgbToHex([r, g, b]);
+    }
+  }
+
+  return rgbToHex(GRADIENT_STOPS[GRADIENT_STOPS.length - 1].color);
+}
+
+function rgbToHex(rgb: number[]): string {
+  return `#${rgb.map(c => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// Generate CSS gradient for legend
+function generateGradientCSS(): string {
+  const stops = GRADIENT_STOPS.map((stop, i) => {
+    const pct = (i / (GRADIENT_STOPS.length - 1)) * 100;
+    return `${rgbToHex(stop.color)} ${pct}%`;
+  });
+  return `linear-gradient(to right, ${stops.join(', ')})`;
+}
+
 export function USTransitMap({ analytics, loading }: USTransitMapProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("combined");
   const [hoveredState, setHoveredState] = useState<{
     state: string;
-    warehouse: string;
-    data: StateTransitStats | null;
+    data: CombinedStateData | StateTransitStats | null;
     x: number;
     y: number;
   } | null>(null);
 
   // Build lookup maps for each warehouse
-  const dataByWarehouse = analytics.reduce((acc, wh) => {
-    const stateMap: Record<string, StateTransitStats> = {};
-    for (const st of wh.by_state) {
-      stateMap[st.state] = st;
+  const dataByWarehouse = useMemo(() => {
+    return analytics.reduce((acc, wh) => {
+      const stateMap: Record<string, StateTransitStats> = {};
+      for (const st of wh.by_state) {
+        stateMap[st.state] = st;
+      }
+      acc[wh.warehouse] = { stateMap, avgDays: wh.avg_transit_days, totalDelivered: wh.total_delivered };
+      return acc;
+    }, {} as Record<string, { stateMap: Record<string, StateTransitStats>; avgDays: number; totalDelivered: number }>);
+  }, [analytics]);
+
+  // Build combined data (weighted average by shipment count)
+  const combinedData = useMemo(() => {
+    const smitheyData = dataByWarehouse["smithey"];
+    const seleryData = dataByWarehouse["selery"];
+    const combinedMap: Record<string, CombinedStateData> = {};
+
+    const allStates = new Set<string>();
+    if (smitheyData) Object.keys(smitheyData.stateMap).forEach(s => allStates.add(s));
+    if (seleryData) Object.keys(seleryData.stateMap).forEach(s => allStates.add(s));
+
+    for (const state of allStates) {
+      const smithey = smitheyData?.stateMap[state];
+      const selery = seleryData?.stateMap[state];
+
+      const smitheyCount = smithey?.shipment_count || 0;
+      const seleryCount = selery?.shipment_count || 0;
+      const totalCount = smitheyCount + seleryCount;
+
+      let avgDays = 0;
+      if (totalCount > 0) {
+        const smitheyWeight = smitheyCount / totalCount;
+        const seleryWeight = seleryCount / totalCount;
+        avgDays = (smithey?.avg_transit_days || 0) * smitheyWeight +
+                  (selery?.avg_transit_days || 0) * seleryWeight;
+        avgDays = Math.round(avgDays * 10) / 10;
+      }
+
+      combinedMap[state] = {
+        state,
+        avg_transit_days: avgDays,
+        shipment_count: totalCount,
+        smithey_days: smithey?.avg_transit_days ?? null,
+        selery_days: selery?.avg_transit_days ?? null,
+        smithey_count: smitheyCount,
+        selery_count: seleryCount,
+      };
     }
-    acc[wh.warehouse] = { stateMap, avgDays: wh.avg_transit_days, totalDelivered: wh.total_delivered };
-    return acc;
-  }, {} as Record<string, { stateMap: Record<string, StateTransitStats>; avgDays: number; totalDelivered: number }>);
 
-  // Color scale: 1-3 days = green, 4-5 = yellow, 6+ = red
-  const getColor = (days: number | null, isSmithey: boolean): string => {
-    if (days === null) return "#374151"; // No data - visible gray
-    if (days <= 3) return isSmithey ? "#10B981" : "#059669"; // Green
-    if (days <= 5) return "#F59E0B"; // Yellow/Warning
-    return "#DC2626"; // Red/Bad
-  };
+    const totalDelivered = (smitheyData?.totalDelivered || 0) + (seleryData?.totalDelivered || 0);
+    const smitheyTotal = smitheyData?.totalDelivered || 0;
+    const seleryTotal = seleryData?.totalDelivered || 0;
+    const avgDays = totalDelivered > 0
+      ? Math.round(((smitheyData?.avgDays || 0) * smitheyTotal + (seleryData?.avgDays || 0) * seleryTotal) / totalDelivered * 10) / 10
+      : 0;
 
-  const getOpacity = (hasData: boolean): number => {
-    return hasData ? 0.9 : 0.5;
-  };
+    return { stateMap: combinedMap, avgDays, totalDelivered };
+  }, [dataByWarehouse]);
 
   const hasData = analytics.some((a) => a.total_delivered > 0);
   if (!hasData && !loading) {
     return (
-      <div className="bg-bg-secondary rounded border border-border p-6">
-        <h3 className="text-label font-medium text-text-tertiary mb-4">
-          TRANSIT TIME BY REGION
+      <div className="bg-bg-secondary rounded-xl border border-border p-8">
+        <h3 className="text-sm font-semibold tracking-wider text-text-tertiary uppercase mb-4">
+          Transit Time by Region
         </h3>
-        <div className="text-context text-text-muted py-8 text-center">
+        <div className="text-sm text-text-muted py-12 text-center">
           No delivery data yet
         </div>
       </div>
     );
   }
 
-  const renderMap = (warehouse: string, isSmithey: boolean) => {
-    const data = dataByWarehouse[warehouse];
-
+  const renderSingleMap = (
+    label: string,
+    stateMap: Record<string, StateTransitStats | CombinedStateData>,
+    avgDays: number,
+    totalDelivered: number,
+    isFeatured: boolean = false
+  ) => {
     return (
       <div className="relative">
-        <div className="flex items-center justify-between mb-3">
-          <div className={`text-label font-medium ${isSmithey ? "text-accent-blue" : "text-text-tertiary"}`}>
-            {warehouse.toUpperCase()}
-          </div>
-          {data && (
-            <div className="text-context text-text-muted">
-              Avg: <span className="text-text-primary font-medium">{data.avgDays}d</span>
-              <span className="mx-2 text-border">|</span>
-              {data.totalDelivered.toLocaleString()} delivered
+        {/* Map header */}
+        <div className="flex items-baseline justify-between mb-4">
+          <h4 className={`font-semibold tracking-wide ${isFeatured ? 'text-lg text-text-primary' : 'text-sm text-text-secondary'}`}>
+            {label}
+          </h4>
+          <div className="flex items-baseline gap-4 text-sm">
+            <div>
+              <span className={`font-bold ${isFeatured ? 'text-2xl' : 'text-xl'} text-text-primary`}>{avgDays}</span>
+              <span className="text-text-muted ml-1">days avg</span>
             </div>
-          )}
+            <div className="text-text-muted">
+              <span className="text-text-secondary font-medium">{totalDelivered.toLocaleString()}</span> delivered
+            </div>
+          </div>
         </div>
-        <svg
-          viewBox="0 0 959 593"
-          className="w-full h-auto"
-          style={{ maxHeight: "280px" }}
-          preserveAspectRatio="xMidYMid meet"
+
+        {/* Map container with subtle depth */}
+        <div
+          className={`relative rounded-xl overflow-hidden ${isFeatured ? 'p-6' : 'p-4'}`}
+          style={{
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.6) 0%, rgba(30, 41, 59, 0.4) 100%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 4px 20px rgba(0,0,0,0.3)',
+          }}
         >
-          {/* Background */}
-          <rect x="0" y="0" width="959" height="593" fill="transparent" />
+          <svg
+            viewBox="0 0 959 593"
+            className="w-full h-auto"
+            style={{
+              maxHeight: isFeatured ? "420px" : "240px",
+              filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))'
+            }}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* Subtle grid pattern background */}
+            <defs>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5"/>
+              </pattern>
+            </defs>
+            <rect width="959" height="593" fill="url(#grid)" />
 
-          {/* State paths */}
-          {Object.entries(US_STATES).map(([abbr, { path, name }]) => {
-            const stateData = data?.stateMap[abbr];
-            const days = stateData?.avg_transit_days ?? null;
-            const hasStateData = stateData !== undefined;
+            {/* State paths */}
+            {Object.entries(US_STATES).map(([abbr, { path }]) => {
+              const stateData = stateMap[abbr];
+              const days = stateData?.avg_transit_days ?? null;
+              const hasStateData = stateData !== undefined && stateData.shipment_count > 0;
+              const isHovered = hoveredState?.state === abbr;
 
-            return (
-              <path
-                key={abbr}
-                d={path}
-                fill={getColor(days, isSmithey)}
-                fillOpacity={getOpacity(hasStateData)}
-                stroke={hoveredState?.state === abbr && hoveredState?.warehouse === warehouse ? "#60A5FA" : "#1F2937"}
-                strokeWidth={hoveredState?.state === abbr && hoveredState?.warehouse === warehouse ? "2" : "0.5"}
-                className="transition-all duration-150 cursor-pointer hover:brightness-125"
-                onMouseEnter={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setHoveredState({
-                    state: abbr,
-                    warehouse,
-                    data: stateData || null,
-                    x: rect.left + rect.width / 2,
-                    y: rect.top,
-                  });
-                }}
-                onMouseLeave={() => setHoveredState(null)}
-              />
-            );
-          })}
-        </svg>
+              // Smooth gradient color based on exact transit days
+              const fillColor = hasStateData && days !== null
+                ? interpolateColor(days)
+                : "#1e293b"; // Dark slate for no data
+
+              return (
+                <path
+                  key={abbr}
+                  d={path}
+                  fill={fillColor}
+                  fillOpacity={hasStateData ? 0.92 : 0.3}
+                  stroke={isHovered ? "#ffffff" : "rgba(30, 41, 59, 0.8)"}
+                  strokeWidth={isHovered ? "2" : "0.75"}
+                  style={{
+                    transition: 'all 0.2s ease-out',
+                    filter: isHovered ? 'brightness(1.15) drop-shadow(0 0 8px rgba(255,255,255,0.3))' : 'none',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoveredState({
+                      state: abbr,
+                      data: stateData || null,
+                      x: rect.left + rect.width / 2,
+                      y: rect.top,
+                    });
+                  }}
+                  onMouseLeave={() => setHoveredState(null)}
+                />
+              );
+            })}
+          </svg>
+        </div>
       </div>
     );
   };
 
+  const renderComparisonMaps = () => {
+    const smitheyData = dataByWarehouse["smithey"];
+    const seleryData = dataByWarehouse["selery"];
+
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {smitheyData && renderSingleMap(
+          "SMITHEY",
+          smitheyData.stateMap,
+          smitheyData.avgDays,
+          smitheyData.totalDelivered
+        )}
+        {seleryData && renderSingleMap(
+          "SELERY",
+          seleryData.stateMap,
+          seleryData.avgDays,
+          seleryData.totalDelivered
+        )}
+      </div>
+    );
+  };
+
+  // Gradient legend bar
+  const GradientLegend = () => (
+    <div className="flex flex-col items-center gap-2 mt-6 pt-6 border-t border-border/50">
+      <div className="text-xs text-text-muted font-medium tracking-wider uppercase">
+        Transit Time (Days)
+      </div>
+      <div className="flex items-center gap-3 w-full max-w-md">
+        <span className="text-xs font-semibold text-emerald-400">Fast</span>
+        <div
+          className="flex-1 h-3 rounded-full"
+          style={{
+            background: generateGradientCSS(),
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'
+          }}
+        />
+        <span className="text-xs font-semibold text-red-400">Slow</span>
+      </div>
+      <div className="flex justify-between w-full max-w-md text-xs text-text-muted px-8">
+        <span>1d</span>
+        <span>2d</span>
+        <span>3d</span>
+        <span>4d</span>
+        <span>5d</span>
+        <span>6d</span>
+        <span>7d+</span>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
-      <h3 className="text-label font-medium text-text-tertiary mb-6">
-        TRANSIT TIME BY REGION
-      </h3>
+    <div className="bg-bg-secondary rounded-xl border border-border p-6 transition-all hover:border-border-hover">
+      {/* Header with view toggle */}
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-sm font-semibold tracking-wider text-text-tertiary uppercase">
+          Transit Time by Region
+        </h3>
+        <div className="flex items-center gap-1 bg-bg-primary/60 backdrop-blur rounded-lg p-1">
+          {[
+            { id: "combined", label: "Combined" },
+            { id: "smithey", label: "Smithey" },
+            { id: "selery", label: "Selery" },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setViewMode(id as ViewMode)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+                viewMode === id
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25"
+                  : "text-text-muted hover:text-text-primary hover:bg-white/5"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {loading ? (
-        <div className="h-[280px] flex items-center justify-center text-text-muted text-sm">
-          Loading...
+        <div className="h-[400px] flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+            <span className="text-sm text-text-muted">Loading map data...</span>
+          </div>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {renderMap("smithey", true)}
-            {renderMap("selery", false)}
-          </div>
+          {viewMode === "combined" && (
+            <div className="space-y-8">
+              {renderSingleMap(
+                "ALL WAREHOUSES",
+                combinedData.stateMap,
+                combinedData.avgDays,
+                combinedData.totalDelivered,
+                true
+              )}
+              <div className="pt-6 border-t border-border/50">
+                <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-4">
+                  Warehouse Comparison
+                </div>
+                {renderComparisonMaps()}
+              </div>
+            </div>
+          )}
 
-          {/* Legend */}
-          <div className="flex justify-center items-center gap-6 mt-6 pt-4 border-t border-border-subtle">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-status-good opacity-85" />
-              <span className="text-context text-text-muted">1-3 days</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-status-warning opacity-85" />
-              <span className="text-context text-text-muted">4-5 days</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-status-bad opacity-85" />
-              <span className="text-context text-text-muted">6+ days</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-gray-600 opacity-50" />
-              <span className="text-context text-text-muted">No data</span>
-            </div>
-          </div>
+          {viewMode === "smithey" && dataByWarehouse["smithey"] && (
+            renderSingleMap(
+              "SMITHEY WAREHOUSE",
+              dataByWarehouse["smithey"].stateMap,
+              dataByWarehouse["smithey"].avgDays,
+              dataByWarehouse["smithey"].totalDelivered,
+              true
+            )
+          )}
+
+          {viewMode === "selery" && dataByWarehouse["selery"] && (
+            renderSingleMap(
+              "SELERY WAREHOUSE",
+              dataByWarehouse["selery"].stateMap,
+              dataByWarehouse["selery"].avgDays,
+              dataByWarehouse["selery"].totalDelivered,
+              true
+            )
+          )}
+
+          <GradientLegend />
         </>
       )}
 
       {/* Tooltip */}
-      {hoveredState && (
+      {hoveredState && hoveredState.data && (
         <div
           className="fixed z-50 pointer-events-none"
           style={{
             left: hoveredState.x,
-            top: hoveredState.y - 10,
+            top: hoveredState.y - 12,
             transform: "translate(-50%, -100%)",
           }}
         >
-          <div className="bg-bg-primary border border-border rounded px-3 py-2 shadow-lg">
-            <div className="text-sm font-medium text-text-primary mb-1">
+          <div
+            className="rounded-xl px-5 py-4 min-w-[200px]"
+            style={{
+              background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.95) 100%)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <div className="text-base font-bold text-white mb-3 pb-2 border-b border-white/10">
               {US_STATES[hoveredState.state]?.name || hoveredState.state}
             </div>
-            {hoveredState.data ? (
+
+            {"smithey_days" in hoveredState.data ? (
               <>
-                <div className="text-context">
-                  <span className="text-text-primary font-medium">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs text-slate-400">Combined Avg</span>
+                  <span
+                    className="text-lg font-bold"
+                    style={{ color: interpolateColor(hoveredState.data.avg_transit_days) }}
+                  >
                     {hoveredState.data.avg_transit_days}d
                   </span>
-                  <span className="text-text-muted ml-1">avg transit</span>
                 </div>
-                <div className="text-context text-text-muted">
-                  {hoveredState.data.shipment_count.toLocaleString()} shipments
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Smithey</span>
+                    <span className="text-slate-300">
+                      {hoveredState.data.smithey_days !== null
+                        ? `${hoveredState.data.smithey_days}d · ${hoveredState.data.smithey_count.toLocaleString()}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Selery</span>
+                    <span className="text-slate-300">
+                      {hoveredState.data.selery_days !== null
+                        ? `${hoveredState.data.selery_days}d · ${hoveredState.data.selery_count.toLocaleString()}`
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Total Shipments</span>
+                  <span className="text-sm font-semibold text-white">
+                    {hoveredState.data.shipment_count.toLocaleString()}
+                  </span>
                 </div>
               </>
             ) : (
-              <div className="text-context text-text-muted">No delivery data</div>
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-slate-400">Avg Transit</span>
+                  <span
+                    className="text-lg font-bold"
+                    style={{ color: interpolateColor(hoveredState.data.avg_transit_days) }}
+                  >
+                    {hoveredState.data.avg_transit_days}d
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Shipments</span>
+                  <span className="text-sm font-semibold text-white">
+                    {hoveredState.data.shipment_count.toLocaleString()}
+                  </span>
+                </div>
+              </>
             )}
           </div>
+          {/* Tooltip arrow */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-4 h-4 rotate-45"
+            style={{
+              background: 'linear-gradient(135deg, transparent 50%, rgba(30, 41, 59, 0.95) 50%)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderTop: 'none',
+              borderLeft: 'none',
+            }}
+          />
         </div>
       )}
     </div>
