@@ -10,6 +10,7 @@ import {
   Line,
   BarChart,
   Bar,
+  ComposedChart,
   XAxis,
   YAxis,
   Tooltip,
@@ -2888,15 +2889,23 @@ function AssemblyDashboard({
   const elapsedDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
   const timeProgressPct = Math.min(100, Math.round((elapsedDays / totalDays) * 100));
 
-  // Prepare chart data - last 30 days
+  // Prepare chart data - last 30 days with 7-day rolling average
   const sortedDaily = [...daily].sort((a, b) => b.date.localeCompare(a.date));
   const recentDaily = sortedDaily.slice(0, 30).reverse();
 
-  const dailyChartData = recentDaily.map((d) => ({
-    date: format(parseLocalDate(d.date), "M/d"),
-    value: d.daily_total,
-    day: d.day_of_week,
-  }));
+  const dailyChartData = recentDaily.map((d, idx, arr) => {
+    // Calculate 7-day rolling average (use available days if less than 7)
+    const windowStart = Math.max(0, idx - 6);
+    const window = arr.slice(windowStart, idx + 1);
+    const rollingAvg = window.reduce((sum, item) => sum + item.daily_total, 0) / window.length;
+
+    return {
+      date: format(parseLocalDate(d.date), "M/d"),
+      value: d.daily_total,
+      rollingAvg: Math.round(rollingAvg),
+      day: d.day_of_week,
+    };
+  });
 
   // Weekly comparison data
   const weeklyChartData = weeklyData.map((w) => ({
@@ -3113,7 +3122,7 @@ function AssemblyDashboard({
       </div>
 
       {/* Production Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {/* Yesterday */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <div className="flex items-center justify-between mb-3">
@@ -3160,91 +3169,155 @@ function AssemblyDashboard({
             {summary.currentWeekDays} day{summary.currentWeekDays !== 1 ? 's' : ''} tracked
           </div>
         </div>
+      </div>
 
-        {/* Pace Indicator */}
-        <div
-          className="rounded-xl p-5 border"
-          style={{
-            backgroundColor: summary.dailyAverage7d >= summary.dailyTarget
-              ? 'rgba(16, 185, 129, 0.08)'
-              : 'rgba(245, 158, 11, 0.08)',
-            borderColor: summary.dailyAverage7d >= summary.dailyTarget
-              ? 'rgba(16, 185, 129, 0.2)'
-              : 'rgba(245, 158, 11, 0.2)',
-          }}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">PACE</span>
-            <Clock className="w-4 h-4 text-text-muted" />
+      {/* Daily Production Chart - Full Width with Rolling Average */}
+      <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+            DAILY PRODUCTION
+          </h3>
+          <div className="flex items-center gap-4 text-[10px] text-text-muted">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm" style={{ background: `linear-gradient(180deg, ${forge.ember}, ${forge.copper})` }} />
+              Daily
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: forge.glow }} />
+              7-Day Avg
+            </span>
           </div>
-          <div
-            className="text-3xl font-bold tabular-nums"
-            style={{ color: summary.dailyAverage7d >= summary.dailyTarget ? "#10B981" : forge.heat }}
-          >
-            {((summary.dailyAverage7d / summary.dailyTarget) * 100).toFixed(0)}%
-          </div>
-          <div className="text-xs text-text-tertiary mt-1">of daily target</div>
+        </div>
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={dailyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+              <defs>
+                <linearGradient id="forgeGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={forge.ember} />
+                  <stop offset="100%" stopColor={forge.copper} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="date"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#64748B", fontSize: 10 }}
+                interval={2}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#64748B", fontSize: 10 }}
+                width={45}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                contentStyle={{
+                  backgroundColor: "rgba(18, 21, 31, 0.98)",
+                  border: `1px solid ${forge.copper}40`,
+                  borderRadius: "8px",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                  padding: "10px 14px",
+                }}
+                labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 6 }}
+                formatter={(value: number, name: string) => {
+                  if (name === "value") return [<span key="v" style={{ color: forge.glow, fontWeight: 600 }}>{fmt.number(value)}</span>, "Daily"];
+                  if (name === "rollingAvg") return [<span key="a" style={{ color: "#FCD34D", fontWeight: 600 }}>{fmt.number(value)}</span>, "7-Day Avg"];
+                  return [value, name];
+                }}
+              />
+              <ReferenceLine
+                y={summary.dailyTarget}
+                stroke={forge.heat}
+                strokeDasharray="6 4"
+                label={{
+                  value: `Target: ${fmt.number(summary.dailyTarget)}`,
+                  position: "insideTopRight",
+                  fill: forge.heat,
+                  fontSize: 10,
+                }}
+              />
+              <Bar
+                dataKey="value"
+                fill="url(#forgeGradient)"
+                radius={[2, 2, 0, 0]}
+                maxBarSize={14}
+              />
+              <Line
+                type="monotone"
+                dataKey="rollingAvg"
+                stroke={forge.glow}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, fill: forge.glow, stroke: "#0B0E1A", strokeWidth: 2 }}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Charts */}
+      {/* Secondary Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Daily Production Chart */}
+        {/* Weekly Totals */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
-            DAILY PRODUCTION (30 DAYS)
+            WEEKLY PRODUCTION
           </h3>
-          <div className="h-64">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+              <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
                 <defs>
-                  <linearGradient id="forgeGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={forge.ember} />
-                    <stop offset="100%" stopColor={forge.copper} />
+                  <linearGradient id="weeklyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#8B5CF6" />
+                    <stop offset="100%" stopColor="#6366F1" />
                   </linearGradient>
                 </defs>
                 <XAxis
-                  dataKey="date"
+                  dataKey="week"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: "#64748B", fontSize: 10 }}
-                  interval="preserveStartEnd"
+                  tick={{ fill: "#64748B", fontSize: 11 }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
                   tick={{ fill: "#64748B", fontSize: 10 }}
-                  width={45}
+                  width={50}
                 />
                 <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                   contentStyle={{
                     backgroundColor: "rgba(18, 21, 31, 0.98)",
-                    border: `1px solid ${forge.copper}30`,
-                    borderRadius: "10px",
-                    boxShadow: `0 4px 20px rgba(0,0,0,0.4)`,
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    borderRadius: "8px",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                    padding: "10px 14px",
                   }}
                   labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
-                  formatter={(value: number) => [
-                    <span key="v" style={{ color: forge.glow, fontWeight: 600 }}>{fmt.number(value)} units</span>,
-                    ""
-                  ]}
+                  formatter={(value: number, name: string) => {
+                    if (name === "total") return [
+                      <span key="v" style={{ color: "#A78BFA", fontWeight: 600 }}>{fmt.number(value)}</span>,
+                      "Total"
+                    ];
+                    return [value, name];
+                  }}
                 />
                 <ReferenceLine
-                  y={summary.dailyTarget}
+                  y={summary.weeklyTarget}
                   stroke={forge.heat}
                   strokeDasharray="6 4"
                   label={{
-                    value: `Target: ${fmt.number(summary.dailyTarget)}`,
+                    value: `Target`,
                     position: "insideTopRight",
                     fill: forge.heat,
                     fontSize: 10,
                   }}
                 />
                 <Bar
-                  dataKey="value"
-                  fill="url(#forgeGradient)"
-                  radius={[3, 3, 0, 0]}
-                  maxBarSize={16}
+                  dataKey="total"
+                  fill="url(#weeklyGradient)"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={48}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -3254,9 +3327,9 @@ function AssemblyDashboard({
         {/* Day of Week Pattern */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
-            PRODUCTION BY WEEKDAY
+            AVERAGE BY WEEKDAY
           </h3>
-          <div className="h-64">
+          <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dowChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
                 <XAxis
@@ -3272,17 +3345,19 @@ function AssemblyDashboard({
                   width={45}
                 />
                 <Tooltip
+                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                   contentStyle={{
                     backgroundColor: "rgba(18, 21, 31, 0.98)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "10px",
-                    boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    borderRadius: "8px",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                    padding: "10px 14px",
                   }}
                   labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
                   formatter={(value: number, name: string) => {
                     if (name === "avg") return [
-                      <span key="v" style={{ color: "#10B981", fontWeight: 600 }}>{fmt.number(value)} avg</span>,
-                      ""
+                      <span key="v" style={{ color: "#10B981", fontWeight: 600 }}>{fmt.number(value)}</span>,
+                      "Avg"
                     ];
                     return [value, name];
                   }}
@@ -3290,76 +3365,12 @@ function AssemblyDashboard({
                 <Bar
                   dataKey="avg"
                   fill="#10B981"
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={48}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={40}
                 />
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>
-
-      {/* Weekly Totals */}
-      <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-        <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
-          WEEKLY PRODUCTION
-        </h3>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
-              <defs>
-                <linearGradient id="weeklyGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#8B5CF6" />
-                  <stop offset="100%" stopColor="#6366F1" />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="week"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: "#64748B", fontSize: 11 }}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: "#64748B", fontSize: 10 }}
-                width={55}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(18, 21, 31, 0.98)",
-                  border: "1px solid rgba(139, 92, 246, 0.3)",
-                  borderRadius: "10px",
-                  boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-                }}
-                labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
-                formatter={(value: number, name: string) => {
-                  if (name === "total") return [
-                    <span key="v" style={{ color: "#A78BFA", fontWeight: 600 }}>{fmt.number(value)} units</span>,
-                    ""
-                  ];
-                  return [value, name];
-                }}
-              />
-              <ReferenceLine
-                y={summary.weeklyTarget}
-                stroke={forge.heat}
-                strokeDasharray="6 4"
-                label={{
-                  value: `Target: ${fmt.number(summary.weeklyTarget)}`,
-                  position: "insideTopRight",
-                  fill: forge.heat,
-                  fontSize: 10,
-                }}
-              />
-              <Bar
-                dataKey="total"
-                fill="url(#weeklyGradient)"
-                radius={[6, 6, 0, 0]}
-                maxBarSize={56}
-              />
-            </BarChart>
-          </ResponsiveContainer>
         </div>
       </div>
 
