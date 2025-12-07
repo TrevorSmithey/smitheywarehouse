@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/sync-b2b",
-      "schedule": "0 */6 * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }
