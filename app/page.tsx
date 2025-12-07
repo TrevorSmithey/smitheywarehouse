@@ -2558,7 +2558,7 @@ function HolidayDashboard({
             </div>
             <div className="text-right">
               <div className="text-lg font-bold text-text-primary tabular-nums">
-                {chartData[currentDay - 1]?.sales2025 ? fmt.currency(chartData[currentDay - 1].sales2025) : "—"}
+                {chartData[currentDay - 1]?.sales2025 != null ? fmt.currency(chartData[currentDay - 1].sales2025 ?? 0) : "—"}
               </div>
               <div className="text-xs text-text-muted">Day {currentDay}</div>
             </div>
