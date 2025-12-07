@@ -17,14 +17,8 @@ interface ShopifyOrder {
   created_at: string;
   customer?: { first_name?: string; last_name?: string; email?: string };
   source_name?: string;
-  fulfillments?: ShopifyFulfillment[];
+  line_items?: ShopifyLineItem[];
   cancelled_at?: string;
-}
-
-interface ShopifyFulfillment {
-  id: number;
-  created_at: string;
-  line_items: ShopifyLineItem[];
 }
 
 interface ShopifyLineItem {
@@ -34,7 +28,7 @@ interface ShopifyLineItem {
   price: string;
 }
 
-interface B2BFulfilled {
+interface B2BSold {
   order_id: number;
   order_name: string;
   customer_name: string | null;
@@ -42,7 +36,7 @@ interface B2BFulfilled {
   sku: string;
   quantity: number;
   price: number | null;
-  fulfilled_at: string;
+  fulfilled_at: string; // Using this field to store sold_at (order date)
   created_at: string;
 }
 
@@ -56,9 +50,9 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
     if (pageInfo) {
       url = `https://${SHOPIFY_B2B_STORE}/admin/api/2024-01/orders.json?page_info=${pageInfo}`;
     } else {
+      // Fetch ALL orders (not just shipped) - track sold, not fulfilled
       const params = new URLSearchParams({
         status: "any",
-        fulfillment_status: "shipped",
         created_at_min: fromDate,
         limit: "250",
       });
@@ -97,10 +91,11 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
   return allOrders;
 }
 
-function extractFulfilledItems(orders: ShopifyOrder[]): B2BFulfilled[] {
-  const items: B2BFulfilled[] = [];
+function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
+  const items: B2BSold[] = [];
 
   for (const order of orders) {
+    // Skip cancelled orders
     if (order.cancelled_at) continue;
 
     const customerName = order.customer
@@ -109,37 +104,36 @@ function extractFulfilledItems(orders: ShopifyOrder[]): B2BFulfilled[] {
         null
       : null;
 
-    for (const fulfillment of order.fulfillments || []) {
-      for (const lineItem of fulfillment.line_items) {
-        if (!lineItem.sku || lineItem.sku === "Gift-Note" || lineItem.sku === "Smith-Eng") {
-          continue;
-        }
-
-        items.push({
-          order_id: order.id,
-          order_name: order.name,
-          customer_name: customerName,
-          source_name: order.source_name || null,
-          sku: lineItem.sku,
-          quantity: lineItem.quantity,
-          price: parseFloat(lineItem.price) || null,
-          fulfilled_at: fulfillment.created_at,
-          created_at: order.created_at,
-        });
+    // Extract from order line_items (sold), not fulfillments
+    for (const lineItem of order.line_items || []) {
+      if (!lineItem.sku || lineItem.sku === "Gift-Note" || lineItem.sku === "Smith-Eng") {
+        continue;
       }
+
+      items.push({
+        order_id: order.id,
+        order_name: order.name,
+        customer_name: customerName,
+        source_name: order.source_name || null,
+        sku: lineItem.sku,
+        quantity: lineItem.quantity,
+        price: parseFloat(lineItem.price) || null,
+        fulfilled_at: order.created_at, // Use order date as "sold" date
+        created_at: order.created_at,
+      });
     }
   }
 
   return items;
 }
 
-async function upsertItems(items: B2BFulfilled[]): Promise<number> {
+async function upsertItems(items: B2BSold[]): Promise<number> {
   if (items.length === 0) return 0;
 
-  // Dedupe items
-  const deduped = new Map<string, B2BFulfilled>();
+  // Dedupe items by order_id + sku (one entry per SKU per order)
+  const deduped = new Map<string, B2BSold>();
   for (const item of items) {
-    const key = `${item.order_id}|${item.sku}|${item.fulfilled_at}`;
+    const key = `${item.order_id}|${item.sku}`;
     const existing = deduped.get(key);
     if (existing) {
       existing.quantity += item.quantity;
@@ -186,10 +180,10 @@ export async function GET(request: Request) {
       );
     }
 
-    console.log("Starting B2B sync...");
+    console.log("Starting B2B sync (orders sold)...");
     const startTime = Date.now();
 
-    // Sync last 7 days (catches any delayed fulfillments)
+    // Sync last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const fromDate = sevenDaysAgo.toISOString();
@@ -198,9 +192,9 @@ export async function GET(request: Request) {
     const orders = await fetchOrders(fromDate);
     console.log(`Fetched ${orders.length} B2B orders`);
 
-    // Extract fulfilled items
-    const items = extractFulfilledItems(orders);
-    console.log(`Extracted ${items.length} fulfilled line items`);
+    // Extract sold items (from order line_items, not fulfillments)
+    const items = extractSoldItems(orders);
+    console.log(`Extracted ${items.length} sold line items`);
 
     // Upsert to Supabase
     const upserted = await upsertItems(items);

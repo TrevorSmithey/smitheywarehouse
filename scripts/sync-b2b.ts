@@ -1,5 +1,6 @@
 /**
- * Sync B2B/Wholesale fulfilled orders from Shopify to Supabase
+ * Sync B2B/Wholesale SOLD orders from Shopify to Supabase
+ * Tracks orders placed (sold), not fulfilled - mirrors DTC behavior
  *
  * Usage:
  *   npm run sync-b2b                    # Sync last 30 days
@@ -30,14 +31,8 @@ interface ShopifyOrder {
   created_at: string;
   customer?: { first_name?: string; last_name?: string; email?: string };
   source_name?: string;
-  fulfillments?: ShopifyFulfillment[];
+  line_items?: ShopifyLineItem[];
   cancelled_at?: string;
-}
-
-interface ShopifyFulfillment {
-  id: number;
-  created_at: string;
-  line_items: ShopifyLineItem[];
 }
 
 interface ShopifyLineItem {
@@ -47,7 +42,7 @@ interface ShopifyLineItem {
   price: string;
 }
 
-interface B2BFulfilled {
+interface B2BSold {
   order_id: number;
   order_name: string;
   customer_name: string | null;
@@ -55,7 +50,7 @@ interface B2BFulfilled {
   sku: string;
   quantity: number;
   price: number | null;
-  fulfilled_at: string;
+  fulfilled_at: string; // Using this to store order date (sold_at)
   created_at: string;
 }
 
@@ -73,9 +68,9 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
     if (pageInfo) {
       url = `https://${SHOPIFY_B2B_STORE}/admin/api/2024-01/orders.json?page_info=${pageInfo}`;
     } else {
+      // Fetch ALL orders (not just shipped) - track sold, not fulfilled
       const params = new URLSearchParams({
         status: "any",
-        fulfillment_status: "shipped",
         created_at_min: fromDate,
         limit: "250",
       });
@@ -118,8 +113,8 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
   return allOrders;
 }
 
-function extractFulfilledItems(orders: ShopifyOrder[]): B2BFulfilled[] {
-  const items: B2BFulfilled[] = [];
+function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
+  const items: B2BSold[] = [];
 
   for (const order of orders) {
     // Skip cancelled orders
@@ -129,42 +124,40 @@ function extractFulfilledItems(orders: ShopifyOrder[]): B2BFulfilled[] {
       ? [order.customer.first_name, order.customer.last_name].filter(Boolean).join(" ") || order.customer.email || null
       : null;
 
-    for (const fulfillment of order.fulfillments || []) {
-      for (const lineItem of fulfillment.line_items) {
-        // Skip non-product SKUs
-        if (!lineItem.sku || lineItem.sku === "Gift-Note" || lineItem.sku === "Smith-Eng") {
-          continue;
-        }
-
-        items.push({
-          order_id: order.id,
-          order_name: order.name,
-          customer_name: customerName,
-          source_name: order.source_name || null,
-          sku: lineItem.sku,
-          quantity: lineItem.quantity,
-          price: parseFloat(lineItem.price) || null,
-          fulfilled_at: fulfillment.created_at,
-          created_at: order.created_at,
-        });
+    // Extract from order line_items (sold), not fulfillments
+    for (const lineItem of order.line_items || []) {
+      // Skip non-product SKUs
+      if (!lineItem.sku || lineItem.sku === "Gift-Note" || lineItem.sku === "Smith-Eng") {
+        continue;
       }
+
+      items.push({
+        order_id: order.id,
+        order_name: order.name,
+        customer_name: customerName,
+        source_name: order.source_name || null,
+        sku: lineItem.sku,
+        quantity: lineItem.quantity,
+        price: parseFloat(lineItem.price) || null,
+        fulfilled_at: order.created_at, // Use order date as "sold" date
+        created_at: order.created_at,
+      });
     }
   }
 
   return items;
 }
 
-async function upsertItems(items: B2BFulfilled[]): Promise<void> {
+async function upsertItems(items: B2BSold[]): Promise<void> {
   if (items.length === 0) {
     console.log("No items to upsert");
     return;
   }
 
-  // Dedupe items - aggregate quantities for same (order_id, sku, fulfilled_at)
-  // This happens when an order has multiple line items for the same SKU
-  const deduped = new Map<string, B2BFulfilled>();
+  // Dedupe items by order_id + sku (one entry per SKU per order)
+  const deduped = new Map<string, B2BSold>();
   for (const item of items) {
-    const key = `${item.order_id}|${item.sku}|${item.fulfilled_at}`;
+    const key = `${item.order_id}|${item.sku}`;
     const existing = deduped.get(key);
     if (existing) {
       existing.quantity += item.quantity;
@@ -227,11 +220,11 @@ async function main() {
   try {
     // Fetch orders from Shopify
     const orders = await fetchOrders(fromDate);
-    console.log(`\nFetched ${orders.length} fulfilled orders`);
+    console.log(`\nFetched ${orders.length} orders (excluding cancelled)`);
 
-    // Extract fulfilled line items
-    const items = extractFulfilledItems(orders);
-    console.log(`Extracted ${items.length} fulfilled line items`);
+    // Extract sold line items (from order, not fulfillments)
+    const items = extractSoldItems(orders);
+    console.log(`Extracted ${items.length} sold line items`);
 
     // Show SKU summary
     const skuCounts = new Map<string, number>();
