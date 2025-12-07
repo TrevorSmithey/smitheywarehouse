@@ -38,7 +38,20 @@ function getMonthlyBudgetFromFile(sku: string, budgetData: MonthlyBudgetData | n
   const yearData = budgetData[currentYear];
   if (!yearData) return undefined;
 
-  const skuBudgets = yearData[sku];
+  // Try direct lookup first
+  let skuBudgets = yearData[sku];
+
+  // Case-insensitive fallback
+  if (!skuBudgets) {
+    const lowerSku = sku.toLowerCase();
+    for (const key of Object.keys(yearData)) {
+      if (key.toLowerCase() === lowerSku) {
+        skuBudgets = yearData[key];
+        break;
+      }
+    }
+  }
+
   if (!skuBudgets) return undefined;
 
   return skuBudgets[monthName];
