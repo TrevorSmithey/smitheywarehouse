@@ -116,11 +116,11 @@ export async function fetchAllProducts(): Promise<ShipHeroProduct[]> {
   `;
 
   while (hasNextPage) {
-    const result = await shipheroQuery<ProductsQueryResponse>(query, {
+    const result: ProductsQueryResponse = await shipheroQuery<ProductsQueryResponse>(query, {
       cursor,
     });
 
-    const data = result.data?.products?.data;
+    const data: ProductsQueryResponse["data"]["products"]["data"] | undefined = result.data?.products?.data;
     if (!data) {
       throw new Error("Invalid response structure from ShipHero API");
     }

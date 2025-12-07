@@ -50,7 +50,7 @@ import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
 type TabOption = "fulfillment" | "tracking" | "inventory";
-type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessories" | "factory_second";
+type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
 // Calculate date range bounds based on selection
 function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
@@ -634,14 +634,17 @@ export default function Dashboard() {
         <>
           {/* Category Tabs */}
           <div className="flex gap-2 mb-6">
-            {(["cast_iron", "carbon_steel", "accessories", "factory_second"] as InventoryCategoryTab[]).map((cat) => {
+            {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => {
               const labels: Record<InventoryCategoryTab, string> = {
                 cast_iron: "Cast Iron",
                 carbon_steel: "Carbon Steel",
-                accessories: "Accessories",
+                accessory: "Accessories",
                 factory_second: "Factory Second",
               };
-              const count = inventory?.byCategory[cat]?.length || 0;
+              // Combine accessory and glass_lid counts for the "Accessories" tab
+              const count = cat === "accessory"
+                ? (inventory?.byCategory.accessory?.length || 0) + (inventory?.byCategory.glass_lid?.length || 0)
+                : inventory?.byCategory[cat]?.length || 0;
               return (
                 <button
                   key={cat}
@@ -696,13 +699,21 @@ export default function Dashboard() {
 
           {/* Inventory Table */}
           <InventoryTable
-            products={inventory?.byCategory[inventoryCategory] || []}
+            products={
+              inventoryCategory === "accessory"
+                ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
+                : inventory?.byCategory[inventoryCategory] || []
+            }
             loading={inventoryLoading}
           />
 
           {/* Inventory Chart - Horizontal Stacked Bars */}
           <InventoryChart
-            products={inventory?.byCategory[inventoryCategory] || []}
+            products={
+              inventoryCategory === "accessory"
+                ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
+                : inventory?.byCategory[inventoryCategory] || []
+            }
             loading={inventoryLoading}
           />
         </>
@@ -1808,7 +1819,7 @@ function InventoryTable({
                     }`}
                   >
                     <td className="px-6 py-3 text-sm text-text-primary font-medium">
-                      {product.name || product.sku}
+                      {product.displayName || product.sku}
                     </td>
                     <td className="text-right px-4 py-3 text-sm text-text-secondary">
                       {formatNumber(product.pipefitter)}
@@ -1886,7 +1897,7 @@ function InventoryChart({
               <XAxis type="number" stroke="#64748B" fontSize={11} />
               <YAxis
                 type="category"
-                dataKey="name"
+                dataKey="displayName"
                 stroke="#64748B"
                 fontSize={11}
                 width={75}
