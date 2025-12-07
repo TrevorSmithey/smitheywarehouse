@@ -34,6 +34,7 @@ import {
   BarChart3,
   Gift,
   Hammer,
+  Target,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -2989,7 +2990,7 @@ function AssemblyDashboard({
       </div>
 
       {/* Production Stats Row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {/* Latest Day */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <div className="flex items-center justify-between mb-3">
@@ -2999,20 +3000,34 @@ function AssemblyDashboard({
             <Calendar className="w-4 h-4 text-text-muted" />
           </div>
           <div className={`text-3xl font-bold tabular-nums ${
-            summary.yesterdayProduction >= summary.dailyAverage7d
+            summary.yesterdayProduction >= summary.dailyTarget
               ? "text-status-good"
-              : summary.yesterdayProduction >= summary.dailyAverage7d * 0.8
+              : summary.yesterdayProduction >= summary.dailyTarget * 0.8
                 ? "text-status-warning"
                 : "text-status-bad"
           }`}>
             {fmt.number(summary.yesterdayProduction)}
           </div>
           <div className="text-xs text-text-tertiary mt-1">
-            {summary.yesterdayProduction >= summary.dailyAverage7d ? (
-              <span className="text-status-good">{fmt.number(summary.yesterdayProduction - summary.dailyAverage7d)} above avg</span>
+            {summary.yesterdayProduction >= summary.dailyTarget ? (
+              <span className="text-status-good">{fmt.number(summary.yesterdayProduction - summary.dailyTarget)} above target</span>
             ) : (
-              <span className="text-status-bad">{fmt.number(summary.dailyAverage7d - summary.yesterdayProduction)} below avg</span>
+              <span className="text-status-bad">{fmt.number(summary.dailyTarget - summary.yesterdayProduction)} below target</span>
             )}
+          </div>
+        </div>
+
+        {/* Daily Target */}
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30" style={{ borderColor: `${forge.heat}30` }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">DAILY TARGET</span>
+            <Target className="w-4 h-4" style={{ color: forge.heat }} />
+          </div>
+          <div className="text-3xl font-bold tabular-nums" style={{ color: forge.heat }}>
+            {fmt.number(summary.dailyTarget)}
+          </div>
+          <div className="text-xs text-text-tertiary mt-1">
+            {fmt.number(summary.totalDeficit)} left to build
           </div>
         </div>
 
