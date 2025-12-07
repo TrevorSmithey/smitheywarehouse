@@ -76,7 +76,7 @@ interface B2BOrder {
   }>;
 }
 
-async function upsertB2BOrder(supabase: ReturnType<typeof createClient>, order: B2BOrder) {
+async function upsertB2BOrder(supabase: ReturnType<typeof createServiceClient>, order: B2BOrder) {
   // Skip cancelled orders
   // TODO: Consider including cancelled orders in the future for apples-to-apples
   // comparison with Excel reports that include all orders placed
@@ -125,7 +125,7 @@ async function upsertB2BOrder(supabase: ReturnType<typeof createClient>, order: 
   console.log(`Processed B2B order ${order.name} (${order.id})`);
 }
 
-async function deleteB2BOrder(supabase: ReturnType<typeof createClient>, orderId: number) {
+async function deleteB2BOrder(supabase: ReturnType<typeof createServiceClient>, orderId: number) {
   const { error } = await supabase
     .from("b2b_fulfilled")
     .delete()
