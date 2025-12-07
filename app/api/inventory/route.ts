@@ -114,12 +114,13 @@ export async function GET(request: Request) {
       .lte("orders.created_at", monthEnd)
       .eq("orders.canceled", false);
 
-    // Aggregate ordered quantity by SKU
+    // Aggregate ordered quantity by SKU (case-insensitive)
     const monthlySalesBySku = new Map<string, number>();
     for (const item of monthlySalesData || []) {
       if (item.sku) {
-        const current = monthlySalesBySku.get(item.sku) || 0;
-        monthlySalesBySku.set(item.sku, current + (item.quantity || 0));
+        const skuLower = item.sku.toLowerCase();
+        const current = monthlySalesBySku.get(skuLower) || 0;
+        monthlySalesBySku.set(skuLower, current + (item.quantity || 0));
       }
     }
 
@@ -183,7 +184,7 @@ export async function GET(request: Request) {
         const doiResult = total > 0 ? calculateDOI(sku, total) : undefined;
 
         // Get monthly metrics using official budgets from file
-        const monthSold = monthlySalesBySku.get(sku) || 0;
+        const monthSold = monthlySalesBySku.get(sku.toLowerCase()) || 0;
         const monthBudget = getMonthlyBudgetFromFile(sku, budgetData);
         const monthPct = monthBudget && monthBudget > 0
           ? Math.round((monthSold / monthBudget) * 100)
