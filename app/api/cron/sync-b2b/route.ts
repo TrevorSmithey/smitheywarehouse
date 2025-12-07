@@ -105,7 +105,8 @@ function extractFulfilledItems(orders: ShopifyOrder[]): B2BFulfilled[] {
 
     const customerName = order.customer
       ? [order.customer.first_name, order.customer.last_name].filter(Boolean).join(" ") ||
-        order.customer.email
+        order.customer.email ||
+        null
       : null;
 
     for (const fulfillment of order.fulfillments || []) {
