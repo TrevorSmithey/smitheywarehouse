@@ -118,6 +118,8 @@ function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
 
   for (const order of orders) {
     // Skip cancelled orders
+    // TODO: Consider including cancelled orders in the future for apples-to-apples
+    // comparison with Excel reports that include all orders placed
     if (order.cancelled_at) continue;
 
     const customerName = order.customer

@@ -1,13 +1,17 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+/**
+ * Full re-sync of 2025 B2B data with SOLD logic
+ * Clears all 2025 data and re-imports from Shopify
+ */
 
-export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes max for Vercel
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
+import { createClient } from "@supabase/supabase-js";
 
 const SHOPIFY_B2B_STORE = process.env.SHOPIFY_B2B_STORE_URL;
 const SHOPIFY_B2B_TOKEN = process.env.SHOPIFY_B2B_ADMIN_TOKEN;
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY as string;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -36,7 +40,7 @@ interface B2BSold {
   sku: string;
   quantity: number;
   price: number | null;
-  fulfilled_at: string; // Using this field to store sold_at (order date)
+  fulfilled_at: string;
   created_at: string;
 }
 
@@ -44,13 +48,13 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
   const allOrders: ShopifyOrder[] = [];
   let pageInfo: string | null = null;
   let hasMore = true;
+  let page = 1;
 
   while (hasMore) {
     let url: string;
     if (pageInfo) {
       url = `https://${SHOPIFY_B2B_STORE}/admin/api/2024-01/orders.json?page_info=${pageInfo}`;
     } else {
-      // Fetch ALL orders (not just shipped) - track sold, not fulfilled
       const params = new URLSearchParams({
         status: "any",
         created_at_min: fromDate,
@@ -67,14 +71,15 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
     });
 
     if (!response.ok) {
-      throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+      throw new Error(`Shopify API error: ${response.status}`);
     }
 
     const data = await response.json();
     const orders = data.orders || [];
     allOrders.push(...orders);
 
-    // Check for pagination
+    process.stdout.write(`\r  Fetching... Page ${page}, ${allOrders.length} orders`);
+
     const linkHeader = response.headers.get("link");
     if (linkHeader && linkHeader.includes('rel="next"')) {
       const match = linkHeader.match(/<[^>]*page_info=([^>&]*)[^>]*>; rel="next"/);
@@ -84,21 +89,23 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
       hasMore = false;
     }
 
-    // Rate limiting
+    page++;
     await new Promise((r) => setTimeout(r, 500));
   }
 
+  console.log(""); // newline after progress
   return allOrders;
 }
 
 function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
   const items: B2BSold[] = [];
+  let cancelled = 0;
 
   for (const order of orders) {
-    // Skip cancelled orders
-    // TODO: Consider including cancelled orders in the future for apples-to-apples
-    // comparison with Excel reports that include all orders placed
-    if (order.cancelled_at) continue;
+    if (order.cancelled_at) {
+      cancelled++;
+      continue;
+    }
 
     const customerName = order.customer
       ? [order.customer.first_name, order.customer.last_name].filter(Boolean).join(" ") ||
@@ -106,7 +113,6 @@ function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
         null
       : null;
 
-    // Extract from order line_items (sold), not fulfillments
     for (const lineItem of order.line_items || []) {
       if (!lineItem.sku || lineItem.sku === "Gift-Note" || lineItem.sku === "Smith-Eng") {
         continue;
@@ -120,19 +126,48 @@ function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
         sku: lineItem.sku,
         quantity: lineItem.quantity,
         price: parseFloat(lineItem.price) || null,
-        fulfilled_at: order.created_at, // Use order date as "sold" date
+        fulfilled_at: order.created_at,
         created_at: order.created_at,
       });
     }
   }
 
+  console.log(`  Skipped ${cancelled} cancelled orders`);
   return items;
 }
 
-async function upsertItems(items: B2BSold[]): Promise<number> {
-  if (items.length === 0) return 0;
+async function main() {
+  const startTime = Date.now();
 
-  // Dedupe items by order_id + sku (one entry per SKU per order)
+  console.log("═══════════════════════════════════════════════════════════");
+  console.log("  Full Re-sync: 2025 B2B Data (Sold Logic)                 ");
+  console.log("═══════════════════════════════════════════════════════════\n");
+
+  // Step 1: Delete all 2025 data
+  console.log("Step 1: Clearing all 2025 B2B data...");
+  const { error: deleteError, count: deleteCount } = await supabase
+    .from("b2b_fulfilled")
+    .delete({ count: "exact" })
+    .gte("fulfilled_at", "2025-01-01")
+    .lt("fulfilled_at", "2026-01-01");
+
+  if (deleteError) {
+    console.error("Delete error:", deleteError);
+    return;
+  }
+  console.log(`  Deleted ${deleteCount} records\n`);
+
+  // Step 2: Fetch all 2025 orders
+  console.log("Step 2: Fetching all 2025 orders from Shopify...");
+  const orders = await fetchOrders("2025-01-01T00:00:00-05:00");
+  console.log(`  Total orders fetched: ${orders.length}\n`);
+
+  // Step 3: Extract sold items
+  console.log("Step 3: Extracting sold line items...");
+  const items = extractSoldItems(orders);
+  console.log(`  Extracted ${items.length} line items\n`);
+
+  // Dedupe
   const deduped = new Map<string, B2BSold>();
   for (const item of items) {
     const key = `${item.order_id}|${item.sku}`;
@@ -144,11 +179,11 @@ async function upsertItems(items: B2BSold[]): Promise<number> {
     }
   }
   const uniqueItems = Array.from(deduped.values());
+  console.log(`  Deduped to ${uniqueItems.length} unique records\n`);
 
-  // Batch upsert
+  // Step 4: Upsert in batches
+  console.log("Step 4: Upserting to Supabase...");
   const chunkSize = 500;
-  let totalUpserted = 0;
-
   for (let i = 0; i < uniqueItems.length; i += chunkSize) {
     const chunk = uniqueItems.slice(i, i + chunkSize);
     const { error } = await supabase.from("b2b_fulfilled").upsert(chunk, {
@@ -156,72 +191,35 @@ async function upsertItems(items: B2BSold[]): Promise<number> {
       ignoreDuplicates: false,
     });
 
-    if (error) throw error;
-    totalUpserted += chunk.length;
+    if (error) {
+      console.error("Upsert error:", error);
+      return;
+    }
+    process.stdout.write(`\r  Upserted ${Math.min(i + chunkSize, uniqueItems.length)}/${uniqueItems.length}`);
+  }
+  console.log("\n");
+
+  // Step 5: Monthly summary
+  console.log("Step 5: Monthly Summary:");
+  console.log("─".repeat(40));
+
+  const monthlyTotals: Record<string, number> = {};
+  for (const item of uniqueItems) {
+    const month = item.created_at.slice(0, 7); // YYYY-MM
+    monthlyTotals[month] = (monthlyTotals[month] || 0) + item.quantity;
   }
 
-  return totalUpserted;
-}
-
-export async function GET(request: Request) {
-  try {
-    // Verify cron secret
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (process.env.NODE_ENV === "production" && cronSecret) {
-      if (authHeader !== `Bearer ${cronSecret}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
-    if (!SHOPIFY_B2B_STORE || !SHOPIFY_B2B_TOKEN) {
-      return NextResponse.json(
-        { error: "Missing B2B Shopify credentials" },
-        { status: 500 }
-      );
-    }
-
-    console.log("Starting B2B sync (orders sold)...");
-    const startTime = Date.now();
-
-    // Sync last 7 days
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const fromDate = sevenDaysAgo.toISOString();
-
-    // Fetch orders
-    const orders = await fetchOrders(fromDate);
-    console.log(`Fetched ${orders.length} B2B orders`);
-
-    // Extract sold items (from order line_items, not fulfillments)
-    const items = extractSoldItems(orders);
-    console.log(`Extracted ${items.length} sold line items`);
-
-    // Upsert to Supabase
-    const upserted = await upsertItems(items);
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    // Get totals for response
-    const totalUnits = items.reduce((sum, i) => sum + i.quantity, 0);
-
-    return NextResponse.json({
-      success: true,
-      elapsed: `${elapsed}s`,
-      ordersFound: orders.length,
-      itemsExtracted: items.length,
-      recordsUpserted: upserted,
-      unitsInPeriod: totalUnits,
-    });
-  } catch (error) {
-    console.error("B2B sync failed:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "Sync failed",
-      },
-      { status: 500 }
-    );
+  const sortedMonths = Object.keys(monthlyTotals).sort();
+  for (const month of sortedMonths) {
+    console.log(`  ${month}: ${monthlyTotals[month].toLocaleString()} units`);
   }
+
+  const totalUnits = Object.values(monthlyTotals).reduce((a, b) => a + b, 0);
+  console.log("─".repeat(40));
+  console.log(`  TOTAL: ${totalUnits.toLocaleString()} units`);
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`\n✅ Full re-sync complete in ${elapsed}s`);
 }
+
+main().catch(console.error);
