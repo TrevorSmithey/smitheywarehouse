@@ -2355,45 +2355,52 @@ function HolidayDashboard({
   return (
     <div className="space-y-8">
       {/* Header Section */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-2xl font-bold text-text-primary tracking-tight">
-              Holiday Season
-            </h2>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-              summary.revenueGrowth >= 0
-                ? "bg-status-good/15 text-status-good"
-                : "bg-status-bad/15 text-status-bad"
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-4">
+          <h2 className="text-label font-medium text-text-tertiary uppercase tracking-wider">
+            Q4 2025
+          </h2>
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded text-xs font-semibold tabular-nums ${
+              summary.ordersGrowth >= 0 ? "bg-status-good/10 text-status-good" : "bg-status-bad/10 text-status-bad"
+            }`}>
+              {fmt.delta(summary.ordersGrowth)} Orders
+            </span>
+            <span className={`px-2 py-0.5 rounded text-xs font-semibold tabular-nums ${
+              summary.revenueGrowth >= 0 ? "bg-status-good/10 text-status-good" : "bg-status-bad/10 text-status-bad"
             }`}>
               {fmt.delta(summary.revenueGrowth)} Revenue
             </span>
           </div>
-          <p className="text-text-tertiary">
-            Q4 Performance &middot; Day {currentDay} of 92
-          </p>
         </div>
-        <button
-          onClick={onRefresh}
-          className="p-2.5 hover:bg-bg-secondary rounded-lg transition-all hover:scale-105 active:scale-95"
-          title="Refresh data"
-        >
-          <RefreshCw className="w-4 h-4 text-text-tertiary" />
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-text-secondary tabular-nums">
+            {92 - currentDay} DAYS LEFT
+          </span>
+          <button
+            onClick={onRefresh}
+            className="p-2 hover:bg-bg-secondary rounded-lg transition-all"
+            title="Refresh data"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-text-tertiary" />
+          </button>
+        </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="relative">
-        <div className="flex items-center justify-between text-xs text-text-muted mb-2">
-          <span>Oct 1</span>
-          <span className="text-text-secondary font-medium">{progressPct}% Complete</span>
-          <span>Dec 31</span>
-        </div>
-        <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+      {/* Timeline Progress */}
+      <div className="relative mb-6">
+        <div className="h-1 bg-bg-tertiary rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-accent-blue to-accent-cyan rounded-full transition-all duration-500"
+            className="h-full bg-accent-blue rounded-full"
             style={{ width: `${progressPct}%` }}
           />
+        </div>
+        <div className="flex justify-between mt-1.5">
+          <span className="text-[10px] text-text-muted">OCT 1</span>
+          <span className="text-[10px] text-text-secondary font-medium" style={{ marginLeft: `${progressPct - 5}%` }}>
+            TODAY
+          </span>
+          <span className="text-[10px] text-text-muted">DEC 31</span>
         </div>
       </div>
 
