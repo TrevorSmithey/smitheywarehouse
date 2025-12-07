@@ -253,6 +253,7 @@ export function calculateDOI(sku: string, currentInventory: number): DOIResult |
   let remainingInventory = currentInventory;
   let totalDays = 0;
   const maxDays = 730; // 2 years max projection
+  let foundAnyBudget = false; // Track if we found budget data
 
   while (remainingInventory > 0 && totalDays < maxDays) {
     const daysInThisMonth = DAYS_IN_MONTH[month];
@@ -280,6 +281,9 @@ export function calculateDOI(sku: string, currentInventory: number): DOIResult |
       dayOfMonth = 1;
       continue;
     }
+
+    // Found budget data for this SKU
+    foundAnyBudget = true;
 
     // Daily demand rate for this month
     const dailyDemand = monthBudget / daysInThisMonth;
@@ -318,17 +322,14 @@ export function calculateDOI(sku: string, currentInventory: number): DOIResult |
     dayOfMonth = 1;
   }
 
-  // Inventory lasts beyond projection window
-  const stockoutDate = new Date();
-  stockoutDate.setDate(stockoutDate.getDate() + totalDays);
+  // If no budget data was found, return undefined (show N/A)
+  if (!foundAnyBudget) {
+    return undefined;
+  }
 
-  return {
-    doi: Math.round(totalDays),
-    stockoutWeek: getWeekNumber(stockoutDate),
-    stockoutYear: stockoutDate.getFullYear(),
-    weeklyDemand: 0,
-    interpolatedDays: totalDays,
-  };
+  // Inventory lasts beyond projection window (2+ years)
+  // Return undefined to show N/A instead of misleading 730d
+  return undefined;
 }
 
 /**
