@@ -13,7 +13,8 @@
     "seed-products": "tsx scripts/seed-products.ts",
     "sync-inventory": "tsx scripts/sync-inventory.ts",
     "sync-b2b": "tsx scripts/sync-b2b.ts",
-    "import-forecasts": "tsx scripts/import-forecasts.ts"
+    "import-forecasts": "tsx scripts/import-forecasts.ts",
+    "sync-holiday": "tsx scripts/sync-holiday-tracking.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

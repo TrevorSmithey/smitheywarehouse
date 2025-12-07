@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/sync-b2b",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-holiday",
+      "schedule": "0 12 * * *"
     }
   ]
 }

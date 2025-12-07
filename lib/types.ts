@@ -279,3 +279,43 @@ export interface MetricsResponse {
   orderAging: OrderAging[];
   lastUpdated: string;
 }
+
+// Holiday tracking types (Q4 comparison)
+export interface HolidayData {
+  day_number: number;
+  date_2024: string | null;
+  orders_2024: number | null;
+  sales_2024: number | null;
+  cumulative_orders_2024: number | null;
+  cumulative_sales_2024: number | null;
+  date_2025: string | null;
+  orders_2025: number | null;
+  sales_2025: number | null;
+  cumulative_orders_2025: number | null;
+  cumulative_sales_2025: number | null;
+  daily_orders_delta: number | null;
+  daily_sales_delta: number | null;
+  cumulative_orders_delta: number | null;
+  cumulative_sales_delta: number | null;
+}
+
+export interface HolidaySummary {
+  totalOrders2025: number;
+  totalRevenue2025: number;
+  totalOrders2024: number;
+  totalRevenue2024: number;
+  ordersGrowth: number;
+  revenueGrowth: number;
+  daysWithData: number;
+  latestDate: string | null;
+  avgDailyOrders2025: number;
+  avgDailyRevenue2025: number;
+  avgOrderValue2025: number;
+  avgOrderValue2024: number;
+}
+
+export interface HolidayResponse {
+  data: HolidayData[];
+  summary: HolidaySummary;
+  lastSynced: string | null;
+}
