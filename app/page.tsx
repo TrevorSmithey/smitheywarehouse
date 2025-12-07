@@ -30,6 +30,7 @@ import {
   Pen,
   BarChart3,
   Gift,
+  Hammer,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -48,11 +49,13 @@ import type {
   InventoryCategory,
   HolidayResponse,
   HolidayData,
+  AssemblyResponse,
+  DailyAssembly,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type PrimaryTab = "inventory" | "fulfillment" | "holiday";
+type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment";
 type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -197,6 +200,8 @@ export default function Dashboard() {
   // Holiday tab state
   const [holidayData, setHolidayData] = useState<HolidayResponse | null>(null);
   const [holidayLoading, setHolidayLoading] = useState(false);
+  const [assemblyData, setAssemblyData] = useState<AssemblyResponse | null>(null);
+  const [assemblyLoading, setAssemblyLoading] = useState(false);
 
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
@@ -241,6 +246,28 @@ export default function Dashboard() {
       fetchHoliday();
     }
   }, [primaryTab, holidayData, holidayLoading, fetchHoliday]);
+
+  // Fetch assembly data
+  const fetchAssembly = useCallback(async () => {
+    try {
+      setAssemblyLoading(true);
+      const res = await fetch("/api/assembly");
+      if (!res.ok) throw new Error("Failed to fetch assembly data");
+      const data: AssemblyResponse = await res.json();
+      setAssemblyData(data);
+    } catch (err) {
+      console.error("Assembly fetch error:", err);
+    } finally {
+      setAssemblyLoading(false);
+    }
+  }, []);
+
+  // Load assembly data when switching to assembly tab
+  useEffect(() => {
+    if (primaryTab === "assembly" && !assemblyData && !assemblyLoading) {
+      fetchAssembly();
+    }
+  }, [primaryTab, assemblyData, assemblyLoading, fetchAssembly]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -424,6 +451,17 @@ export default function Dashboard() {
           >
             <Gift className="w-4 h-4 inline-block mr-2 -mt-0.5" />
             HOLIDAY
+          </button>
+          <button
+            onClick={() => setPrimaryTab("assembly")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "assembly"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Hammer className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            ASSEMBLY
           </button>
           <button
             onClick={() => setPrimaryTab("fulfillment")}
@@ -705,6 +743,15 @@ export default function Dashboard() {
           data={holidayData}
           loading={holidayLoading}
           onRefresh={fetchHoliday}
+        />
+      )}
+
+      {/* ASSEMBLY TAB */}
+      {primaryTab === "assembly" && (
+        <AssemblyDashboard
+          data={assemblyData}
+          loading={assemblyLoading}
+          onRefresh={fetchAssembly}
         />
       )}
     </div>
@@ -2773,6 +2820,633 @@ function HolidayDashboard({
       {data.lastSynced && (
         <div className="text-xs text-text-muted text-center pt-4 border-t border-border/30">
           Data synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Assembly Dashboard Component - Industrial Forge Aesthetic
+function AssemblyDashboard({
+  data,
+  loading,
+  onRefresh,
+}: {
+  data: AssemblyResponse | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  // Forge color palette
+  const forge = {
+    copper: "#D97706",
+    ember: "#EA580C",
+    iron: "#78716C",
+    glow: "#FCD34D",
+    heat: "#F59E0B",
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
+            <div
+              className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: forge.copper, borderRightColor: forge.ember }}
+            />
+          </div>
+          <span className="text-sm text-text-tertiary tracking-widest uppercase">Firing up the forge...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <Hammer className="w-16 h-16" style={{ color: forge.iron }} />
+        <span className="text-text-tertiary tracking-wide">No assembly data available</span>
+        <button
+          onClick={onRefresh}
+          className="px-6 py-2.5 text-sm font-medium tracking-wider uppercase transition-all border-2 rounded"
+          style={{ borderColor: forge.copper, color: forge.copper }}
+        >
+          Refresh
+        </button>
+      </div>
+    );
+  }
+
+  const { summary, daily, weeklyData, dayOfWeekAvg, config } = data;
+
+  // Calculate progress percentage toward cutoff
+  const cutoffDate = new Date(config.manufacturing_cutoff);
+  const startDate = new Date(config.cutoff_start_date);
+  const today = new Date();
+  const totalDays = Math.ceil((cutoffDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const elapsedDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const timeProgressPct = Math.min(100, Math.round((elapsedDays / totalDays) * 100));
+
+  // Prepare chart data - last 30 days
+  const sortedDaily = [...daily].sort((a, b) => b.date.localeCompare(a.date));
+  const recentDaily = sortedDaily.slice(0, 30).reverse();
+
+  const dailyChartData = recentDaily.map((d) => ({
+    date: format(parseLocalDate(d.date), "M/d"),
+    value: d.daily_total,
+    day: d.day_of_week,
+  }));
+
+  // Weekly comparison data
+  const weeklyChartData = weeklyData.map((w) => ({
+    week: `W${w.week_num}`,
+    total: w.total,
+    dailyAvg: w.daily_avg,
+    daysWorked: w.days_worked,
+  }));
+
+  // Day of week data
+  const dowChartData = dayOfWeekAvg.map((d) => ({
+    day: d.day.slice(0, 3),
+    avg: d.avg,
+    count: d.count,
+  }));
+
+  const fmt = {
+    number: (n: number) => n.toLocaleString(),
+    delta: (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`,
+  };
+
+  // SVG arc for progress gauge
+  const progressArc = (pct: number, radius: number, strokeWidth: number) => {
+    const normalizedPct = Math.min(100, Math.max(0, pct));
+    const circumference = 2 * Math.PI * radius;
+    const arc = (normalizedPct / 100) * circumference * 0.75; // 270 degrees
+    return {
+      circumference: circumference * 0.75,
+      offset: circumference * 0.75 - arc,
+    };
+  };
+
+  const gaugeRadius = 80;
+  const gaugeStroke = 12;
+  const productionArc = progressArc(summary.progressPct, gaugeRadius, gaugeStroke);
+  const timeArc = progressArc(timeProgressPct, gaugeRadius - 18, 6);
+
+  return (
+    <div className="space-y-6">
+      {/* Hero Section - The Forge */}
+      <div
+        className="relative rounded-2xl overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, rgba(217, 119, 6, 0.08) 0%, rgba(234, 88, 12, 0.04) 50%, transparent 100%)`,
+        }}
+      >
+        {/* Subtle grid texture */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: '20px 20px',
+          }}
+        />
+
+        <div className="relative p-6 md:p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8">
+            {/* Progress Gauge */}
+            <div className="flex-shrink-0 flex justify-center lg:justify-start">
+              <div className="relative">
+                <svg width="200" height="180" viewBox="0 0 200 180">
+                  {/* Background arc */}
+                  <path
+                    d="M 20 140 A 80 80 0 1 1 180 140"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.06)"
+                    strokeWidth={gaugeStroke}
+                    strokeLinecap="round"
+                  />
+                  {/* Time progress arc (inner) */}
+                  <path
+                    d="M 38 140 A 62 62 0 1 1 162 140"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.04)"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 38 140 A 62 62 0 1 1 162 140"
+                    fill="none"
+                    stroke={forge.iron}
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray={timeArc.circumference}
+                    strokeDashoffset={timeArc.offset}
+                    style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                  />
+                  {/* Production progress arc (outer) */}
+                  <path
+                    d="M 20 140 A 80 80 0 1 1 180 140"
+                    fill="none"
+                    stroke={summary.progressPct >= 100 ? "#10B981" : forge.copper}
+                    strokeWidth={gaugeStroke}
+                    strokeLinecap="round"
+                    strokeDasharray={productionArc.circumference}
+                    strokeDashoffset={productionArc.offset}
+                    style={{
+                      transition: 'stroke-dashoffset 1s ease-out',
+                      filter: `drop-shadow(0 0 8px ${summary.progressPct >= 100 ? "#10B981" : forge.ember}40)`,
+                    }}
+                  />
+                  {/* Center text */}
+                  <text x="100" y="95" textAnchor="middle" className="fill-text-primary" style={{ fontSize: '36px', fontWeight: 700, fontFamily: 'system-ui' }}>
+                    {summary.progressPct.toFixed(0)}%
+                  </text>
+                  <text x="100" y="120" textAnchor="middle" className="fill-text-tertiary" style={{ fontSize: '11px', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                    COMPLETE
+                  </text>
+                </svg>
+
+                {/* Legend */}
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-4 text-[10px] text-text-muted whitespace-nowrap">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: forge.copper }} />
+                    Production
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: forge.iron }} />
+                    Time
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Hero Stats */}
+            <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {/* Days Remaining - Primary */}
+              <div className="col-span-2 md:col-span-1">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">DAYS LEFT</div>
+                <div
+                  className="text-5xl md:text-6xl font-bold tabular-nums tracking-tight"
+                  style={{ color: summary.daysRemaining <= 3 ? "#DC2626" : forge.glow }}
+                >
+                  {summary.daysRemaining}
+                </div>
+                <div className="text-xs text-text-tertiary mt-1">
+                  until {format(cutoffDate, "MMM d")}
+                </div>
+              </div>
+
+              {/* Units Remaining */}
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">TO PRODUCE</div>
+                <div className="text-3xl md:text-4xl font-bold tabular-nums text-text-primary">
+                  {fmt.number(Math.max(0, summary.totalDeficit))}
+                </div>
+                <div className="text-xs text-text-tertiary mt-1">cookware units</div>
+              </div>
+
+              {/* Daily Target */}
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">DAILY TARGET</div>
+                <div
+                  className="text-3xl md:text-4xl font-bold tabular-nums"
+                  style={{ color: summary.dailyAverage7d >= summary.dailyTarget ? "#10B981" : forge.heat }}
+                >
+                  {fmt.number(summary.dailyTarget)}
+                </div>
+                <div className="text-xs text-text-tertiary mt-1">units/day needed</div>
+              </div>
+
+              {/* Weekly Target */}
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">WEEKLY TARGET</div>
+                <div className="text-3xl md:text-4xl font-bold tabular-nums text-text-primary">
+                  {fmt.number(summary.weeklyTarget)}
+                </div>
+                <div className="text-xs text-text-tertiary mt-1">units/week needed</div>
+              </div>
+            </div>
+
+            {/* Refresh Button */}
+            <button
+              onClick={onRefresh}
+              className="absolute top-4 right-4 p-2.5 rounded-lg transition-all hover:bg-white/5"
+              title="Refresh data"
+            >
+              <RefreshCw className="w-4 h-4 text-text-tertiary" />
+            </button>
+          </div>
+
+          {/* Progress Stats Bar */}
+          <div className="mt-8 pt-6 border-t border-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+              <div className="flex items-center gap-6">
+                <span className="text-text-muted">
+                  <span className="text-text-secondary font-semibold tabular-nums">{fmt.number(summary.totalAssembled)}</span>
+                  <span className="mx-1">/</span>
+                  <span className="tabular-nums">{fmt.number(summary.totalRevisedPlan)}</span>
+                  <span className="ml-1.5 text-xs">assembled</span>
+                </span>
+                <span className="text-text-muted">
+                  <span className="tabular-nums">{timeProgressPct}%</span>
+                  <span className="ml-1.5 text-xs">time elapsed</span>
+                </span>
+              </div>
+              {summary.dailyAverage7d >= summary.dailyTarget ? (
+                <span className="flex items-center gap-1.5 text-status-good text-xs font-medium">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  On track
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-status-warning text-xs font-medium">
+                  <TrendingDown className="w-3.5 h-3.5" />
+                  Behind pace
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Production Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Yesterday */}
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">YESTERDAY</span>
+            <Calendar className="w-4 h-4 text-text-muted" />
+          </div>
+          <div className="text-3xl font-bold tabular-nums text-text-primary">
+            {fmt.number(summary.yesterdayProduction)}
+          </div>
+          <div className="text-xs text-text-tertiary mt-1">
+            {summary.yesterdayProduction >= summary.dailyTarget ? (
+              <span className="text-status-good">Hit target</span>
+            ) : (
+              <span>{fmt.number(summary.dailyTarget - summary.yesterdayProduction)} below target</span>
+            )}
+          </div>
+        </div>
+
+        {/* 7-Day Average */}
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">7-DAY AVG</span>
+            <BarChart3 className="w-4 h-4 text-text-muted" />
+          </div>
+          <div className="text-3xl font-bold tabular-nums text-text-primary">
+            {fmt.number(summary.dailyAverage7d)}
+          </div>
+          <div className={`text-xs mt-1 flex items-center gap-1 ${summary.dailyAverageDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+            {summary.dailyAverageDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {fmt.delta(summary.dailyAverageDelta)} vs prior week
+          </div>
+        </div>
+
+        {/* This Week */}
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">THIS WEEK</span>
+            <Package className="w-4 h-4 text-text-muted" />
+          </div>
+          <div className="text-3xl font-bold tabular-nums text-text-primary">
+            {fmt.number(summary.currentWeekTotal)}
+          </div>
+          <div className="text-xs text-text-tertiary mt-1">
+            {summary.currentWeekDays} day{summary.currentWeekDays !== 1 ? 's' : ''} tracked
+          </div>
+        </div>
+
+        {/* Pace Indicator */}
+        <div
+          className="rounded-xl p-5 border"
+          style={{
+            backgroundColor: summary.dailyAverage7d >= summary.dailyTarget
+              ? 'rgba(16, 185, 129, 0.08)'
+              : 'rgba(245, 158, 11, 0.08)',
+            borderColor: summary.dailyAverage7d >= summary.dailyTarget
+              ? 'rgba(16, 185, 129, 0.2)'
+              : 'rgba(245, 158, 11, 0.2)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">PACE</span>
+            <Clock className="w-4 h-4 text-text-muted" />
+          </div>
+          <div
+            className="text-3xl font-bold tabular-nums"
+            style={{ color: summary.dailyAverage7d >= summary.dailyTarget ? "#10B981" : forge.heat }}
+          >
+            {((summary.dailyAverage7d / summary.dailyTarget) * 100).toFixed(0)}%
+          </div>
+          <div className="text-xs text-text-tertiary mt-1">of daily target</div>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Daily Production Chart */}
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
+            DAILY PRODUCTION (30 DAYS)
+          </h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dailyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+                <defs>
+                  <linearGradient id="forgeGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={forge.ember} />
+                    <stop offset="100%" stopColor={forge.copper} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#64748B", fontSize: 10 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#64748B", fontSize: 10 }}
+                  width={45}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "rgba(18, 21, 31, 0.98)",
+                    border: `1px solid ${forge.copper}30`,
+                    borderRadius: "10px",
+                    boxShadow: `0 4px 20px rgba(0,0,0,0.4)`,
+                  }}
+                  labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
+                  formatter={(value: number) => [
+                    <span key="v" style={{ color: forge.glow, fontWeight: 600 }}>{fmt.number(value)} units</span>,
+                    ""
+                  ]}
+                />
+                <ReferenceLine
+                  y={summary.dailyTarget}
+                  stroke={forge.heat}
+                  strokeDasharray="6 4"
+                  label={{
+                    value: `Target: ${fmt.number(summary.dailyTarget)}`,
+                    position: "insideTopRight",
+                    fill: forge.heat,
+                    fontSize: 10,
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill="url(#forgeGradient)"
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={16}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Day of Week Pattern */}
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
+            PRODUCTION BY WEEKDAY
+          </h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dowChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+                <XAxis
+                  dataKey="day"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#64748B", fontSize: 11 }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#64748B", fontSize: 10 }}
+                  width={45}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "rgba(18, 21, 31, 0.98)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "10px",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+                  }}
+                  labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
+                  formatter={(value: number, name: string) => {
+                    if (name === "avg") return [
+                      <span key="v" style={{ color: "#10B981", fontWeight: 600 }}>{fmt.number(value)} avg</span>,
+                      ""
+                    ];
+                    return [value, name];
+                  }}
+                />
+                <Bar
+                  dataKey="avg"
+                  fill="#10B981"
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={48}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Weekly Totals */}
+      <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+        <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
+          WEEKLY PRODUCTION
+        </h3>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+              <defs>
+                <linearGradient id="weeklyGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#8B5CF6" />
+                  <stop offset="100%" stopColor="#6366F1" />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="week"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#64748B", fontSize: 11 }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#64748B", fontSize: 10 }}
+                width={55}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "rgba(18, 21, 31, 0.98)",
+                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                  borderRadius: "10px",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+                }}
+                labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
+                formatter={(value: number, name: string) => {
+                  if (name === "total") return [
+                    <span key="v" style={{ color: "#A78BFA", fontWeight: 600 }}>{fmt.number(value)} units</span>,
+                    ""
+                  ];
+                  return [value, name];
+                }}
+              />
+              <ReferenceLine
+                y={summary.weeklyTarget}
+                stroke={forge.heat}
+                strokeDasharray="6 4"
+                label={{
+                  value: `Target: ${fmt.number(summary.weeklyTarget)}`,
+                  position: "insideTopRight",
+                  fill: forge.heat,
+                  fontSize: 10,
+                }}
+              />
+              <Bar
+                dataKey="total"
+                fill="url(#weeklyGradient)"
+                radius={[6, 6, 0, 0]}
+                maxBarSize={56}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* SKU Progress Table */}
+      {data.targets && data.targets.length > 0 && (
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
+            SKU PROGRESS
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="text-left py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">SKU</th>
+                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Category</th>
+                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Target</th>
+                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Built</th>
+                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Remaining</th>
+                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider w-36">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.targets
+                  .filter(t => t.revised_plan > 0)
+                  .sort((a, b) => b.deficit - a.deficit)
+                  .slice(0, 12)
+                  .map((target, idx) => {
+                    const progress = target.revised_plan > 0
+                      ? (target.assembled_since_cutoff / target.revised_plan) * 100
+                      : 0;
+                    const isComplete = progress >= 100;
+                    return (
+                      <tr
+                        key={target.sku}
+                        className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
+                        style={{ animationDelay: `${idx * 30}ms` }}
+                      >
+                        <td className="py-3 px-3 font-mono text-text-primary font-medium">{target.sku}</td>
+                        <td className="py-3 px-3 text-right text-text-tertiary capitalize text-xs">
+                          {target.category?.replace("_", " ") || "-"}
+                        </td>
+                        <td className="py-3 px-3 text-right text-text-secondary tabular-nums">
+                          {fmt.number(target.revised_plan)}
+                        </td>
+                        <td className="py-3 px-3 text-right text-text-secondary tabular-nums">
+                          {fmt.number(target.assembled_since_cutoff)}
+                        </td>
+                        <td className={`py-3 px-3 text-right tabular-nums font-semibold ${
+                          isComplete ? "text-status-good" : "text-text-primary"
+                        }`}>
+                          {isComplete ? "Done" : fmt.number(target.deficit)}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-3">
+                            <div className="w-20 h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(100, progress)}%`,
+                                  background: isComplete
+                                    ? "#10B981"
+                                    : progress >= 80
+                                      ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
+                                      : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
+                                }}
+                              />
+                            </div>
+                            <span className={`text-xs tabular-nums w-10 text-right font-medium ${
+                              isComplete ? "text-status-good" : "text-text-tertiary"
+                            }`}>
+                              {progress.toFixed(0)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      {data.lastSynced && (
+        <div className="text-[10px] text-text-muted text-center pt-4 tracking-wide">
+          Last synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
         </div>
       )}
     </div>

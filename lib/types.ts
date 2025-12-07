@@ -319,3 +319,73 @@ export interface HolidayResponse {
   summary: HolidaySummary;
   lastSynced: string | null;
 }
+
+// Assembly Tracking Types
+export interface DailyAssembly {
+  date: string;
+  daily_total: number;
+  day_of_week: string | null;
+  week_num: number | null;
+  month: number | null;
+  year: number | null;
+  synced_at?: string;
+}
+
+export interface AssemblyTarget {
+  sku: string;
+  current_inventory: number;
+  demand: number;
+  current_shortage: number;
+  original_plan: number;
+  revised_plan: number;
+  assembled_since_cutoff: number;
+  deficit: number;
+  category: string;
+}
+
+export interface AssemblyConfig {
+  manufacturing_cutoff: string;
+  cutoff_start_date: string;
+  revised_manufacturing_need: number;
+  assembled_since_cutoff: number;
+}
+
+export interface AssemblySummary {
+  yesterdayProduction: number;
+  dailyAverage7d: number;
+  dailyAverageDelta: number;
+  currentWeekTotal: number;
+  currentWeekDays: number;
+  dailyTarget: number;
+  weeklyTarget: number;
+  daysRemaining: number;
+  totalDeficit: number;
+  totalAssembled: number;
+  totalRevisedPlan: number;
+  progressPct: number;
+  latestDate: string | null;
+}
+
+export interface WeeklyAssembly {
+  week_num: number;
+  year: number;
+  total: number;
+  days_worked: number;
+  daily_avg: number;
+}
+
+export interface DayOfWeekAvg {
+  day: string;
+  avg: number;
+  count: number;
+}
+
+export interface AssemblyResponse {
+  daily: DailyAssembly[];
+  targets: AssemblyTarget[];
+  summary: AssemblySummary;
+  weeklyData: WeeklyAssembly[];
+  dayOfWeekAvg: DayOfWeekAvg[];
+  config: AssemblyConfig;
+  lastSynced: string | null;
+}

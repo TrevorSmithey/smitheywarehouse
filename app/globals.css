@@ -26,6 +26,12 @@
   --color-status-warning: #F59E0B;
   --color-status-bad: #DC2626;
 
+  /* Assembly / Forge Colors */
+  --color-forge-copper: #D97706;
+  --color-forge-ember: #EA580C;
+  --color-forge-iron: #78716C;
+  --color-forge-glow: #FCD34D;
+
   /* Typography */
   --font-inter: 'Inter', sans-serif;
 
