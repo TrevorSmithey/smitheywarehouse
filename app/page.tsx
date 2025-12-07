@@ -2895,6 +2895,13 @@ function AssemblyDashboard({
   const sortedDaily = [...daily].sort((a, b) => b.date.localeCompare(a.date));
   const recentDaily = sortedDaily.slice(0, 30).reverse();
 
+  // T7 (trailing 7 days) calculations
+  const t7Days = sortedDaily.slice(0, 7);
+  const t7Total = t7Days.reduce((sum, d) => sum + d.daily_total, 0);
+  const priorT7Days = sortedDaily.slice(7, 14);
+  const priorT7Total = priorT7Days.reduce((sum, d) => sum + d.daily_total, 0);
+  const t7Delta = priorT7Total > 0 ? ((t7Total - priorT7Total) / priorT7Total) * 100 : 0;
+
   const dailyChartData = recentDaily.map((d, idx, arr) => {
     // Calculate 7-day rolling average (use available days if less than 7)
     const windowStart = Math.max(0, idx - 6);
@@ -2908,7 +2915,7 @@ function AssemblyDashboard({
       rollingAvg: Math.round(rollingAvg),
       day: d.day_of_week,
       aboveAvg,
-      fill: aboveAvg ? "#10B981" : forge.ember, // green if above, ember if below
+      fill: aboveAvg ? "url(#greenGradient)" : "url(#emberGradient)",
     };
   });
 
@@ -3024,18 +3031,18 @@ function AssemblyDashboard({
           </div>
         </div>
 
-        {/* This Week */}
+        {/* T7 (Trailing 7 Days) */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">THIS WEEK</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">T7</span>
             <Package className="w-4 h-4 text-text-muted" />
           </div>
           <div className="text-3xl font-bold tabular-nums text-text-primary">
-            {fmt.number(summary.currentWeekTotal)}
+            {fmt.number(t7Total)}
           </div>
-          <div className={`text-xs mt-1 flex items-center gap-1 ${summary.currentWeekDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
-            {summary.currentWeekDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {fmt.delta(summary.currentWeekDelta)} vs last week
+          <div className={`text-xs mt-1 flex items-center gap-1 ${t7Delta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+            {t7Delta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {fmt.delta(t7Delta)} vs prior 7d
           </div>
         </div>
       </div>
@@ -3063,11 +3070,15 @@ function AssemblyDashboard({
         </div>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={dailyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+            <ComposedChart data={dailyChartData} margin={{ top: 20, right: 10, left: -10, bottom: 20 }}>
               <defs>
-                <linearGradient id="forgeGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={forge.ember} />
-                  <stop offset="100%" stopColor={forge.copper} />
+                <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#34D399" stopOpacity={1} />
+                  <stop offset="100%" stopColor="#059669" stopOpacity={0.85} />
+                </linearGradient>
+                <linearGradient id="emberGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={forge.heat} stopOpacity={1} />
+                  <stop offset="100%" stopColor={forge.ember} stopOpacity={0.85} />
                 </linearGradient>
               </defs>
               <XAxis
@@ -3123,6 +3134,24 @@ function AssemblyDashboard({
                   position="top"
                   fill="#94A3B8"
                   fontSize={9}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  content={(props: any) => {
+                    const x = Number(props.x) || 0;
+                    const y = Number(props.y) || 0;
+                    const width = Number(props.width) || 0;
+                    const value = Number(props.value) || 0;
+                    return (
+                      <text
+                        x={x + width / 2}
+                        y={y - 4}
+                        textAnchor="middle"
+                        fill="#94A3B8"
+                        fontSize={9}
+                      >
+                        {value ? value.toLocaleString() : ''}
+                      </text>
+                    );
+                  }}
                 />
               </Bar>
               <Line
@@ -3213,7 +3242,13 @@ function AssemblyDashboard({
           </h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dowChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
+              <BarChart data={dowChartData} margin={{ top: 20, right: 10, left: -10, bottom: 20 }}>
+                <defs>
+                  <linearGradient id="dowGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#34D399" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#059669" stopOpacity={0.85} />
+                  </linearGradient>
+                </defs>
                 <XAxis
                   dataKey="day"
                   axisLine={false}
@@ -3246,113 +3281,120 @@ function AssemblyDashboard({
                 />
                 <Bar
                   dataKey="avg"
-                  fill="#10B981"
+                  fill="url(#dowGradient)"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={40}
-                />
+                >
+                  <LabelList
+                    dataKey="avg"
+                    position="top"
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    content={(props: any) => {
+                      const x = Number(props.x) || 0;
+                      const y = Number(props.y) || 0;
+                      const width = Number(props.width) || 0;
+                      const value = Number(props.value) || 0;
+                      return (
+                        <text
+                          x={x + width / 2}
+                          y={y - 6}
+                          textAnchor="middle"
+                          fill="#94A3B8"
+                          fontSize={11}
+                          fontWeight={500}
+                        >
+                          {value ? value.toLocaleString() : ''}
+                        </text>
+                      );
+                    }}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* SKU Progress Table */}
+      {/* SKU Progress Table - Compact */}
       {data.targets && data.targets.length > 0 && (
         <div className="bg-bg-secondary rounded-xl p-4 border border-border/30">
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
             SKU PROGRESS
           </h3>
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-white/5">
-                  <th className="text-left py-1.5 px-1.5 text-[9px] text-text-muted font-medium uppercase tracking-wider">SKU</th>
-                  <th className="text-right py-1.5 px-1.5 text-[9px] text-text-muted font-medium uppercase tracking-wider">Target</th>
-                  <th className="text-right py-1.5 px-1.5 text-[9px] text-text-muted font-medium uppercase tracking-wider">Built</th>
-                  <th className="text-right py-1.5 px-1.5 text-[9px] text-text-muted font-medium uppercase tracking-wider">T7</th>
-                  <th className="text-right py-1.5 px-1.5 text-[9px] text-text-muted font-medium uppercase tracking-wider">Left</th>
-                  <th className="text-right py-1.5 px-1.5 text-[9px] text-text-muted font-medium uppercase tracking-wider w-20"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.targets
-                  .filter(t => t.revised_plan > 0)
-                  .sort((a, b) => {
-                    // Sort by % complete ascending (lowest first)
-                    const pctA = a.revised_plan > 0 ? (a.assembled_since_cutoff / a.revised_plan) : 0;
-                    const pctB = b.revised_plan > 0 ? (b.assembled_since_cutoff / b.revised_plan) : 0;
-                    return pctA - pctB;
-                  })
-                  .map((target) => {
-                    const progress = target.revised_plan > 0
-                      ? (target.assembled_since_cutoff / target.revised_plan) * 100
-                      : 0;
-                    const isComplete = progress >= 100;
-                    // Friendly SKU names
-                    const skuNames: Record<string, string> = {
-                      "Smith-CI-Skil6": "6 Skillet",
-                      "Smith-CI-Skil8": "8 Skillet",
-                      "Smith-CI-Skil10": "10 Chef",
-                      "Smith-CI-Skil12": "12 Chef",
-                      "Smith-CI-Skil14": "14 Chef",
-                      "Smith-CI-Tradskil14": "14 Trad",
-                      "Smith-CI-DSkil11": "11 Deep",
-                      "Smith-CI-Dutch5": "5 Dutch",
-                      "Smith-CI-Dutch7": "7 Dutch",
-                      "Smith-CI-Flat12": "12 Flat Top",
-                      "Smith-CI-Griddle18": "18 Griddle",
-                      "Smith-CS-WokM": "Wok",
-                      "Smith-CS-Deep12": "12 CS Deep",
-                    };
-                    const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
-                    return (
-                      <tr
-                        key={target.sku}
-                        className="border-b border-white/[0.02] hover:bg-white/[0.015]"
-                      >
-                        <td className="py-1 px-1.5 text-text-primary text-[11px]">{friendlyName}</td>
-                        <td className="py-1 px-1.5 text-right text-text-tertiary tabular-nums text-[11px]">
-                          {fmt.number(target.revised_plan)}
-                        </td>
-                        <td className="py-1 px-1.5 text-right text-text-secondary tabular-nums text-[11px]">
-                          {fmt.number(target.assembled_since_cutoff)}
-                        </td>
-                        <td className="py-1 px-1.5 text-right text-forge-glow tabular-nums text-[11px]">
-                          {target.t7 ? fmt.number(target.t7) : "—"}
-                        </td>
-                        <td className={`py-1 px-1.5 text-right tabular-nums text-[11px] font-medium ${
-                          isComplete ? "text-status-good" : "text-text-primary"
-                        }`}>
-                          {isComplete ? "—" : fmt.number(target.deficit)}
-                        </td>
-                        <td className="py-1 px-1.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <div className="w-12 h-1 bg-bg-tertiary rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${Math.min(100, progress)}%`,
-                                  background: isComplete
-                                    ? "#10B981"
-                                    : progress >= 80
-                                      ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
-                                      : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
-                                }}
-                              />
-                            </div>
-                            <span className={`text-[10px] tabular-nums w-7 text-right ${
-                              isComplete ? "text-status-good" : "text-text-muted"
-                            }`}>
-                              {progress.toFixed(0)}%
-                            </span>
+          <table className="text-[11px]" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead>
+              <tr className="text-[9px] text-text-muted uppercase tracking-wide">
+                <th className="text-left py-1 pr-4 font-medium">SKU</th>
+                <th className="text-right py-1 px-2 font-medium w-14">Target</th>
+                <th className="text-right py-1 px-2 font-medium w-14">Built</th>
+                <th className="text-right py-1 px-2 font-medium w-10" style={{ color: forge.glow }}>T7</th>
+                <th className="text-right py-1 pl-2 font-medium w-14">Left</th>
+                <th className="py-1 pl-2 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.targets
+                .filter(t => t.revised_plan > 0)
+                .sort((a, b) => {
+                  const pctA = a.revised_plan > 0 ? (a.assembled_since_cutoff / a.revised_plan) : 0;
+                  const pctB = b.revised_plan > 0 ? (b.assembled_since_cutoff / b.revised_plan) : 0;
+                  return pctA - pctB;
+                })
+                .map((target) => {
+                  const progress = target.revised_plan > 0
+                    ? (target.assembled_since_cutoff / target.revised_plan) * 100
+                    : 0;
+                  const isComplete = progress >= 100;
+                  const skuNames: Record<string, string> = {
+                    "Smith-CI-Skil6": "6 Skillet",
+                    "Smith-CI-Skil8": "8 Skillet",
+                    "Smith-CI-Skil10": "10 Chef",
+                    "Smith-CI-Skil12": "12 Chef",
+                    "Smith-CI-Skil14": "14 Chef",
+                    "Smith-CI-Tradskil14": "14 Trad",
+                    "Smith-CI-DSkil11": "11 Deep",
+                    "Smith-CI-Dutch5": "5 Dutch",
+                    "Smith-CI-Dutch7": "7 Dutch",
+                    "Smith-CI-Flat12": "12 Flat Top",
+                    "Smith-CI-Griddle18": "18 Griddle",
+                    "Smith-CS-WokM": "Wok",
+                    "Smith-CS-Deep12": "12 CS Deep",
+                  };
+                  const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
+                  return (
+                    <tr key={target.sku} className="border-t border-white/[0.03]">
+                      <td className="py-0.5 pr-4 text-text-primary">{friendlyName}</td>
+                      <td className="py-0.5 px-2 text-right text-text-tertiary tabular-nums">{fmt.number(target.revised_plan)}</td>
+                      <td className="py-0.5 px-2 text-right text-text-secondary tabular-nums">{fmt.number(target.assembled_since_cutoff)}</td>
+                      <td className="py-0.5 px-2 text-right tabular-nums" style={{ color: forge.glow }}>{target.t7 ? fmt.number(target.t7) : "—"}</td>
+                      <td className={`py-0.5 pl-2 text-right tabular-nums font-medium ${isComplete ? "text-status-good" : "text-text-primary"}`}>
+                        {isComplete ? "—" : fmt.number(target.deficit)}
+                      </td>
+                      <td className="py-0.5 pl-2">
+                        <div className="flex items-center gap-1">
+                          <div className="w-10 h-1 bg-bg-tertiary rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, progress)}%`,
+                                background: isComplete
+                                  ? "#10B981"
+                                  : progress >= 80
+                                    ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
+                                    : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
+                              }}
+                            />
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
+                          <span className={`text-[10px] tabular-nums ${isComplete ? "text-status-good" : "text-text-muted"}`}>
+                            {progress.toFixed(0)}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
         </div>
       )}
 
