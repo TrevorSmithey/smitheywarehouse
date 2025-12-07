@@ -353,10 +353,12 @@ export interface AssemblyConfig {
 
 export interface AssemblySummary {
   yesterdayProduction: number;
+  yesterdayDelta: number;
   dailyAverage7d: number;
   dailyAverageDelta: number;
   currentWeekTotal: number;
   currentWeekDays: number;
+  currentWeekDelta: number;
   dailyTarget: number;
   weeklyTarget: number;
   daysRemaining: number;

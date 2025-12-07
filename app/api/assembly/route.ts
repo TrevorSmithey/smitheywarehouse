@@ -42,10 +42,12 @@ export interface AssemblyConfig {
 export interface AssemblySummary {
   // Daily metrics
   yesterdayProduction: number;
+  yesterdayDelta: number; // vs prior day
   dailyAverage7d: number;
   dailyAverageDelta: number; // vs prior 7 days
   currentWeekTotal: number;
   currentWeekDays: number;
+  currentWeekDelta: number; // vs prior week (same # days)
 
   // Targets
   dailyTarget: number;
@@ -165,6 +167,12 @@ export async function GET() {
     const yesterdayProduction = sortedDaily[0]?.daily_total || 0;
     const latestDate = sortedDaily[0]?.date || null;
 
+    // Prior day production (day before yesterday) for % change
+    const priorDayProduction = sortedDaily[1]?.daily_total || 0;
+    const yesterdayDelta = priorDayProduction > 0
+      ? ((yesterdayProduction - priorDayProduction) / priorDayProduction) * 100
+      : 0;
+
     // 7-day average (last 7 days with data)
     const last7 = sortedDaily.slice(0, 7);
     const dailyAverage7d = last7.length > 0
@@ -186,15 +194,27 @@ export async function GET() {
     );
     const currentWeekTotal = currentWeekDays.reduce((sum, d) => sum + d.daily_total, 0);
 
+    // Prior week total (same number of days for fair comparison)
+    const priorWeekNum = currentWeekNum ? currentWeekNum - 1 : null;
+    const priorWeekDays = daily.filter(
+      (d) => d.week_num === priorWeekNum && d.year === currentWeekYear
+    ).sort((a, b) => a.date.localeCompare(b.date)).slice(0, currentWeekDays.length);
+    const priorWeekTotal = priorWeekDays.reduce((sum, d) => sum + d.daily_total, 0);
+    const currentWeekDelta = priorWeekTotal > 0
+      ? ((currentWeekTotal - priorWeekTotal) / priorWeekTotal) * 100
+      : 0;
+
     // Progress percentage
     const progressPct = totalRevisedPlan > 0 ? (totalAssembled / totalRevisedPlan) * 100 : 0;
 
     const summary: AssemblySummary = {
       yesterdayProduction,
+      yesterdayDelta,
       dailyAverage7d,
       dailyAverageDelta,
       currentWeekTotal,
       currentWeekDays: currentWeekDays.length,
+      currentWeekDelta,
       dailyTarget,
       weeklyTarget,
       daysRemaining,

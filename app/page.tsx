@@ -3132,12 +3132,9 @@ function AssemblyDashboard({
           <div className="text-3xl font-bold tabular-nums text-text-primary">
             {fmt.number(summary.yesterdayProduction)}
           </div>
-          <div className="text-xs text-text-tertiary mt-1">
-            {summary.yesterdayProduction >= summary.dailyTarget ? (
-              <span className="text-status-good">Hit target</span>
-            ) : (
-              <span>{fmt.number(summary.dailyTarget - summary.yesterdayProduction)} below target</span>
-            )}
+          <div className={`text-xs mt-1 flex items-center gap-1 ${summary.yesterdayDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+            {summary.yesterdayDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {fmt.delta(summary.yesterdayDelta)} vs prior day
           </div>
         </div>
 
@@ -3165,8 +3162,9 @@ function AssemblyDashboard({
           <div className="text-3xl font-bold tabular-nums text-text-primary">
             {fmt.number(summary.currentWeekTotal)}
           </div>
-          <div className="text-xs text-text-tertiary mt-1">
-            {summary.currentWeekDays} day{summary.currentWeekDays !== 1 ? 's' : ''} tracked
+          <div className={`text-xs mt-1 flex items-center gap-1 ${summary.currentWeekDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+            {summary.currentWeekDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {fmt.delta(summary.currentWeekDelta)} vs last week
           </div>
         </div>
       </div>
