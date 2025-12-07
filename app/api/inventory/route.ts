@@ -115,7 +115,7 @@ export async function GET(request: Request) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
 
-    // Query monthly orders by SKU (quantity ordered this month by order date)
+    // Query monthly retail orders by SKU (quantity ordered this month by order date)
     const { data: monthlySalesData } = await supabase
       .from("line_items")
       .select(`
@@ -127,14 +127,40 @@ export async function GET(request: Request) {
       .lte("orders.created_at", monthEnd)
       .eq("orders.canceled", false);
 
-    // Aggregate ordered quantity by SKU (case-insensitive)
-    const monthlySalesBySku = new Map<string, number>();
+    // Query monthly B2B fulfilled by SKU (quantity fulfilled this month by fulfillment date)
+    const { data: monthlyB2BData } = await supabase
+      .from("b2b_fulfilled")
+      .select("sku, quantity")
+      .gte("fulfilled_at", monthStart)
+      .lte("fulfilled_at", monthEnd);
+
+    // Aggregate retail ordered quantity by SKU (case-insensitive)
+    const retailSalesBySku = new Map<string, number>();
     for (const item of monthlySalesData || []) {
       if (item.sku) {
         const skuLower = item.sku.toLowerCase();
-        const current = monthlySalesBySku.get(skuLower) || 0;
-        monthlySalesBySku.set(skuLower, current + (item.quantity || 0));
+        const current = retailSalesBySku.get(skuLower) || 0;
+        retailSalesBySku.set(skuLower, current + (item.quantity || 0));
       }
+    }
+
+    // Aggregate B2B fulfilled quantity by SKU (case-insensitive)
+    const b2bSalesBySku = new Map<string, number>();
+    for (const item of monthlyB2BData || []) {
+      if (item.sku) {
+        const skuLower = item.sku.toLowerCase();
+        const current = b2bSalesBySku.get(skuLower) || 0;
+        b2bSalesBySku.set(skuLower, current + (item.quantity || 0));
+      }
+    }
+
+    // Combine retail + B2B for total monthly sold
+    const monthlySalesBySku = new Map<string, number>();
+    const allSkus = new Set([...retailSalesBySku.keys(), ...b2bSalesBySku.keys()]);
+    for (const skuLower of allSkus) {
+      const retail = retailSalesBySku.get(skuLower) || 0;
+      const b2b = b2bSalesBySku.get(skuLower) || 0;
+      monthlySalesBySku.set(skuLower, retail + b2b);
     }
 
     // Create product lookup map
