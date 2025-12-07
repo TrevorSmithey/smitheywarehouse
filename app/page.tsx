@@ -2700,7 +2700,7 @@ function HolidayDashboard({
             </div>
             <div className="text-right">
               <div className="text-lg font-bold text-text-primary tabular-nums">
-                ${(summary.totalSales2025 / 1000000).toFixed(2)}M
+                ${(summary.totalRevenue2025 / 1000000).toFixed(2)}M
               </div>
               <div className="text-xs text-text-muted">Total</div>
             </div>
