@@ -126,7 +126,7 @@ function extractFulfilledItems(orders: ShopifyOrder[]): B2BFulfilled[] {
     if (order.cancelled_at) continue;
 
     const customerName = order.customer
-      ? [order.customer.first_name, order.customer.last_name].filter(Boolean).join(" ") || order.customer.email
+      ? [order.customer.first_name, order.customer.last_name].filter(Boolean).join(" ") || order.customer.email || null
       : null;
 
     for (const fulfillment of order.fulfillments || []) {
