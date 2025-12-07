@@ -3330,7 +3330,7 @@ function AssemblyDashboard({
         </div>
       </div>
 
-      {/* SKU Progress Grid */}
+      {/* SKU Progress Table */}
       {data.targets && data.targets.length > 0 && (() => {
         const skuNames: Record<string, string> = {
           "Smith-CI-Skil6": "6 Skillet",
@@ -3360,61 +3360,58 @@ function AssemblyDashboard({
             <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
               SKU PROGRESS
             </h3>
-            {/* Header */}
-            <div
-              className="grid text-[9px] text-text-muted uppercase tracking-wide pb-1.5 border-b border-white/5"
-              style={{ gridTemplateColumns: '1fr 56px 56px 44px 52px 64px' }}
-            >
-              <div>SKU</div>
-              <div className="text-right">Target</div>
-              <div className="text-right">Built</div>
-              <div className="text-right" style={{ color: forge.glow }}>T7</div>
-              <div className="text-right">Left</div>
-              <div></div>
-            </div>
-            {/* Rows */}
-            <div className="text-[11px]">
-              {sortedTargets.map((target) => {
-                const progress = target.revised_plan > 0
-                  ? (target.assembled_since_cutoff / target.revised_plan) * 100
-                  : 0;
-                const isComplete = progress >= 100;
-                const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
-                return (
-                  <div
-                    key={target.sku}
-                    className="grid items-center py-0.5 border-b border-white/[0.02]"
-                    style={{ gridTemplateColumns: '1fr 56px 56px 44px 52px 64px' }}
-                  >
-                    <div className="text-text-primary">{friendlyName}</div>
-                    <div className="text-right text-text-tertiary tabular-nums">{fmt.number(target.revised_plan)}</div>
-                    <div className="text-right text-text-secondary tabular-nums">{fmt.number(target.assembled_since_cutoff)}</div>
-                    <div className="text-right tabular-nums" style={{ color: forge.glow }}>{target.t7 ? fmt.number(target.t7) : "—"}</div>
-                    <div className={`text-right tabular-nums font-medium ${isComplete ? "text-status-good" : "text-text-primary"}`}>
-                      {isComplete ? "—" : fmt.number(target.deficit)}
-                    </div>
-                    <div className="flex items-center justify-end gap-1">
-                      <div className="w-8 h-1 bg-bg-tertiary rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${Math.min(100, progress)}%`,
-                            background: isComplete
-                              ? "#10B981"
-                              : progress >= 80
-                                ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
-                                : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
-                          }}
-                        />
-                      </div>
-                      <span className={`text-[10px] tabular-nums w-8 text-right ${isComplete ? "text-status-good" : "text-text-muted"}`}>
-                        {progress.toFixed(0)}%
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <table className="text-[11px]">
+              <thead>
+                <tr className="text-[9px] text-text-muted uppercase tracking-wide">
+                  <th className="text-left pb-1.5 pr-6 font-medium border-b border-white/5">SKU</th>
+                  <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5">Target</th>
+                  <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5">Built</th>
+                  <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5" style={{ color: forge.glow }}>T7</th>
+                  <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5">Left</th>
+                  <th className="pb-1.5 pl-3 border-b border-white/5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTargets.map((target) => {
+                  const progress = target.revised_plan > 0
+                    ? (target.assembled_since_cutoff / target.revised_plan) * 100
+                    : 0;
+                  const isComplete = progress >= 100;
+                  const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
+                  return (
+                    <tr key={target.sku} className="border-b border-white/[0.02]">
+                      <td className="py-1 pr-6 text-text-primary">{friendlyName}</td>
+                      <td className="py-1 px-3 text-right text-text-tertiary tabular-nums">{fmt.number(target.revised_plan)}</td>
+                      <td className="py-1 px-3 text-right text-text-secondary tabular-nums">{fmt.number(target.assembled_since_cutoff)}</td>
+                      <td className="py-1 px-3 text-right tabular-nums" style={{ color: forge.glow }}>{target.t7 ? fmt.number(target.t7) : "—"}</td>
+                      <td className={`py-1 px-3 text-right tabular-nums font-medium ${isComplete ? "text-status-good" : "text-text-primary"}`}>
+                        {isComplete ? "—" : fmt.number(target.deficit)}
+                      </td>
+                      <td className="py-1 pl-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-10 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, progress)}%`,
+                                background: isComplete
+                                  ? "#10B981"
+                                  : progress >= 80
+                                    ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
+                                    : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
+                              }}
+                            />
+                          </div>
+                          <span className={`text-[10px] tabular-nums ${isComplete ? "text-status-good" : "text-text-muted"}`}>
+                            {progress.toFixed(0)}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         );
       })()}
