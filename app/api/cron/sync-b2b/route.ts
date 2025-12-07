@@ -119,7 +119,7 @@ function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
         source_name: order.source_name || null,
         sku: lineItem.sku,
         quantity: lineItem.quantity,
-        price: parseFloat(lineItem.price) || null,
+        price: isNaN(parseFloat(lineItem.price)) ? null : parseFloat(lineItem.price),
         fulfilled_at: order.created_at, // Use order date as "sold" date
         created_at: order.created_at,
       });

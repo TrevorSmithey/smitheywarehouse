@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 import crypto from "crypto";
 
 export async function POST(request: NextRequest) {
@@ -15,10 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     const order = JSON.parse(body);
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_KEY!
-    );
+    const supabase = createServiceClient();
 
     switch (topic) {
       case "orders/create":
@@ -54,7 +51,14 @@ function verifyB2BWebhook(body: string, signature: string | null): boolean {
     .update(body, "utf8")
     .digest("base64");
 
-  return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+  // Check buffer lengths match to prevent timingSafeEqual from throwing
+  const hmacBuffer = Buffer.from(hmac);
+  const signatureBuffer = Buffer.from(signature);
+  if (hmacBuffer.length !== signatureBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(hmacBuffer, signatureBuffer);
 }
 
 interface B2BOrder {
@@ -100,7 +104,7 @@ async function upsertB2BOrder(supabase: ReturnType<typeof createClient>, order: 
       source_name: order.source_name || null,
       sku: lineItem.sku,
       quantity: lineItem.quantity,
-      price: parseFloat(lineItem.price) || null,
+      price: isNaN(parseFloat(lineItem.price)) ? null : parseFloat(lineItem.price),
       fulfilled_at: order.created_at, // Use order date as "sold" date
       created_at: order.created_at,
     });

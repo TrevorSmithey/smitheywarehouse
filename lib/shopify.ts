@@ -16,7 +16,14 @@ export function verifyShopifyWebhook(
     .update(body, "utf8")
     .digest("base64");
 
-  return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+  // Check buffer lengths match to prevent timingSafeEqual from throwing
+  const hmacBuffer = Buffer.from(hmac);
+  const signatureBuffer = Buffer.from(signature);
+  if (hmacBuffer.length !== signatureBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(hmacBuffer, signatureBuffer);
 }
 
 /**
