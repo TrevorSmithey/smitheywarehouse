@@ -73,3 +73,75 @@ GRANT ALL ON orders TO service_role;
 GRANT ALL ON line_items TO service_role;
 GRANT SELECT ON shipments TO anon;
 GRANT ALL ON shipments TO service_role;
+
+-- ============================================
+-- ShipHero Inventory Integration Tables
+-- ============================================
+
+-- Products master table (from nomenclature.xlsx)
+-- Source of truth for SKU → display name mapping
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku TEXT UNIQUE NOT NULL,
+  display_name TEXT NOT NULL,
+  category TEXT NOT NULL, -- cast_iron, carbon_steel, accessory, glass_lid, factory_second
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Warehouses reference table
+CREATE TABLE IF NOT EXISTS warehouses (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  code TEXT NOT NULL -- pipefitter, hobson, selery, hq
+);
+
+-- Insert warehouse data (idempotent)
+INSERT INTO warehouses (id, name, code) VALUES
+  (120758, 'Pipefitter', 'pipefitter'),
+  (77373, 'Hobson', 'hobson'),
+  (93742, 'Selery', 'selery'),
+  (120759, 'HQ', 'hq')
+ON CONFLICT (id) DO NOTHING;
+
+-- Inventory snapshots (synced from ShipHero every 15 min)
+CREATE TABLE IF NOT EXISTS inventory (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku TEXT NOT NULL,
+  warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
+  on_hand INTEGER DEFAULT 0,
+  available INTEGER DEFAULT 0,
+  reserved INTEGER DEFAULT 0,
+  synced_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(sku, warehouse_id)
+);
+
+-- Inventory history (for DOI calculations, trends)
+CREATE TABLE IF NOT EXISTS inventory_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sku TEXT NOT NULL,
+  warehouse_id INTEGER NOT NULL,
+  on_hand INTEGER DEFAULT 0,
+  snapshot_date DATE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(sku, warehouse_id, snapshot_date)
+);
+
+-- Indexes for inventory queries
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
+CREATE INDEX IF NOT EXISTS idx_inventory_sku ON inventory(sku);
+CREATE INDEX IF NOT EXISTS idx_inventory_warehouse ON inventory(warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_history_date ON inventory_history(snapshot_date);
+CREATE INDEX IF NOT EXISTS idx_inventory_history_sku ON inventory_history(sku);
+
+-- Grants for inventory tables
+GRANT SELECT ON products TO anon;
+GRANT SELECT ON warehouses TO anon;
+GRANT SELECT ON inventory TO anon;
+GRANT SELECT ON inventory_history TO anon;
+GRANT ALL ON products TO service_role;
+GRANT ALL ON warehouses TO service_role;
+GRANT ALL ON inventory TO service_role;
+GRANT ALL ON inventory_history TO service_role;
