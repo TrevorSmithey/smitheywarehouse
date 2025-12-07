@@ -212,6 +212,7 @@ export function transformToInventory(
     .map((product) => {
       // Get net available qty for each warehouse (available - backorder)
       // Backorder represents units sold beyond available inventory
+      // A negative value means we owe more than we have available
       const getNetAvailable = (warehouseId: string): number => {
         const wp = product.warehouse_products.find(
           (w) => w.warehouse_id === warehouseId
