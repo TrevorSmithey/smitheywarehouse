@@ -3376,58 +3376,58 @@ function AssemblyDashboard({
 
       {/* SKU Progress Table */}
       {data.targets && data.targets.length > 0 && (
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-5">
+        <div className="bg-bg-secondary rounded-xl p-4 border border-border/30">
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
             SKU PROGRESS
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="text-left py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">SKU</th>
-                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Category</th>
-                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Target</th>
-                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Built</th>
-                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider">Remaining</th>
-                  <th className="text-right py-3 px-3 text-[10px] text-text-muted font-medium uppercase tracking-wider w-36">Progress</th>
+                  <th className="text-left py-2 px-2 text-[9px] text-text-muted font-medium uppercase tracking-wider">SKU</th>
+                  <th className="text-right py-2 px-2 text-[9px] text-text-muted font-medium uppercase tracking-wider">Target</th>
+                  <th className="text-right py-2 px-2 text-[9px] text-text-muted font-medium uppercase tracking-wider">Built</th>
+                  <th className="text-right py-2 px-2 text-[9px] text-text-muted font-medium uppercase tracking-wider">T7</th>
+                  <th className="text-right py-2 px-2 text-[9px] text-text-muted font-medium uppercase tracking-wider">Left</th>
+                  <th className="text-right py-2 px-2 text-[9px] text-text-muted font-medium uppercase tracking-wider w-24"></th>
                 </tr>
               </thead>
               <tbody>
                 {data.targets
                   .filter(t => t.revised_plan > 0)
                   .sort((a, b) => b.deficit - a.deficit)
-                  .slice(0, 12)
-                  .map((target, idx) => {
+                  .map((target) => {
                     const progress = target.revised_plan > 0
                       ? (target.assembled_since_cutoff / target.revised_plan) * 100
                       : 0;
                     const isComplete = progress >= 100;
+                    // Format SKU: "Smith-CI-Skil12" → "CI Skil12"
+                    const shortSku = target.sku.replace("Smith-", "").replace("-", " ");
                     return (
                       <tr
                         key={target.sku}
-                        className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
-                        style={{ animationDelay: `${idx * 30}ms` }}
+                        className="border-b border-white/[0.02] hover:bg-white/[0.015] transition-colors"
                       >
-                        <td className="py-3 px-3 font-mono text-text-primary font-medium">{target.sku}</td>
-                        <td className="py-3 px-3 text-right text-text-tertiary capitalize text-xs">
-                          {target.category?.replace("_", " ") || "-"}
-                        </td>
-                        <td className="py-3 px-3 text-right text-text-secondary tabular-nums">
+                        <td className="py-1.5 px-2 font-mono text-text-primary text-[11px]">{shortSku}</td>
+                        <td className="py-1.5 px-2 text-right text-text-tertiary tabular-nums">
                           {fmt.number(target.revised_plan)}
                         </td>
-                        <td className="py-3 px-3 text-right text-text-secondary tabular-nums">
+                        <td className="py-1.5 px-2 text-right text-text-secondary tabular-nums">
                           {fmt.number(target.assembled_since_cutoff)}
                         </td>
-                        <td className={`py-3 px-3 text-right tabular-nums font-semibold ${
+                        <td className="py-1.5 px-2 text-right text-forge-glow tabular-nums">
+                          {target.t7 ? fmt.number(target.t7) : "—"}
+                        </td>
+                        <td className={`py-1.5 px-2 text-right tabular-nums font-medium ${
                           isComplete ? "text-status-good" : "text-text-primary"
                         }`}>
-                          {isComplete ? "Done" : fmt.number(target.deficit)}
+                          {isComplete ? "—" : fmt.number(target.deficit)}
                         </td>
-                        <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-3">
-                            <div className="w-20 h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                        <td className="py-1.5 px-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-14 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
                               <div
-                                className="h-full rounded-full transition-all duration-500"
+                                className="h-full rounded-full"
                                 style={{
                                   width: `${Math.min(100, progress)}%`,
                                   background: isComplete
@@ -3438,8 +3438,8 @@ function AssemblyDashboard({
                                 }}
                               />
                             </div>
-                            <span className={`text-xs tabular-nums w-10 text-right font-medium ${
-                              isComplete ? "text-status-good" : "text-text-tertiary"
+                            <span className={`text-[10px] tabular-nums w-8 text-right ${
+                              isComplete ? "text-status-good" : "text-text-muted"
                             }`}>
                               {progress.toFixed(0)}%
                             </span>

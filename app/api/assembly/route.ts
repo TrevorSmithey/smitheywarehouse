@@ -29,6 +29,7 @@ export interface AssemblyTarget {
   assembled_since_cutoff: number;
   deficit: number;
   category: string;
+  t7?: number; // Trailing 7 days production
 }
 
 export interface AssemblyConfig {
@@ -103,6 +104,22 @@ export async function GET() {
 
     if (targetError) throw new Error(`Target data error: ${targetError.message}`);
 
+    // Fetch T7 (trailing 7 days) per SKU
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const t7StartDate = sevenDaysAgo.toISOString().split("T")[0];
+
+    const { data: skuDailyData } = await supabase
+      .from("assembly_sku_daily")
+      .select("sku, quantity")
+      .gte("date", t7StartDate);
+
+    // Aggregate T7 by SKU
+    const t7BySku: Record<string, number> = {};
+    for (const row of skuDailyData || []) {
+      t7BySku[row.sku] = (t7BySku[row.sku] || 0) + row.quantity;
+    }
+
     // Fetch config
     const { data: configData } = await supabase
       .from("assembly_config")
@@ -121,7 +138,10 @@ export async function GET() {
     };
 
     const daily = (dailyData || []) as DailyAssembly[];
-    const targets = (targetData || []) as AssemblyTarget[];
+    const targets = (targetData || []).map((t) => ({
+      ...t,
+      t7: t7BySku[t.sku] || 0,
+    })) as AssemblyTarget[];
 
     // Calculate summary metrics
     const today = new Date();

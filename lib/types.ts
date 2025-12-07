@@ -341,6 +341,7 @@ export interface AssemblyTarget {
   assembled_since_cutoff: number;
   deficit: number;
   category: string;
+  t7?: number; // Trailing 7 days production
 }
 
 export interface AssemblyConfig {

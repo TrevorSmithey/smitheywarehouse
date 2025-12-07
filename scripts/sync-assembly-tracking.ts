@@ -77,6 +77,60 @@ function getCategory(sku: string): string {
   return "other";
 }
 
+interface SkuDailyRow {
+  date: string;
+  sku: string;
+  quantity: number;
+}
+
+async function syncSkuDailyData(workbook: XLSX.WorkBook): Promise<number> {
+  console.log("\n--- Syncing SKU Daily Production ---");
+
+  const sheet = workbook.Sheets["Raw_Data"];
+  if (!sheet) {
+    console.error("Raw_Data sheet not found");
+    return 0;
+  }
+
+  const rawData = XLSX.utils.sheet_to_json(sheet, { defval: null });
+  const rows: SkuDailyRow[] = [];
+
+  for (const raw of rawData as Record<string, unknown>[]) {
+    // Raw_Data has columns: Date, Item, Sum of Quantity
+    const date = parseExcelDate(raw["Date"]);
+    const sku = parseString(raw["Item"]);
+    const qty = parseNumber(raw["Sum of Quantity"]);
+
+    // Skip invalid rows
+    if (!date || !sku || qty === 0) continue;
+    // Only Smith- SKUs
+    if (!sku.startsWith("Smith-")) continue;
+
+    rows.push({ date, sku, quantity: qty });
+  }
+
+  console.log(`Found ${rows.length} SKU daily records`);
+
+  if (rows.length > 0) {
+    // Batch upsert in chunks of 500
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const { error } = await supabase.from("assembly_sku_daily").upsert(chunk, {
+        onConflict: "date,sku",
+        ignoreDuplicates: false,
+      });
+
+      if (error) {
+        console.error("SKU daily upsert error:", error);
+        return 0;
+      }
+    }
+  }
+
+  return rows.length;
+}
+
 async function syncDailyData(workbook: XLSX.WorkBook): Promise<number> {
   console.log("\n--- Syncing Daily Aggregation ---");
 
@@ -220,6 +274,7 @@ async function main() {
 
   const dailyCount = await syncDailyData(workbook);
   const targetCount = await syncTargetData(workbook);
+  const skuDailyCount = await syncSkuDailyData(workbook);
 
   // Get summary stats
   const { data: latestDaily } = await supabase
@@ -252,6 +307,7 @@ async function main() {
   console.log("\n✅ Assembly tracking sync complete!");
   console.log(`   ${dailyCount} daily records`);
   console.log(`   ${targetCount} SKU targets`);
+  console.log(`   ${skuDailyCount} SKU daily records`);
 }
 
 main().catch(console.error);
