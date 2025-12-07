@@ -3315,88 +3315,94 @@ function AssemblyDashboard({
         </div>
       </div>
 
-      {/* SKU Progress Table - Compact */}
-      {data.targets && data.targets.length > 0 && (
-        <div className="bg-bg-secondary rounded-xl p-4 border border-border/30">
-          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
-            SKU PROGRESS
-          </h3>
-          <table className="text-[11px]" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-            <thead>
-              <tr className="text-[9px] text-text-muted uppercase tracking-wide">
-                <th className="text-left py-1 pr-4 font-medium">SKU</th>
-                <th className="text-right py-1 px-2 font-medium w-14">Target</th>
-                <th className="text-right py-1 px-2 font-medium w-14">Built</th>
-                <th className="text-right py-1 px-2 font-medium w-10" style={{ color: forge.glow }}>T7</th>
-                <th className="text-right py-1 pl-2 font-medium w-14">Left</th>
-                <th className="py-1 pl-2 w-16"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.targets
-                .filter(t => t.revised_plan > 0)
-                .sort((a, b) => {
-                  const pctA = a.revised_plan > 0 ? (a.assembled_since_cutoff / a.revised_plan) : 0;
-                  const pctB = b.revised_plan > 0 ? (b.assembled_since_cutoff / b.revised_plan) : 0;
-                  return pctA - pctB;
-                })
-                .map((target) => {
-                  const progress = target.revised_plan > 0
-                    ? (target.assembled_since_cutoff / target.revised_plan) * 100
-                    : 0;
-                  const isComplete = progress >= 100;
-                  const skuNames: Record<string, string> = {
-                    "Smith-CI-Skil6": "6 Skillet",
-                    "Smith-CI-Skil8": "8 Skillet",
-                    "Smith-CI-Skil10": "10 Chef",
-                    "Smith-CI-Skil12": "12 Chef",
-                    "Smith-CI-Skil14": "14 Chef",
-                    "Smith-CI-Tradskil14": "14 Trad",
-                    "Smith-CI-DSkil11": "11 Deep",
-                    "Smith-CI-Dutch5": "5 Dutch",
-                    "Smith-CI-Dutch7": "7 Dutch",
-                    "Smith-CI-Flat12": "12 Flat Top",
-                    "Smith-CI-Griddle18": "18 Griddle",
-                    "Smith-CS-WokM": "Wok",
-                    "Smith-CS-Deep12": "12 CS Deep",
-                  };
-                  const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
-                  return (
-                    <tr key={target.sku} className="border-t border-white/[0.03]">
-                      <td className="py-0.5 pr-4 text-text-primary">{friendlyName}</td>
-                      <td className="py-0.5 px-2 text-right text-text-tertiary tabular-nums">{fmt.number(target.revised_plan)}</td>
-                      <td className="py-0.5 px-2 text-right text-text-secondary tabular-nums">{fmt.number(target.assembled_since_cutoff)}</td>
-                      <td className="py-0.5 px-2 text-right tabular-nums" style={{ color: forge.glow }}>{target.t7 ? fmt.number(target.t7) : "—"}</td>
-                      <td className={`py-0.5 pl-2 text-right tabular-nums font-medium ${isComplete ? "text-status-good" : "text-text-primary"}`}>
-                        {isComplete ? "—" : fmt.number(target.deficit)}
-                      </td>
-                      <td className="py-0.5 pl-2">
-                        <div className="flex items-center gap-1">
-                          <div className="w-10 h-1 bg-bg-tertiary rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${Math.min(100, progress)}%`,
-                                background: isComplete
-                                  ? "#10B981"
-                                  : progress >= 80
-                                    ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
-                                    : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
-                              }}
-                            />
-                          </div>
-                          <span className={`text-[10px] tabular-nums ${isComplete ? "text-status-good" : "text-text-muted"}`}>
-                            {progress.toFixed(0)}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* SKU Progress Grid */}
+      {data.targets && data.targets.length > 0 && (() => {
+        const skuNames: Record<string, string> = {
+          "Smith-CI-Skil6": "6 Skillet",
+          "Smith-CI-Skil8": "8 Skillet",
+          "Smith-CI-Skil10": "10 Chef",
+          "Smith-CI-Skil12": "12 Chef",
+          "Smith-CI-Skil14": "14 Chef",
+          "Smith-CI-Tradskil14": "14 Trad",
+          "Smith-CI-DSkil11": "11 Deep",
+          "Smith-CI-Dutch5": "5 Dutch",
+          "Smith-CI-Dutch7": "7 Dutch",
+          "Smith-CI-Flat12": "12 Flat Top",
+          "Smith-CI-Griddle18": "18 Griddle",
+          "Smith-CS-WokM": "Wok",
+          "Smith-CS-Deep12": "12 CS Deep",
+        };
+        const sortedTargets = data.targets
+          .filter(t => t.revised_plan > 0)
+          .sort((a, b) => {
+            const pctA = a.revised_plan > 0 ? (a.assembled_since_cutoff / a.revised_plan) : 0;
+            const pctB = b.revised_plan > 0 ? (b.assembled_since_cutoff / b.revised_plan) : 0;
+            return pctA - pctB;
+          });
+
+        return (
+          <div className="bg-bg-secondary rounded-xl p-4 border border-border/30">
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
+              SKU PROGRESS
+            </h3>
+            {/* Header */}
+            <div
+              className="grid text-[9px] text-text-muted uppercase tracking-wide pb-1.5 border-b border-white/5"
+              style={{ gridTemplateColumns: '1fr 56px 56px 44px 52px 64px' }}
+            >
+              <div>SKU</div>
+              <div className="text-right">Target</div>
+              <div className="text-right">Built</div>
+              <div className="text-right" style={{ color: forge.glow }}>T7</div>
+              <div className="text-right">Left</div>
+              <div></div>
+            </div>
+            {/* Rows */}
+            <div className="text-[11px]">
+              {sortedTargets.map((target) => {
+                const progress = target.revised_plan > 0
+                  ? (target.assembled_since_cutoff / target.revised_plan) * 100
+                  : 0;
+                const isComplete = progress >= 100;
+                const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
+                return (
+                  <div
+                    key={target.sku}
+                    className="grid items-center py-0.5 border-b border-white/[0.02]"
+                    style={{ gridTemplateColumns: '1fr 56px 56px 44px 52px 64px' }}
+                  >
+                    <div className="text-text-primary">{friendlyName}</div>
+                    <div className="text-right text-text-tertiary tabular-nums">{fmt.number(target.revised_plan)}</div>
+                    <div className="text-right text-text-secondary tabular-nums">{fmt.number(target.assembled_since_cutoff)}</div>
+                    <div className="text-right tabular-nums" style={{ color: forge.glow }}>{target.t7 ? fmt.number(target.t7) : "—"}</div>
+                    <div className={`text-right tabular-nums font-medium ${isComplete ? "text-status-good" : "text-text-primary"}`}>
+                      {isComplete ? "—" : fmt.number(target.deficit)}
+                    </div>
+                    <div className="flex items-center justify-end gap-1">
+                      <div className="w-8 h-1 bg-bg-tertiary rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.min(100, progress)}%`,
+                            background: isComplete
+                              ? "#10B981"
+                              : progress >= 80
+                                ? `linear-gradient(90deg, ${forge.copper}, ${forge.heat})`
+                                : `linear-gradient(90deg, ${forge.copper}, ${forge.ember})`,
+                          }}
+                        />
+                      </div>
+                      <span className={`text-[10px] tabular-nums w-8 text-right ${isComplete ? "text-status-good" : "text-text-muted"}`}>
+                        {progress.toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Footer */}
       {data.lastSynced && (
