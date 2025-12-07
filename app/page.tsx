@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Calendar,
   Pen,
+  BarChart3,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -41,11 +42,16 @@ import type {
   SkuInQueue,
   EngravingQueue,
   OrderAging,
+  InventoryResponse,
+  ProductInventory,
+  InventoryCategory,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type TabOption = "fulfillment" | "tracking";
+type PrimaryTab = "inventory" | "fulfillment";
+type FulfillmentSubTab = "dashboard" | "tracking";
+type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
 // Calculate date range bounds based on selection
 function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
@@ -170,14 +176,42 @@ export default function Dashboard() {
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabOption>("fulfillment");
+  // Tab state - two-tier navigation
+  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("inventory");
+  const [fulfillmentSubTab, setFulfillmentSubTab] = useState<FulfillmentSubTab>("dashboard");
 
   // Tracking tab - shipped within filter (for stuck shipments)
   const [trackingShippedWithin, setTrackingShippedWithin] = useState<"7days" | "14days" | "30days" | "all">("14days");
 
   // Stuck threshold - how many days without scan counts as "stuck"
   const [stuckThreshold, setStuckThreshold] = useState<1 | 2 | 3>(2);
+
+  // Inventory tab state
+  const [inventory, setInventory] = useState<InventoryResponse | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryCategory, setInventoryCategory] = useState<InventoryCategoryTab>("cast_iron");
+
+  // Fetch inventory when tab becomes active
+  const fetchInventory = useCallback(async () => {
+    try {
+      setInventoryLoading(true);
+      const res = await fetch("/api/inventory");
+      if (!res.ok) throw new Error("Failed to fetch inventory");
+      const data: InventoryResponse = await res.json();
+      setInventory(data);
+    } catch (err) {
+      console.error("Inventory fetch error:", err);
+    } finally {
+      setInventoryLoading(false);
+    }
+  }, []);
+
+  // Load inventory when switching to inventory tab
+  useEffect(() => {
+    if (primaryTab === "inventory" && !inventory && !inventoryLoading) {
+      fetchInventory();
+    }
+  }, [primaryTab, inventory, inventoryLoading, fetchInventory]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -287,85 +321,113 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Date Range Selector */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-2">
-            {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
-              const labels: Record<DateRangeOption, string> = {
-                today: "Today",
-                yesterday: "Yesterday",
-                "3days": "3 Days",
-                "7days": "7 Days",
-                "30days": "30 Days",
-                custom: "Custom",
-              };
-              return (
-                <button
-                  key={option}
-                  onClick={() => setDateRangeOption(option)}
-                  className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
-                    dateRangeOption === option
-                      ? "bg-accent-blue text-white border-accent-blue"
-                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                  }`}
-                >
-                  {labels[option]}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Custom Date Inputs */}
-          {dateRangeOption === "custom" && (
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-text-tertiary" />
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
-              />
-              <span className="text-text-muted">to</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
-              />
+        {/* Date Range Selector - hide on Inventory tab */}
+        {primaryTab !== "inventory" && (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-2">
+              {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
+                const labels: Record<DateRangeOption, string> = {
+                  today: "Today",
+                  yesterday: "Yesterday",
+                  "3days": "3 Days",
+                  "7days": "7 Days",
+                  "30days": "30 Days",
+                  custom: "Custom",
+                };
+                return (
+                  <button
+                    key={option}
+                    onClick={() => setDateRangeOption(option)}
+                    className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
+                      dateRangeOption === option
+                        ? "bg-accent-blue text-white border-accent-blue"
+                        : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                    }`}
+                  >
+                    {labels[option]}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
 
-        {/* Tab Selector */}
+            {/* Custom Date Inputs */}
+            {dateRangeOption === "custom" && (
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-text-tertiary" />
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+                />
+                <span className="text-text-muted">to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Primary Tab Selector */}
         <div className="flex gap-1 mt-4 border-b border-border">
           <button
-            onClick={() => setActiveTab("fulfillment")}
-            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeTab === "fulfillment"
+            onClick={() => setPrimaryTab("inventory")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "inventory"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Package className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-            Fulfillment
+            <BarChart3 className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            INVENTORY
           </button>
           <button
-            onClick={() => setActiveTab("tracking")}
-            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeTab === "tracking"
+            onClick={() => setPrimaryTab("fulfillment")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "fulfillment"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Truck className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-            Tracking
-            {stuckCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-status-warning/20 text-status-warning rounded">
-                {stuckCount}
-              </span>
-            )}
+            <Package className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            FULFILLMENT
           </button>
         </div>
+
+        {/* Fulfillment Sub-tabs */}
+        {primaryTab === "fulfillment" && (
+          <div className="flex gap-4 mt-3">
+            <button
+              onClick={() => setFulfillmentSubTab("dashboard")}
+              className={`text-sm font-medium transition-all ${
+                fulfillmentSubTab === "dashboard"
+                  ? "text-text-primary"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => setFulfillmentSubTab("tracking")}
+              className={`text-sm font-medium transition-all ${
+                fulfillmentSubTab === "tracking"
+                  ? "text-text-primary"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              Tracking
+              {stuckCount > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-status-warning/20 text-status-warning rounded">
+                  {stuckCount}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
       </header>
 
       {error && (
@@ -374,8 +436,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* FULFILLMENT TAB */}
-      {activeTab === "fulfillment" && (
+      {/* FULFILLMENT DASHBOARD */}
+      {primaryTab === "fulfillment" && fulfillmentSubTab === "dashboard" && (
         <>
           {/* KPI Cards - with change indicators like Lathe app */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -523,8 +585,8 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* TRACKING TAB */}
-      {activeTab === "tracking" && (
+      {/* TRACKING SUB-TAB */}
+      {primaryTab === "fulfillment" && fulfillmentSubTab === "tracking" && (
         <>
           {/* Tracking Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -584,6 +646,17 @@ export default function Dashboard() {
           {/* Transit Map */}
           <USTransitMap analytics={metrics?.transitAnalytics || []} loading={loading} />
         </>
+      )}
+
+      {/* INVENTORY TAB */}
+      {primaryTab === "inventory" && (
+        <InventoryDashboard
+          inventory={inventory}
+          loading={inventoryLoading}
+          category={inventoryCategory}
+          setCategory={setInventoryCategory}
+          onRefresh={fetchInventory}
+        />
       )}
     </div>
   );
@@ -1614,4 +1687,451 @@ function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = [
       ...counts,
     }))
     .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
+}
+
+// Inventory Dashboard - See. Understand. Prioritize.
+function InventoryDashboard({
+  inventory,
+  loading,
+  category,
+  setCategory,
+  onRefresh,
+}: {
+  inventory: InventoryResponse | null;
+  loading: boolean;
+  category: InventoryCategoryTab;
+  setCategory: (cat: InventoryCategoryTab) => void;
+  onRefresh: () => void;
+}) {
+  const [sortBy, setSortBy] = useState<"total" | "pipefitter" | "hobson" | "selery" | "doi">("doi");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc"); // For DOI, "desc" = low-to-high (most urgent first)
+  const [healthFilter, setHealthFilter] = useState<"backorder" | "urgent" | "watch" | null>(null);
+
+  // Get products for current category
+  const categoryProducts = category === "accessory"
+    ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
+    : inventory?.byCategory[category] || [];
+
+  // Filter by health status if selected
+  const filteredProducts = healthFilter
+    ? categoryProducts.filter(p => {
+        if (healthFilter === "backorder") return p.isBackordered;
+        if (healthFilter === "urgent") return !p.isBackordered && p.doi !== undefined && p.doi < 7;
+        if (healthFilter === "watch") return !p.isBackordered && p.doi !== undefined && p.doi >= 7 && p.doi < 30;
+        return true;
+      })
+    : categoryProducts;
+
+  // Sort products (handle doi specially - backordered items go to top, then by DOI)
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (sortBy === "doi") {
+      // Backordered items get -1 (most urgent), undefined DOI goes to end with 9999
+      const aVal = a.isBackordered ? -1 : (a.doi ?? 9999);
+      const bVal = b.isBackordered ? -1 : (b.doi ?? 9999);
+      return sortDir === "desc" ? aVal - bVal : bVal - aVal;
+    }
+    const aVal = a[sortBy];
+    const bVal = b[sortBy];
+    return sortDir === "desc" ? bVal - aVal : aVal - bVal;
+  });
+
+  // Calculate totals (all products)
+  const totals = inventory?.totals || { pipefitter: 0, hobson: 0, selery: 0, total: 0 };
+
+  // Calculate cookware totals (cast iron + carbon steel only)
+  const cookwareProducts = [
+    ...(inventory?.byCategory.cast_iron || []),
+    ...(inventory?.byCategory.carbon_steel || []),
+  ];
+
+  // DOI Health Analysis (cookware only - factory seconds excluded)
+  const doiHealth = cookwareProducts.reduce(
+    (acc, p) => {
+      if (p.isBackordered) {
+        acc.backorder++;
+        acc.backorderItems.push(p.displayName);
+      } else if (p.doi === undefined) {
+        acc.noForecast++;
+      } else if (p.doi < 7) {
+        acc.urgent++;
+        acc.urgentItems.push(p.displayName);
+      } else if (p.doi < 30) {
+        acc.critical++;
+        acc.criticalItems.push(p.displayName);
+      } else if (p.doi < 60) {
+        acc.watch++;
+      } else {
+        acc.healthy++;
+      }
+      return acc;
+    },
+    { backorder: 0, urgent: 0, critical: 0, watch: 0, healthy: 0, noForecast: 0, backorderItems: [] as string[], urgentItems: [] as string[], criticalItems: [] as string[] }
+  );
+
+  // Check if DOI applies to current category
+  const showDoi = category !== "factory_second";
+
+  // Category config
+  const categoryLabels: Record<InventoryCategoryTab, string> = {
+    cast_iron: "CAST IRON",
+    carbon_steel: "CARBON STEEL",
+    accessory: "ACCESSORIES",
+    factory_second: "FACTORY SECOND",
+  };
+
+  // Calculate category totals for footer
+  const categoryTotals = sortedProducts.reduce(
+    (acc, p) => ({
+      pipefitter: acc.pipefitter + p.pipefitter,
+      hobson: acc.hobson + p.hobson,
+      selery: acc.selery + p.selery,
+      total: acc.total + p.total,
+    }),
+    { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
+  );
+
+  // Calculate max values for heat map intensity (per column)
+  const maxValues = {
+    pipefitter: Math.max(...sortedProducts.map(p => p.pipefitter), 1),
+    hobson: Math.max(...sortedProducts.map(p => p.hobson), 1),
+    selery: Math.max(...sortedProducts.map(p => p.selery), 1),
+    total: Math.max(...sortedProducts.map(p => p.total), 1),
+  };
+
+  // Get intensity (0-1) for heat map coloring
+  const getIntensity = (value: number, max: number): number => {
+    if (value === 0) return 0;
+    // Use sqrt for more gradual gradient (not linear)
+    return Math.sqrt(value / max);
+  };
+
+  // Color configs for each warehouse (using consistent palette)
+  const warehouseColors = {
+    pipefitter: { r: 59, g: 130, b: 246 },  // blue-500
+    hobson: { r: 245, g: 158, b: 11 },      // amber-500
+    selery: { r: 34, g: 197, b: 94 },       // green-500
+  };
+
+  // Get background style with color intensity
+  const getCellStyle = (value: number, warehouse: "pipefitter" | "hobson" | "selery") => {
+    const intensity = getIntensity(value, maxValues[warehouse]);
+    const color = warehouseColors[warehouse];
+    // Background opacity scales from 0 to 0.25 based on intensity
+    const bgOpacity = intensity * 0.25;
+    return {
+      backgroundColor: `rgba(${color.r}, ${color.g}, ${color.b}, ${bgOpacity})`,
+    };
+  };
+
+  const handleSort = (col: typeof sortBy) => {
+    if (sortBy === col) {
+      setSortDir(d => d === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(col);
+      setSortDir("desc");
+    }
+  };
+
+  const SortIcon = ({ col }: { col: typeof sortBy }) => {
+    if (sortBy !== col) return null;
+    return <span className="ml-1 opacity-60">{sortDir === "desc" ? "↓" : "↑"}</span>;
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {/* Header: Category Tabs + Inventory Health Status */}
+      <div className="flex items-start justify-between gap-6 mb-6">
+        {/* Category Tabs */}
+        <div className="flex items-center gap-2">
+          {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
+                category === cat
+                  ? "bg-accent-blue text-white"
+                  : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
+              }`}
+            >
+              {categoryLabels[cat]}
+            </button>
+          ))}
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+
+        {/* Inventory Health - Compact horizontal status bar */}
+        <div className="flex items-center gap-3 bg-bg-secondary/50 rounded-lg px-4 py-2 border border-border/50">
+          {loading ? (
+            <span className="text-text-muted text-sm">Loading...</span>
+          ) : doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
+            <>
+              {doiHealth.backorder > 0 && (
+                <button
+                  onClick={() => setHealthFilter(healthFilter === "backorder" ? null : "backorder")}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                    healthFilter === "backorder"
+                      ? "bg-red-500/30 ring-1 ring-red-500/50"
+                      : "hover:bg-red-500/10"
+                  }`}
+                >
+                  <span className="text-base font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
+                  <span className="text-[11px] text-red-400/80 font-medium tracking-wide">BACKORDER</span>
+                </button>
+              )}
+              {doiHealth.urgent > 0 && (
+                <button
+                  onClick={() => setHealthFilter(healthFilter === "urgent" ? null : "urgent")}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                    healthFilter === "urgent"
+                      ? "bg-red-500/30 ring-1 ring-red-500/50"
+                      : "hover:bg-red-500/10"
+                  }`}
+                >
+                  <span className="text-base font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
+                  <span className="text-[11px] text-red-400/80 font-medium tracking-wide">URGENT</span>
+                </button>
+              )}
+              {doiHealth.critical > 0 && (
+                <button
+                  onClick={() => setHealthFilter(healthFilter === "watch" ? null : "watch")}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                    healthFilter === "watch"
+                      ? "bg-amber-500/30 ring-1 ring-amber-500/50"
+                      : "hover:bg-amber-500/10"
+                  }`}
+                >
+                  <span className="text-base font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
+                  <span className="text-[11px] text-amber-400/80 font-medium tracking-wide">WATCH</span>
+                </button>
+              )}
+              {healthFilter && (
+                <button
+                  onClick={() => setHealthFilter(null)}
+                  className="text-text-muted hover:text-text-primary text-xs ml-1"
+                >
+                  Clear
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-sm text-emerald-400 font-medium">All Healthy</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Inventory Table with Heat Map */}
+      <div className="bg-bg-secondary rounded border border-border overflow-hidden">
+        <div className="max-h-[520px] overflow-y-auto">
+          <table className="w-full">
+            <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border">
+              <tr>
+                <th className="text-left px-5 py-3 text-xs text-text-tertiary font-medium tracking-wide w-[180px]">
+                  PRODUCT
+                </th>
+                <th
+                  onClick={() => handleSort("hobson")}
+                  className="text-right px-4 py-3 text-xs text-amber-400 font-medium cursor-pointer select-none tracking-wide"
+                >
+                  HOBSON<SortIcon col="hobson" />
+                </th>
+                <th
+                  onClick={() => handleSort("selery")}
+                  className="text-right px-4 py-3 text-xs text-green-400 font-medium cursor-pointer select-none tracking-wide"
+                >
+                  SELERY<SortIcon col="selery" />
+                </th>
+                <th
+                  onClick={() => handleSort("pipefitter")}
+                  className="text-right px-4 py-3 text-xs text-blue-400 font-medium cursor-pointer select-none tracking-wide"
+                >
+                  PIPEFITTER<SortIcon col="pipefitter" />
+                </th>
+                <th
+                  onClick={() => handleSort("total")}
+                  className={`text-right py-3 text-sm text-white font-semibold cursor-pointer select-none tracking-wide ${showDoi ? "px-4" : "px-5"}`}
+                >
+                  TOTAL<SortIcon col="total" />
+                </th>
+                {showDoi && (
+                  <th
+                    onClick={() => handleSort("doi")}
+                    className="text-right px-5 py-3 text-xs text-purple-400 font-medium cursor-pointer select-none tracking-wide"
+                  >
+                    DOI<SortIcon col="doi" />
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={showDoi ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-sm">
+                    Loading...
+                  </td>
+                </tr>
+              ) : sortedProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={showDoi ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-sm">
+                    No products in this category
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  {sortedProducts.map((product) => {
+                    return (
+                      <tr
+                        key={product.sku}
+                        className="border-b border-border/30 group cursor-default"
+                        title={product.monthBudget
+                          ? `${product.displayName}\nDec Budget: ${product.monthBudget?.toLocaleString()} | Sold: ${product.monthSold?.toLocaleString()} (${product.monthPct}%)`
+                          : product.displayName}
+                      >
+                        <td className="px-5 py-2.5">
+                          <span className={`text-base font-medium ${
+                            product.isBackordered
+                              ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
+                              : product.doi !== undefined && product.doi < 7
+                              ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
+                              : "text-text-primary"
+                          }`}>{product.displayName}</span>
+                          {product.monthBudget && (
+                            <div className="text-xs mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="text-text-muted">Budget:</span>
+                              <span className="text-text-secondary ml-1">{product.monthBudget?.toLocaleString()}</span>
+                              <span className="text-text-muted ml-2">Sold:</span>
+                              <span className={`ml-1 ${
+                                (product.monthPct || 0) >= 100 ? "text-status-good" :
+                                (product.monthPct || 0) >= 75 ? "text-status-warning" :
+                                "text-status-bad"
+                              }`}>
+                                {product.monthSold?.toLocaleString()} ({product.monthPct}%)
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          className="text-right px-4 py-2.5 tabular-nums"
+                          style={getCellStyle(product.hobson, "hobson")}
+                        >
+                          <span className={`text-base font-medium ${
+                            product.hobson < 0
+                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
+                              : product.hobson > 0
+                              ? "text-text-primary"
+                              : "text-text-muted/50"
+                          }`}>
+                            {formatNumber(product.hobson)}
+                          </span>
+                        </td>
+                        <td
+                          className="text-right px-4 py-2.5 tabular-nums"
+                          style={getCellStyle(product.selery, "selery")}
+                        >
+                          <span className={`text-base font-medium ${
+                            product.selery < 0
+                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
+                              : product.selery > 0
+                              ? "text-text-primary"
+                              : "text-text-muted/50"
+                          }`}>
+                            {formatNumber(product.selery)}
+                          </span>
+                        </td>
+                        <td
+                          className="text-right px-4 py-2.5 tabular-nums"
+                          style={getCellStyle(product.pipefitter, "pipefitter")}
+                        >
+                          <span className={`text-base font-medium ${
+                            product.pipefitter < 0
+                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
+                              : product.pipefitter > 0
+                              ? "text-text-primary"
+                              : "text-text-muted/50"
+                          }`}>
+                            {formatNumber(product.pipefitter)}
+                          </span>
+                        </td>
+                        <td className={`text-right py-2.5 tabular-nums ${showDoi ? "px-4" : "px-5"}`}>
+                          <span className={`text-lg font-bold ${product.isBackordered ? "text-red-400 bg-red-500/20 px-1.5 rounded" : "text-white"}`}>
+                            {formatNumber(product.total)}
+                          </span>
+                        </td>
+                        {showDoi && (
+                          <td className="text-right px-5 py-2.5 tabular-nums">
+                            {product.isBackordered ? (
+                              <span className="text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold text-sm uppercase">
+                                Backorder
+                              </span>
+                            ) : product.doi !== undefined ? (
+                              <span
+                                className={`text-base font-medium cursor-help ${
+                                  product.doi < 7
+                                    ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
+                                    : product.doi < 30
+                                    ? "text-status-bad"
+                                    : product.doi < 60
+                                    ? "text-status-warning"
+                                    : "text-status-good"
+                                }`}
+                                title={product.stockoutWeek && product.stockoutYear
+                                  ? `Stockout: Week ${product.stockoutWeek}, ${product.stockoutYear}`
+                                  : undefined}
+                              >
+                                ~{product.doi}d
+                              </span>
+                            ) : (
+                              <span className="text-text-muted/50">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {/* Category Total */}
+                  <tr className="bg-bg-tertiary sticky bottom-0 border-t-2 border-border">
+                    <td className="px-5 py-4 text-base text-text-primary font-bold">
+                      {categoryLabels[category]} TOTAL
+                    </td>
+                    <td className="text-right px-4 py-4 text-lg text-amber-400 font-bold tabular-nums">
+                      {formatNumber(categoryTotals.hobson)}
+                    </td>
+                    <td className="text-right px-4 py-4 text-lg text-green-400 font-bold tabular-nums">
+                      {formatNumber(categoryTotals.selery)}
+                    </td>
+                    <td className="text-right px-4 py-4 text-lg text-blue-400 font-bold tabular-nums">
+                      {formatNumber(categoryTotals.pipefitter)}
+                    </td>
+                    <td className={`text-right py-4 text-lg text-text-primary font-bold tabular-nums ${showDoi ? "px-4" : "px-5"}`}>
+                      {formatNumber(categoryTotals.total)}
+                    </td>
+                    {showDoi && (
+                      <td className="text-right px-5 py-4">
+                        {/* DOI column - no aggregate */}
+                      </td>
+                    )}
+                  </tr>
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Last synced */}
+      {inventory?.lastSynced && (
+        <div className="mt-3 text-xs text-text-muted text-right">
+          Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
+        </div>
+      )}
+    </div>
+  );
 }

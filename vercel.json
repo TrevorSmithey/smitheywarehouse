@@ -3,6 +3,10 @@
     {
       "path": "/api/tracking/check",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-inventory",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

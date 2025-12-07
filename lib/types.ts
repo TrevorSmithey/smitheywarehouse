@@ -1,3 +1,69 @@
+// Inventory types (ShipHero → Supabase)
+export interface ProductInventory {
+  sku: string;
+  displayName: string;
+  category: InventoryCategory;
+  pipefitter: number;
+  hobson: number;
+  selery: number;
+  total: number;
+  doi?: number; // Days of Inventory using weekly weights methodology
+  stockoutWeek?: number; // ISO week number when stockout occurs
+  stockoutYear?: number; // Year when stockout occurs
+  isBackordered?: boolean; // True if total inventory is negative (more sold than in stock)
+  monthSold?: number; // Units fulfilled this month
+  monthBudget?: number; // Monthly budget based on forecast + weekly weights
+  monthPct?: number; // % of monthly budget sold (monthSold / monthBudget * 100)
+}
+
+export type InventoryCategory =
+  | "cast_iron"
+  | "carbon_steel"
+  | "accessory"
+  | "glass_lid"
+  | "factory_second";
+
+export interface InventoryTotals {
+  pipefitter: number;
+  hobson: number;
+  selery: number;
+  total: number;
+}
+
+export interface InventoryResponse {
+  inventory: ProductInventory[];
+  totals: InventoryTotals;
+  byCategory: Record<InventoryCategory, ProductInventory[]>;
+  lastSynced: string | null;
+}
+
+// Supabase table types for inventory
+export interface SupabaseProduct {
+  id: string;
+  sku: string;
+  display_name: string;
+  category: InventoryCategory;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupabaseInventory {
+  id: string;
+  sku: string;
+  warehouse_id: number;
+  on_hand: number;
+  available: number;
+  reserved: number;
+  synced_at: string;
+}
+
+export interface SupabaseWarehouse {
+  id: number;
+  name: string;
+  code: string;
+}
+
 // Order from Shopify, stored in Supabase
 export interface Order {
   id: number; // Shopify order ID (bigint)
