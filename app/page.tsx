@@ -2969,7 +2969,7 @@ function AssemblyDashboard({
             {/* Progress Gauge */}
             <div className="flex-shrink-0 flex justify-center lg:justify-start">
               <div className="relative">
-                <svg width="200" height="180" viewBox="0 0 200 180">
+                <svg width="140" height="126" viewBox="0 0 200 180">
                   {/* Background arc */}
                   <path
                     d="M 20 140 A 80 80 0 1 1 180 140"
@@ -3011,10 +3011,10 @@ function AssemblyDashboard({
                     }}
                   />
                   {/* Center text */}
-                  <text x="100" y="95" textAnchor="middle" className="fill-text-primary" style={{ fontSize: '36px', fontWeight: 700, fontFamily: 'system-ui' }}>
+                  <text x="100" y="95" textAnchor="middle" className="fill-text-primary" style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'system-ui' }}>
                     {summary.progressPct.toFixed(0)}%
                   </text>
-                  <text x="100" y="120" textAnchor="middle" className="fill-text-tertiary" style={{ fontSize: '11px', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                  <text x="100" y="115" textAnchor="middle" className="fill-text-tertiary" style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                     COMPLETE
                   </text>
                 </svg>
@@ -3035,17 +3035,17 @@ function AssemblyDashboard({
 
             {/* Hero Stats */}
             <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-              {/* Days Remaining - Primary */}
-              <div className="col-span-2 md:col-span-1">
+              {/* Days Remaining */}
+              <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">DAYS LEFT</div>
                 <div
-                  className="text-5xl md:text-6xl font-bold tabular-nums tracking-tight"
+                  className="text-3xl md:text-4xl font-bold tabular-nums"
                   style={{ color: summary.daysRemaining <= 3 ? "#DC2626" : forge.glow }}
                 >
                   {summary.daysRemaining}
                 </div>
                 <div className="text-xs text-text-tertiary mt-1">
-                  until {format(cutoffDate, "MMM d")}
+                  until Fri {format(cutoffDate, "MMM d")}
                 </div>
               </div>
 
@@ -3123,18 +3123,29 @@ function AssemblyDashboard({
 
       {/* Production Stats Row */}
       <div className="grid grid-cols-3 gap-4">
-        {/* Yesterday */}
+        {/* Latest Day */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">YESTERDAY</span>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              {summary.latestDate ? format(parseLocalDate(summary.latestDate), "MMM d").toUpperCase() : "LATEST"}
+            </span>
             <Calendar className="w-4 h-4 text-text-muted" />
           </div>
-          <div className="text-3xl font-bold tabular-nums text-text-primary">
+          <div className={`text-3xl font-bold tabular-nums ${
+            summary.yesterdayProduction >= summary.dailyAverage7d
+              ? "text-status-good"
+              : summary.yesterdayProduction >= summary.dailyAverage7d * 0.8
+                ? "text-status-warning"
+                : "text-status-bad"
+          }`}>
             {fmt.number(summary.yesterdayProduction)}
           </div>
-          <div className={`text-xs mt-1 flex items-center gap-1 ${summary.yesterdayDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
-            {summary.yesterdayDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {fmt.delta(summary.yesterdayDelta)} vs prior day
+          <div className="text-xs text-text-tertiary mt-1">
+            {summary.yesterdayProduction >= summary.dailyAverage7d ? (
+              <span className="text-status-good">{fmt.number(summary.yesterdayProduction - summary.dailyAverage7d)} above avg</span>
+            ) : (
+              <span className="text-status-bad">{fmt.number(summary.dailyAverage7d - summary.yesterdayProduction)} below avg</span>
+            )}
           </div>
         </div>
 
