@@ -2340,7 +2340,7 @@ function HolidayDashboard({
               {prefix}{fmt.number(Math.round(val2024))}
             </span>
           </div>
-          {val2024 > 0 && (
+          {val2024 > 0 && val2025 > 0 && (
             <div className="pt-2 mt-2 border-t border-border/50">
               <div className={`text-sm font-semibold text-right ${delta >= 0 ? "text-status-good" : "text-status-bad"}`}>
                 {fmt.delta(delta)} YoY
@@ -2453,8 +2453,8 @@ function HolidayDashboard({
               {fmt.delta(monthDeltas.avgDailyOrders)}
             </span>
           </div>
-          <div className="text-xl font-bold text-text-primary tabular-nums">{monthMetrics.avgDailyOrders2025}</div>
-          <div className="text-xs text-text-muted mt-1">vs {monthMetrics.avgDailyOrders2024} in 2024</div>
+          <div className="text-xl font-bold text-text-primary tabular-nums">{monthMetrics.avgDailyOrders2025.toLocaleString()}</div>
+          <div className="text-xs text-text-muted mt-1">vs {monthMetrics.avgDailyOrders2024.toLocaleString()} in 2024</div>
         </div>
         <div className="bg-bg-secondary/50 rounded-xl p-4 border border-border/50">
           <div className="flex items-center justify-between mb-2">
