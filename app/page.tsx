@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Calendar,
   Pen,
+  BarChart3,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -41,11 +42,15 @@ import type {
   SkuInQueue,
   EngravingQueue,
   OrderAging,
+  InventoryResponse,
+  ProductInventory,
+  InventoryCategory,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type TabOption = "fulfillment" | "tracking";
+type TabOption = "fulfillment" | "tracking" | "inventory";
+type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessories" | "factory_second";
 
 // Calculate date range bounds based on selection
 function getDateBounds(option: DateRangeOption, customStart?: Date, customEnd?: Date): { start: Date; end: Date } {
@@ -178,6 +183,33 @@ export default function Dashboard() {
 
   // Stuck threshold - how many days without scan counts as "stuck"
   const [stuckThreshold, setStuckThreshold] = useState<1 | 2 | 3>(2);
+
+  // Inventory tab state
+  const [inventory, setInventory] = useState<InventoryResponse | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryCategory, setInventoryCategory] = useState<InventoryCategoryTab>("cast_iron");
+
+  // Fetch inventory when tab becomes active
+  const fetchInventory = useCallback(async () => {
+    try {
+      setInventoryLoading(true);
+      const res = await fetch("/api/inventory");
+      if (!res.ok) throw new Error("Failed to fetch inventory");
+      const data: InventoryResponse = await res.json();
+      setInventory(data);
+    } catch (err) {
+      console.error("Inventory fetch error:", err);
+    } finally {
+      setInventoryLoading(false);
+    }
+  }, []);
+
+  // Load inventory when switching to inventory tab
+  useEffect(() => {
+    if (activeTab === "inventory" && !inventory && !inventoryLoading) {
+      fetchInventory();
+    }
+  }, [activeTab, inventory, inventoryLoading, fetchInventory]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -364,6 +396,17 @@ export default function Dashboard() {
                 {stuckCount}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab("inventory")}
+            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
+              activeTab === "inventory"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
+            Inventory
           </button>
         </div>
       </header>
@@ -583,6 +626,85 @@ export default function Dashboard() {
 
           {/* Transit Map */}
           <USTransitMap analytics={metrics?.transitAnalytics || []} loading={loading} />
+        </>
+      )}
+
+      {/* INVENTORY TAB */}
+      {activeTab === "inventory" && (
+        <>
+          {/* Category Tabs */}
+          <div className="flex gap-2 mb-6">
+            {(["cast_iron", "carbon_steel", "accessories", "factory_second"] as InventoryCategoryTab[]).map((cat) => {
+              const labels: Record<InventoryCategoryTab, string> = {
+                cast_iron: "Cast Iron",
+                carbon_steel: "Carbon Steel",
+                accessories: "Accessories",
+                factory_second: "Factory Second",
+              };
+              const count = inventory?.byCategory[cat]?.length || 0;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setInventoryCategory(cat)}
+                  className={`px-4 py-2 text-sm font-medium transition-all border rounded ${
+                    inventoryCategory === cat
+                      ? "bg-accent-blue text-white border-accent-blue"
+                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                  }`}
+                >
+                  {labels[cat]}
+                  <span className="ml-1.5 text-xs opacity-70">({count})</span>
+                </button>
+              );
+            })}
+            <button
+              onClick={fetchInventory}
+              disabled={inventoryLoading}
+              className="ml-auto p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${inventoryLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+
+          {/* Totals Summary */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="bg-bg-secondary rounded border border-border p-4">
+              <div className="text-label text-accent-blue mb-1">PIPEFITTER</div>
+              <div className="text-2xl font-light text-text-primary">
+                {inventoryLoading ? "—" : formatNumber(inventory?.totals.pipefitter || 0)}
+              </div>
+            </div>
+            <div className="bg-bg-secondary rounded border border-border p-4">
+              <div className="text-label text-status-warning mb-1">HOBSON</div>
+              <div className="text-2xl font-light text-text-primary">
+                {inventoryLoading ? "—" : formatNumber(inventory?.totals.hobson || 0)}
+              </div>
+            </div>
+            <div className="bg-bg-secondary rounded border border-border p-4">
+              <div className="text-label text-status-good mb-1">SELERY</div>
+              <div className="text-2xl font-light text-text-primary">
+                {inventoryLoading ? "—" : formatNumber(inventory?.totals.selery || 0)}
+              </div>
+            </div>
+            <div className="bg-bg-secondary rounded border border-border p-4">
+              <div className="text-label text-text-tertiary mb-1">TOTAL</div>
+              <div className="text-2xl font-light text-text-primary">
+                {inventoryLoading ? "—" : formatNumber(inventory?.totals.total || 0)}
+              </div>
+            </div>
+          </div>
+
+          {/* Inventory Table */}
+          <InventoryTable
+            products={inventory?.byCategory[inventoryCategory] || []}
+            loading={inventoryLoading}
+          />
+
+          {/* Inventory Chart - Horizontal Stacked Bars */}
+          <InventoryChart
+            products={inventory?.byCategory[inventoryCategory] || []}
+            loading={inventoryLoading}
+          />
         </>
       )}
     </div>
@@ -1614,4 +1736,201 @@ function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = [
       ...counts,
     }))
     .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
+}
+
+// Inventory Table Component
+function InventoryTable({
+  products,
+  loading,
+}: {
+  products: ProductInventory[];
+  loading: boolean;
+}) {
+  // Calculate category totals
+  const totals = products.reduce(
+    (acc, p) => ({
+      pipefitter: acc.pipefitter + p.pipefitter,
+      hobson: acc.hobson + p.hobson,
+      selery: acc.selery + p.selery,
+      total: acc.total + p.total,
+    }),
+    { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
+  );
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border mb-6 overflow-hidden">
+      <div className="px-6 py-4 border-b border-border">
+        <h3 className="text-label font-medium text-text-tertiary">
+          INVENTORY BY SKU
+        </h3>
+      </div>
+      <div className="max-h-[400px] overflow-y-auto">
+        <table className="w-full">
+          <thead className="sticky top-0 bg-bg-secondary border-b border-border">
+            <tr>
+              <th className="text-left px-6 py-3 text-label text-text-tertiary font-medium">
+                Product Name
+              </th>
+              <th className="text-right px-4 py-3 text-label text-accent-blue font-medium">
+                Pipefitter
+              </th>
+              <th className="text-right px-4 py-3 text-label text-status-warning font-medium">
+                Hobson
+              </th>
+              <th className="text-right px-4 py-3 text-label text-status-good font-medium">
+                Selery
+              </th>
+              <th className="text-right px-6 py-3 text-label text-text-primary font-medium">
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
+                  Loading inventory...
+                </td>
+              </tr>
+            ) : products.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
+                  No products in this category
+                </td>
+              </tr>
+            ) : (
+              <>
+                {products.map((product, idx) => (
+                  <tr
+                    key={product.sku}
+                    className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${
+                      idx % 2 === 0 ? "bg-bg-secondary" : "bg-bg-primary/30"
+                    }`}
+                  >
+                    <td className="px-6 py-3 text-sm text-text-primary font-medium">
+                      {product.name || product.sku}
+                    </td>
+                    <td className="text-right px-4 py-3 text-sm text-text-secondary">
+                      {formatNumber(product.pipefitter)}
+                    </td>
+                    <td className="text-right px-4 py-3 text-sm text-text-secondary">
+                      {formatNumber(product.hobson)}
+                    </td>
+                    <td className="text-right px-4 py-3 text-sm text-text-secondary">
+                      {formatNumber(product.selery)}
+                    </td>
+                    <td className="text-right px-6 py-3 text-sm text-text-primary font-medium">
+                      {formatNumber(product.total)}
+                    </td>
+                  </tr>
+                ))}
+                {/* Grand Total Row */}
+                <tr className="bg-bg-tertiary border-t-2 border-border sticky bottom-0">
+                  <td className="px-6 py-3 text-sm text-text-primary font-semibold">
+                    Grand Total
+                  </td>
+                  <td className="text-right px-4 py-3 text-sm text-accent-blue font-semibold">
+                    {formatNumber(totals.pipefitter)}
+                  </td>
+                  <td className="text-right px-4 py-3 text-sm text-status-warning font-semibold">
+                    {formatNumber(totals.hobson)}
+                  </td>
+                  <td className="text-right px-4 py-3 text-sm text-status-good font-semibold">
+                    {formatNumber(totals.selery)}
+                  </td>
+                  <td className="text-right px-6 py-3 text-sm text-text-primary font-semibold">
+                    {formatNumber(totals.total)}
+                  </td>
+                </tr>
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Inventory Chart - Horizontal Stacked Bars
+function InventoryChart({
+  products,
+  loading,
+}: {
+  products: ProductInventory[];
+  loading: boolean;
+}) {
+  // Take top 10 products for the chart
+  const chartProducts = products.slice(0, 10);
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6">
+      <h3 className="text-label font-medium text-text-tertiary mb-6">
+        WAREHOUSE DISTRIBUTION
+      </h3>
+      {loading ? (
+        <div className="h-[300px] flex items-center justify-center text-text-muted text-sm">
+          Loading chart...
+        </div>
+      ) : chartProducts.length === 0 ? (
+        <div className="h-[300px] flex items-center justify-center text-text-muted text-sm">
+          No data available
+        </div>
+      ) : (
+        <>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart
+              data={chartProducts}
+              layout="vertical"
+              margin={{ left: 80, right: 20, top: 10, bottom: 10 }}
+            >
+              <XAxis type="number" stroke="#64748B" fontSize={11} />
+              <YAxis
+                type="category"
+                dataKey="name"
+                stroke="#64748B"
+                fontSize={11}
+                width={75}
+                tickFormatter={(value) =>
+                  value.length > 12 ? `${value.substring(0, 12)}...` : value
+                }
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#12151F",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                }}
+                labelStyle={{ color: "#94A3B8" }}
+                itemStyle={{ color: "#FFFFFF" }}
+              />
+              <Legend
+                wrapperStyle={{ paddingTop: "20px" }}
+                formatter={(value) => (
+                  <span className="text-text-secondary text-sm">{value}</span>
+                )}
+              />
+              <Bar dataKey="pipefitter" name="Pipefitter" stackId="a" fill="#0EA5E9" />
+              <Bar dataKey="hobson" name="Hobson" stackId="a" fill="#F59E0B" />
+              <Bar dataKey="selery" name="Selery" stackId="a" fill="#10B981" />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="flex justify-center gap-6 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-accent-blue" />
+              <span className="text-context text-text-secondary">Pipefitter</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded" style={{ backgroundColor: "#F59E0B" }} />
+              <span className="text-context text-text-secondary">Hobson</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded" style={{ backgroundColor: "#10B981" }} />
+              <span className="text-context text-text-secondary">Selery</span>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
