@@ -61,7 +61,8 @@ export async function GET(request: Request) {
     const now = new Date().toISOString();
 
     for (const item of inventory) {
-      if (item.pipefitter > 0) {
+      // Include non-zero values (negative = backordered)
+      if (item.pipefitter !== 0) {
         inventoryRecords.push({
           sku: item.sku,
           warehouse_id: WAREHOUSE_IDS.pipefitter,
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
           synced_at: now,
         });
       }
-      if (item.hobson > 0) {
+      if (item.hobson !== 0) {
         inventoryRecords.push({
           sku: item.sku,
           warehouse_id: WAREHOUSE_IDS.hobson,
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
           synced_at: now,
         });
       }
-      if (item.selery > 0) {
+      if (item.selery !== 0) {
         inventoryRecords.push({
           sku: item.sku,
           warehouse_id: WAREHOUSE_IDS.selery,
