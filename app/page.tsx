@@ -1743,15 +1743,6 @@ function InventoryDashboard({
     ...(inventory?.byCategory.cast_iron || []),
     ...(inventory?.byCategory.carbon_steel || []),
   ];
-  const cookwareTotals = cookwareProducts.reduce(
-    (acc, p) => ({
-      pipefitter: acc.pipefitter + p.pipefitter,
-      hobson: acc.hobson + p.hobson,
-      selery: acc.selery + p.selery,
-      total: acc.total + p.total,
-    }),
-    { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
-  );
 
   // DOI Health Analysis (cookware only - factory seconds excluded)
   const doiHealth = cookwareProducts.reduce(
@@ -1848,118 +1839,90 @@ function InventoryDashboard({
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* Category Tabs */}
-      <div className="flex items-center gap-2 mb-6">
-        {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => (
+      {/* Header: Category Tabs + Inventory Health Status */}
+      <div className="flex items-start justify-between gap-6 mb-6">
+        {/* Category Tabs */}
+        <div className="flex items-center gap-2">
+          {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
+                category === cat
+                  ? "bg-accent-blue text-white"
+                  : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
+              }`}
+            >
+              {categoryLabels[cat]}
+            </button>
+          ))}
           <button
-            key={cat}
-            onClick={() => setCategory(cat)}
-            className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
-              category === cat
-                ? "bg-accent-blue text-white"
-                : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
-            }`}
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
           >
-            {categoryLabels[cat]}
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
-        ))}
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="ml-auto p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
+        </div>
 
-      {/* Cookware Totals + Inventory Health */}
-      <div className="grid grid-cols-5 gap-3 mb-6">
-        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-amber-500">
-          <div className="text-xs text-amber-400 mb-1 tracking-wide">HOBSON</div>
-          <div className="text-3xl font-medium text-text-primary tabular-nums">
-            {loading ? "—" : formatNumber(cookwareTotals.hobson)}
-          </div>
-        </div>
-        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-green-500">
-          <div className="text-xs text-green-400 mb-1 tracking-wide">SELERY</div>
-          <div className="text-3xl font-medium text-text-primary tabular-nums">
-            {loading ? "—" : formatNumber(cookwareTotals.selery)}
-          </div>
-        </div>
-        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-blue-500">
-          <div className="text-xs text-blue-400 mb-1 tracking-wide">PIPEFITTER</div>
-          <div className="text-3xl font-medium text-text-primary tabular-nums">
-            {loading ? "—" : formatNumber(cookwareTotals.pipefitter)}
-          </div>
-        </div>
-        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-slate-500">
-          <div className="text-xs text-slate-400 mb-1 tracking-wide">TOTAL COOKWARE</div>
-          <div className="text-3xl font-medium text-text-primary tabular-nums">
-            {loading ? "—" : formatNumber(cookwareTotals.total)}
-          </div>
-        </div>
-        {/* Inventory Health Summary - Clickable filters */}
-        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-purple-500">
-          <div className="text-xs text-purple-400 mb-2 tracking-wide flex items-center justify-between">
-            <span>INVENTORY HEALTH</span>
-            {healthFilter && (
-              <button
-                onClick={() => setHealthFilter(null)}
-                className="text-text-muted hover:text-text-primary text-[10px]"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+        {/* Inventory Health - Compact horizontal status bar */}
+        <div className="flex items-center gap-3 bg-bg-secondary/50 rounded-lg px-4 py-2 border border-border/50">
           {loading ? (
-            <div className="text-text-muted">—</div>
+            <span className="text-text-muted text-sm">Loading...</span>
           ) : doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
-            <div className="space-y-1">
+            <>
               {doiHealth.backorder > 0 && (
                 <button
                   onClick={() => setHealthFilter(healthFilter === "backorder" ? null : "backorder")}
-                  className={`flex items-center gap-2 w-full text-left rounded px-1 -mx-1 transition-colors ${
-                    healthFilter === "backorder" ? "bg-red-500/20" : "hover:bg-white/5"
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                    healthFilter === "backorder"
+                      ? "bg-red-500/30 ring-1 ring-red-500/50"
+                      : "hover:bg-red-500/10"
                   }`}
                 >
-                  <span className="w-7 text-lg font-bold text-red-400 bg-red-500/20 px-1.5 rounded text-center">{doiHealth.backorder}</span>
-                  <span className="text-xs text-red-400 font-medium uppercase">Backorder</span>
+                  <span className="text-base font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
+                  <span className="text-[11px] text-red-400/80 font-medium tracking-wide">BACKORDER</span>
                 </button>
               )}
               {doiHealth.urgent > 0 && (
                 <button
                   onClick={() => setHealthFilter(healthFilter === "urgent" ? null : "urgent")}
-                  className={`flex items-center gap-2 w-full text-left rounded px-1 -mx-1 transition-colors ${
-                    healthFilter === "urgent" ? "bg-red-500/20" : "hover:bg-white/5"
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                    healthFilter === "urgent"
+                      ? "bg-red-500/30 ring-1 ring-red-500/50"
+                      : "hover:bg-red-500/10"
                   }`}
                 >
-                  <span className="w-7 text-lg font-bold text-red-400 bg-red-500/20 px-1.5 rounded text-center">{doiHealth.urgent}</span>
-                  <span className="text-xs text-red-400 font-medium">URGENT (&lt;7d)</span>
+                  <span className="text-base font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
+                  <span className="text-[11px] text-red-400/80 font-medium tracking-wide">URGENT</span>
                 </button>
               )}
               {doiHealth.critical > 0 && (
                 <button
                   onClick={() => setHealthFilter(healthFilter === "watch" ? null : "watch")}
-                  className={`flex items-center gap-2 w-full text-left rounded px-1 -mx-1 transition-colors ${
-                    healthFilter === "watch" ? "bg-orange-500/20" : "hover:bg-white/5"
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                    healthFilter === "watch"
+                      ? "bg-amber-500/30 ring-1 ring-amber-500/50"
+                      : "hover:bg-amber-500/10"
                   }`}
                 >
-                  <span className="w-7 text-lg font-medium text-status-bad text-center">{doiHealth.critical}</span>
-                  <span className="text-xs text-status-bad">WATCH (&lt;30d)</span>
+                  <span className="text-base font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
+                  <span className="text-[11px] text-amber-400/80 font-medium tracking-wide">WATCH</span>
                 </button>
               )}
-              {doiHealth.noForecast > 0 && (
-                <div className="text-xs text-text-muted mt-1 pl-1">
-                  {doiHealth.noForecast} without forecast
-                </div>
+              {healthFilter && (
+                <button
+                  onClick={() => setHealthFilter(null)}
+                  className="text-text-muted hover:text-text-primary text-xs ml-1"
+                >
+                  Clear
+                </button>
               )}
-            </div>
-          ) : doiHealth.noForecast === cookwareProducts.length ? (
-            <div className="text-sm text-text-muted">No forecast data</div>
+            </>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-medium text-status-good">{doiHealth.healthy}</span>
-              <span className="text-xs text-status-good">ALL HEALTHY</span>
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-sm text-emerald-400 font-medium">All Healthy</span>
             </div>
           )}
         </div>
