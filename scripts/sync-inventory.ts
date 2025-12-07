@@ -19,6 +19,7 @@ import {
   transformToInventory,
   WAREHOUSES,
   getDisplayName,
+  getCanonicalSku,
   categorizeProduct,
 } from "../lib/shiphero";
 
@@ -54,17 +55,31 @@ async function syncInventory() {
   const products = await fetchAllProducts();
   console.log(`Found ${products.length} products in ShipHero\n`);
 
+  // Debug: Show sample product structure
+  if (products.length > 0) {
+    const withInventory = products.find(p => p.warehouse_products && p.warehouse_products.length > 0);
+    if (withInventory) {
+      console.log("DEBUG - Sample product with warehouse data:");
+      console.log("  SKU:", withInventory.sku);
+      console.log("  warehouse_products:", JSON.stringify(withInventory.warehouse_products, null, 2));
+    } else {
+      console.log("DEBUG - No products have warehouse_products. First product:");
+      console.log(JSON.stringify(products[0], null, 2));
+    }
+    console.log("");
+  }
+
   // 2. Transform to inventory by warehouse
   const inventory = transformToInventory(products);
   console.log(`${inventory.length} products have inventory across warehouses\n`);
 
   // 3. Prepare inventory records for each warehouse
-  const inventoryRecords: InventoryRecord[] = [];
+  let inventoryRecords: InventoryRecord[] = [];
   const now = new Date().toISOString();
 
   for (const item of inventory) {
-    // Pipefitter
-    if (item.pipefitter > 0) {
+    // Pipefitter - include negative values for backordered items
+    if (item.pipefitter !== 0) {
       inventoryRecords.push({
         sku: item.sku,
         warehouse_id: WAREHOUSE_IDS.pipefitter,
@@ -75,8 +90,8 @@ async function syncInventory() {
       });
     }
 
-    // Hobson
-    if (item.hobson > 0) {
+    // Hobson - include negative values for backordered items
+    if (item.hobson !== 0) {
       inventoryRecords.push({
         sku: item.sku,
         warehouse_id: WAREHOUSE_IDS.hobson,
@@ -87,8 +102,8 @@ async function syncInventory() {
       });
     }
 
-    // Selery
-    if (item.selery > 0) {
+    // Selery - include negative values for backordered items
+    if (item.selery !== 0) {
       inventoryRecords.push({
         sku: item.sku,
         warehouse_id: WAREHOUSE_IDS.selery,
@@ -102,27 +117,46 @@ async function syncInventory() {
 
   console.log(`Prepared ${inventoryRecords.length} inventory records\n`);
 
-  // 4. Ensure products exist in products table (auto-create if missing)
-  const uniqueSkus = [...new Set(inventoryRecords.map((r) => r.sku))];
-  console.log(`Ensuring ${uniqueSkus.length} SKUs exist in products table...`);
+  // 4. Filter to only SKUs in official nomenclature
+  const knownSkus = [...new Set(inventoryRecords.map((r) => r.sku))]
+    .filter((sku) => getCanonicalSku(sku) !== null);
+
+  const unknownSkus = [...new Set(inventoryRecords.map((r) => r.sku))]
+    .filter((sku) => getCanonicalSku(sku) === null);
+
+  if (unknownSkus.length > 0) {
+    console.log(`Skipping ${unknownSkus.length} SKUs not in nomenclature:`);
+    unknownSkus.forEach((sku) => console.log(`  - ${sku}`));
+    console.log("");
+  }
+
+  // Filter inventory records to only known SKUs
+  inventoryRecords = inventoryRecords.filter((r) => getCanonicalSku(r.sku) !== null);
+  console.log(`${inventoryRecords.length} inventory records after filtering\n`);
+
+  // 5. Ensure products exist in products table
+  console.log(`Ensuring ${knownSkus.length} SKUs exist in products table...`);
 
   // Get existing products
   const { data: existingProducts } = await supabase
     .from("products")
     .select("sku")
-    .in("sku", uniqueSkus);
+    .in("sku", knownSkus);
 
   const existingSkus = new Set(existingProducts?.map((p) => p.sku) || []);
-  const newSkus = uniqueSkus.filter((sku) => !existingSkus.has(sku));
+  const newSkus = knownSkus.filter((sku) => !existingSkus.has(sku));
 
   if (newSkus.length > 0) {
     console.log(`Creating ${newSkus.length} new product records...`);
-    const newProducts = newSkus.map((sku) => ({
-      sku,
-      display_name: getDisplayName(sku),
-      category: categorizeProduct(sku),
-      is_active: true,
-    }));
+    const newProducts = newSkus.map((sku) => {
+      const displayName = getDisplayName(sku);
+      return {
+        sku,
+        display_name: displayName || sku,
+        category: categorizeProduct(sku),
+        is_active: true,
+      };
+    });
 
     const { error: productError } = await supabase
       .from("products")

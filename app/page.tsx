@@ -49,7 +49,8 @@ import type {
 import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type TabOption = "fulfillment" | "tracking" | "inventory";
+type PrimaryTab = "inventory" | "fulfillment";
+type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
 // Calculate date range bounds based on selection
@@ -175,8 +176,9 @@ export default function Dashboard() {
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabOption>("fulfillment");
+  // Tab state - two-tier navigation
+  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("inventory");
+  const [fulfillmentSubTab, setFulfillmentSubTab] = useState<FulfillmentSubTab>("dashboard");
 
   // Tracking tab - shipped within filter (for stuck shipments)
   const [trackingShippedWithin, setTrackingShippedWithin] = useState<"7days" | "14days" | "30days" | "all">("14days");
@@ -206,10 +208,10 @@ export default function Dashboard() {
 
   // Load inventory when switching to inventory tab
   useEffect(() => {
-    if (activeTab === "inventory" && !inventory && !inventoryLoading) {
+    if (primaryTab === "inventory" && !inventory && !inventoryLoading) {
       fetchInventory();
     }
-  }, [activeTab, inventory, inventoryLoading, fetchInventory]);
+  }, [primaryTab, inventory, inventoryLoading, fetchInventory]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -319,96 +321,113 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Date Range Selector */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-2">
-            {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
-              const labels: Record<DateRangeOption, string> = {
-                today: "Today",
-                yesterday: "Yesterday",
-                "3days": "3 Days",
-                "7days": "7 Days",
-                "30days": "30 Days",
-                custom: "Custom",
-              };
-              return (
-                <button
-                  key={option}
-                  onClick={() => setDateRangeOption(option)}
-                  className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
-                    dateRangeOption === option
-                      ? "bg-accent-blue text-white border-accent-blue"
-                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                  }`}
-                >
-                  {labels[option]}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Custom Date Inputs */}
-          {dateRangeOption === "custom" && (
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-text-tertiary" />
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
-              />
-              <span className="text-text-muted">to</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
-              />
+        {/* Date Range Selector - hide on Inventory tab */}
+        {primaryTab !== "inventory" && (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-2">
+              {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
+                const labels: Record<DateRangeOption, string> = {
+                  today: "Today",
+                  yesterday: "Yesterday",
+                  "3days": "3 Days",
+                  "7days": "7 Days",
+                  "30days": "30 Days",
+                  custom: "Custom",
+                };
+                return (
+                  <button
+                    key={option}
+                    onClick={() => setDateRangeOption(option)}
+                    className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
+                      dateRangeOption === option
+                        ? "bg-accent-blue text-white border-accent-blue"
+                        : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
+                    }`}
+                  >
+                    {labels[option]}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
 
-        {/* Tab Selector */}
+            {/* Custom Date Inputs */}
+            {dateRangeOption === "custom" && (
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-text-tertiary" />
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+                />
+                <span className="text-text-muted">to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-2 py-1.5 text-sm bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Primary Tab Selector */}
         <div className="flex gap-1 mt-4 border-b border-border">
           <button
-            onClick={() => setActiveTab("fulfillment")}
-            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeTab === "fulfillment"
+            onClick={() => setPrimaryTab("inventory")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "inventory"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Package className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-            Fulfillment
+            <BarChart3 className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            INVENTORY
           </button>
           <button
-            onClick={() => setActiveTab("tracking")}
-            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeTab === "tracking"
+            onClick={() => setPrimaryTab("fulfillment")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "fulfillment"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Truck className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-            Tracking
-            {stuckCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-status-warning/20 text-status-warning rounded">
-                {stuckCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("inventory")}
-            className={`px-4 py-2 text-sm font-medium transition-all border-b-2 -mb-px ${
-              activeTab === "inventory"
-                ? "text-accent-blue border-accent-blue"
-                : "text-text-tertiary border-transparent hover:text-text-secondary"
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 inline-block mr-1.5 -mt-0.5" />
-            Inventory
+            <Package className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            FULFILLMENT
           </button>
         </div>
+
+        {/* Fulfillment Sub-tabs */}
+        {primaryTab === "fulfillment" && (
+          <div className="flex gap-4 mt-3">
+            <button
+              onClick={() => setFulfillmentSubTab("dashboard")}
+              className={`text-sm font-medium transition-all ${
+                fulfillmentSubTab === "dashboard"
+                  ? "text-text-primary"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => setFulfillmentSubTab("tracking")}
+              className={`text-sm font-medium transition-all ${
+                fulfillmentSubTab === "tracking"
+                  ? "text-text-primary"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              Tracking
+              {stuckCount > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-status-warning/20 text-status-warning rounded">
+                  {stuckCount}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
       </header>
 
       {error && (
@@ -417,8 +436,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* FULFILLMENT TAB */}
-      {activeTab === "fulfillment" && (
+      {/* FULFILLMENT DASHBOARD */}
+      {primaryTab === "fulfillment" && fulfillmentSubTab === "dashboard" && (
         <>
           {/* KPI Cards - with change indicators like Lathe app */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -566,8 +585,8 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* TRACKING TAB */}
-      {activeTab === "tracking" && (
+      {/* TRACKING SUB-TAB */}
+      {primaryTab === "fulfillment" && fulfillmentSubTab === "tracking" && (
         <>
           {/* Tracking Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -630,93 +649,14 @@ export default function Dashboard() {
       )}
 
       {/* INVENTORY TAB */}
-      {activeTab === "inventory" && (
-        <>
-          {/* Category Tabs */}
-          <div className="flex gap-2 mb-6">
-            {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => {
-              const labels: Record<InventoryCategoryTab, string> = {
-                cast_iron: "Cast Iron",
-                carbon_steel: "Carbon Steel",
-                accessory: "Accessories",
-                factory_second: "Factory Second",
-              };
-              // Combine accessory and glass_lid counts for the "Accessories" tab
-              const count = cat === "accessory"
-                ? (inventory?.byCategory.accessory?.length || 0) + (inventory?.byCategory.glass_lid?.length || 0)
-                : inventory?.byCategory[cat]?.length || 0;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setInventoryCategory(cat)}
-                  className={`px-4 py-2 text-sm font-medium transition-all border rounded ${
-                    inventoryCategory === cat
-                      ? "bg-accent-blue text-white border-accent-blue"
-                      : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
-                  }`}
-                >
-                  {labels[cat]}
-                  <span className="ml-1.5 text-xs opacity-70">({count})</span>
-                </button>
-              );
-            })}
-            <button
-              onClick={fetchInventory}
-              disabled={inventoryLoading}
-              className="ml-auto p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${inventoryLoading ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-
-          {/* Totals Summary */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
-            <div className="bg-bg-secondary rounded border border-border p-4">
-              <div className="text-label text-accent-blue mb-1">PIPEFITTER</div>
-              <div className="text-2xl font-light text-text-primary">
-                {inventoryLoading ? "—" : formatNumber(inventory?.totals.pipefitter || 0)}
-              </div>
-            </div>
-            <div className="bg-bg-secondary rounded border border-border p-4">
-              <div className="text-label text-status-warning mb-1">HOBSON</div>
-              <div className="text-2xl font-light text-text-primary">
-                {inventoryLoading ? "—" : formatNumber(inventory?.totals.hobson || 0)}
-              </div>
-            </div>
-            <div className="bg-bg-secondary rounded border border-border p-4">
-              <div className="text-label text-status-good mb-1">SELERY</div>
-              <div className="text-2xl font-light text-text-primary">
-                {inventoryLoading ? "—" : formatNumber(inventory?.totals.selery || 0)}
-              </div>
-            </div>
-            <div className="bg-bg-secondary rounded border border-border p-4">
-              <div className="text-label text-text-tertiary mb-1">TOTAL</div>
-              <div className="text-2xl font-light text-text-primary">
-                {inventoryLoading ? "—" : formatNumber(inventory?.totals.total || 0)}
-              </div>
-            </div>
-          </div>
-
-          {/* Inventory Table */}
-          <InventoryTable
-            products={
-              inventoryCategory === "accessory"
-                ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
-                : inventory?.byCategory[inventoryCategory] || []
-            }
-            loading={inventoryLoading}
-          />
-
-          {/* Inventory Chart - Horizontal Stacked Bars */}
-          <InventoryChart
-            products={
-              inventoryCategory === "accessory"
-                ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
-                : inventory?.byCategory[inventoryCategory] || []
-            }
-            loading={inventoryLoading}
-          />
-        </>
+      {primaryTab === "inventory" && (
+        <InventoryDashboard
+          inventory={inventory}
+          loading={inventoryLoading}
+          category={inventoryCategory}
+          setCategory={setInventoryCategory}
+          onRefresh={fetchInventory}
+        />
       )}
     </div>
   );
@@ -1749,16 +1689,61 @@ function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = [
     .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
 }
 
-// Inventory Table Component
-function InventoryTable({
-  products,
+// Inventory Dashboard - See. Understand. Prioritize.
+function InventoryDashboard({
+  inventory,
   loading,
+  category,
+  setCategory,
+  onRefresh,
 }: {
-  products: ProductInventory[];
+  inventory: InventoryResponse | null;
   loading: boolean;
+  category: InventoryCategoryTab;
+  setCategory: (cat: InventoryCategoryTab) => void;
+  onRefresh: () => void;
 }) {
-  // Calculate category totals
-  const totals = products.reduce(
+  const [sortBy, setSortBy] = useState<"total" | "pipefitter" | "hobson" | "selery" | "doi">("doi");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc"); // For DOI, "desc" = low-to-high (most urgent first)
+  const [healthFilter, setHealthFilter] = useState<"backorder" | "urgent" | "watch" | null>(null);
+
+  // Get products for current category
+  const categoryProducts = category === "accessory"
+    ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
+    : inventory?.byCategory[category] || [];
+
+  // Filter by health status if selected
+  const filteredProducts = healthFilter
+    ? categoryProducts.filter(p => {
+        if (healthFilter === "backorder") return p.isBackordered;
+        if (healthFilter === "urgent") return !p.isBackordered && p.doi !== undefined && p.doi < 7;
+        if (healthFilter === "watch") return !p.isBackordered && p.doi !== undefined && p.doi >= 7 && p.doi < 30;
+        return true;
+      })
+    : categoryProducts;
+
+  // Sort products (handle doi specially - backordered items go to top, then by DOI)
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (sortBy === "doi") {
+      // Backordered items get -1 (most urgent), undefined DOI goes to end with 9999
+      const aVal = a.isBackordered ? -1 : (a.doi ?? 9999);
+      const bVal = b.isBackordered ? -1 : (b.doi ?? 9999);
+      return sortDir === "desc" ? aVal - bVal : bVal - aVal;
+    }
+    const aVal = a[sortBy];
+    const bVal = b[sortBy];
+    return sortDir === "desc" ? bVal - aVal : aVal - bVal;
+  });
+
+  // Calculate totals (all products)
+  const totals = inventory?.totals || { pipefitter: 0, hobson: 0, selery: 0, total: 0 };
+
+  // Calculate cookware totals (cast iron + carbon steel only)
+  const cookwareProducts = [
+    ...(inventory?.byCategory.cast_iron || []),
+    ...(inventory?.byCategory.carbon_steel || []),
+  ];
+  const cookwareTotals = cookwareProducts.reduce(
     (acc, p) => ({
       pipefitter: acc.pipefitter + p.pipefitter,
       hobson: acc.hobson + p.hobson,
@@ -1768,179 +1753,421 @@ function InventoryTable({
     { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
   );
 
+  // DOI Health Analysis (cookware only - factory seconds excluded)
+  const doiHealth = cookwareProducts.reduce(
+    (acc, p) => {
+      if (p.isBackordered) {
+        acc.backorder++;
+        acc.backorderItems.push(p.displayName);
+      } else if (p.doi === undefined) {
+        acc.noForecast++;
+      } else if (p.doi < 7) {
+        acc.urgent++;
+        acc.urgentItems.push(p.displayName);
+      } else if (p.doi < 30) {
+        acc.critical++;
+        acc.criticalItems.push(p.displayName);
+      } else if (p.doi < 60) {
+        acc.watch++;
+      } else {
+        acc.healthy++;
+      }
+      return acc;
+    },
+    { backorder: 0, urgent: 0, critical: 0, watch: 0, healthy: 0, noForecast: 0, backorderItems: [] as string[], urgentItems: [] as string[], criticalItems: [] as string[] }
+  );
+
+  // Check if DOI applies to current category
+  const showDoi = category !== "factory_second";
+
+  // Category config
+  const categoryLabels: Record<InventoryCategoryTab, string> = {
+    cast_iron: "CAST IRON",
+    carbon_steel: "CARBON STEEL",
+    accessory: "ACCESSORIES",
+    factory_second: "FACTORY SECOND",
+  };
+
+  // Calculate category totals for footer
+  const categoryTotals = sortedProducts.reduce(
+    (acc, p) => ({
+      pipefitter: acc.pipefitter + p.pipefitter,
+      hobson: acc.hobson + p.hobson,
+      selery: acc.selery + p.selery,
+      total: acc.total + p.total,
+    }),
+    { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
+  );
+
+  // Calculate max values for heat map intensity (per column)
+  const maxValues = {
+    pipefitter: Math.max(...sortedProducts.map(p => p.pipefitter), 1),
+    hobson: Math.max(...sortedProducts.map(p => p.hobson), 1),
+    selery: Math.max(...sortedProducts.map(p => p.selery), 1),
+    total: Math.max(...sortedProducts.map(p => p.total), 1),
+  };
+
+  // Get intensity (0-1) for heat map coloring
+  const getIntensity = (value: number, max: number): number => {
+    if (value === 0) return 0;
+    // Use sqrt for more gradual gradient (not linear)
+    return Math.sqrt(value / max);
+  };
+
+  // Color configs for each warehouse (using consistent palette)
+  const warehouseColors = {
+    pipefitter: { r: 59, g: 130, b: 246 },  // blue-500
+    hobson: { r: 245, g: 158, b: 11 },      // amber-500
+    selery: { r: 34, g: 197, b: 94 },       // green-500
+  };
+
+  // Get background style with color intensity
+  const getCellStyle = (value: number, warehouse: "pipefitter" | "hobson" | "selery") => {
+    const intensity = getIntensity(value, maxValues[warehouse]);
+    const color = warehouseColors[warehouse];
+    // Background opacity scales from 0 to 0.25 based on intensity
+    const bgOpacity = intensity * 0.25;
+    return {
+      backgroundColor: `rgba(${color.r}, ${color.g}, ${color.b}, ${bgOpacity})`,
+    };
+  };
+
+  const handleSort = (col: typeof sortBy) => {
+    if (sortBy === col) {
+      setSortDir(d => d === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(col);
+      setSortDir("desc");
+    }
+  };
+
+  const SortIcon = ({ col }: { col: typeof sortBy }) => {
+    if (sortBy !== col) return null;
+    return <span className="ml-1 opacity-60">{sortDir === "desc" ? "↓" : "↑"}</span>;
+  };
+
   return (
-    <div className="bg-bg-secondary rounded border border-border mb-6 overflow-hidden">
-      <div className="px-6 py-4 border-b border-border">
-        <h3 className="text-label font-medium text-text-tertiary">
-          INVENTORY BY SKU
-        </h3>
+    <div className="max-w-5xl mx-auto">
+      {/* Category Tabs */}
+      <div className="flex items-center gap-2 mb-6">
+        {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
+              category === cat
+                ? "bg-accent-blue text-white"
+                : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
+            }`}
+          >
+            {categoryLabels[cat]}
+          </button>
+        ))}
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="ml-auto p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        </button>
       </div>
-      <div className="max-h-[400px] overflow-y-auto">
-        <table className="w-full">
-          <thead className="sticky top-0 bg-bg-secondary border-b border-border">
-            <tr>
-              <th className="text-left px-6 py-3 text-label text-text-tertiary font-medium">
-                Product Name
-              </th>
-              <th className="text-right px-4 py-3 text-label text-accent-blue font-medium">
-                Pipefitter
-              </th>
-              <th className="text-right px-4 py-3 text-label text-status-warning font-medium">
-                Hobson
-              </th>
-              <th className="text-right px-4 py-3 text-label text-status-good font-medium">
-                Selery
-              </th>
-              <th className="text-right px-6 py-3 text-label text-text-primary font-medium">
-                Total
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+
+      {/* Cookware Totals + Inventory Health */}
+      <div className="grid grid-cols-5 gap-3 mb-6">
+        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-amber-500">
+          <div className="text-xs text-amber-400 mb-1 tracking-wide">HOBSON</div>
+          <div className="text-3xl font-medium text-text-primary tabular-nums">
+            {loading ? "—" : formatNumber(cookwareTotals.hobson)}
+          </div>
+        </div>
+        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-green-500">
+          <div className="text-xs text-green-400 mb-1 tracking-wide">SELERY</div>
+          <div className="text-3xl font-medium text-text-primary tabular-nums">
+            {loading ? "—" : formatNumber(cookwareTotals.selery)}
+          </div>
+        </div>
+        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-blue-500">
+          <div className="text-xs text-blue-400 mb-1 tracking-wide">PIPEFITTER</div>
+          <div className="text-3xl font-medium text-text-primary tabular-nums">
+            {loading ? "—" : formatNumber(cookwareTotals.pipefitter)}
+          </div>
+        </div>
+        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-slate-500">
+          <div className="text-xs text-slate-400 mb-1 tracking-wide">TOTAL COOKWARE</div>
+          <div className="text-3xl font-medium text-text-primary tabular-nums">
+            {loading ? "—" : formatNumber(cookwareTotals.total)}
+          </div>
+        </div>
+        {/* Inventory Health Summary - Clickable filters */}
+        <div className="bg-bg-secondary rounded border border-border p-4 border-l-2 border-l-purple-500">
+          <div className="text-xs text-purple-400 mb-2 tracking-wide flex items-center justify-between">
+            <span>INVENTORY HEALTH</span>
+            {healthFilter && (
+              <button
+                onClick={() => setHealthFilter(null)}
+                className="text-text-muted hover:text-text-primary text-[10px]"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {loading ? (
+            <div className="text-text-muted">—</div>
+          ) : doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
+            <div className="space-y-1">
+              {doiHealth.backorder > 0 && (
+                <button
+                  onClick={() => setHealthFilter(healthFilter === "backorder" ? null : "backorder")}
+                  className={`flex items-center gap-2 w-full text-left rounded px-1 -mx-1 transition-colors ${
+                    healthFilter === "backorder" ? "bg-red-500/20" : "hover:bg-white/5"
+                  }`}
+                >
+                  <span className="w-7 text-lg font-bold text-red-400 bg-red-500/20 px-1.5 rounded text-center">{doiHealth.backorder}</span>
+                  <span className="text-xs text-red-400 font-medium uppercase">Backorder</span>
+                </button>
+              )}
+              {doiHealth.urgent > 0 && (
+                <button
+                  onClick={() => setHealthFilter(healthFilter === "urgent" ? null : "urgent")}
+                  className={`flex items-center gap-2 w-full text-left rounded px-1 -mx-1 transition-colors ${
+                    healthFilter === "urgent" ? "bg-red-500/20" : "hover:bg-white/5"
+                  }`}
+                >
+                  <span className="w-7 text-lg font-bold text-red-400 bg-red-500/20 px-1.5 rounded text-center">{doiHealth.urgent}</span>
+                  <span className="text-xs text-red-400 font-medium">URGENT (&lt;7d)</span>
+                </button>
+              )}
+              {doiHealth.critical > 0 && (
+                <button
+                  onClick={() => setHealthFilter(healthFilter === "watch" ? null : "watch")}
+                  className={`flex items-center gap-2 w-full text-left rounded px-1 -mx-1 transition-colors ${
+                    healthFilter === "watch" ? "bg-orange-500/20" : "hover:bg-white/5"
+                  }`}
+                >
+                  <span className="w-7 text-lg font-medium text-status-bad text-center">{doiHealth.critical}</span>
+                  <span className="text-xs text-status-bad">WATCH (&lt;30d)</span>
+                </button>
+              )}
+              {doiHealth.noForecast > 0 && (
+                <div className="text-xs text-text-muted mt-1 pl-1">
+                  {doiHealth.noForecast} without forecast
+                </div>
+              )}
+            </div>
+          ) : doiHealth.noForecast === cookwareProducts.length ? (
+            <div className="text-sm text-text-muted">No forecast data</div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-medium text-status-good">{doiHealth.healthy}</span>
+              <span className="text-xs text-status-good">ALL HEALTHY</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Inventory Table with Heat Map */}
+      <div className="bg-bg-secondary rounded border border-border overflow-hidden">
+        <div className="max-h-[520px] overflow-y-auto">
+          <table className="w-full">
+            <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border">
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
-                  Loading inventory...
-                </td>
-              </tr>
-            ) : products.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-text-muted">
-                  No products in this category
-                </td>
-              </tr>
-            ) : (
-              <>
-                {products.map((product, idx) => (
-                  <tr
-                    key={product.sku}
-                    className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${
-                      idx % 2 === 0 ? "bg-bg-secondary" : "bg-bg-primary/30"
-                    }`}
+                <th className="text-left px-5 py-3 text-xs text-text-tertiary font-medium tracking-wide w-[180px]">
+                  PRODUCT
+                </th>
+                <th
+                  onClick={() => handleSort("hobson")}
+                  className="text-right px-4 py-3 text-xs text-amber-400 font-medium cursor-pointer select-none tracking-wide"
+                >
+                  HOBSON<SortIcon col="hobson" />
+                </th>
+                <th
+                  onClick={() => handleSort("selery")}
+                  className="text-right px-4 py-3 text-xs text-green-400 font-medium cursor-pointer select-none tracking-wide"
+                >
+                  SELERY<SortIcon col="selery" />
+                </th>
+                <th
+                  onClick={() => handleSort("pipefitter")}
+                  className="text-right px-4 py-3 text-xs text-blue-400 font-medium cursor-pointer select-none tracking-wide"
+                >
+                  PIPEFITTER<SortIcon col="pipefitter" />
+                </th>
+                <th
+                  onClick={() => handleSort("total")}
+                  className={`text-right py-3 text-sm text-white font-semibold cursor-pointer select-none tracking-wide ${showDoi ? "px-4" : "px-5"}`}
+                >
+                  TOTAL<SortIcon col="total" />
+                </th>
+                {showDoi && (
+                  <th
+                    onClick={() => handleSort("doi")}
+                    className="text-right px-5 py-3 text-xs text-purple-400 font-medium cursor-pointer select-none tracking-wide"
                   >
-                    <td className="px-6 py-3 text-sm text-text-primary font-medium">
-                      {product.displayName || product.sku}
-                    </td>
-                    <td className="text-right px-4 py-3 text-sm text-text-secondary">
-                      {formatNumber(product.pipefitter)}
-                    </td>
-                    <td className="text-right px-4 py-3 text-sm text-text-secondary">
-                      {formatNumber(product.hobson)}
-                    </td>
-                    <td className="text-right px-4 py-3 text-sm text-text-secondary">
-                      {formatNumber(product.selery)}
-                    </td>
-                    <td className="text-right px-6 py-3 text-sm text-text-primary font-medium">
-                      {formatNumber(product.total)}
-                    </td>
-                  </tr>
-                ))}
-                {/* Grand Total Row */}
-                <tr className="bg-bg-tertiary border-t-2 border-border sticky bottom-0">
-                  <td className="px-6 py-3 text-sm text-text-primary font-semibold">
-                    Grand Total
-                  </td>
-                  <td className="text-right px-4 py-3 text-sm text-accent-blue font-semibold">
-                    {formatNumber(totals.pipefitter)}
-                  </td>
-                  <td className="text-right px-4 py-3 text-sm text-status-warning font-semibold">
-                    {formatNumber(totals.hobson)}
-                  </td>
-                  <td className="text-right px-4 py-3 text-sm text-status-good font-semibold">
-                    {formatNumber(totals.selery)}
-                  </td>
-                  <td className="text-right px-6 py-3 text-sm text-text-primary font-semibold">
-                    {formatNumber(totals.total)}
+                    DOI<SortIcon col="doi" />
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={showDoi ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-sm">
+                    Loading...
                   </td>
                 </tr>
-              </>
-            )}
-          </tbody>
-        </table>
+              ) : sortedProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={showDoi ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-sm">
+                    No products in this category
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  {sortedProducts.map((product) => {
+                    return (
+                      <tr
+                        key={product.sku}
+                        className="border-b border-border/30 group cursor-default"
+                        title={product.monthBudget
+                          ? `${product.displayName}\nDec Budget: ${product.monthBudget?.toLocaleString()} | Sold: ${product.monthSold?.toLocaleString()} (${product.monthPct}%)`
+                          : product.displayName}
+                      >
+                        <td className="px-5 py-2.5">
+                          <span className={`text-base font-medium ${
+                            product.isBackordered
+                              ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
+                              : product.doi !== undefined && product.doi < 7
+                              ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
+                              : "text-text-primary"
+                          }`}>{product.displayName}</span>
+                          {product.monthBudget && (
+                            <div className="text-xs mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="text-text-muted">Budget:</span>
+                              <span className="text-text-secondary ml-1">{product.monthBudget?.toLocaleString()}</span>
+                              <span className="text-text-muted ml-2">Sold:</span>
+                              <span className={`ml-1 ${
+                                (product.monthPct || 0) >= 100 ? "text-status-good" :
+                                (product.monthPct || 0) >= 75 ? "text-status-warning" :
+                                "text-status-bad"
+                              }`}>
+                                {product.monthSold?.toLocaleString()} ({product.monthPct}%)
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          className="text-right px-4 py-2.5 tabular-nums"
+                          style={getCellStyle(product.hobson, "hobson")}
+                        >
+                          <span className={`text-base font-medium ${
+                            product.hobson < 0
+                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
+                              : product.hobson > 0
+                              ? "text-text-primary"
+                              : "text-text-muted/50"
+                          }`}>
+                            {formatNumber(product.hobson)}
+                          </span>
+                        </td>
+                        <td
+                          className="text-right px-4 py-2.5 tabular-nums"
+                          style={getCellStyle(product.selery, "selery")}
+                        >
+                          <span className={`text-base font-medium ${
+                            product.selery < 0
+                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
+                              : product.selery > 0
+                              ? "text-text-primary"
+                              : "text-text-muted/50"
+                          }`}>
+                            {formatNumber(product.selery)}
+                          </span>
+                        </td>
+                        <td
+                          className="text-right px-4 py-2.5 tabular-nums"
+                          style={getCellStyle(product.pipefitter, "pipefitter")}
+                        >
+                          <span className={`text-base font-medium ${
+                            product.pipefitter < 0
+                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
+                              : product.pipefitter > 0
+                              ? "text-text-primary"
+                              : "text-text-muted/50"
+                          }`}>
+                            {formatNumber(product.pipefitter)}
+                          </span>
+                        </td>
+                        <td className={`text-right py-2.5 tabular-nums ${showDoi ? "px-4" : "px-5"}`}>
+                          <span className={`text-lg font-bold ${product.isBackordered ? "text-red-400 bg-red-500/20 px-1.5 rounded" : "text-white"}`}>
+                            {formatNumber(product.total)}
+                          </span>
+                        </td>
+                        {showDoi && (
+                          <td className="text-right px-5 py-2.5 tabular-nums">
+                            {product.isBackordered ? (
+                              <span className="text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold text-sm uppercase">
+                                Backorder
+                              </span>
+                            ) : product.doi !== undefined ? (
+                              <span
+                                className={`text-base font-medium cursor-help ${
+                                  product.doi < 7
+                                    ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
+                                    : product.doi < 30
+                                    ? "text-status-bad"
+                                    : product.doi < 60
+                                    ? "text-status-warning"
+                                    : "text-status-good"
+                                }`}
+                                title={product.stockoutWeek && product.stockoutYear
+                                  ? `Stockout: Week ${product.stockoutWeek}, ${product.stockoutYear}`
+                                  : undefined}
+                              >
+                                ~{product.doi}d
+                              </span>
+                            ) : (
+                              <span className="text-text-muted/50">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {/* Category Total */}
+                  <tr className="bg-bg-tertiary sticky bottom-0 border-t-2 border-border">
+                    <td className="px-5 py-4 text-base text-text-primary font-bold">
+                      {categoryLabels[category]} TOTAL
+                    </td>
+                    <td className="text-right px-4 py-4 text-lg text-amber-400 font-bold tabular-nums">
+                      {formatNumber(categoryTotals.hobson)}
+                    </td>
+                    <td className="text-right px-4 py-4 text-lg text-green-400 font-bold tabular-nums">
+                      {formatNumber(categoryTotals.selery)}
+                    </td>
+                    <td className="text-right px-4 py-4 text-lg text-blue-400 font-bold tabular-nums">
+                      {formatNumber(categoryTotals.pipefitter)}
+                    </td>
+                    <td className={`text-right py-4 text-lg text-text-primary font-bold tabular-nums ${showDoi ? "px-4" : "px-5"}`}>
+                      {formatNumber(categoryTotals.total)}
+                    </td>
+                    {showDoi && (
+                      <td className="text-right px-5 py-4">
+                        {/* DOI column - no aggregate */}
+                      </td>
+                    )}
+                  </tr>
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
-  );
-}
 
-// Inventory Chart - Horizontal Stacked Bars
-function InventoryChart({
-  products,
-  loading,
-}: {
-  products: ProductInventory[];
-  loading: boolean;
-}) {
-  // Take top 10 products for the chart
-  const chartProducts = products.slice(0, 10);
-
-  return (
-    <div className="bg-bg-secondary rounded border border-border p-6">
-      <h3 className="text-label font-medium text-text-tertiary mb-6">
-        WAREHOUSE DISTRIBUTION
-      </h3>
-      {loading ? (
-        <div className="h-[300px] flex items-center justify-center text-text-muted text-sm">
-          Loading chart...
+      {/* Last synced */}
+      {inventory?.lastSynced && (
+        <div className="mt-3 text-xs text-text-muted text-right">
+          Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
         </div>
-      ) : chartProducts.length === 0 ? (
-        <div className="h-[300px] flex items-center justify-center text-text-muted text-sm">
-          No data available
-        </div>
-      ) : (
-        <>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart
-              data={chartProducts}
-              layout="vertical"
-              margin={{ left: 80, right: 20, top: 10, bottom: 10 }}
-            >
-              <XAxis type="number" stroke="#64748B" fontSize={11} />
-              <YAxis
-                type="category"
-                dataKey="displayName"
-                stroke="#64748B"
-                fontSize={11}
-                width={75}
-                tickFormatter={(value) =>
-                  value.length > 12 ? `${value.substring(0, 12)}...` : value
-                }
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#12151F",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: "4px",
-                  fontSize: "12px",
-                }}
-                labelStyle={{ color: "#94A3B8" }}
-                itemStyle={{ color: "#FFFFFF" }}
-              />
-              <Legend
-                wrapperStyle={{ paddingTop: "20px" }}
-                formatter={(value) => (
-                  <span className="text-text-secondary text-sm">{value}</span>
-                )}
-              />
-              <Bar dataKey="pipefitter" name="Pipefitter" stackId="a" fill="#0EA5E9" />
-              <Bar dataKey="hobson" name="Hobson" stackId="a" fill="#F59E0B" />
-              <Bar dataKey="selery" name="Selery" stackId="a" fill="#10B981" />
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex justify-center gap-6 mt-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-accent-blue" />
-              <span className="text-context text-text-secondary">Pipefitter</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded" style={{ backgroundColor: "#F59E0B" }} />
-              <span className="text-context text-text-secondary">Hobson</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded" style={{ backgroundColor: "#10B981" }} />
-              <span className="text-context text-text-secondary">Selery</span>
-            </div>
-          </div>
-        </>
       )}
     </div>
   );

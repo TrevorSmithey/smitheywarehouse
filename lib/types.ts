@@ -7,6 +7,13 @@ export interface ProductInventory {
   hobson: number;
   selery: number;
   total: number;
+  doi?: number; // Days of Inventory using weekly weights methodology
+  stockoutWeek?: number; // ISO week number when stockout occurs
+  stockoutYear?: number; // Year when stockout occurs
+  isBackordered?: boolean; // True if total inventory is negative (more sold than in stock)
+  monthSold?: number; // Units fulfilled this month
+  monthBudget?: number; // Monthly budget based on forecast + weekly weights
+  monthPct?: number; // % of monthly budget sold (monthSold / monthBudget * 100)
 }
 
 export type InventoryCategory =

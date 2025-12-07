@@ -1,10 +1,48 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type {
   ProductInventory,
   InventoryCategory,
   InventoryResponse,
 } from "@/lib/types";
+import { calculateDOI } from "@/lib/doi";
+
+// Load official monthly budgets from JSON file
+// Structure: { "2025": { "SKU": { "Dec": 1234 } }, "2026": { "SKU": { "Jan": 100, ... } } }
+type MonthlyBudgetData = Record<string, Record<string, Record<string, number>>>;
+
+function loadMonthlyBudgets(): MonthlyBudgetData | null {
+  try {
+    const filePath = join(process.cwd(), "data", "monthly-budgets.json");
+    const data = readFileSync(filePath, "utf-8");
+    return JSON.parse(data) as MonthlyBudgetData;
+  } catch {
+    console.error("Failed to load monthly budgets");
+    return null;
+  }
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function getMonthlyBudgetFromFile(sku: string, budgetData: MonthlyBudgetData | null): number | undefined {
+  if (!budgetData) return undefined;
+
+  const now = new Date();
+  const currentYear = now.getFullYear().toString();
+  const currentMonth = now.getMonth(); // 0-indexed
+  const monthName = MONTH_NAMES[currentMonth];
+
+  // Look up budget for current year and month
+  const yearData = budgetData[currentYear];
+  if (!yearData) return undefined;
+
+  const skuBudgets = yearData[sku];
+  if (!skuBudgets) return undefined;
+
+  return skuBudgets[monthName];
+}
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +64,9 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const categoryFilter = searchParams.get("category") as InventoryCategory | null;
+
+    // Load official monthly budgets
+    const budgetData = loadMonthlyBudgets();
 
     // Fetch inventory with product details
     // Using a raw query to pivot warehouse data into columns
@@ -51,6 +92,35 @@ export async function GET(request: Request) {
 
     if (productsError) {
       throw new Error(`Failed to fetch products: ${productsError.message}`);
+    }
+
+    // Note: DOI is calculated using weekly weights from lib/doi.ts
+    // Forecasts are embedded in the module - no database fetch needed
+
+    // Get current month's date range
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
+    // Query monthly orders by SKU (quantity ordered this month by order date)
+    const { data: monthlySalesData } = await supabase
+      .from("line_items")
+      .select(`
+        sku,
+        quantity,
+        orders!inner(created_at, canceled)
+      `)
+      .gte("orders.created_at", monthStart)
+      .lte("orders.created_at", monthEnd)
+      .eq("orders.canceled", false);
+
+    // Aggregate ordered quantity by SKU
+    const monthlySalesBySku = new Map<string, number>();
+    for (const item of monthlySalesData || []) {
+      if (item.sku) {
+        const current = monthlySalesBySku.get(item.sku) || 0;
+        monthlySalesBySku.set(item.sku, current + (item.quantity || 0));
+      }
     }
 
     // Create product lookup map
@@ -106,8 +176,19 @@ export async function GET(request: Request) {
 
       const total = inv.pipefitter + inv.hobson + inv.selery;
 
-      // Only include products with inventory
-      if (total > 0) {
+      // Include products with any inventory (including negative/backordered)
+      if (total !== 0) {
+        // Calculate DOI using weekly weights methodology
+        // Only calculate for positive inventory
+        const doiResult = total > 0 ? calculateDOI(sku, total) : undefined;
+
+        // Get monthly metrics using official budgets from file
+        const monthSold = monthlySalesBySku.get(sku) || 0;
+        const monthBudget = getMonthlyBudgetFromFile(sku, budgetData);
+        const monthPct = monthBudget && monthBudget > 0
+          ? Math.round((monthSold / monthBudget) * 100)
+          : undefined;
+
         inventory.push({
           sku,
           displayName,
@@ -116,6 +197,13 @@ export async function GET(request: Request) {
           hobson: inv.hobson,
           selery: inv.selery,
           total,
+          doi: doiResult?.doi,
+          stockoutWeek: doiResult?.stockoutWeek,
+          stockoutYear: doiResult?.stockoutYear,
+          isBackordered: total < 0,
+          monthSold,
+          monthBudget,
+          monthPct,
         });
       }
 

@@ -6,12 +6,13 @@
 
 const SHIPHERO_API_URL = "https://public-api.shiphero.com/graphql";
 
-// Warehouse ID mapping
+// Warehouse ID mapping - ShipHero uses base64 encoded IDs in format "Warehouse:{id}"
+// Decoded: V2FyZWhvdXNlOjEyMDc1OA== = "Warehouse:120758"
 export const WAREHOUSES = {
-  pipefitter: "120758",
-  hobson: "77373",
-  selery: "93742",
-  hq: "120759",
+  pipefitter: "V2FyZWhvdXNlOjEyMDc1OA==", // 120758
+  hobson: "V2FyZWhvdXNlOjc3Mzcz",         // 77373
+  selery: "V2FyZWhvdXNlOjkzNzQy",         // 93742
+  hq: "V2FyZWhvdXNlOjEyMDc1OQ==",         // 120759
 } as const;
 
 export type WarehouseName = keyof typeof WAREHOUSES;
@@ -91,8 +92,10 @@ export async function fetchAllProducts(): Promise<ShipHeroProduct[]> {
 
   const query = `
     query GetProducts($cursor: String) {
-      products(first: 100, after: $cursor) {
-        data {
+      products {
+        request_id
+        complexity
+        data(first: 100, after: $cursor) {
           edges {
             node {
               sku
@@ -200,37 +203,46 @@ export interface TransformedInventory {
 
 /**
  * Transform raw ShipHero products into inventory by warehouse
+ * Only includes products that are in the official nomenclature
  */
 export function transformToInventory(
   products: ShipHeroProduct[]
 ): TransformedInventory[] {
   return products
     .map((product) => {
-      // Get available qty for each warehouse
-      const getAvailable = (warehouseId: string): number => {
+      // Get net available qty for each warehouse (available - backorder)
+      // Backorder represents units sold beyond available inventory
+      const getNetAvailable = (warehouseId: string): number => {
         const wp = product.warehouse_products.find(
           (w) => w.warehouse_id === warehouseId
         );
-        return wp?.available || 0;
+        if (!wp) return 0;
+        // Net = available - backorder (can be negative when backordered)
+        return wp.available - wp.backorder;
       };
 
-      const pipefitter = getAvailable(WAREHOUSES.pipefitter);
-      const hobson = getAvailable(WAREHOUSES.hobson);
-      const selery = getAvailable(WAREHOUSES.selery);
+      const pipefitter = getNetAvailable(WAREHOUSES.pipefitter);
+      const hobson = getNetAvailable(WAREHOUSES.hobson);
+      const selery = getNetAvailable(WAREHOUSES.selery);
       const total = pipefitter + hobson + selery;
+
+      // Use canonical SKU for categorization (handles case variations)
+      const canonicalSku = getCanonicalSku(product.sku);
 
       return {
         sku: product.sku,
+        canonicalSku, // Will be null if not in nomenclature
         name: product.name,
-        category: categorizeProduct(product.sku),
+        category: canonicalSku ? categorizeProduct(canonicalSku) : null,
         pipefitter,
         hobson,
         selery,
         total,
       };
     })
-    .filter((p) => p.total > 0) // Only include products with inventory
-    .sort((a, b) => b.total - a.total); // Sort by total descending
+    .filter((p) => p.total !== 0 && p.canonicalSku !== null) // Products with inventory (including backordered/negative) AND in nomenclature
+    .map(({ canonicalSku, ...rest }) => rest) // Remove canonicalSku from output
+    .sort((a, b) => b.total - a.total) as TransformedInventory[];
 }
 
 /**
@@ -243,6 +255,7 @@ export const SKU_DISPLAY_NAMES: Record<string, string> = {
   "Smith-CI-Skil10": "10Trad",
   "Smith-CI-Skil8": "8Chef",
   "Smith-CI-TradSkil14": "14Trad",
+  "Smith-CI-Tradskil14": "14Trad", // Case variation in ShipHero
   "Smith-CI-Skil14": "14Dual",
   "Smith-CI-Skil6": "6Trad",
   "Smith-CI-Chef10": "10Chef",
@@ -259,11 +272,13 @@ export const SKU_DISPLAY_NAMES: Record<string, string> = {
   // Carbon Steel
   "Smith-CS-WokM": "Wok",
   "Smith-CS-RroastM": "Round Roaster",
+  "Smith-CS-RRoastM": "Round Roaster", // Case variation in ShipHero
   "Smith-CS-Round17N": "Paella Pan",
   "Smith-CS-OvalM": "Oval Roaster",
   "Smith-CS-Farm9": "Little Farm",
   "Smith-CS-Farm12": "Farmhouse Skillet",
   "Smith-CS-Deep12": "Deep Farm",
+  "Smith-CS-Fish": "Fish Skillet",
   // Glass Lids
   "Smith-AC-Glid14": "14Lid",
   "Smith-AC-Glid12": "12Lid",
@@ -311,8 +326,30 @@ export const SKU_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /**
- * Get display name for a SKU, falling back to the SKU itself
+ * Check if a SKU is in the official nomenclature
+ * Returns the canonical SKU if found (handles case variations)
  */
-export function getDisplayName(sku: string): string {
-  return SKU_DISPLAY_NAMES[sku] || sku;
+export function getCanonicalSku(sku: string): string | null {
+  // Direct match
+  if (SKU_DISPLAY_NAMES[sku]) {
+    return sku;
+  }
+
+  // Case-insensitive match (ShipHero sometimes has different casing)
+  const lowerSku = sku.toLowerCase();
+  for (const knownSku of Object.keys(SKU_DISPLAY_NAMES)) {
+    if (knownSku.toLowerCase() === lowerSku) {
+      return knownSku;
+    }
+  }
+
+  return null; // Not in nomenclature
+}
+
+/**
+ * Get display name for a SKU, returns null if not in nomenclature
+ */
+export function getDisplayName(sku: string): string | null {
+  const canonical = getCanonicalSku(sku);
+  return canonical ? SKU_DISPLAY_NAMES[canonical] : null;
 }
