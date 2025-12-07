@@ -445,17 +445,6 @@ export default function Dashboard() {
             INVENTORY
           </button>
           <button
-            onClick={() => setPrimaryTab("holiday")}
-            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
-              primaryTab === "holiday"
-                ? "text-accent-blue border-accent-blue"
-                : "text-text-tertiary border-transparent hover:text-text-secondary"
-            }`}
-          >
-            <Gift className="w-4 h-4 inline-block mr-2 -mt-0.5" />
-            HOLIDAY
-          </button>
-          <button
             onClick={() => setPrimaryTab("assembly")}
             className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
               primaryTab === "assembly"
@@ -464,7 +453,18 @@ export default function Dashboard() {
             }`}
           >
             <Hammer className="w-4 h-4 inline-block mr-2 -mt-0.5" />
-            ASSEMBLY
+            PRODUCTION
+          </button>
+          <button
+            onClick={() => setPrimaryTab("holiday")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "holiday"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Gift className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            Q4 PACE
           </button>
           <button
             onClick={() => setPrimaryTab("fulfillment")}
