@@ -154,12 +154,24 @@ export const FORECASTS_2026: Record<string, number> = {
 };
 
 /**
- * Get current ISO week number (1-52)
+ * Get current ISO week number (1-52) in EST timezone
  */
 export function getCurrentWeek(): number {
   const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
-  const days = Math.floor((now.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+  const estFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const estParts = estFormatter.formatToParts(now);
+  const year = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+  const month = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1;
+  const day = parseInt(estParts.find(p => p.type === "day")?.value || "1");
+
+  const estDate = new Date(year, month, day);
+  const startOfYear = new Date(year, 0, 1);
+  const days = Math.floor((estDate.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
   return Math.ceil((days + startOfYear.getDay() + 1) / 7);
 }
 
@@ -232,7 +244,7 @@ function getMonthBudget(budgets: MonthlyBudgets, sku: string, year: number, mont
  * Calculate Days of Inventory using monthly budgets
  *
  * Algorithm:
- * 1. Start from today
+ * 1. Start from today (EST timezone)
  * 2. For remaining days in current month, use daily rate from monthly budget
  * 3. Continue through subsequent months until inventory depleted
  * 4. Return total days and stockout date
@@ -245,10 +257,18 @@ export function calculateDOI(sku: string, currentInventory: number): DOIResult |
   const budgets = loadBudgets();
   if (!budgets) return undefined;
 
+  // Use EST timezone for accurate day/month calculations
   const now = new Date();
-  let year = now.getFullYear();
-  let month = now.getMonth(); // 0-indexed
-  let dayOfMonth = now.getDate();
+  const estFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const estParts = estFormatter.formatToParts(now);
+  let year = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+  let month = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1; // 0-indexed
+  let dayOfMonth = parseInt(estParts.find(p => p.type === "day")?.value || "1");
 
   let remainingInventory = currentInventory;
   let totalDays = 0;
@@ -431,12 +451,18 @@ function getWeeksInMonth(year: number, month: number): number[] {
 
 /**
  * Calculate monthly budget for a SKU based on weekly weights
- * Returns the expected demand for the current month
+ * Returns the expected demand for the current month (EST timezone)
  */
 export function getMonthlyBudget(sku: string): number | undefined {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const estFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+  });
+  const estParts = estFormatter.formatToParts(now);
+  const year = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+  const month = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1; // 0-indexed
 
   // Get forecast for current year
   const forecast = year === 2025

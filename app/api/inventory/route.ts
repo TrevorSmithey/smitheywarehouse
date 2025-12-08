@@ -111,10 +111,23 @@ export async function GET(request: Request) {
     // Note: DOI is calculated using weekly weights from lib/doi.ts
     // Forecasts are embedded in the module - no database fetch needed
 
-    // Get current month's date range
+    // Get current month's date range in EST timezone
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    const estFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const estParts = estFormatter.formatToParts(now);
+    const estYear = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+    const estMonth = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1; // 0-indexed
+
+    // Month boundaries in EST, converted to UTC for database queries
+    // EST midnight = UTC 5am (or 4am during DST, but 5am is safe buffer)
+    const monthStart = new Date(Date.UTC(estYear, estMonth, 1, 5, 0, 0)).toISOString();
+    const lastDayOfMonth = new Date(estYear, estMonth + 1, 0).getDate();
+    const monthEnd = new Date(Date.UTC(estYear, estMonth, lastDayOfMonth, 28, 59, 59)).toISOString(); // 4:59:59 AM UTC next day = 11:59:59 PM EST
 
     // Query monthly retail orders by SKU (quantity ordered this month by order date)
     const { data: monthlySalesData } = await supabase
@@ -164,17 +177,30 @@ export async function GET(request: Request) {
       monthlySalesBySku.set(skuLower, retail + b2b);
     }
 
-    // Query 3-day sales for sales velocity (cookware only)
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-    threeDaysAgo.setHours(0, 0, 0, 0);
-    const threeDayStart = threeDaysAgo.toISOString();
+    // Query 3-day sales for sales velocity (cookware only) - using EST
+    // Get today's date in EST
+    const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
+    const todayESTDate = new Date(estYear, estMonth, estDay);
 
-    // Query prior 3 days (days 4-6 ago) for comparison
-    const sixDaysAgo = new Date();
-    sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
-    sixDaysAgo.setHours(0, 0, 0, 0);
-    const sixDayStart = sixDaysAgo.toISOString();
+    // 3 days ago at EST midnight = UTC 5am
+    const threeDaysAgoEST = new Date(todayESTDate);
+    threeDaysAgoEST.setDate(threeDaysAgoEST.getDate() - 3);
+    const threeDayStart = new Date(Date.UTC(
+      threeDaysAgoEST.getFullYear(),
+      threeDaysAgoEST.getMonth(),
+      threeDaysAgoEST.getDate(),
+      5, 0, 0
+    )).toISOString();
+
+    // 6 days ago at EST midnight for prior 3-day comparison
+    const sixDaysAgoEST = new Date(todayESTDate);
+    sixDaysAgoEST.setDate(sixDaysAgoEST.getDate() - 6);
+    const sixDayStart = new Date(Date.UTC(
+      sixDaysAgoEST.getFullYear(),
+      sixDaysAgoEST.getMonth(),
+      sixDaysAgoEST.getDate(),
+      5, 0, 0
+    )).toISOString();
 
     const { data: sales3DayData } = await supabase
       .from("line_items")
