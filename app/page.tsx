@@ -48,6 +48,7 @@ import type {
   SkuInQueue,
   EngravingQueue,
   OrderAging,
+  QueueHealth,
   InventoryResponse,
   ProductInventory,
   InventoryCategory,
@@ -552,73 +553,72 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Warehouse Panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {metrics?.warehouses?.map((wh) => (
-          <WarehousePanel
-            key={wh.warehouse}
-            data={wh}
-            queueHealth={metrics.queueHealth?.find(
-              (q) => q.warehouse === wh.warehouse
-            )}
-            transitData={metrics.transitAnalytics?.find(
-              (t) => t.warehouse === wh.warehouse
-            )}
-            leadTimeData={metrics.fulfillmentLeadTime?.find(
-              (l) => l.warehouse === wh.warehouse
-            )}
-            loading={loading}
-            dateRangeOption={dateRangeOption}
-          />
-        ))}
-      </div>
+      {/* Warehouse Comparison - Butterfly Layout */}
+      <WarehouseCompare
+        warehouses={metrics?.warehouses || []}
+        queueHealth={metrics?.queueHealth || []}
+        leadTime={metrics?.fulfillmentLeadTime || []}
+        loading={loading}
+        dateRangeOption={dateRangeOption}
+      />
 
-      {/* Two-column layout: Chart + Top SKUs */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* Fulfillment Trend Chart */}
-        <div className="lg:col-span-2 bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
-          <div className="mb-6">
-            <h3 className="text-label font-medium text-text-tertiary">
+      {/* Fulfillment Trend + Queue Aging */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
+        {/* Fulfillment Trend Chart - wider */}
+        <div className="lg:col-span-3 bg-bg-secondary rounded-xl border border-border/50 p-5 transition-all hover:border-border-hover">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.2em]">
               FULFILLMENT TREND
             </h3>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-accent-blue" />
+                <span className="text-[10px] text-text-muted">Smithey</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-slate-500" />
+                <span className="text-[10px] text-text-muted">Selery</span>
+              </div>
+            </div>
           </div>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="smitheyGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="seleryGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#64748B" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#64748B" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#64748B" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis
                   dataKey="date"
-                  stroke="#64748B"
-                  fontSize={11}
+                  stroke="#475569"
+                  fontSize={10}
                   tickLine={false}
                   axisLine={false}
                   interval="preserveStartEnd"
                 />
                 <YAxis
-                  stroke="#64748B"
-                  fontSize={11}
+                  stroke="#475569"
+                  fontSize={10}
                   tickLine={false}
                   axisLine={false}
-                  width={35}
+                  width={30}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#12151F",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: "4px",
-                    fontSize: "12px",
+                    backgroundColor: "#0B0E1A",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: "8px",
+                    fontSize: "11px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
                   }}
-                  labelStyle={{ color: "#94A3B8" }}
-                  itemStyle={{ color: "#FFFFFF" }}
+                  labelStyle={{ color: "#94A3B8", marginBottom: "4px" }}
+                  itemStyle={{ padding: "2px 0" }}
                 />
                 <Area
                   type="monotone"
@@ -637,34 +637,23 @@ export default function Dashboard() {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-[220px] flex items-center justify-center text-text-muted text-sm">
+            <div className="h-[200px] flex items-center justify-center text-text-muted text-sm">
               No data available
             </div>
           )}
-          <div className="flex justify-center gap-6 mt-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-accent-blue" />
-              <span className="text-context text-text-secondary">Smithey</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-text-tertiary" />
-              <span className="text-context text-text-secondary">Selery</span>
-            </div>
-          </div>
         </div>
 
-        {/* Queue Aging */}
-        <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
+        {/* Queue Aging - Narrower */}
+        <div className="lg:col-span-2">
+          <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
+        </div>
       </div>
 
-      {/* Backlog Chart - separate, smaller, 10-day window */}
-      <BacklogChart backlog={metrics?.dailyBacklog || []} loading={loading} />
-
-      {/* Warehouse Distribution Chart */}
-      <WarehouseSplitChart dailyOrders={metrics?.dailyOrders || []} loading={loading} />
-
-      {/* Top SKUs in Queue - full width at bottom */}
-      <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
+      {/* Backlog + Warehouse Split - Side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <BacklogChart backlog={metrics?.dailyBacklog || []} loading={loading} />
+        <WarehouseSplitChart dailyOrders={metrics?.dailyOrders || []} loading={loading} />
+      </div>
         </>
       )}
 
@@ -1134,6 +1123,198 @@ function WarehousePanel({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Streamlined warehouse comparison - butterfly layout
+function WarehouseCompare({
+  warehouses,
+  queueHealth,
+  leadTime,
+  loading,
+  dateRangeOption,
+}: {
+  warehouses: WarehouseMetrics[];
+  queueHealth: QueueHealth[];
+  leadTime: FulfillmentLeadTime[];
+  loading: boolean;
+  dateRangeOption: DateRangeOption;
+}) {
+  const smithey = warehouses.find(w => w.warehouse === "smithey");
+  const selery = warehouses.find(w => w.warehouse === "selery");
+  const smitheyQueue = queueHealth.find(q => q.warehouse === "smithey");
+  const seleryQueue = queueHealth.find(q => q.warehouse === "selery");
+  const smitheyLead = leadTime.find(l => l.warehouse === "smithey");
+  const seleryLead = leadTime.find(l => l.warehouse === "selery");
+
+  if (!smithey || !selery) return null;
+
+  const MetricRow = ({
+    label,
+    smitheyVal,
+    seleryVal,
+    smitheyStatus,
+    seleryStatus,
+    format = "number",
+  }: {
+    label: string;
+    smitheyVal: number;
+    seleryVal: number;
+    smitheyStatus?: "good" | "warning" | "bad";
+    seleryStatus?: "good" | "warning" | "bad";
+    format?: "number" | "percent" | "days";
+  }) => {
+    const getStatusColor = (status?: "good" | "warning" | "bad") => {
+      if (status === "good") return "text-status-good";
+      if (status === "warning") return "text-status-warning";
+      if (status === "bad") return "text-status-bad";
+      return "text-text-primary";
+    };
+
+    const formatVal = (val: number) => {
+      if (format === "percent") return `${val}%`;
+      if (format === "days") return `${val}d`;
+      return formatNumber(val);
+    };
+
+    const maxVal = Math.max(smitheyVal, seleryVal, 1);
+    const smitheyPct = (smitheyVal / maxVal) * 100;
+    const seleryPct = (seleryVal / maxVal) * 100;
+
+    return (
+      <div className="grid grid-cols-[1fr_80px_1fr] gap-2 items-center py-2 border-b border-border-subtle last:border-0">
+        {/* Smithey - right aligned */}
+        <div className="flex items-center justify-end gap-2">
+          <span className={`text-sm font-medium tabular-nums ${getStatusColor(smitheyStatus)}`}>
+            {formatVal(smitheyVal)}
+          </span>
+          <div className="w-20 h-2 bg-bg-tertiary/50 rounded-sm overflow-hidden flex justify-end">
+            <div
+              className={`h-full rounded-sm transition-all ${
+                smitheyStatus === "bad" ? "bg-status-bad/70" :
+                smitheyStatus === "warning" ? "bg-status-warning/70" :
+                "bg-accent-blue/70"
+              }`}
+              style={{ width: `${smitheyPct}%` }}
+            />
+          </div>
+        </div>
+        {/* Label */}
+        <div className="text-[10px] text-text-tertiary text-center uppercase tracking-wide">
+          {label}
+        </div>
+        {/* Selery - left aligned */}
+        <div className="flex items-center gap-2">
+          <div className="w-20 h-2 bg-bg-tertiary/50 rounded-sm overflow-hidden">
+            <div
+              className={`h-full rounded-sm transition-all ${
+                seleryStatus === "bad" ? "bg-status-bad/70" :
+                seleryStatus === "warning" ? "bg-status-warning/70" :
+                "bg-slate-500/70"
+              }`}
+              style={{ width: `${seleryPct}%` }}
+            />
+          </div>
+          <span className={`text-sm font-medium tabular-nums ${getStatusColor(seleryStatus)}`}>
+            {formatVal(seleryVal)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/50 p-5 mb-6">
+      {/* Header with warehouse names and WoW change */}
+      <div className="grid grid-cols-[1fr_80px_1fr] gap-2 items-center mb-4 pb-3 border-b border-border">
+        <div className="flex items-center justify-end gap-3">
+          <div className="flex items-center gap-1.5">
+            {smithey.week_over_week_change !== 0 && (
+              <span className={`text-xs tabular-nums ${
+                smithey.week_over_week_change > 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {smithey.week_over_week_change > 0 ? "+" : ""}{smithey.week_over_week_change.toFixed(0)}%
+              </span>
+            )}
+          </div>
+          <span className="text-sm font-semibold text-accent-blue tracking-wide">SMITHEY</span>
+        </div>
+        <div className="text-[10px] text-text-muted text-center uppercase tracking-wide">
+          {getComparisonLabel(dateRangeOption)}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-text-tertiary tracking-wide">SELERY</span>
+          {selery.week_over_week_change !== 0 && (
+            <span className={`text-xs tabular-nums ${
+              selery.week_over_week_change > 0 ? "text-status-good" : "text-status-bad"
+            }`}>
+              {selery.week_over_week_change > 0 ? "+" : ""}{selery.week_over_week_change.toFixed(0)}%
+            </span>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="h-[160px] flex items-center justify-center text-text-muted text-sm">
+          Loading...
+        </div>
+      ) : (
+        <div className="space-y-0">
+          <MetricRow
+            label="Queue"
+            smitheyVal={smithey.unfulfilled_count}
+            seleryVal={selery.unfulfilled_count}
+          />
+          <MetricRow
+            label="Partial"
+            smitheyVal={smithey.partial_count}
+            seleryVal={selery.partial_count}
+            smitheyStatus={smithey.partial_count > 0 ? "warning" : undefined}
+            seleryStatus={selery.partial_count > 0 ? "warning" : undefined}
+          />
+          <MetricRow
+            label="Shipped"
+            smitheyVal={smithey.fulfilled_today}
+            seleryVal={selery.fulfilled_today}
+            smitheyStatus="good"
+            seleryStatus="good"
+          />
+          <MetricRow
+            label="Avg/Day"
+            smitheyVal={Math.round(smithey.fulfilled_today / getDaysInRange(dateRangeOption))}
+            seleryVal={Math.round(selery.fulfilled_today / getDaysInRange(dateRangeOption))}
+          />
+          {smitheyQueue && seleryQueue && (
+            <>
+              <MetricRow
+                label=">3 Days"
+                smitheyVal={smitheyQueue.waiting_3_days}
+                seleryVal={seleryQueue.waiting_3_days}
+                smitheyStatus={smitheyQueue.waiting_3_days > 0 ? "warning" : undefined}
+                seleryStatus={seleryQueue.waiting_3_days > 0 ? "warning" : undefined}
+              />
+              <MetricRow
+                label=">7 Days"
+                smitheyVal={smitheyQueue.waiting_7_days}
+                seleryVal={seleryQueue.waiting_7_days}
+                smitheyStatus={smitheyQueue.waiting_7_days > 0 ? "bad" : undefined}
+                seleryStatus={seleryQueue.waiting_7_days > 0 ? "bad" : undefined}
+              />
+            </>
+          )}
+          {smitheyLead && seleryLead && smitheyLead.total_fulfilled > 0 && seleryLead.total_fulfilled > 0 && (
+            <MetricRow
+              label="<24h SLA"
+              smitheyVal={smitheyLead.within_24h}
+              seleryVal={seleryLead.within_24h}
+              format="percent"
+              smitheyStatus={smitheyLead.within_24h >= 80 ? "good" : smitheyLead.within_24h >= 50 ? "warning" : "bad"}
+              seleryStatus={seleryLead.within_24h >= 80 ? "good" : seleryLead.within_24h >= 50 ? "warning" : "bad"}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
