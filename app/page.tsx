@@ -2461,17 +2461,17 @@ function HolidayDashboard({
           <div className="relative">
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp className="w-4 h-4 text-status-good" />
-              <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Total Revenue</span>
+              <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Revenue Growth</span>
             </div>
-            <div className="text-metric font-bold text-text-primary tracking-tight leading-none mb-2">
-              {fmt.currency(summary.totalRevenue2025)}
+            <div className={`text-metric font-bold tracking-tight leading-none mb-2 ${summary.revenueGrowth >= 0 ? "text-status-good" : "text-status-bad"}`}>
+              {fmt.delta(summary.revenueGrowth)}
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-text-muted text-sm">
-                vs {fmt.currency(summary.totalRevenue2024)}
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-text-primary font-semibold">
+                {fmt.currency(summary.totalRevenue2025)}
               </span>
-              <span className={`text-sm font-semibold ${summary.revenueGrowth >= 0 ? "text-status-good" : "text-status-bad"}`}>
-                {fmt.delta(summary.revenueGrowth)}
+              <span className="text-text-muted">
+                vs {fmt.currency(summary.totalRevenue2024)}
               </span>
             </div>
           </div>
@@ -2483,17 +2483,17 @@ function HolidayDashboard({
           <div className="relative">
             <div className="flex items-center gap-2 mb-4">
               <Package className="w-4 h-4 text-accent-blue" />
-              <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Total Orders</span>
+              <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Orders Growth</span>
             </div>
-            <div className="text-metric font-bold text-text-primary tracking-tight leading-none mb-2">
-              {fmt.number(summary.totalOrders2025)}
+            <div className={`text-metric font-bold tracking-tight leading-none mb-2 ${summary.ordersGrowth >= 0 ? "text-status-good" : "text-status-bad"}`}>
+              {fmt.delta(summary.ordersGrowth)}
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-text-muted text-sm">
-                vs {fmt.number(summary.totalOrders2024)}
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-text-primary font-semibold">
+                {fmt.number(summary.totalOrders2025)}
               </span>
-              <span className={`text-sm font-semibold ${summary.ordersGrowth >= 0 ? "text-status-good" : "text-status-bad"}`}>
-                {fmt.delta(summary.ordersGrowth)}
+              <span className="text-text-muted">
+                vs {fmt.number(summary.totalOrders2024)}
               </span>
             </div>
           </div>
