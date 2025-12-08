@@ -2959,8 +2959,8 @@ function AssemblyDashboard({
   return (
     <div className="space-y-6">
       {/* Compact Header with Progress */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold tabular-nums" style={{ color: forge.copper }}>
               {summary.progressPct.toFixed(0)}%
@@ -2992,7 +2992,7 @@ function AssemblyDashboard({
       </div>
 
       {/* Production Stats Row */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Latest Day */}
         <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
           <div className="flex items-center justify-between mb-3">
@@ -3333,7 +3333,7 @@ function AssemblyDashboard({
       </div>
 
       {/* Bottom Section: SKU Progress + Monthly Summary */}
-      <div className="flex gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* SKU Progress Table */}
         {data.targets && data.targets.length > 0 && (() => {
         // display_name comes from API (joined with products table)
@@ -3346,7 +3346,7 @@ function AssemblyDashboard({
           });
 
         return (
-          <div className="bg-bg-secondary rounded-xl p-4 border border-border/30 w-fit">
+          <div className="bg-bg-secondary rounded-xl p-4 border border-border/30 w-full lg:w-fit overflow-x-auto">
             <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
               SKU PROGRESS
             </h3>
@@ -3443,11 +3443,11 @@ function AssemblyDashboard({
           });
 
           return (
-            <div className="bg-bg-secondary rounded-xl p-4 border border-border/30 flex-1">
+            <div className="bg-bg-secondary rounded-xl p-4 border border-border/30 flex-1 overflow-x-auto">
               <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
                 MONTHLY SUMMARY
               </h3>
-              <table className="w-full text-[11px]">
+              <table className="w-full text-[11px] min-w-[300px]">
                 <thead>
                   <tr className="text-[9px] text-text-muted uppercase tracking-wide">
                     <th className="text-left pb-1.5 pr-4 font-medium border-b border-white/5">Month</th>
