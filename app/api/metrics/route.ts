@@ -424,6 +424,7 @@ export async function GET(request: Request) {
       // Engraving queue - line items with SKU 'Smith-Eng' or 'Smith-Eng2'
       // Filter for non-canceled orders; exclude fulfilled orders client-side
       // (PostgREST's .neq() doesn't include NULL, which is unfulfilled status)
+      // Limit increased from 10000 to 50000 - there are 25k+ engraving line items
       supabase
         .from("line_items")
         .select(`
@@ -435,7 +436,7 @@ export async function GET(request: Request) {
         `)
         .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
-        .limit(10000),
+        .limit(50000),
 
       // Unfulfilled orders for aging analysis
       supabase
