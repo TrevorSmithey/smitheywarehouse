@@ -2977,7 +2977,9 @@ function AssemblyDashboard({
               {summary.daysRemaining}
             </span>
             <span className="text-text-muted ml-1">days left</span>
-            <span className="text-text-tertiary ml-1 text-xs">(Fri Dec 12)</span>
+            <span className="text-text-tertiary ml-1 text-xs">
+              ({format(new Date(config.manufacturing_cutoff + "T00:00:00"), "EEE MMM d")})
+            </span>
           </div>
         </div>
         <button
