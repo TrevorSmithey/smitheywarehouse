@@ -3332,20 +3332,35 @@ function AssemblyDashboard({
 
       {/* SKU Progress Table */}
       {data.targets && data.targets.length > 0 && (() => {
+        // Product names matching inventory table (from seed-products.ts)
         const skuNames: Record<string, string> = {
-          "Smith-CI-Skil6": "6 Skillet",
-          "Smith-CI-Skil8": "8 Skillet",
-          "Smith-CI-Skil10": "10 Chef",
-          "Smith-CI-Skil12": "12 Chef",
-          "Smith-CI-Skil14": "14 Chef",
-          "Smith-CI-Tradskil14": "14 Trad",
-          "Smith-CI-DSkil11": "11 Deep",
-          "Smith-CI-Dutch5": "5 Dutch",
-          "Smith-CI-Dutch7": "7 Dutch",
-          "Smith-CI-Flat12": "12 Flat Top",
-          "Smith-CI-Griddle18": "18 Griddle",
+          // Cast Iron
+          "Smith-CI-Skil12": "12Trad",
+          "Smith-CI-Skil10": "10Trad",
+          "Smith-CI-Skil8": "8Chef",
+          "Smith-CI-TradSkil14": "14Trad",
+          "Smith-CI-Skil14": "14Dual",
+          "Smith-CI-Skil6": "6Trad",
+          "Smith-CI-Chef10": "10Chef",
+          "Smith-CI-DSkil11": "11Deep",
+          "Smith-CI-Dual12": "12Dual",
+          "Smith-CI-Dual6": "6Dual",
+          "Smith-CI-Dutch7": "7.25 Dutch",
+          "Smith-CI-Dutch5": "5.5 Dutch",
+          "Smith-CI-Dutch4": "3.5 Dutch",
+          "Smith-CI-Flat12": "12Flat",
+          "Smith-CI-Flat10": "10Flat",
+          "Smith-CI-Grill12": "12Grill",
+          "Smith-CI-Griddle18": "Double Burner Griddle",
+          // Carbon Steel
           "Smith-CS-WokM": "Wok",
-          "Smith-CS-Deep12": "12 CS Deep",
+          "Smith-CS-RroastM": "Round Roaster",
+          "Smith-CS-Round17N": "Paella Pan",
+          "Smith-CS-OvalM": "Oval Roaster",
+          "Smith-CS-Farm9": "Little Farm",
+          "Smith-CS-Farm12": "Farmhouse Skillet",
+          "Smith-CS-Deep12": "Deep Farm",
+          "Smith-CS-Fish": "Fish Spatula",
         };
         const sortedTargets = data.targets
           .filter(t => t.revised_plan > 0)
