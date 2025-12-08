@@ -83,13 +83,13 @@ export async function GET(request: Request) {
     const budgetData = loadMonthlyBudgets();
 
     // Fetch inventory with product details
-    // Using a raw query to pivot warehouse data into columns
+    // Using AVAILABLE (sellable inventory) not on_hand
     const { data: inventoryData, error: inventoryError } = await supabase
       .from("inventory")
       .select(`
         sku,
         warehouse_id,
-        on_hand,
+        available,
         synced_at
       `)
       .order("sku");
@@ -264,12 +264,13 @@ export async function GET(request: Request) {
         syncedAt: null,
       };
 
+      // Use AVAILABLE (sellable inventory) not on_hand
       if (inv.warehouse_id === WAREHOUSE_IDS.pipefitter) {
-        existing.pipefitter = inv.on_hand;
+        existing.pipefitter = inv.available;
       } else if (inv.warehouse_id === WAREHOUSE_IDS.hobson) {
-        existing.hobson = inv.on_hand;
+        existing.hobson = inv.available;
       } else if (inv.warehouse_id === WAREHOUSE_IDS.selery) {
-        existing.selery = inv.on_hand;
+        existing.selery = inv.available;
       }
 
       // Track most recent sync time

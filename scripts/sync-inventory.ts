@@ -78,41 +78,34 @@ async function syncInventory() {
   const now = new Date().toISOString();
 
   for (const item of inventory) {
-    // Pipefitter - include negative values for backordered items
-    if (item.pipefitter !== 0) {
-      inventoryRecords.push({
-        sku: item.sku,
-        warehouse_id: WAREHOUSE_IDS.pipefitter,
-        on_hand: item.pipefitter,
-        available: item.pipefitter,
-        reserved: 0,
-        synced_at: now,
-      });
-    }
+    // Always sync all warehouses - even 0 values (sold out but not backordered)
+    // This ensures we update items that go from backordered to sold out
+    inventoryRecords.push({
+      sku: item.sku,
+      warehouse_id: WAREHOUSE_IDS.pipefitter,
+      on_hand: item.pipefitter,
+      available: item.pipefitter,
+      reserved: 0,
+      synced_at: now,
+    });
 
-    // Hobson - include negative values for backordered items
-    if (item.hobson !== 0) {
-      inventoryRecords.push({
-        sku: item.sku,
-        warehouse_id: WAREHOUSE_IDS.hobson,
-        on_hand: item.hobson,
-        available: item.hobson,
-        reserved: 0,
-        synced_at: now,
-      });
-    }
+    inventoryRecords.push({
+      sku: item.sku,
+      warehouse_id: WAREHOUSE_IDS.hobson,
+      on_hand: item.hobson,
+      available: item.hobson,
+      reserved: 0,
+      synced_at: now,
+    });
 
-    // Selery - include negative values for backordered items
-    if (item.selery !== 0) {
-      inventoryRecords.push({
-        sku: item.sku,
-        warehouse_id: WAREHOUSE_IDS.selery,
-        on_hand: item.selery,
-        available: item.selery,
-        reserved: 0,
-        synced_at: now,
-      });
-    }
+    inventoryRecords.push({
+      sku: item.sku,
+      warehouse_id: WAREHOUSE_IDS.selery,
+      on_hand: item.selery,
+      available: item.selery,
+      reserved: 0,
+      synced_at: now,
+    });
   }
 
   console.log(`Prepared ${inventoryRecords.length} inventory records\n`);
