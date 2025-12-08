@@ -3334,36 +3334,7 @@ function AssemblyDashboard({
       <div className="flex gap-6 items-start">
         {/* SKU Progress Table */}
         {data.targets && data.targets.length > 0 && (() => {
-        // Product names matching inventory table (from seed-products.ts)
-        const skuNames: Record<string, string> = {
-          // Cast Iron
-          "Smith-CI-Skil12": "12Trad",
-          "Smith-CI-Skil10": "10Trad",
-          "Smith-CI-Skil8": "8Chef",
-          "Smith-CI-TradSkil14": "14Trad",
-          "Smith-CI-Skil14": "14Dual",
-          "Smith-CI-Skil6": "6Trad",
-          "Smith-CI-Chef10": "10Chef",
-          "Smith-CI-DSkil11": "11Deep",
-          "Smith-CI-Dual12": "12Dual",
-          "Smith-CI-Dual6": "6Dual",
-          "Smith-CI-Dutch7": "7.25 Dutch",
-          "Smith-CI-Dutch5": "5.5 Dutch",
-          "Smith-CI-Dutch4": "3.5 Dutch",
-          "Smith-CI-Flat12": "12Flat",
-          "Smith-CI-Flat10": "10Flat",
-          "Smith-CI-Grill12": "12Grill",
-          "Smith-CI-Griddle18": "Double Burner Griddle",
-          // Carbon Steel
-          "Smith-CS-WokM": "Wok",
-          "Smith-CS-RroastM": "Round Roaster",
-          "Smith-CS-Round17N": "Paella Pan",
-          "Smith-CS-OvalM": "Oval Roaster",
-          "Smith-CS-Farm9": "Little Farm",
-          "Smith-CS-Farm12": "Farmhouse Skillet",
-          "Smith-CS-Deep12": "Deep Farm",
-          "Smith-CS-Fish": "Fish Spatula",
-        };
+        // display_name comes from API (joined with products table)
         const sortedTargets = data.targets
           .filter(t => t.revised_plan > 0)
           .sort((a, b) => {
@@ -3394,10 +3365,9 @@ function AssemblyDashboard({
                     ? (target.assembled_since_cutoff / target.revised_plan) * 100
                     : 0;
                   const isComplete = progress >= 100;
-                  const friendlyName = skuNames[target.sku] || target.sku.replace("Smith-", "").replace(/-/g, " ");
                   return (
                     <tr key={target.sku} className="border-b border-white/[0.02]">
-                      <td className="py-1 pr-6 text-text-primary">{friendlyName}</td>
+                      <td className="py-1 pr-6 text-text-primary">{target.display_name}</td>
                       <td className="py-1 px-3 text-right text-text-tertiary tabular-nums">{fmt.number(target.revised_plan)}</td>
                       <td className="py-1 px-3 text-right text-text-secondary tabular-nums">{fmt.number(target.assembled_since_cutoff)}</td>
                       <td className="py-1 px-3 text-right tabular-nums" style={{ color: forge.glow }}>{target.t7 ? fmt.number(target.t7) : "—"}</td>

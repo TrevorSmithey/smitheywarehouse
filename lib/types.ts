@@ -333,6 +333,7 @@ export interface DailyAssembly {
 
 export interface AssemblyTarget {
   sku: string;
+  display_name: string; // From products table
   current_inventory: number;
   demand: number;
   current_shortage: number;

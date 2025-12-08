@@ -21,6 +21,7 @@ export interface DailyAssembly {
 
 export interface AssemblyTarget {
   sku: string;
+  display_name: string; // From products table
   current_inventory: number;
   demand: number;
   current_shortage: number;
@@ -106,10 +107,24 @@ export async function GET() {
 
     if (targetError) throw new Error(`Target data error: ${targetError.message}`);
 
-    // Fetch T7 (trailing 7 days) per SKU
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const t7StartDate = sevenDaysAgo.toISOString().split("T")[0];
+    // Fetch products for display names
+    const { data: productsData } = await supabase
+      .from("products")
+      .select("sku, display_name");
+
+    // Create SKU to display name map
+    const displayNameMap: Record<string, string> = {};
+    for (const p of productsData || []) {
+      displayNameMap[p.sku] = p.display_name;
+    }
+
+    // Fetch T7 (trailing 7 days) per SKU - based on latest data date, not server date
+    const latestDate = (dailyData || []).length > 0
+      ? [...dailyData].sort((a, b) => b.date.localeCompare(a.date))[0]?.date
+      : new Date().toISOString().split("T")[0];
+    const sevenDaysAgoDate = new Date(latestDate);
+    sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 6); // -6 because we include latest date
+    const t7StartDate = sevenDaysAgoDate.toISOString().split("T")[0];
 
     const { data: skuDailyData } = await supabase
       .from("assembly_sku_daily")
@@ -142,6 +157,7 @@ export async function GET() {
     const daily = (dailyData || []) as DailyAssembly[];
     const targets = (targetData || []).map((t) => ({
       ...t,
+      display_name: displayNameMap[t.sku] || t.sku.replace("Smith-", "").replace(/-/g, " "),
       t7: t7BySku[t.sku] || 0,
     })) as AssemblyTarget[];
 
@@ -165,7 +181,7 @@ export async function GET() {
     // Yesterday's production (most recent day with data)
     const sortedDaily = [...daily].sort((a, b) => b.date.localeCompare(a.date));
     const yesterdayProduction = sortedDaily[0]?.daily_total || 0;
-    const latestDate = sortedDaily[0]?.date || null;
+    // latestDate already defined above for T7 calculation
 
     // Prior day production (day before yesterday) for % change
     const priorDayProduction = sortedDaily[1]?.daily_total || 0;
@@ -195,9 +211,18 @@ export async function GET() {
     const currentWeekTotal = currentWeekDays.reduce((sum, d) => sum + d.daily_total, 0);
 
     // Prior week total (same number of days for fair comparison)
-    const priorWeekNum = currentWeekNum ? currentWeekNum - 1 : null;
+    // Handle year boundary: if week 1, prior is week 52/53 of previous year
+    let priorWeekNum: number | null = null;
+    let priorWeekYear: number | null = null;
+    if (currentWeekNum === 1) {
+      priorWeekNum = 52; // Could be 52 or 53, but 52 is more common
+      priorWeekYear = currentWeekYear ? currentWeekYear - 1 : null;
+    } else if (currentWeekNum) {
+      priorWeekNum = currentWeekNum - 1;
+      priorWeekYear = currentWeekYear;
+    }
     const priorWeekDays = daily.filter(
-      (d) => d.week_num === priorWeekNum && d.year === currentWeekYear
+      (d) => d.week_num === priorWeekNum && d.year === priorWeekYear
     ).sort((a, b) => a.date.localeCompare(b.date)).slice(0, currentWeekDays.length);
     const priorWeekTotal = priorWeekDays.reduce((sum, d) => sum + d.daily_total, 0);
     const currentWeekDelta = priorWeekTotal > 0
@@ -246,7 +271,11 @@ export async function GET() {
         daily_avg: Math.round(val.total / val.days),
       });
     });
-    weeklyData.sort((a, b) => a.week_num - b.week_num);
+    // Sort by year first, then week number
+    weeklyData.sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.week_num - b.week_num;
+    });
 
     // Day of week averages
     const dowMap = new Map<string, { total: number; count: number }>();

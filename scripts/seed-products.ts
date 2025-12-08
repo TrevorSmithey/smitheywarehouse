@@ -49,6 +49,7 @@ const PRODUCTS = [
   { sku: "Smith-CS-Farm9", display_name: "Little Farm", category: "carbon_steel" },
   { sku: "Smith-CS-Farm12", display_name: "Farmhouse Skillet", category: "carbon_steel" },
   { sku: "Smith-CS-Deep12", display_name: "Deep Farm", category: "carbon_steel" },
+  { sku: "Smith-CS-Fish", display_name: "Fish Skillet", category: "carbon_steel" },
 
   // Glass Lids
   { sku: "Smith-AC-Glid14", display_name: "14Lid", category: "glass_lid" },
