@@ -2246,17 +2246,21 @@ function InventoryDashboard({
                     className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/[0.02] transition-colors"
                   >
                     <span className="text-sm text-text-primary">{item.displayName}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-text-muted tabular-nums">
-                        {item.sales3DayTotal} / 3d
-                      </span>
-                      <span className={`text-sm font-semibold tabular-nums min-w-[40px] text-right ${
+                    <div className="flex items-center gap-2">
+                      {item.delta !== 0 && (
+                        <span className={`text-xs tabular-nums ${
+                          item.delta > 0 ? "text-status-good" : "text-status-bad"
+                        }`}>
+                          {item.delta > 0 ? "↑" : "↓"}
+                        </span>
+                      )}
+                      <span className={`text-sm font-semibold tabular-nums min-w-[24px] text-right ${
                         item.sales3DayAvg >= 10 ? "text-status-good" :
                         item.sales3DayAvg >= 5 ? "text-text-primary" :
                         item.sales3DayAvg > 0 ? "text-text-secondary" :
                         "text-text-muted"
                       }`}>
-                        {item.sales3DayAvg.toFixed(1)}
+                        {item.sales3DayAvg}
                       </span>
                     </div>
                   </div>
@@ -2276,17 +2280,21 @@ function InventoryDashboard({
                     className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/[0.02] transition-colors"
                   >
                     <span className="text-sm text-text-primary">{item.displayName}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-text-muted tabular-nums">
-                        {item.sales3DayTotal} / 3d
-                      </span>
-                      <span className={`text-sm font-semibold tabular-nums min-w-[40px] text-right ${
+                    <div className="flex items-center gap-2">
+                      {item.delta !== 0 && (
+                        <span className={`text-xs tabular-nums ${
+                          item.delta > 0 ? "text-status-good" : "text-status-bad"
+                        }`}>
+                          {item.delta > 0 ? "↑" : "↓"}
+                        </span>
+                      )}
+                      <span className={`text-sm font-semibold tabular-nums min-w-[24px] text-right ${
                         item.sales3DayAvg >= 10 ? "text-status-good" :
                         item.sales3DayAvg >= 5 ? "text-text-primary" :
                         item.sales3DayAvg > 0 ? "text-text-secondary" :
                         "text-text-muted"
                       }`}>
-                        {item.sales3DayAvg.toFixed(1)}
+                        {item.sales3DayAvg}
                       </span>
                     </div>
                   </div>

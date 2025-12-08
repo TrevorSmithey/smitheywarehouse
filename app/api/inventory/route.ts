@@ -170,6 +170,12 @@ export async function GET(request: Request) {
     threeDaysAgo.setHours(0, 0, 0, 0);
     const threeDayStart = threeDaysAgo.toISOString();
 
+    // Query prior 3 days (days 4-6 ago) for comparison
+    const sixDaysAgo = new Date();
+    sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
+    sixDaysAgo.setHours(0, 0, 0, 0);
+    const sixDayStart = sixDaysAgo.toISOString();
+
     const { data: sales3DayData } = await supabase
       .from("line_items")
       .select(`
@@ -180,6 +186,17 @@ export async function GET(request: Request) {
       .gte("orders.created_at", threeDayStart)
       .eq("orders.canceled", false);
 
+    const { data: salesPrior3DayData } = await supabase
+      .from("line_items")
+      .select(`
+        sku,
+        quantity,
+        orders!inner(created_at, canceled)
+      `)
+      .gte("orders.created_at", sixDayStart)
+      .lt("orders.created_at", threeDayStart)
+      .eq("orders.canceled", false);
+
     // Aggregate 3-day sales by SKU
     const sales3DayBySku = new Map<string, number>();
     for (const item of sales3DayData || []) {
@@ -187,6 +204,16 @@ export async function GET(request: Request) {
         const skuLower = item.sku.toLowerCase();
         const current = sales3DayBySku.get(skuLower) || 0;
         sales3DayBySku.set(skuLower, current + (item.quantity || 0));
+      }
+    }
+
+    // Aggregate prior 3-day sales by SKU
+    const salesPrior3DayBySku = new Map<string, number>();
+    for (const item of salesPrior3DayData || []) {
+      if (item.sku) {
+        const skuLower = item.sku.toLowerCase();
+        const current = salesPrior3DayBySku.get(skuLower) || 0;
+        salesPrior3DayBySku.set(skuLower, current + (item.quantity || 0));
       }
     }
 
@@ -317,7 +344,14 @@ export async function GET(request: Request) {
       for (const product of categoryProducts) {
         const skuLower = product.sku.toLowerCase();
         const sales3DayTotal = sales3DayBySku.get(skuLower) || 0;
-        const sales3DayAvg = Math.round((sales3DayTotal / 3) * 10) / 10; // Round to 1 decimal
+        const prior3DayTotal = salesPrior3DayBySku.get(skuLower) || 0;
+        const sales3DayAvg = Math.round(sales3DayTotal / 3); // Whole numbers
+        const prior3DayAvg = Math.round(prior3DayTotal / 3);
+
+        // Calculate delta percentage
+        const delta = prior3DayAvg > 0
+          ? Math.round(((sales3DayAvg - prior3DayAvg) / prior3DayAvg) * 100)
+          : sales3DayAvg > 0 ? 100 : 0;
 
         velocityList.push({
           sku: product.sku,
@@ -325,6 +359,8 @@ export async function GET(request: Request) {
           category: category,
           sales3DayTotal,
           sales3DayAvg,
+          prior3DayAvg,
+          delta,
         });
       }
 

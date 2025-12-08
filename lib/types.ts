@@ -36,6 +36,8 @@ export interface SkuSalesVelocity {
   category: InventoryCategory;
   sales3DayTotal: number;
   sales3DayAvg: number;
+  prior3DayAvg: number;
+  delta: number; // percentage change vs prior period
 }
 
 export interface InventoryResponse {
