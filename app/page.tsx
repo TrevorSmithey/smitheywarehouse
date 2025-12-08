@@ -2994,14 +2994,14 @@ function AssemblyDashboard({
       {/* Production Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Latest Day */}
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+        <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">
               {summary.latestDate ? format(parseLocalDate(summary.latestDate), "MMM d").toUpperCase() : "LATEST"}
             </span>
-            <Calendar className="w-4 h-4 text-text-muted" />
+            <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-text-muted" />
           </div>
-          <div className={`text-3xl font-bold tabular-nums ${
+          <div className={`text-2xl sm:text-3xl font-bold tabular-nums ${
             summary.yesterdayProduction >= summary.dailyTarget
               ? "text-status-good"
               : summary.yesterdayProduction >= summary.dailyTarget * 0.8
@@ -3020,12 +3020,12 @@ function AssemblyDashboard({
         </div>
 
         {/* Daily Target */}
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30" style={{ borderColor: `${forge.heat}30` }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">DAILY TARGET</span>
-            <Target className="w-4 h-4" style={{ color: forge.heat }} />
+        <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30" style={{ borderColor: `${forge.heat}30` }}>
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">DAILY TARGET</span>
+            <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: forge.heat }} />
           </div>
-          <div className="text-3xl font-bold tabular-nums" style={{ color: forge.heat }}>
+          <div className="text-2xl sm:text-3xl font-bold tabular-nums" style={{ color: forge.heat }}>
             {fmt.number(summary.dailyTarget)}
           </div>
           <div className="text-xs text-text-tertiary mt-1">
@@ -3034,12 +3034,12 @@ function AssemblyDashboard({
         </div>
 
         {/* 7-Day Average */}
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">7-DAY AVG</span>
-            <BarChart3 className="w-4 h-4 text-text-muted" />
+        <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">7-DAY AVG</span>
+            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-text-muted" />
           </div>
-          <div className="text-3xl font-bold tabular-nums text-text-primary">
+          <div className="text-2xl sm:text-3xl font-bold tabular-nums text-text-primary">
             {fmt.number(summary.dailyAverage7d)}
           </div>
           <div className={`text-xs mt-1 flex items-center gap-1 ${summary.dailyAverageDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
@@ -3049,12 +3049,12 @@ function AssemblyDashboard({
         </div>
 
         {/* T7 (Trailing 7 Days) */}
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">T7</span>
-            <Package className="w-4 h-4 text-text-muted" />
+        <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-2 sm:mb-3">
+            <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">T7</span>
+            <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-text-muted" />
           </div>
-          <div className="text-3xl font-bold tabular-nums text-text-primary">
+          <div className="text-2xl sm:text-3xl font-bold tabular-nums text-text-primary">
             {fmt.number(t7Total)}
           </div>
           <div className={`text-xs mt-1 flex items-center gap-1 ${t7Delta >= 0 ? "text-status-good" : "text-status-bad"}`}>
