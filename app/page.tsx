@@ -35,6 +35,7 @@ import {
   Gift,
   Hammer,
   Target,
+  Download,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -1808,6 +1809,105 @@ function InventoryDashboard({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc"); // For DOI, "desc" = low-to-high (most urgent first)
   const [healthFilter, setHealthFilter] = useState<"backorder" | "urgent" | "watch" | null>(null);
 
+  // Download inventory as CSV
+  const downloadCSV = () => {
+    if (!inventory) return;
+
+    // Get all products from all categories
+    const allProducts = [
+      ...inventory.byCategory.cast_iron,
+      ...inventory.byCategory.carbon_steel,
+      ...inventory.byCategory.accessory,
+      ...inventory.byCategory.glass_lid,
+      ...inventory.byCategory.factory_second,
+    ];
+
+    // Sort by SKU for consistent output
+    allProducts.sort((a, b) => a.sku.localeCompare(b.sku));
+
+    // CSV headers
+    const headers = ["SKU", "Display Name", "Category", "Hobson", "Selery", "Pipefitter", "Total", "DOI", "Month Sold", "Month Budget", "Month %"];
+
+    // CSV rows
+    const rows = allProducts.map(p => [
+      p.sku,
+      `"${p.displayName.replace(/"/g, '""')}"`, // Escape quotes in display name
+      p.category,
+      p.hobson,
+      p.selery,
+      p.pipefitter,
+      p.total,
+      p.doi !== undefined ? p.doi : "",
+      p.monthSold !== undefined ? p.monthSold : "",
+      p.monthBudget !== undefined ? p.monthBudget : "",
+      p.monthPct !== undefined ? `${p.monthPct}%` : "",
+    ]);
+
+    // Build CSV content
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+
+    // Create download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const today = new Date().toISOString().split("T")[0];
+    link.download = `smithey-inventory-${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Download velocity as CSV
+  const downloadVelocityCSV = () => {
+    if (!inventory?.salesVelocity) return;
+
+    // Combine cast iron and carbon steel velocity data
+    const allVelocity = [
+      ...inventory.salesVelocity.cast_iron,
+      ...inventory.salesVelocity.carbon_steel,
+    ];
+
+    // Sort by daily average descending
+    allVelocity.sort((a, b) => b.sales3DayAvg - a.sales3DayAvg);
+
+    // CSV headers
+    const headers = ["SKU", "Display Name", "Category", "3-Day Total", "Daily Avg", "Prior Daily Avg", "Change %"];
+
+    // CSV rows
+    const rows = allVelocity.map(v => [
+      v.sku,
+      `"${v.displayName.replace(/"/g, '""')}"`,
+      v.category,
+      v.sales3DayTotal,
+      v.sales3DayAvg,
+      v.prior3DayAvg,
+      `${v.delta > 0 ? "+" : ""}${v.delta}%`,
+    ]);
+
+    // Build CSV content
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.join(","))
+    ].join("\n");
+
+    // Create download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const today = new Date().toISOString().split("T")[0];
+    link.download = `smithey-velocity-${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Get products for current category
   const categoryProducts = category === "accessory"
     ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
@@ -1981,6 +2081,14 @@ function InventoryDashboard({
             className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ml-2"
           >
             <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={downloadCSV}
+            aria-label="Download inventory CSV"
+            className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+            disabled={!inventory}
+          >
+            <Download className="w-4 h-4 text-text-tertiary" />
           </button>
         </div>
 
@@ -2250,7 +2358,16 @@ function InventoryDashboard({
             <h3 className="text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.2em]">
               DAILY VELOCITY
             </h3>
-            <span className="text-[10px] text-text-muted tracking-wide">3-day avg vs prior 3 days</span>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-text-muted tracking-wide">3-day avg vs prior 3 days</span>
+              <button
+                onClick={downloadVelocityCSV}
+                aria-label="Download velocity CSV"
+                className="p-1.5 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+              >
+                <Download className="w-3.5 h-3.5 text-text-tertiary" />
+              </button>
+            </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Cast Iron */}
@@ -2260,7 +2377,7 @@ function InventoryDashboard({
                   Cast Iron
                 </div>
                 <div className="text-xs text-text-muted tabular-nums">
-                  {inventory.salesVelocity.cast_iron.reduce((sum, i) => sum + i.sales3DayAvg, 0)}/day total
+                  {formatNumber(inventory.salesVelocity.cast_iron.reduce((sum, i) => sum + i.sales3DayAvg, 0))}/day total
                 </div>
               </div>
               <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
@@ -2311,7 +2428,7 @@ function InventoryDashboard({
                           <div className="space-y-1.5">
                             <div className="flex justify-between">
                               <span className="text-xs text-text-tertiary">3-day total</span>
-                              <span className="text-xs text-text-primary font-medium tabular-nums">{item.sales3DayTotal} units</span>
+                              <span className="text-xs text-text-primary font-medium tabular-nums">{formatNumber(item.sales3DayTotal)} units</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-xs text-text-tertiary">Prior avg</span>
@@ -2343,7 +2460,7 @@ function InventoryDashboard({
                   Carbon Steel
                 </div>
                 <div className="text-xs text-text-muted tabular-nums">
-                  {inventory.salesVelocity.carbon_steel.reduce((sum, i) => sum + i.sales3DayAvg, 0)}/day total
+                  {formatNumber(inventory.salesVelocity.carbon_steel.reduce((sum, i) => sum + i.sales3DayAvg, 0))}/day total
                 </div>
               </div>
               <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
@@ -2394,7 +2511,7 @@ function InventoryDashboard({
                           <div className="space-y-1.5">
                             <div className="flex justify-between">
                               <span className="text-xs text-text-tertiary">3-day total</span>
-                              <span className="text-xs text-text-primary font-medium tabular-nums">{item.sales3DayTotal} units</span>
+                              <span className="text-xs text-text-primary font-medium tabular-nums">{formatNumber(item.sales3DayTotal)} units</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-xs text-text-tertiary">Prior avg</span>
@@ -3407,6 +3524,7 @@ function AssemblyDashboard({
                   tickLine={false}
                   tick={{ fill: "#64748B", fontSize: 10 }}
                   width={50}
+                  tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
                 />
                 <Tooltip
                   cursor={{ fill: 'rgba(255,255,255,0.03)' }}
