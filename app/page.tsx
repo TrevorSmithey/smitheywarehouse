@@ -3330,8 +3330,10 @@ function AssemblyDashboard({
         </div>
       </div>
 
-      {/* SKU Progress Table */}
-      {data.targets && data.targets.length > 0 && (() => {
+      {/* Bottom Section: SKU Progress + Monthly Summary */}
+      <div className="flex gap-6 items-start">
+        {/* SKU Progress Table */}
+        {data.targets && data.targets.length > 0 && (() => {
         // Product names matching inventory table (from seed-products.ts)
         const skuNames: Record<string, string> = {
           // Cast Iron
@@ -3430,6 +3432,79 @@ function AssemblyDashboard({
           </div>
         );
       })()}
+
+        {/* Monthly Production Summary */}
+        {(() => {
+          // Calculate monthly totals from daily data
+          const monthlyData = new Map<string, { total: number; days: number }>();
+          const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+          for (const d of daily) {
+            if (d.month && d.year) {
+              const key = `${d.year}-${String(d.month).padStart(2, "0")}`;
+              const existing = monthlyData.get(key) || { total: 0, days: 0 };
+              monthlyData.set(key, { total: existing.total + d.daily_total, days: existing.days + 1 });
+            }
+          }
+
+          // Convert to array and sort descending (most recent first)
+          const monthlyArray = Array.from(monthlyData.entries())
+            .map(([key, val]) => {
+              const [year, month] = key.split("-");
+              return {
+                key,
+                month: parseInt(month),
+                year: parseInt(year),
+                monthName: monthNames[parseInt(month)],
+                total: val.total,
+                days: val.days,
+                dailyAvg: Math.round(val.total / val.days),
+              };
+            })
+            .sort((a, b) => b.key.localeCompare(a.key));
+
+          // Calculate MoM %
+          const withMoM = monthlyArray.map((m, idx) => {
+            const prevMonth = monthlyArray[idx + 1];
+            const momPct = prevMonth ? ((m.dailyAvg - prevMonth.dailyAvg) / prevMonth.dailyAvg) * 100 : null;
+            return { ...m, momPct };
+          });
+
+          return (
+            <div className="bg-bg-secondary rounded-xl p-4 border border-border/30 flex-1">
+              <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
+                MONTHLY SUMMARY
+              </h3>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-[9px] text-text-muted uppercase tracking-wide">
+                    <th className="text-left pb-1.5 pr-4 font-medium border-b border-white/5">Month</th>
+                    <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5">Total</th>
+                    <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5">Days</th>
+                    <th className="text-right pb-1.5 px-3 font-medium border-b border-white/5">Daily Avg</th>
+                    <th className="text-right pb-1.5 pl-3 font-medium border-b border-white/5">MoM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {withMoM.slice(0, 6).map((m) => (
+                    <tr key={m.key} className="border-b border-white/[0.02]">
+                      <td className="py-1.5 pr-4 text-text-primary">{m.monthName}</td>
+                      <td className="py-1.5 px-3 text-right text-text-secondary tabular-nums">{fmt.number(m.total)}</td>
+                      <td className="py-1.5 px-3 text-right text-text-tertiary tabular-nums">{m.days}</td>
+                      <td className="py-1.5 px-3 text-right text-text-primary tabular-nums font-medium">{fmt.number(m.dailyAvg)}</td>
+                      <td className={`py-1.5 pl-3 text-right tabular-nums ${
+                        m.momPct === null ? "text-text-muted" : m.momPct >= 0 ? "text-status-good" : "text-status-bad"
+                      }`}>
+                        {m.momPct !== null ? `${m.momPct >= 0 ? "+" : ""}${m.momPct.toFixed(1)}%` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+      </div>
 
       {/* Footer */}
       {data.lastSynced && (
