@@ -6,6 +6,7 @@ import type {
   ProductInventory,
   InventoryCategory,
   InventoryResponse,
+  SkuSalesVelocity,
 } from "@/lib/types";
 import { calculateDOI } from "@/lib/doi";
 
@@ -163,6 +164,32 @@ export async function GET(request: Request) {
       monthlySalesBySku.set(skuLower, retail + b2b);
     }
 
+    // Query 3-day sales for sales velocity (cookware only)
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    threeDaysAgo.setHours(0, 0, 0, 0);
+    const threeDayStart = threeDaysAgo.toISOString();
+
+    const { data: sales3DayData } = await supabase
+      .from("line_items")
+      .select(`
+        sku,
+        quantity,
+        orders!inner(created_at, canceled)
+      `)
+      .gte("orders.created_at", threeDayStart)
+      .eq("orders.canceled", false);
+
+    // Aggregate 3-day sales by SKU
+    const sales3DayBySku = new Map<string, number>();
+    for (const item of sales3DayData || []) {
+      if (item.sku) {
+        const skuLower = item.sku.toLowerCase();
+        const current = sales3DayBySku.get(skuLower) || 0;
+        sales3DayBySku.set(skuLower, current + (item.quantity || 0));
+      }
+    }
+
     // Create product lookup map
     const productMap = new Map(
       productsData?.map((p) => [p.sku, { displayName: p.display_name, category: p.category }]) || []
@@ -280,10 +307,41 @@ export async function GET(request: Request) {
       byCategory[item.category].push(item);
     }
 
+    // Build sales velocity data for cookware SKUs (3-day moving average)
+    const buildVelocity = (category: "cast_iron" | "carbon_steel"): SkuSalesVelocity[] => {
+      const velocityList: SkuSalesVelocity[] = [];
+
+      // Get all products for this category
+      const categoryProducts = productsData?.filter(p => p.category === category) || [];
+
+      for (const product of categoryProducts) {
+        const skuLower = product.sku.toLowerCase();
+        const sales3DayTotal = sales3DayBySku.get(skuLower) || 0;
+        const sales3DayAvg = Math.round((sales3DayTotal / 3) * 10) / 10; // Round to 1 decimal
+
+        velocityList.push({
+          sku: product.sku,
+          displayName: product.display_name,
+          category: category,
+          sales3DayTotal,
+          sales3DayAvg,
+        });
+      }
+
+      // Sort by daily velocity descending
+      return velocityList.sort((a, b) => b.sales3DayAvg - a.sales3DayAvg);
+    };
+
+    const salesVelocity = {
+      cast_iron: buildVelocity("cast_iron"),
+      carbon_steel: buildVelocity("carbon_steel"),
+    };
+
     const response: InventoryResponse = {
       inventory,
       totals,
       byCategory,
+      salesVelocity,
       lastSynced,
     };
 

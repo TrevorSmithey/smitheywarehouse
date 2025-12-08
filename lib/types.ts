@@ -30,10 +30,22 @@ export interface InventoryTotals {
   total: number;
 }
 
+export interface SkuSalesVelocity {
+  sku: string;
+  displayName: string;
+  category: InventoryCategory;
+  sales3DayTotal: number;
+  sales3DayAvg: number;
+}
+
 export interface InventoryResponse {
   inventory: ProductInventory[];
   totals: InventoryTotals;
   byCategory: Record<InventoryCategory, ProductInventory[]>;
+  salesVelocity: {
+    cast_iron: SkuSalesVelocity[];
+    carbon_steel: SkuSalesVelocity[];
+  };
   lastSynced: string | null;
 }
 

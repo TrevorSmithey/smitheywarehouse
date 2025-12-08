@@ -2227,6 +2227,76 @@ function InventoryDashboard({
         </div>
       </div>
 
+      {/* Daily Velocity Section - Cookware Only */}
+      {inventory?.salesVelocity && (
+        <div className="mt-8 bg-bg-secondary rounded border border-border p-5">
+          <h3 className="text-label font-semibold text-text-tertiary uppercase tracking-wider mb-4">
+            DAILY VELOCITY <span className="font-normal text-text-muted">(3-Day Average)</span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Cast Iron */}
+            <div>
+              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
+                Cast Iron
+              </div>
+              <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
+                {inventory.salesVelocity.cast_iron.map((item) => (
+                  <div
+                    key={item.sku}
+                    className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/[0.02] transition-colors"
+                  >
+                    <span className="text-sm text-text-primary">{item.displayName}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-text-muted tabular-nums">
+                        {item.sales3DayTotal} / 3d
+                      </span>
+                      <span className={`text-sm font-semibold tabular-nums min-w-[40px] text-right ${
+                        item.sales3DayAvg >= 10 ? "text-status-good" :
+                        item.sales3DayAvg >= 5 ? "text-text-primary" :
+                        item.sales3DayAvg > 0 ? "text-text-secondary" :
+                        "text-text-muted"
+                      }`}>
+                        {item.sales3DayAvg.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Carbon Steel */}
+            <div>
+              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
+                Carbon Steel
+              </div>
+              <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
+                {inventory.salesVelocity.carbon_steel.map((item) => (
+                  <div
+                    key={item.sku}
+                    className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/[0.02] transition-colors"
+                  >
+                    <span className="text-sm text-text-primary">{item.displayName}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-text-muted tabular-nums">
+                        {item.sales3DayTotal} / 3d
+                      </span>
+                      <span className={`text-sm font-semibold tabular-nums min-w-[40px] text-right ${
+                        item.sales3DayAvg >= 10 ? "text-status-good" :
+                        item.sales3DayAvg >= 5 ? "text-text-primary" :
+                        item.sales3DayAvg > 0 ? "text-text-secondary" :
+                        "text-text-muted"
+                      }`}>
+                        {item.sales3DayAvg.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Last synced */}
       {inventory?.lastSynced && (
         <div className="mt-3 text-xs text-text-muted text-right">
