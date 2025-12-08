@@ -161,13 +161,23 @@ export async function GET() {
       t7: t7BySku[t.sku] || 0,
     })) as AssemblyTarget[];
 
-    // Calculate summary metrics
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
+    // Calculate summary metrics - use EST timezone for accurate day counting
+    const estFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const estParts = estFormatter.formatToParts(new Date());
+    const todayEST = `${estParts.find(p => p.type === "year")?.value}-${estParts.find(p => p.type === "month")?.value}-${estParts.find(p => p.type === "day")?.value}`;
 
-    // Manufacturing cutoff
-    const cutoffDate = new Date(config.manufacturing_cutoff);
-    const daysRemaining = Math.max(0, Math.ceil((cutoffDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+    // Manufacturing cutoff - count days INCLUDING cutoff date (EOD)
+    // Dec 7 to Dec 12 EOD = 5 production days (8, 9, 10, 11, 12)
+    const todayDate = new Date(todayEST + "T00:00:00");
+    const cutoffDate = new Date(config.manufacturing_cutoff + "T00:00:00");
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysDiff = Math.round((cutoffDate.getTime() - todayDate.getTime()) / msPerDay);
+    const daysRemaining = Math.max(0, daysDiff); // Days from tomorrow through cutoff date
 
     // Total deficit (sum of positive deficits)
     const totalDeficit = targets.reduce((sum, t) => sum + Math.max(0, t.deficit), 0);
