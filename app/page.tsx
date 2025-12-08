@@ -3356,7 +3356,7 @@ function AssemblyDashboard({
           });
 
         return (
-          <div className="bg-bg-secondary rounded-xl p-4 border border-border/30">
+          <div className="bg-bg-secondary rounded-xl p-4 border border-border/30 w-fit">
             <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-3">
               SKU PROGRESS
             </h3>
