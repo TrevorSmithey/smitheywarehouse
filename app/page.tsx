@@ -1958,31 +1958,6 @@ function InventoryDashboard({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header Row: Warehouse Totals */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-          <div className="flex items-center gap-1.5">
-            <span className="text-amber-400 tabular-nums font-semibold">{formatNumber(totals.hobson)}</span>
-            <span className="text-[10px] text-amber-400/60 uppercase tracking-wide">Hobson</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-emerald-400 tabular-nums font-semibold">{formatNumber(totals.selery)}</span>
-            <span className="text-[10px] text-emerald-400/60 uppercase tracking-wide">Selery</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-blue-400 tabular-nums font-semibold">{formatNumber(totals.pipefitter)}</span>
-            <span className="text-[10px] text-blue-400/60 uppercase tracking-wide">Pipefitter</span>
-          </div>
-        </div>
-        <button
-          onClick={onRefresh}
-          aria-label="Refresh inventory"
-          className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
-        >
-          <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
-
       {/* Category Tabs + Health Status */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         {/* Category Tabs */}
@@ -2000,6 +1975,13 @@ function InventoryDashboard({
               {categoryLabels[cat]}
             </button>
           ))}
+          <button
+            onClick={onRefresh}
+            aria-label="Refresh inventory"
+            className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ml-2"
+          >
+            <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
 
         {/* Inventory Health - Compact horizontal status bar */}
