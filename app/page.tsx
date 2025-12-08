@@ -1938,99 +1938,132 @@ function InventoryDashboard({
     return <span className="ml-1 opacity-60">{sortDir === "desc" ? "↓" : "↑"}</span>;
   };
 
+  // Loading state with branded spinner
+  if (loading && !inventory) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
+            <div
+              className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: "#3B82F6", borderRightColor: "#0EA5E9" }}
+            />
+          </div>
+          <span className="text-sm text-text-tertiary tracking-widest uppercase">Opening the vault...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* Header: Category Tabs + Inventory Health Status */}
-      <div className="flex items-start justify-between gap-6 mb-6">
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Header Row: Total + Health Status */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums text-accent-blue">
+              {formatNumber(totals.total)}
+            </span>
+            <span className="text-xs text-text-muted">units total</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-amber-400 tabular-nums font-medium">{formatNumber(totals.hobson)}</span>
+            <span className="text-emerald-400 tabular-nums font-medium">{formatNumber(totals.selery)}</span>
+            <span className="text-blue-400 tabular-nums font-medium">{formatNumber(totals.pipefitter)}</span>
+          </div>
+        </div>
+        <button
+          onClick={onRefresh}
+          aria-label="Refresh inventory"
+          className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+        >
+          <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {/* Category Tabs + Health Status */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         {/* Category Tabs */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
           {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => (
             <button
               key={cat}
               onClick={() => setCategory(cat)}
-              className={`px-4 py-2 text-sm font-medium rounded transition-colors ${
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
                 category === cat
-                  ? "bg-accent-blue text-white"
+                  ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20"
                   : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
               }`}
             >
               {categoryLabels[cat]}
             </button>
           ))}
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
         </div>
 
         {/* Inventory Health - Compact horizontal status bar */}
-        <div className="flex items-center gap-3 bg-bg-secondary/50 rounded-lg px-4 py-2 border border-border/50">
-          {loading ? (
-            <span className="text-text-muted text-sm">Loading...</span>
-          ) : doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
+        <div className="flex items-center gap-2 bg-bg-secondary/50 rounded-lg px-3 py-1.5 border border-border/30">
+          {doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
             <>
               {doiHealth.backorder > 0 && (
                 <button
                   onClick={() => setHealthFilter(healthFilter === "backorder" ? null : "backorder")}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
                     healthFilter === "backorder"
                       ? "bg-red-500/30 ring-1 ring-red-500/50"
                       : "hover:bg-red-500/10"
                   }`}
                 >
-                  <span className="text-base font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
-                  <span className="text-[11px] text-red-400/80 font-medium tracking-wide">BACKORDER</span>
+                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
+                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">BACKORDER</span>
                 </button>
               )}
               {doiHealth.urgent > 0 && (
                 <button
                   onClick={() => setHealthFilter(healthFilter === "urgent" ? null : "urgent")}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
                     healthFilter === "urgent"
                       ? "bg-red-500/30 ring-1 ring-red-500/50"
                       : "hover:bg-red-500/10"
                   }`}
                 >
-                  <span className="text-base font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
-                  <span className="text-[11px] text-red-400/80 font-medium tracking-wide">URGENT</span>
+                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
+                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">URGENT</span>
                 </button>
               )}
               {doiHealth.critical > 0 && (
                 <button
                   onClick={() => setHealthFilter(healthFilter === "watch" ? null : "watch")}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all ${
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
                     healthFilter === "watch"
                       ? "bg-amber-500/30 ring-1 ring-amber-500/50"
                       : "hover:bg-amber-500/10"
                   }`}
                 >
-                  <span className="text-base font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
-                  <span className="text-[11px] text-amber-400/80 font-medium tracking-wide">WATCH</span>
+                  <span className="text-sm font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
+                  <span className="text-[10px] text-amber-400/80 font-semibold tracking-wide">WATCH</span>
                 </button>
               )}
               {healthFilter && (
                 <button
                   onClick={() => setHealthFilter(null)}
-                  className="text-text-muted hover:text-text-primary text-xs ml-1"
+                  className="text-text-muted hover:text-text-primary text-[10px] ml-1 px-1.5 py-0.5 rounded hover:bg-white/5"
                 >
-                  Clear
+                  ✕
                 </button>
               )}
             </>
           ) : (
             <div className="flex items-center gap-2 px-2 py-1">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-sm text-emerald-400 font-medium">All Healthy</span>
+              <span className="text-xs text-emerald-400 font-semibold">All Healthy</span>
             </div>
           )}
         </div>
       </div>
 
       {/* Inventory Table with Heat Map */}
-      <div className="bg-bg-secondary rounded border border-border overflow-hidden">
+      <div className="bg-bg-secondary rounded-xl border border-border/50 overflow-hidden">
         <div className="max-h-[520px] overflow-y-auto custom-scrollbar">
           <table className="w-full">
             <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border">
@@ -2229,76 +2262,125 @@ function InventoryDashboard({
 
       {/* Daily Velocity Section - Cookware Only */}
       {inventory?.salesVelocity && (
-        <div className="mt-8 bg-bg-secondary rounded border border-border p-5">
-          <h3 className="text-label font-semibold text-text-tertiary uppercase tracking-wider mb-4">
-            DAILY VELOCITY <span className="font-normal text-text-muted">(3-Day Average)</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="mt-8 bg-bg-secondary rounded-xl border border-border/50 p-5 sm:p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.2em]">
+              DAILY VELOCITY
+            </h3>
+            <span className="text-[10px] text-text-muted tracking-wide">3-day avg vs prior 3 days</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Cast Iron */}
-            <div>
-              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
-                Cast Iron
+            <div className="bg-bg-tertiary/30 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                  Cast Iron
+                </div>
+                <div className="text-xs text-text-muted tabular-nums">
+                  {inventory.salesVelocity.cast_iron.reduce((sum, i) => sum + i.sales3DayAvg, 0)}/day total
+                </div>
               </div>
-              <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
-                {inventory.salesVelocity.cast_iron.map((item) => (
-                  <div
-                    key={item.sku}
-                    className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/[0.02] transition-colors"
-                  >
-                    <span className="text-sm text-text-primary">{item.displayName}</span>
-                    <div className="flex items-center gap-2">
-                      {item.delta !== 0 && (
-                        <span className={`text-xs tabular-nums ${
-                          item.delta > 0 ? "text-status-good" : "text-status-bad"
+              <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
+                {inventory.salesVelocity.cast_iron.map((item) => {
+                  const maxVelocity = Math.max(...inventory.salesVelocity.cast_iron.map(i => i.sales3DayAvg), 1);
+                  const barWidth = (item.sales3DayAvg / maxVelocity) * 100;
+                  return (
+                    <div
+                      key={item.sku}
+                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all"
+                    >
+                      {/* Background bar */}
+                      <div
+                        className="absolute left-0 top-0 bottom-0 rounded-lg opacity-[0.08] transition-all group-hover:opacity-[0.12]"
+                        style={{
+                          width: `${barWidth}%`,
+                          background: item.sales3DayAvg >= 10
+                            ? "linear-gradient(90deg, #10B981, #059669)"
+                            : item.sales3DayAvg >= 5
+                            ? "linear-gradient(90deg, #3B82F6, #2563EB)"
+                            : "linear-gradient(90deg, #64748B, #475569)",
+                        }}
+                      />
+                      <span className="relative text-sm text-text-primary font-medium">{item.displayName}</span>
+                      <div className="relative flex items-center gap-2">
+                        {item.delta !== 0 && (
+                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            item.delta > 0
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-red-500/20 text-red-400"
+                          }`}>
+                            {item.delta > 0 ? "↑" : "↓"}
+                          </span>
+                        )}
+                        <span className={`text-sm font-bold tabular-nums min-w-[28px] text-right ${
+                          item.sales3DayAvg >= 10 ? "text-emerald-400" :
+                          item.sales3DayAvg >= 5 ? "text-text-primary" :
+                          item.sales3DayAvg > 0 ? "text-text-secondary" :
+                          "text-text-muted"
                         }`}>
-                          {item.delta > 0 ? "↑" : "↓"}
+                          {item.sales3DayAvg}
                         </span>
-                      )}
-                      <span className={`text-sm font-semibold tabular-nums min-w-[24px] text-right ${
-                        item.sales3DayAvg >= 10 ? "text-status-good" :
-                        item.sales3DayAvg >= 5 ? "text-text-primary" :
-                        item.sales3DayAvg > 0 ? "text-text-secondary" :
-                        "text-text-muted"
-                      }`}>
-                        {item.sales3DayAvg}
-                      </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             {/* Carbon Steel */}
-            <div>
-              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
-                Carbon Steel
+            <div className="bg-bg-tertiary/30 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                  Carbon Steel
+                </div>
+                <div className="text-xs text-text-muted tabular-nums">
+                  {inventory.salesVelocity.carbon_steel.reduce((sum, i) => sum + i.sales3DayAvg, 0)}/day total
+                </div>
               </div>
-              <div className="space-y-1.5 max-h-[280px] overflow-y-auto custom-scrollbar">
-                {inventory.salesVelocity.carbon_steel.map((item) => (
-                  <div
-                    key={item.sku}
-                    className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-white/[0.02] transition-colors"
-                  >
-                    <span className="text-sm text-text-primary">{item.displayName}</span>
-                    <div className="flex items-center gap-2">
-                      {item.delta !== 0 && (
-                        <span className={`text-xs tabular-nums ${
-                          item.delta > 0 ? "text-status-good" : "text-status-bad"
+              <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
+                {inventory.salesVelocity.carbon_steel.map((item) => {
+                  const maxVelocity = Math.max(...inventory.salesVelocity.carbon_steel.map(i => i.sales3DayAvg), 1);
+                  const barWidth = (item.sales3DayAvg / maxVelocity) * 100;
+                  return (
+                    <div
+                      key={item.sku}
+                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all"
+                    >
+                      {/* Background bar */}
+                      <div
+                        className="absolute left-0 top-0 bottom-0 rounded-lg opacity-[0.08] transition-all group-hover:opacity-[0.12]"
+                        style={{
+                          width: `${barWidth}%`,
+                          background: item.sales3DayAvg >= 10
+                            ? "linear-gradient(90deg, #10B981, #059669)"
+                            : item.sales3DayAvg >= 5
+                            ? "linear-gradient(90deg, #3B82F6, #2563EB)"
+                            : "linear-gradient(90deg, #64748B, #475569)",
+                        }}
+                      />
+                      <span className="relative text-sm text-text-primary font-medium">{item.displayName}</span>
+                      <div className="relative flex items-center gap-2">
+                        {item.delta !== 0 && (
+                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            item.delta > 0
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-red-500/20 text-red-400"
+                          }`}>
+                            {item.delta > 0 ? "↑" : "↓"}
+                          </span>
+                        )}
+                        <span className={`text-sm font-bold tabular-nums min-w-[28px] text-right ${
+                          item.sales3DayAvg >= 10 ? "text-emerald-400" :
+                          item.sales3DayAvg >= 5 ? "text-text-primary" :
+                          item.sales3DayAvg > 0 ? "text-text-secondary" :
+                          "text-text-muted"
                         }`}>
-                          {item.delta > 0 ? "↑" : "↓"}
+                          {item.sales3DayAvg}
                         </span>
-                      )}
-                      <span className={`text-sm font-semibold tabular-nums min-w-[24px] text-right ${
-                        item.sales3DayAvg >= 10 ? "text-status-good" :
-                        item.sales3DayAvg >= 5 ? "text-text-primary" :
-                        item.sales3DayAvg > 0 ? "text-text-secondary" :
-                        "text-text-muted"
-                      }`}>
-                        {item.sales3DayAvg}
-                      </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
