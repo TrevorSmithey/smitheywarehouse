@@ -1958,19 +1958,20 @@ function InventoryDashboard({
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header Row: Total + Health Status */}
+      {/* Header Row: Warehouse Totals */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold tabular-nums text-accent-blue">
-              {formatNumber(totals.total)}
-            </span>
-            <span className="text-xs text-text-muted">units total</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-amber-400 tabular-nums font-semibold">{formatNumber(totals.hobson)}</span>
+            <span className="text-[10px] text-amber-400/60 uppercase tracking-wide">Hobson</span>
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-amber-400 tabular-nums font-medium">{formatNumber(totals.hobson)}</span>
-            <span className="text-emerald-400 tabular-nums font-medium">{formatNumber(totals.selery)}</span>
-            <span className="text-blue-400 tabular-nums font-medium">{formatNumber(totals.pipefitter)}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-emerald-400 tabular-nums font-semibold">{formatNumber(totals.selery)}</span>
+            <span className="text-[10px] text-emerald-400/60 uppercase tracking-wide">Selery</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-blue-400 tabular-nums font-semibold">{formatNumber(totals.pipefitter)}</span>
+            <span className="text-[10px] text-blue-400/60 uppercase tracking-wide">Pipefitter</span>
           </div>
         </div>
         <button
@@ -2287,7 +2288,7 @@ function InventoryDashboard({
                   return (
                     <div
                       key={item.sku}
-                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all"
+                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all cursor-default"
                     >
                       {/* Background bar */}
                       <div
@@ -2321,6 +2322,32 @@ function InventoryDashboard({
                           {item.sales3DayAvg}
                         </span>
                       </div>
+                      {/* Hover tooltip */}
+                      <div className="absolute right-0 top-full mt-1 z-20 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+                        <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg min-w-[180px]">
+                          <div className="text-[10px] text-text-muted uppercase tracking-wide mb-2">{item.displayName}</div>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between">
+                              <span className="text-xs text-text-tertiary">3-day total</span>
+                              <span className="text-xs text-text-primary font-medium tabular-nums">{item.sales3DayTotal} units</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-text-tertiary">Prior avg</span>
+                              <span className="text-xs text-text-secondary tabular-nums">{item.prior3DayAvg}/day</span>
+                            </div>
+                            {item.delta !== 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-xs text-text-tertiary">Change</span>
+                                <span className={`text-xs font-semibold tabular-nums ${
+                                  item.delta > 0 ? "text-emerald-400" : "text-red-400"
+                                }`}>
+                                  {item.delta > 0 ? "+" : ""}{item.delta}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -2344,7 +2371,7 @@ function InventoryDashboard({
                   return (
                     <div
                       key={item.sku}
-                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all"
+                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all cursor-default"
                     >
                       {/* Background bar */}
                       <div
@@ -2377,6 +2404,32 @@ function InventoryDashboard({
                         }`}>
                           {item.sales3DayAvg}
                         </span>
+                      </div>
+                      {/* Hover tooltip */}
+                      <div className="absolute right-0 top-full mt-1 z-20 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+                        <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg min-w-[180px]">
+                          <div className="text-[10px] text-text-muted uppercase tracking-wide mb-2">{item.displayName}</div>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between">
+                              <span className="text-xs text-text-tertiary">3-day total</span>
+                              <span className="text-xs text-text-primary font-medium tabular-nums">{item.sales3DayTotal} units</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-xs text-text-tertiary">Prior avg</span>
+                              <span className="text-xs text-text-secondary tabular-nums">{item.prior3DayAvg}/day</span>
+                            </div>
+                            {item.delta !== 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-xs text-text-tertiary">Change</span>
+                                <span className={`text-xs font-semibold tabular-nums ${
+                                  item.delta > 0 ? "text-emerald-400" : "text-red-400"
+                                }`}>
+                                  {item.delta > 0 ? "+" : ""}{item.delta}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
