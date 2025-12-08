@@ -375,7 +375,8 @@ export default function Dashboard() {
           <button
             onClick={fetchMetrics}
             disabled={loading}
-            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50"
+            aria-label="Refresh data"
+            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -398,7 +399,7 @@ export default function Dashboard() {
                   <button
                     key={option}
                     onClick={() => setDateRangeOption(option)}
-                    className={`px-3 py-1.5 text-sm font-medium transition-all border rounded ${
+                    className={`px-3 py-1.5 text-sm font-medium transition-all border rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1 focus-visible:ring-offset-bg-primary ${
                       dateRangeOption === option
                         ? "bg-accent-blue text-white border-accent-blue"
                         : "bg-transparent text-text-secondary border-border hover:border-border-hover hover:text-text-primary"
@@ -433,49 +434,49 @@ export default function Dashboard() {
         )}
 
         {/* Primary Tab Selector */}
-        <div className="flex gap-1 mt-4 border-b border-border">
+        <div className="flex gap-1 mt-4 border-b border-border overflow-x-auto">
           <button
             onClick={() => setPrimaryTab("inventory")}
-            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "inventory"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <BarChart3 className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            <BarChart3 className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             INVENTORY
           </button>
           <button
             onClick={() => setPrimaryTab("assembly")}
-            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "assembly"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Hammer className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            <Hammer className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             PRODUCTION
           </button>
           <button
             onClick={() => setPrimaryTab("holiday")}
-            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "holiday"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Gift className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            <Gift className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             Q4 PACE
           </button>
           <button
             onClick={() => setPrimaryTab("fulfillment")}
-            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "fulfillment"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <Package className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            <Package className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             FULFILLMENT
           </button>
         </div>
@@ -933,7 +934,7 @@ function WarehousePanel({
 
       {/* Metrics Grid */}
       <div className="p-6">
-        <div className="grid grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mb-6">
           <div>
             <div className="text-3xl font-light text-text-primary">
               {loading ? "—" : formatNumber(data.unfulfilled_count)}
@@ -1156,7 +1157,7 @@ function TopSkusPanel({
         {warehouse.toUpperCase()}
       </div>
       {items.length > 0 ? (
-        <div className="max-h-[300px] overflow-y-auto">
+        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
           <table className="w-full">
             <thead className="sticky top-0 bg-bg-secondary">
               <tr className="border-b border-border">
@@ -1201,7 +1202,7 @@ function TopSkusPanel({
       {loading ? (
         <div className="text-text-muted text-sm">Loading...</div>
       ) : (
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <SkuTable items={smitheySkus} warehouse="smithey" />
           <SkuTable items={selerySkus} warehouse="selery" />
         </div>
@@ -1324,7 +1325,7 @@ function StuckShipmentsPanel({
             SMITHEY ({formatNumber(smithey.length)})
           </div>
           {smithey.length > 0 ? (
-            <div className="max-h-[320px] overflow-y-auto pr-2">
+            <div className="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
               {smithey.map(renderShipment)}
             </div>
           ) : (
@@ -1336,7 +1337,7 @@ function StuckShipmentsPanel({
             SELERY ({formatNumber(selery.length)})
           </div>
           {selery.length > 0 ? (
-            <div className="max-h-[320px] overflow-y-auto pr-2">
+            <div className="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
               {selery.map(renderShipment)}
             </div>
           ) : (
@@ -2030,7 +2031,7 @@ function InventoryDashboard({
 
       {/* Inventory Table with Heat Map */}
       <div className="bg-bg-secondary rounded border border-border overflow-hidden">
-        <div className="max-h-[520px] overflow-y-auto">
+        <div className="max-h-[520px] overflow-y-auto custom-scrollbar">
           <table className="w-full">
             <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border">
               <tr>
@@ -2984,8 +2985,8 @@ function AssemblyDashboard({
         </div>
         <button
           onClick={onRefresh}
-          className="p-2 rounded-lg transition-all hover:bg-white/5"
-          title="Refresh data"
+          aria-label="Refresh data"
+          className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forge-copper focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary"
         >
           <RefreshCw className="w-4 h-4 text-text-tertiary" />
         </button>
