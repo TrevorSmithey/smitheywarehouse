@@ -411,6 +411,7 @@ export async function GET(request: Request) {
       Promise.resolve({ data: [] }),
 
       // Fulfillment lead time data - filtered by selected date range
+      // Limit increased from 10000 to 50000 - peak periods can have 20k+ fulfilled orders in 30 days
       supabase
         .from("orders")
         .select("id, warehouse, created_at, fulfilled_at")
@@ -419,7 +420,7 @@ export async function GET(request: Request) {
         .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
-        .limit(10000),
+        .limit(50000),
 
       // Engraving queue - line items with SKU 'Smith-Eng' or 'Smith-Eng2'
       // Filter for non-canceled orders; exclude fulfilled orders client-side
