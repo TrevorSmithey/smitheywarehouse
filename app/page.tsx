@@ -363,7 +363,7 @@ export default function Dashboard() {
             />
             <div>
               <p className="text-sm text-text-secondary uppercase tracking-wide">
-                RETAIL FULFILLMENT
+                SMITHEY OPERATIONS
               </p>
               <p className="text-xs text-text-muted">
                 {lastRefresh
