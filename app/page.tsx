@@ -4300,7 +4300,6 @@ function BudgetDashboard({
             >
               {data.grandTotal.pace}%
             </span>
-            <span className="text-xs text-text-muted">pace</span>
           </div>
           <div className="text-sm text-text-muted">
             <span className="text-text-secondary font-medium tabular-nums">{formatNumber(data.grandTotal.actual)}</span>
