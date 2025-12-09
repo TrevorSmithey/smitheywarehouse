@@ -596,7 +596,7 @@ export default function Dashboard() {
           {/* Hero Section - Key metrics + engraving */}
           <div className="bg-bg-secondary rounded border border-border p-6 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-              <h2 className="text-label text-text-tertiary">OPERATIONS OVERVIEW</h2>
+              <h2 className="text-label text-text-tertiary">FULFILLMENT OVERVIEW</h2>
               <div className="flex items-center gap-1">
                 {(["today", "3days", "7days", "30days"] as const).map((option) => {
                   const labels = { today: "Today", "3days": "3D", "7days": "7D", "30days": "30D" };
@@ -623,7 +623,7 @@ export default function Dashboard() {
                 <div className={`text-4xl font-light ${totals.queue > 500 ? "text-status-warning" : "text-text-primary"}`}>
                   {loading ? "—" : formatNumber(totals.queue)}
                 </div>
-                <div className="text-context text-text-muted mt-1">in queue</div>
+                <div className="text-context text-text-muted mt-1">In Queue</div>
               </div>
 
               {/* 2. Avg Per Day */}
@@ -635,7 +635,7 @@ export default function Dashboard() {
                     <div className="text-4xl font-light text-text-primary">
                       {loading || avgPerDay === 0 ? "—" : formatNumber(avgPerDay)}
                     </div>
-                    <div className="text-context text-text-muted mt-1">avg/day</div>
+                    <div className="text-context text-text-muted mt-1">Avg/Day</div>
                   </div>
                 );
               })()}
@@ -650,7 +650,7 @@ export default function Dashboard() {
                     <div className={`text-4xl font-light ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
                       {loading || avgPerDay === 0 ? "—" : `~${daysToClear}d`}
                     </div>
-                    <div className="text-context text-text-muted mt-1">to clear</div>
+                    <div className="text-context text-text-muted mt-1">To Clear</div>
                   </div>
                 );
               })()}
@@ -661,7 +661,7 @@ export default function Dashboard() {
                   {loading ? "—" : formatNumber(totals.today)}
                 </div>
                 <div className="text-context mt-1">
-                  <span className="text-text-muted">shipped</span>
+                  <span className="text-text-muted">Shipped</span>
                   {todayVsAvg !== undefined && !loading && (
                     <span className={`ml-2 ${todayVsAvg > 0 ? "text-status-good" : todayVsAvg < 0 ? "text-status-bad" : "text-text-tertiary"}`}>
                       {todayVsAvg > 0 ? "↑" : todayVsAvg < 0 ? "↓" : "→"}{Math.abs(todayVsAvg).toFixed(0)}%
@@ -676,7 +676,7 @@ export default function Dashboard() {
                   {loading ? "—" : formatNumber(metrics?.engravingQueue?.total_units || 0)}
                 </div>
                 <div className="text-context mt-1">
-                  <span className="text-text-muted">engraving</span>
+                  <span className="text-text-muted">Engraving</span>
                   <span className={`ml-2 ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-secondary"}`}>
                     ~{metrics?.engravingQueue?.estimated_days || 0}d
                   </span>
