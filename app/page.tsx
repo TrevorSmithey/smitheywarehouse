@@ -594,9 +594,9 @@ export default function Dashboard() {
       {primaryTab === "fulfillment" && fulfillmentSubTab === "dashboard" && (
         <>
           {/* Hero Section - Key metrics + engraving */}
-          <div className="bg-bg-secondary rounded border border-border p-6 mb-6">
+          <div className="bg-bg-secondary rounded-xl border border-border/30 p-6 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-              <h2 className="text-label text-text-tertiary">FULFILLMENT OVERVIEW</h2>
+              <h2 className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">FULFILLMENT OVERVIEW</h2>
               <div className="flex items-center gap-1">
                 {(["today", "3days", "7days", "30days"] as const).map((option) => {
                   const labels = { today: "Today", "3days": "3D", "7days": "7D", "30days": "30D" };
@@ -620,10 +620,10 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-6 md:gap-8">
               {/* 1. In Queue */}
               <div>
-                <div className={`text-4xl font-light ${totals.queue > 500 ? "text-status-warning" : "text-text-primary"}`}>
+                <div className={`text-4xl font-bold tabular-nums ${totals.queue > 500 ? "text-status-warning" : "text-text-primary"}`}>
                   {loading ? "—" : formatNumber(totals.queue)}
                 </div>
-                <div className="text-context text-text-muted mt-1">In Queue</div>
+                <div className="text-xs text-text-muted mt-1">IN QUEUE</div>
               </div>
 
               {/* 2. Avg Per Day */}
@@ -632,10 +632,10 @@ export default function Dashboard() {
                 const avgPerDay = daysInRange > 0 ? Math.round(totals.today / daysInRange) : 0;
                 return (
                   <div>
-                    <div className="text-4xl font-light text-text-primary">
+                    <div className="text-4xl font-bold tabular-nums text-text-primary">
                       {loading || avgPerDay === 0 ? "—" : formatNumber(avgPerDay)}
                     </div>
-                    <div className="text-context text-text-muted mt-1">Avg/Day</div>
+                    <div className="text-xs text-text-muted mt-1">AVG/DAY</div>
                   </div>
                 );
               })()}
@@ -647,24 +647,24 @@ export default function Dashboard() {
                 const daysToClear = avgPerDay > 0 ? Math.round(totals.queue / avgPerDay) : 0;
                 return (
                   <div>
-                    <div className={`text-4xl font-light ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
+                    <div className={`text-4xl font-bold tabular-nums ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
                       {loading || avgPerDay === 0 ? "—" : `~${daysToClear}d`}
                     </div>
-                    <div className="text-context text-text-muted mt-1">To Clear</div>
+                    <div className="text-xs text-text-muted mt-1">TO CLEAR</div>
                   </div>
                 );
               })()}
 
               {/* 4. Total Shipped */}
               <div>
-                <div className="text-4xl font-light text-status-good">
+                <div className="text-4xl font-bold tabular-nums text-status-good">
                   {loading ? "—" : formatNumber(totals.today)}
                 </div>
-                <div className="text-context mt-1">
-                  <span className="text-text-muted">Shipped</span>
-                  {todayVsAvg !== undefined && !loading && (
-                    <span className={`ml-2 ${todayVsAvg > 0 ? "text-status-good" : todayVsAvg < 0 ? "text-status-bad" : "text-text-tertiary"}`}>
-                      {todayVsAvg > 0 ? "↑" : todayVsAvg < 0 ? "↓" : "→"}{Math.abs(todayVsAvg).toFixed(0)}%
+                <div className="text-xs mt-1">
+                  <span className="text-text-muted">SHIPPED</span>
+                  {dateRangeOption === "today" && todayVsAvg !== undefined && todayVsAvg !== 0 && !loading && (
+                    <span className={`ml-2 ${todayVsAvg > 0 ? "text-status-good" : "text-status-bad"}`}>
+                      {todayVsAvg > 0 ? "↑" : "↓"}{Math.abs(todayVsAvg).toFixed(0)}% vs 7d avg
                     </span>
                   )}
                 </div>
@@ -672,11 +672,11 @@ export default function Dashboard() {
 
               {/* 5. Engraving */}
               <div>
-                <div className={`text-4xl font-light ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-primary"}`}>
+                <div className={`text-4xl font-bold tabular-nums ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-primary"}`}>
                   {loading ? "—" : formatNumber(metrics?.engravingQueue?.total_units || 0)}
                 </div>
-                <div className="text-context mt-1">
-                  <span className="text-text-muted">Engraving</span>
+                <div className="text-xs mt-1">
+                  <span className="text-text-muted">ENGRAVING</span>
                   <span className={`ml-2 ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-secondary"}`}>
                     ~{metrics?.engravingQueue?.estimated_days || 0}d
                   </span>
@@ -698,12 +698,12 @@ export default function Dashboard() {
               const daysToClear = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
 
               return (
-                <div key={wh.warehouse} className={`bg-bg-secondary rounded border border-border overflow-hidden transition-all hover:border-border-hover ${isSmithey ? "border-l-2 border-l-accent-blue" : "border-l-2 border-l-text-tertiary"}`}>
+                <div key={wh.warehouse} className={`bg-bg-secondary rounded-xl border border-border/30 overflow-hidden transition-all hover:border-border-hover ${isSmithey ? "border-l-2 border-l-accent-blue" : "border-l-2 border-l-text-tertiary"}`}>
                   {/* Header */}
-                  <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-                    <span className={`text-label font-medium ${isSmithey ? "text-accent-blue" : "text-text-primary"}`}>{wh.warehouse.toUpperCase()}</span>
+                  <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between">
+                    <span className={`text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.15em] ${isSmithey ? "text-accent-blue" : "text-text-primary"}`}>{wh.warehouse.toUpperCase()}</span>
                     {wh.week_over_week_change !== 0 && (
-                      <span className={`text-context ${wh.week_over_week_change > 0 ? "text-status-good" : "text-status-bad"}`}>
+                      <span className={`text-xs tabular-nums ${wh.week_over_week_change > 0 ? "text-status-good" : "text-status-bad"}`}>
                         {wh.week_over_week_change > 0 ? "+" : ""}{wh.week_over_week_change.toFixed(1)}%
                       </span>
                     )}
@@ -713,27 +713,27 @@ export default function Dashboard() {
                     {/* Primary Metrics Row - matches hero order: Queue, Avg/Day, To Clear, Shipped */}
                     <div className="grid grid-cols-4 gap-4 mb-4">
                       <div>
-                        <div className="text-2xl font-light text-text-primary">{formatNumber(queueSize)}</div>
-                        <div className="text-label text-text-tertiary mt-1">Queue</div>
+                        <div className="text-2xl font-bold tabular-nums text-text-primary">{formatNumber(queueSize)}</div>
+                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">QUEUE</div>
                       </div>
                       <div>
-                        <div className="text-2xl font-light text-text-primary">{formatNumber(avgPerDay)}</div>
-                        <div className="text-label text-text-tertiary mt-1">Avg/Day</div>
+                        <div className="text-2xl font-bold tabular-nums text-text-primary">{formatNumber(avgPerDay)}</div>
+                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">AVG/DAY</div>
                       </div>
                       <div>
-                        <div className={`text-2xl font-light ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
+                        <div className={`text-2xl font-bold tabular-nums ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
                           {avgPerDay > 0 ? `~${daysToClear}d` : "—"}
                         </div>
-                        <div className="text-label text-text-tertiary mt-1">To Clear</div>
+                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">TO CLEAR</div>
                       </div>
                       <div>
-                        <div className="text-2xl font-light text-status-good">{formatNumber(wh.fulfilled_today)}</div>
-                        <div className="text-label text-text-tertiary mt-1">Shipped</div>
+                        <div className="text-2xl font-bold tabular-nums text-status-good">{formatNumber(wh.fulfilled_today)}</div>
+                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">SHIPPED</div>
                       </div>
                     </div>
 
                     {/* Aging + Speed Row */}
-                    <div className="flex flex-wrap items-start justify-between gap-4 pt-4 border-t border-border-subtle">
+                    <div className="flex flex-wrap items-start justify-between gap-4 pt-4 border-t border-border/30">
                       {/* Aging */}
                       {qh && (() => {
                         const fresh = queueSize - qh.waiting_1_day;
@@ -742,8 +742,8 @@ export default function Dashboard() {
                         const days7plus = qh.waiting_7_days;
                         return (
                           <div>
-                            <div className="text-label text-text-tertiary mb-2">AGING</div>
-                            <div className="flex gap-3 text-context">
+                            <div className="text-[9px] uppercase tracking-[0.15em] text-text-muted mb-2">AGING</div>
+                            <div className="flex gap-3 text-xs">
                               <span><span className="text-status-good font-medium">{fresh}</span> <span className="text-text-muted">&lt;1d</span></span>
                               <span><span className="text-text-primary font-medium">{days1to3}</span> <span className="text-text-muted">1-3d</span></span>
                               <span><span className={days3to7 > 0 ? "text-status-warning font-medium" : "text-text-primary font-medium"}>{days3to7}</span> <span className="text-text-muted">3-7d</span></span>
@@ -756,8 +756,8 @@ export default function Dashboard() {
                       {/* Speed */}
                       {lt && lt.total_fulfilled > 0 && (
                         <div>
-                          <div className="text-label text-text-tertiary mb-2">SPEED</div>
-                          <div className="flex gap-3 text-context">
+                          <div className="text-[9px] uppercase tracking-[0.15em] text-text-muted mb-2">SPEED</div>
+                          <div className="flex gap-3 text-xs">
                             <span>
                               <span className="text-text-primary font-medium">{lt.avg_hours < 24 ? `${lt.avg_hours}h` : `${lt.avg_days}d`}</span>
                               <span className="text-text-muted ml-1">avg</span>
@@ -778,7 +778,7 @@ export default function Dashboard() {
           </div>
 
           {/* Section 4: Full-Width Fulfillment Chart */}
-          <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
+          <div className="bg-bg-secondary rounded-xl border border-border/30 p-6 mb-6 transition-all hover:border-border-hover">
             {(() => {
               // Calculate distribution stats
               const dailyOrders = metrics?.dailyOrders || [];
@@ -802,7 +802,7 @@ export default function Dashboard() {
                   {/* Header with stats */}
                   <div className="flex items-start justify-between mb-6">
                     <div>
-                      <h3 className="text-label font-medium text-text-tertiary tracking-wide">FULFILLMENT TREND</h3>
+                      <h3 className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">FULFILLMENT TREND</h3>
                       <p className="text-xs text-text-muted mt-1">Daily shipments by warehouse</p>
                     </div>
                     <div className="flex items-center gap-6 text-sm">
@@ -936,36 +936,36 @@ export default function Dashboard() {
         <>
           {/* Tracking Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-bg-secondary rounded border border-border p-6">
-              <div className="text-label text-text-tertiary mb-2 flex items-center gap-1.5">
+            <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2 flex items-center gap-1.5">
                 <AlertTriangle className="w-3 h-3 text-status-warning" />
                 STUCK SHIPMENTS
               </div>
-              <div className={`text-metric font-light ${stuckCount > 0 ? "text-status-warning" : "text-text-primary"}`}>
+              <div className={`text-4xl font-bold tabular-nums ${stuckCount > 0 ? "text-status-warning" : "text-text-primary"}`}>
                 {formatNumber(stuckCount)}
               </div>
-              <div className="text-context text-text-muted mt-1">
+              <div className="text-xs text-text-muted mt-1">
                 No scans in {stuckThreshold}+ day{stuckThreshold > 1 ? "s" : ""}
               </div>
             </div>
-            <div className="bg-bg-secondary rounded border border-border p-6">
-              <div className="text-label text-text-tertiary mb-2 flex items-center gap-1.5">
+            <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2 flex items-center gap-1.5">
                 <Package className="w-3 h-3" />
                 DELIVERED
               </div>
-              <div className="text-metric font-light text-status-good">
+              <div className="text-4xl font-bold tabular-nums text-status-good">
                 {formatNumber((metrics?.transitAnalytics || []).reduce((sum, t) => sum + t.total_delivered, 0))}
               </div>
-              <div className="text-context text-text-muted mt-1">
+              <div className="text-xs text-text-muted mt-1">
                 Shipments delivered
               </div>
             </div>
-            <div className="bg-bg-secondary rounded border border-border p-6">
-              <div className="text-label text-text-tertiary mb-2 flex items-center gap-1.5">
+            <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2 flex items-center gap-1.5">
                 <Truck className="w-3 h-3" />
                 AVG TRANSIT
               </div>
-              <div className="text-metric font-light text-text-primary">
+              <div className="text-4xl font-bold tabular-nums text-text-primary">
                 {(() => {
                   const analytics = metrics?.transitAnalytics || [];
                   const totalDelivered = analytics.reduce((sum, t) => sum + t.total_delivered, 0);
@@ -973,7 +973,7 @@ export default function Dashboard() {
                   return totalDelivered > 0 ? (weightedSum / totalDelivered).toFixed(1) : "—";
                 })()}d
               </div>
-              <div className="text-context text-text-muted mt-1">
+              <div className="text-xs text-text-muted mt-1">
                 Average delivery time
               </div>
             </div>
@@ -1079,13 +1079,13 @@ function KPICard({
   };
 
   return (
-    <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
-      <div className="text-label text-text-tertiary font-medium mb-2">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
+      <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted font-medium mb-2">
         {label}
-        {note && <span className="text-text-muted font-normal text-xs ml-1">({note})</span>}
+        {note && <span className="text-text-muted font-normal text-[10px] ml-1">({note})</span>}
       </div>
       <div
-        className={`text-metric font-light tracking-tight-sm ${
+        className={`text-4xl font-bold tabular-nums ${
           status ? statusColors[status] : "text-text-primary"
         }`}
       >
@@ -1093,7 +1093,7 @@ function KPICard({
       </div>
       {/* Change indicator - like Lathe app */}
       {change !== undefined && !loading && (
-        <div className="text-context text-text-secondary mt-1">
+        <div className="text-xs text-text-secondary mt-1">
           <span
             className={
               change > 0
@@ -1112,7 +1112,7 @@ function KPICard({
         </div>
       )}
       {subtitle && !change && (
-        <div className="text-context text-text-muted mt-1">{subtitle}</div>
+        <div className="text-xs text-text-muted mt-1">{subtitle}</div>
       )}
     </div>
   );
@@ -1137,26 +1137,26 @@ function EngravingQueueCard({
   };
 
   return (
-    <div className="bg-bg-secondary rounded border border-border p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
-      <div className="text-label text-text-tertiary font-medium mb-2 flex items-center gap-1.5">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-6 transition-all duration-200 hover:border-border-hover hover:shadow-card-hover hover:-translate-y-px">
+      <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted font-medium mb-2 flex items-center gap-1.5">
         <Pen className="w-3 h-3" />
         ENGRAVING QUEUE
-        <span className="text-text-muted font-normal text-xs ml-1">(running total)</span>
+        <span className="text-text-muted font-normal text-[10px] ml-1">(running total)</span>
       </div>
       <div
-        className={`text-metric font-light tracking-tight-sm ${
+        className={`text-4xl font-bold tabular-nums ${
           status ? statusColors[status] : "text-text-primary"
         }`}
       >
         {loading ? "—" : formatNumber(totalUnits)}
       </div>
-      <div className="text-context text-text-secondary mt-1">
+      <div className="text-xs text-text-secondary mt-1">
         <span className={status ? statusColors[status] : "text-text-primary"}>
           ~{estimatedDays}d
         </span>
         <span className="text-text-muted ml-1">lead time</span>
       </div>
-      <div className="text-context text-text-muted mt-1">
+      <div className="text-xs text-text-muted mt-1">
         {formatNumber(orderCount)} orders
       </div>
     </div>
@@ -1189,19 +1189,19 @@ function WarehousePanel({
   const weekChange = data.week_over_week_change;
 
   return (
-    <div className="bg-bg-secondary rounded border border-border overflow-hidden transition-all hover:border-border-hover">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden transition-all hover:border-border-hover">
       {/* Header */}
       <div
-        className={`px-6 py-4 border-b border-border flex items-center justify-between ${
+        className={`px-6 py-4 border-b border-border/30 flex items-center justify-between ${
           isSmithey
             ? "border-l-2 border-l-accent-blue"
             : "border-l-2 border-l-text-tertiary"
         }`}
       >
-        <span className="text-label font-medium text-text-primary tracking-wide-sm">
+        <span className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.15em] text-text-primary">
           {name}
         </span>
-        <div className="flex items-center gap-1 text-context">
+        <div className="flex items-center gap-1 text-xs">
           {weekChange > 0 ? (
             <TrendingUp className="w-3.5 h-3.5 text-status-good" />
           ) : weekChange < 0 ? (
@@ -4392,7 +4392,7 @@ function BudgetDashboard({
             />
           </div>
           <div className="text-xs text-text-tertiary mt-2">
-            Cast Iron + Carbon Steel • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.cookwareTotal.pace) }}>{data.cookwareTotal.pace}%</span>
+            Cast Iron + Carbon Steel{data.cookwareTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.cookwareTotal.pace) }}>{data.cookwareTotal.pace}%</span></>}
           </div>
         </div>
 
@@ -4437,7 +4437,7 @@ function BudgetDashboard({
             />
           </div>
           <div className="text-xs text-text-tertiary mt-2">
-            All Categories • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.grandTotal.pace) }}>{data.grandTotal.pace}%</span>
+            All Categories{data.grandTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.grandTotal.pace) }}>{data.grandTotal.pace}%</span></>}
           </div>
         </div>
       </div>
