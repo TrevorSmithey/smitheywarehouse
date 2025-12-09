@@ -472,6 +472,17 @@ export async function GET(request: Request) {
       const variance = actual - budget;
       const variancePct = budget > 0 ? (variance / budget) * 100 : 0;
 
+      // Calculate pace: are we on track based on where we are in the period?
+      // Pace = (actual/budget) / periodProgress
+      // e.g., 33% of budget on day 8 of 31 (26% through) = 127% pace (ahead)
+      const totalDaysInBudgetPeriod = months.reduce((sum, m) => sum + m.totalDays, 0);
+      const daysElapsedInPeriod = months.reduce((sum, m) => sum + m.daysInRange, 0);
+      const periodProgressFactor = totalDaysInBudgetPeriod > 0
+        ? daysElapsedInPeriod / totalDaysInBudgetPeriod
+        : 1;
+      const expectedByNow = budget * periodProgressFactor;
+      const pace = expectedByNow > 0 ? (actual / expectedByNow) * 100 : 0;
+
       // Use display name from products table, fallback to SKU
       const displayName = product?.displayName || sku;
 
@@ -482,6 +493,7 @@ export async function GET(request: Request) {
         actual,
         variance,
         variancePct,
+        pace: Math.round(pace),
       };
 
       categoryDataMap.get(category)?.push(row);
@@ -509,11 +521,21 @@ export async function GET(request: Request) {
           actual: acc.actual + row.actual,
           variance: acc.variance + row.variance,
           variancePct: 0,
+          pace: 0,
         }),
-        { budget: 0, actual: 0, variance: 0, variancePct: 0 }
+        { budget: 0, actual: 0, variance: 0, variancePct: 0, pace: 0 }
       );
 
       totals.variancePct = totals.budget > 0 ? (totals.variance / totals.budget) * 100 : 0;
+
+      // Calculate pace for category totals
+      const totalDaysInBudgetPeriod = months.reduce((sum, m) => sum + m.totalDays, 0);
+      const daysElapsedInPeriod = months.reduce((sum, m) => sum + m.daysInRange, 0);
+      const periodProgressFactor = totalDaysInBudgetPeriod > 0
+        ? daysElapsedInPeriod / totalDaysInBudgetPeriod
+        : 1;
+      const expectedByNow = totals.budget * periodProgressFactor;
+      totals.pace = expectedByNow > 0 ? Math.round((totals.actual / expectedByNow) * 100) : 0;
 
       categories.push({
         category: cat,
@@ -531,18 +553,33 @@ export async function GET(request: Request) {
       }
     }
 
+    // Calculate period progress for totals
+    const totalDaysInPeriod = months.reduce((sum, m) => sum + m.totalDays, 0);
+    const daysElapsedInPeriod = months.reduce((sum, m) => sum + m.daysInRange, 0);
+    const periodProgressFactor = totalDaysInPeriod > 0 ? daysElapsedInPeriod / totalDaysInPeriod : 1;
+
+    // Cookware pace calculation
+    const cookwareExpectedByNow = cookwareBudget * periodProgressFactor;
+    const cookwarePace = cookwareExpectedByNow > 0 ? (cookwareActual / cookwareExpectedByNow) * 100 : 0;
+
     const cookwareTotal = {
       budget: cookwareBudget,
       actual: cookwareActual,
       variance: cookwareActual - cookwareBudget,
       variancePct: cookwareBudget > 0 ? ((cookwareActual - cookwareBudget) / cookwareBudget) * 100 : 0,
+      pace: Math.round(cookwarePace),
     };
+
+    // Grand total pace calculation
+    const grandExpectedByNow = grandBudget * periodProgressFactor;
+    const grandPace = grandExpectedByNow > 0 ? (grandActual / grandExpectedByNow) * 100 : 0;
 
     const grandTotal = {
       budget: grandBudget,
       actual: grandActual,
       variance: grandActual - grandBudget,
       variancePct: grandBudget > 0 ? ((grandActual - grandBudget) / grandBudget) * 100 : 0,
+      pace: Math.round(grandPace),
     };
 
     const periodProgress = daysElapsed / daysInPeriod;

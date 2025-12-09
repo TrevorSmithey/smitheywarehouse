@@ -419,7 +419,8 @@ export interface BudgetSkuRow {
   budget: number;
   actual: number;
   variance: number;
-  variancePct: number;
+  variancePct: number;  // raw % of budget achieved (actual / budget * 100)
+  pace: number;         // pace-adjusted % (are we on track? >100 = hot, <100 = slow)
 }
 
 export interface BudgetCategoryData {
@@ -431,6 +432,7 @@ export interface BudgetCategoryData {
     actual: number;
     variance: number;
     variancePct: number;
+    pace: number;
   };
 }
 
@@ -441,12 +443,14 @@ export interface BudgetResponse {
     actual: number;
     variance: number;
     variancePct: number;
+    pace: number;
   };
   grandTotal: {
     budget: number;
     actual: number;
     variance: number;
     variancePct: number;
+    pace: number;
   };
   dateRange: BudgetDateRange;
   periodLabel: string;

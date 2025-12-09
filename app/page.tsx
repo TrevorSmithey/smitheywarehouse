@@ -3952,22 +3952,34 @@ function BudgetDashboard({
     { value: "custom", label: "Custom", short: "Custom" },
   ];
 
-  // Get variance color based on percentage
-  const getVarianceColor = (pct: number) => {
-    if (pct >= 0) return colors.emerald;
-    if (pct >= -20) return colors.amber;
+  // Get color based on PACE (all calculations use EST timezone)
+  // pace >= 100 = super hot (bright green)
+  // pace 90-99 = on track (green)
+  // pace 80-89 = needs attention (amber)
+  // pace < 80 = behind (red)
+  const getPaceColor = (pace: number) => {
+    if (pace >= 100) return "#22C55E"; // Super green (brighter)
+    if (pace >= 90) return colors.emerald;
+    if (pace >= 80) return colors.amber;
     return colors.rose;
   };
 
-  const getVarianceTextClass = (pct: number) => {
-    if (pct >= 0) return "text-status-good";
-    if (pct >= -20) return "text-status-warning";
+  const getPaceColorDark = (pace: number) => {
+    if (pace >= 100) return "#16A34A"; // Super green dark
+    if (pace >= 90) return colors.emeraldDark;
+    if (pace >= 80) return colors.amberDark;
+    return colors.roseDark;
+  };
+
+  const getPaceTextClass = (pace: number) => {
+    if (pace >= 90) return "text-status-good"; // 90+ is green
+    if (pace >= 80) return "text-status-warning";
     return "text-status-bad";
   };
 
-  const getVarianceBgClass = (pct: number) => {
-    if (pct >= 0) return "bg-status-good/10";
-    if (pct >= -20) return "bg-status-warning/10";
+  const getPaceBgClass = (pace: number) => {
+    if (pace >= 90) return "bg-status-good/10";
+    if (pace >= 80) return "bg-status-warning/10";
     return "bg-status-bad/10";
   };
 
@@ -4113,16 +4125,27 @@ function BudgetDashboard({
             </div>
             <span className="text-xs text-text-muted">Cast Iron + Carbon Steel</span>
           </div>
-          <div className="flex items-baseline gap-3 mb-3">
+          <div className="flex items-baseline gap-3 mb-1">
             <span
-              className={`text-4xl font-light tabular-nums ${getVarianceTextClass(data.cookwareTotal.variancePct)}`}
+              className={`text-4xl font-light tabular-nums ${getPaceTextClass(data.cookwareTotal.pace)}`}
             >
               {Math.round((data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%
             </span>
             <span className="text-sm text-text-tertiary">of budget</span>
           </div>
-          <div className="text-sm text-text-muted mb-4">
-            {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-text-muted">
+              {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
+            </span>
+            <span
+              className="text-xs px-2 py-0.5 rounded font-medium"
+              style={{
+                backgroundColor: `${getPaceColor(data.cookwareTotal.pace)}15`,
+                color: getPaceColor(data.cookwareTotal.pace)
+              }}
+            >
+              {data.cookwareTotal.pace}% pace
+            </span>
           </div>
           {/* Progress Bar */}
           <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
@@ -4130,14 +4153,13 @@ function BudgetDashboard({
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${Math.min(100, (data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%`,
-                background: `linear-gradient(90deg, ${getVarianceColor(data.cookwareTotal.variancePct)}, ${
-                  data.cookwareTotal.variancePct >= 0 ? colors.emeraldDark : data.cookwareTotal.variancePct >= -20 ? colors.amberDark : colors.roseDark
-                })`,
+                background: `linear-gradient(90deg, ${getPaceColor(data.cookwareTotal.pace)}, ${getPaceColorDark(data.cookwareTotal.pace)})`,
               }}
             />
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-white/50"
               style={{ left: `${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}%` }}
+              title={`${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}% through period`}
             />
           </div>
         </div>
@@ -4153,16 +4175,27 @@ function BudgetDashboard({
             </div>
             <span className="text-xs text-text-muted">All Categories</span>
           </div>
-          <div className="flex items-baseline gap-3 mb-3">
+          <div className="flex items-baseline gap-3 mb-1">
             <span
-              className={`text-4xl font-light tabular-nums ${getVarianceTextClass(data.grandTotal.variancePct)}`}
+              className={`text-4xl font-light tabular-nums ${getPaceTextClass(data.grandTotal.pace)}`}
             >
               {Math.round((data.grandTotal.actual / data.grandTotal.budget) * 100)}%
             </span>
             <span className="text-sm text-text-tertiary">of budget</span>
           </div>
-          <div className="text-sm text-text-muted mb-4">
-            {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-text-muted">
+              {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
+            </span>
+            <span
+              className="text-xs px-2 py-0.5 rounded font-medium"
+              style={{
+                backgroundColor: `${getPaceColor(data.grandTotal.pace)}15`,
+                color: getPaceColor(data.grandTotal.pace)
+              }}
+            >
+              {data.grandTotal.pace}% pace
+            </span>
           </div>
           {/* Progress Bar */}
           <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
@@ -4170,14 +4203,13 @@ function BudgetDashboard({
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${Math.min(100, (data.grandTotal.actual / data.grandTotal.budget) * 100)}%`,
-                background: `linear-gradient(90deg, ${getVarianceColor(data.grandTotal.variancePct)}, ${
-                  data.grandTotal.variancePct >= 0 ? colors.emeraldDark : data.grandTotal.variancePct >= -20 ? colors.amberDark : colors.roseDark
-                })`,
+                background: `linear-gradient(90deg, ${getPaceColor(data.grandTotal.pace)}, ${getPaceColorDark(data.grandTotal.pace)})`,
               }}
             />
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-white/50"
               style={{ left: `${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}%` }}
+              title={`${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}% through period`}
             />
           </div>
         </div>
@@ -4190,11 +4222,12 @@ function BudgetDashboard({
             ? Math.round((cat.totals.actual / cat.totals.budget) * 100)
             : 0;
           const pctThroughPeriod = Math.round((data.daysElapsed / data.daysInPeriod) * 100);
-          const onTrack = pctOfBudget >= pctThroughPeriod - 5;
-          const ahead = pctOfBudget >= pctThroughPeriod + 5;
           const isExpanded = expandedCategories.has(cat.category);
-          const statusColor = ahead ? colors.emerald : onTrack ? colors.amber : colors.rose;
-          const statusColorDark = ahead ? colors.emeraldDark : onTrack ? colors.amberDark : colors.roseDark;
+          // Use pace from API for consistent color logic
+          const pace = cat.totals.pace;
+          const statusColor = getPaceColor(pace);
+          const statusColorDark = getPaceColorDark(pace);
+          const statusLabel = pace >= 100 ? "Hot" : pace >= 90 ? "On Track" : pace >= 80 ? "Slow" : "Behind";
 
           return (
             <div key={cat.category} className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
@@ -4225,7 +4258,7 @@ function BudgetDashboard({
                         color: statusColor
                       }}
                     >
-                      {ahead ? "Ahead" : onTrack ? "On Track" : "Behind"}
+                      {statusLabel} ({pace}%)
                     </span>
                   </div>
 
@@ -4283,12 +4316,9 @@ function BudgetDashboard({
                     </thead>
                     <tbody>
                       {cat.skus.map((sku, idx) => {
-                        const skuPct = sku.budget > 0
-                          ? Math.round((sku.actual / sku.budget) * 100)
-                          : 0;
-                        const skuAhead = skuPct >= pctThroughPeriod + 5;
-                        const skuOnTrack = skuPct >= pctThroughPeriod - 5;
-                        const skuColor = skuAhead ? colors.emerald : skuOnTrack ? colors.amber : colors.rose;
+                        // Use pace from API for consistent color logic
+                        const skuPace = sku.pace;
+                        const skuColor = getPaceColor(skuPace);
 
                         return (
                           <tr
@@ -4323,7 +4353,7 @@ function BudgetDashboard({
                                   color: skuColor
                                 }}
                               >
-                                {skuPct}%
+                                {skuPace}%
                               </span>
                             </td>
                           </tr>
