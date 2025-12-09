@@ -30,7 +30,8 @@ async function fixSkuCasing() {
   }
 
   // Group by warehouse to find true duplicates
-  const byWarehouse = new Map<number, typeof invDups>();
+  type InventoryRow = { sku: string; warehouse_id: number; available: number; on_hand?: number };
+  const byWarehouse = new Map<number, InventoryRow[]>();
   for (const row of invDups || []) {
     const wh = row.warehouse_id;
     const existing = byWarehouse.get(wh);
@@ -43,6 +44,7 @@ async function fixSkuCasing() {
 
   // For each warehouse with multiple entries, keep the canonical one
   for (const [warehouse, rows] of byWarehouse.entries()) {
+    if (!rows || rows.length === 0) continue;
     if (rows.length > 1) {
       console.log(`\n   Warehouse ${warehouse} has ${rows.length} entries - merging...`);
 
