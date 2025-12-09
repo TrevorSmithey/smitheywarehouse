@@ -593,9 +593,6 @@ export default function Dashboard() {
         )}
       </header>
 
-      {/* Sync Health Banner - visible alert when data syncs are failing */}
-      <SyncHealthBanner />
-
       {error && (
         <div className="mb-6 p-4 bg-status-bad/10 border border-status-bad/30 rounded text-status-bad text-sm">
           {error}
@@ -4465,6 +4462,9 @@ function BudgetDashboard({
           );
         })}
       </div>
+
+      {/* Sync Health Banner - data freshness indicator at bottom of page */}
+      <SyncHealthBanner />
 
     </div>
   );

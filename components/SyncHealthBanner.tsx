@@ -60,7 +60,7 @@ export function SyncHealthBanner() {
   // Error fetching health - show subtle warning
   if (error) {
     return (
-      <div className="mb-4 px-4 py-2 bg-status-warning/10 border border-status-warning/30 rounded-lg flex items-center gap-2 text-sm">
+      <div className="mt-6 px-4 py-2 bg-status-warning/10 border border-status-warning/30 rounded-lg flex items-center gap-2 text-sm">
         <AlertTriangle className="w-4 h-4 text-status-warning flex-shrink-0" />
         <span className="text-status-warning">Unable to check data sync health</span>
       </div>
@@ -72,7 +72,7 @@ export function SyncHealthBanner() {
   // Everything healthy and we have syncs - show subtle green indicator
   if (health.status === "healthy" && health.syncs.length > 0) {
     return (
-      <div className="mb-4 flex items-center gap-2 text-xs text-text-muted">
+      <div className="mt-6 flex items-center gap-2 text-xs text-text-muted">
         <CheckCircle className="w-3.5 h-3.5 text-status-good" />
         <span>All data syncs healthy</span>
         <span className="text-text-muted/60">
@@ -87,7 +87,7 @@ export function SyncHealthBanner() {
   // No syncs recorded yet
   if (health.syncs.length === 0) {
     return (
-      <div className="mb-4 px-4 py-2 bg-status-warning/10 border border-status-warning/30 rounded-lg flex items-center gap-2 text-sm">
+      <div className="mt-6 px-4 py-2 bg-status-warning/10 border border-status-warning/30 rounded-lg flex items-center gap-2 text-sm">
         <Clock className="w-4 h-4 text-status-warning flex-shrink-0" />
         <span className="text-status-warning">No sync history yet - data freshness unknown</span>
       </div>
@@ -118,7 +118,7 @@ export function SyncHealthBanner() {
   }
 
   return (
-    <div className={`mb-4 ${bgColor} border ${borderColor} rounded-lg overflow-hidden`}>
+    <div className={`mt-6 ${bgColor} border ${borderColor} rounded-lg overflow-hidden`}>
       {/* Main banner - always visible */}
       <button
         onClick={() => setExpanded(!expanded)}
