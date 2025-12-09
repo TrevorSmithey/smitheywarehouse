@@ -1036,8 +1036,15 @@ export async function GET(request: Request) {
       const grandDelta = grandTotal.actual - compGrandActual;
       const grandDeltaPct = compGrandActual > 0 ? (grandDelta / compGrandActual) * 100 : 0;
 
+      // Calculate comparison period days
+      const compStart = new Date(comparisonPeriod.start);
+      const compEnd = new Date(comparisonPeriod.end);
+      const compDaysInPeriod = Math.ceil((compEnd.getTime() - compStart.getTime() + 86400000) / 86400000);
+
       comparison = {
         periodLabel: comparisonPeriod.periodLabel,
+        daysInPeriod: compDaysInPeriod,
+        daysElapsed: compDaysInPeriod, // Comparison period is always complete
         categories: comparisonCategories,
         cookwareTotal: {
           ...cookwareTotal,
