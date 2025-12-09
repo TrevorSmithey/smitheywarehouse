@@ -210,9 +210,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Create product lookup map
+    // Create product lookup map (lowercase keys for case-insensitive matching)
     const productMap = new Map(
-      productsData?.map((p) => [p.sku, { displayName: p.display_name, category: p.category }]) || []
+      productsData?.map((p) => [p.sku.toLowerCase(), { displayName: p.display_name, category: p.category }]) || []
     );
 
     // Group inventory by SKU and pivot warehouses
@@ -253,7 +253,7 @@ export async function GET(request: Request) {
     let lastSynced: string | null = null;
 
     for (const [sku, inv] of skuInventory) {
-      const product = productMap.get(sku);
+      const product = productMap.get(sku.toLowerCase());
       const category = product?.category || "accessory";
       const displayName = product?.displayName || sku;
 
