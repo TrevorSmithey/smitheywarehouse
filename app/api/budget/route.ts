@@ -582,7 +582,10 @@ export async function GET(request: Request) {
       pace: Math.round(grandPace),
     };
 
-    const periodProgress = daysElapsed / daysInPeriod;
+    // Use the correctly calculated values from months array
+    // totalDaysInPeriod = sum of totalDays (e.g., 31 for MTD in Dec)
+    // daysElapsedInPeriod = sum of daysInRange (e.g., 8 for day 8 of Dec)
+    const periodProgress = periodProgressFactor;
 
     const response: BudgetResponse = {
       categories,
@@ -591,8 +594,8 @@ export async function GET(request: Request) {
       dateRange: range,
       periodLabel,
       periodProgress,
-      daysInPeriod,
-      daysElapsed,
+      daysInPeriod: totalDaysInPeriod,
+      daysElapsed: daysElapsedInPeriod,
     };
 
     return NextResponse.json(response);
