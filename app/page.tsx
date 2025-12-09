@@ -860,9 +860,10 @@ export default function Dashboard() {
                             boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
                           }}
                           labelStyle={{ color: "#94A3B8", marginBottom: "4px", fontWeight: 500 }}
+                          itemStyle={{ color: "#E2E8F0" }}
                           formatter={(value: number, name: string) => {
-                            if (name === "SmitheyPct") return [`${value}%`, "Smithey %"];
-                            return [formatNumber(value), name === "Smithey" ? "Smithey" : "Selery"];
+                            if (name === "SmitheyPct") return [<span key="v" style={{ color: "#F59E0B", fontWeight: 600 }}>{value}%</span>, "Smithey %"];
+                            return [<span key="v" style={{ color: name === "Smithey" ? "#0EA5E9" : "#8B5CF6", fontWeight: 600 }}>{formatNumber(value)}</span>, name === "Smithey" ? "Smithey" : "Selery"];
                           }}
                         />
                         <ReferenceLine yAxisId="right" y={50} stroke="#334155" strokeDasharray="3 3" />
@@ -1789,10 +1790,11 @@ function BacklogChart({
                 fontSize: "11px",
               }}
               labelStyle={{ color: "#94A3B8" }}
+              itemStyle={{ color: "#E2E8F0" }}
               formatter={(value: number, name: string) => {
-                if (name === "backlog") return [formatNumber(value), "Backlog"];
-                if (name === "created") return [formatNumber(value), "Created"];
-                if (name === "fulfilled") return [formatNumber(value), "Fulfilled"];
+                const colors: Record<string, string> = { backlog: "#DC2626", created: "#3B82F6", fulfilled: "#10B981" };
+                const labels: Record<string, string> = { backlog: "Backlog", created: "Created", fulfilled: "Fulfilled" };
+                if (name in colors) return [<span key="v" style={{ color: colors[name], fontWeight: 600 }}>{formatNumber(value)}</span>, labels[name]];
                 return [value, name];
               }}
             />
@@ -2044,7 +2046,8 @@ function WarehouseSplitChart({
                 fontSize: "12px",
               }}
               labelStyle={{ color: "#94A3B8" }}
-              formatter={(value: number, name: string) => [`${value}%`, name]}
+              itemStyle={{ color: "#E2E8F0" }}
+              formatter={(value: number, name: string) => [<span key="v" style={{ color: name === "Smithey" ? "#0EA5E9" : "#8B5CF6", fontWeight: 600 }}>{value}%</span>, name]}
             />
             <ReferenceLine y={50} stroke="#64748B" strokeDasharray="3 3" strokeOpacity={0.5} />
             <Line
@@ -3757,6 +3760,7 @@ function AssemblyDashboard({
                   padding: "10px 14px",
                 }}
                 labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 6 }}
+                itemStyle={{ color: "#E2E8F0" }}
                 formatter={(value: number, name: string) => {
                   if (name === "value") return [<span key="v" style={{ color: forge.glow, fontWeight: 600 }}>{fmt.number(value)}</span>, "Daily"];
                   if (name === "rollingAvg") return [<span key="a" style={{ color: "#FCD34D", fontWeight: 600 }}>{fmt.number(value)}</span>, "7-Day Avg"];
@@ -3800,6 +3804,9 @@ function AssemblyDashboard({
                         textAnchor="middle"
                         fill="#94A3B8"
                         fontSize={9}
+                        stroke="rgba(15, 23, 42, 0.8)"
+                        strokeWidth={2}
+                        paintOrder="stroke"
                       >
                         {value ? value.toLocaleString() : ''}
                       </text>
@@ -3863,6 +3870,7 @@ function AssemblyDashboard({
                     padding: "10px 14px",
                   }}
                   labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
+                  itemStyle={{ color: "#E2E8F0" }}
                   formatter={(value: number, name: string) => {
                     if (name === "total") return [
                       <span key="v" style={{ color: "#FCD34D", fontWeight: 600 }}>{fmt.number(value)}</span>,
@@ -3928,6 +3936,7 @@ function AssemblyDashboard({
                     padding: "10px 14px",
                   }}
                   labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
+                  itemStyle={{ color: "#E2E8F0" }}
                   formatter={(value: number, name: string) => {
                     if (name === "avg") return [
                       <span key="v" style={{ color: "#10B981", fontWeight: 600 }}>{fmt.number(value)}</span>,
