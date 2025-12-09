@@ -108,6 +108,9 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
   }
 
   // Upsert shipment tracking data
+  // Track failures for visibility - shipments are important for transit analytics
+  const shipmentErrors: Array<{ trackingNumber: string; error: string }> = [];
+
   if (order.fulfillments) {
     for (const fulfillment of order.fulfillments) {
       // Get tracking numbers (can be single or array)
@@ -129,11 +132,24 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
         );
 
         if (shipmentError) {
-          console.error("Error upserting shipment:", shipmentError);
-          // Don't throw - tracking is supplementary data
+          // Track error with context for debugging
+          shipmentErrors.push({
+            trackingNumber,
+            error: shipmentError.message || String(shipmentError),
+          });
         }
       }
     }
+  }
+
+  // Log shipment errors with full context (order + tracking info)
+  // These are visible in Vercel logs for debugging
+  if (shipmentErrors.length > 0) {
+    console.error(
+      `[SHIPMENT ERROR] Order ${order.name} (${order.id}): ` +
+      `Failed to upsert ${shipmentErrors.length} shipment(s): ` +
+      shipmentErrors.map(e => `${e.trackingNumber}: ${e.error}`).join("; ")
+    );
   }
 
   console.log(`Processed order ${order.name} (${order.id})`);

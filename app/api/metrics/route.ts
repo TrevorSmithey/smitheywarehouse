@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { QUERY_LIMITS, checkQueryLimit, safeArrayAccess } from "@/lib/constants";
 import type {
   MetricsResponse,
   WarehouseMetrics,
@@ -100,7 +101,10 @@ export async function GET(request: Request) {
       .from("line_items")
       .select("order_id, orders!inner(warehouse, fulfillment_status, canceled)")
       .ilike("sku", "%-Rest-%")
-      .limit(20000);
+      .limit(QUERY_LIMITS.RESTORATION_ITEMS);
+
+    // Check if we hit the limit (potential data truncation)
+    checkQueryLimit(restorationItems?.length || 0, QUERY_LIMITS.RESTORATION_ITEMS, "restoration_items");
 
     const restorationOrderIds = new Set(
       (restorationItems || []).map((item) => item.order_id)
@@ -344,9 +348,9 @@ export async function GET(request: Request) {
         .not("warehouse", "is", null)
         .not("fulfilled_at", "is", null)
         .order("fulfilled_at", { ascending: false })
-        .limit(50000),
+        .limit(QUERY_LIMITS.DAILY_FULFILLMENTS),
 
-      // Oldest unfulfilled orders for Smithey (get 100 so we can filter out restoration + excluded)
+      // Oldest unfulfilled orders for Smithey (get extra so we can filter out restoration + excluded)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
@@ -354,9 +358,9 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "smithey")
         .order("created_at", { ascending: true })
-        .limit(100),
+        .limit(QUERY_LIMITS.OLDEST_ORDERS_SMITHEY),
 
-      // Oldest unfulfilled orders for Selery (get 20 so we can filter out restoration)
+      // Oldest unfulfilled orders for Selery (get extra so we can filter out restoration)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
@@ -364,7 +368,7 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "selery")
         .order("created_at", { ascending: true })
-        .limit(20),
+        .limit(QUERY_LIMITS.OLDEST_ORDERS_SELERY),
 
       // SKUs in unfulfilled queue - get all line items from unfulfilled orders
       // Increased limit from 5000 to 100000 to capture all data
@@ -380,7 +384,7 @@ export async function GET(request: Request) {
         .is("orders.fulfillment_status", null)
         .eq("orders.canceled", false)
         .not("orders.warehouse", "is", null)
-        .limit(100000),
+        .limit(QUERY_LIMITS.SKU_QUEUE),
 
       // Stuck shipments - in transit with no scans for 3+ days
       supabase
@@ -397,7 +401,7 @@ export async function GET(request: Request) {
         .eq("status", "in_transit")
         .gte("days_without_scan", 1)
         .order("days_without_scan", { ascending: false })
-        .limit(100),
+        .limit(QUERY_LIMITS.STUCK_SHIPMENTS),
 
       // Transit time data for delivered shipments - fixed 30-day window
       // Uses transit30dStart to ensure sufficient data regardless of date selector
@@ -413,7 +417,7 @@ export async function GET(request: Request) {
         .not("transit_days", "is", null)
         .gte("delivered_at", transit30dStart.toISOString())
         .lte("delivered_at", now.toISOString())
-        .limit(10000),
+        .limit(QUERY_LIMITS.TRANSIT_DATA),
 
       // Daily orders - will be fetched separately with pagination
       Promise.resolve({ data: [] }),
@@ -428,7 +432,7 @@ export async function GET(request: Request) {
         .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
         .not("warehouse", "is", null)
-        .limit(50000),
+        .limit(QUERY_LIMITS.LEAD_TIME),
 
       // Engraving queue - line items with SKU 'Smith-Eng' or 'Smith-Eng2'
       // Filter for non-canceled orders; exclude fulfilled orders client-side
@@ -445,7 +449,7 @@ export async function GET(request: Request) {
         `)
         .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
-        .limit(50000),
+        .limit(QUERY_LIMITS.ENGRAVING_QUEUE),
 
       // Unfulfilled orders for aging analysis
       supabase
@@ -454,8 +458,16 @@ export async function GET(request: Request) {
         .is("fulfillment_status", null)
         .eq("canceled", false)
         .not("warehouse", "is", null)
-        .limit(10000),
+        .limit(QUERY_LIMITS.AGING_DATA),
     ]);
+
+    // Check all query limits for potential data truncation
+    checkQueryLimit(dailyResult.data?.length || 0, QUERY_LIMITS.DAILY_FULFILLMENTS, "daily_fulfillments");
+    checkQueryLimit(skuQueueResult.data?.length || 0, QUERY_LIMITS.SKU_QUEUE, "sku_queue");
+    checkQueryLimit(transitDataResult.data?.length || 0, QUERY_LIMITS.TRANSIT_DATA, "transit_data");
+    checkQueryLimit(leadTimeResult.data?.length || 0, QUERY_LIMITS.LEAD_TIME, "lead_time");
+    checkQueryLimit(engravingQueueResult.data?.length || 0, QUERY_LIMITS.ENGRAVING_QUEUE, "engraving_queue");
+    checkQueryLimit(agingDataResult.data?.length || 0, QUERY_LIMITS.AGING_DATA, "aging_data");
 
     // Build warehouse metrics from count queries
     const smitheyUnfulfilled = unfulfilledSmitheyCount.count || 0;
@@ -561,10 +573,11 @@ export async function GET(request: Request) {
     ];
     // Set oldest order for Smithey (filter out restoration orders and excluded orders)
     const excludedOrderNames = new Set(["S321703"]);
-    const oldestSmithey = (oldestSmitheyResult.data || [])
+    const filteredSmitheyOrders = (oldestSmitheyResult.data || [])
       .filter((o: { id: number; order_name: string }) =>
         !restorationOrderIds.has(o.id) && !excludedOrderNames.has(o.order_name)
-      )[0];
+      );
+    const oldestSmithey = safeArrayAccess(filteredSmitheyOrders, 0);
     if (oldestSmithey) {
       const smitheyHealth = queueHealth.find(h => h.warehouse === "smithey");
       if (smitheyHealth) {
@@ -575,8 +588,9 @@ export async function GET(request: Request) {
     }
 
     // Set oldest order for Selery (filter out restoration orders)
-    const oldestSelery = (oldestSeleryResult.data || [])
-      .filter((o: { id: number }) => !restorationOrderIds.has(o.id))[0];
+    const filteredSeleryOrders = (oldestSeleryResult.data || [])
+      .filter((o: { id: number }) => !restorationOrderIds.has(o.id));
+    const oldestSelery = safeArrayAccess(filteredSeleryOrders, 0);
     if (oldestSelery) {
       const seleryHealth = queueHealth.find(h => h.warehouse === "selery");
       if (seleryHealth) {

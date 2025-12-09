@@ -185,9 +185,23 @@ export async function GET(request: Request) {
     console.log("Starting B2B sync (orders sold)...");
     const startTime = Date.now();
 
-    // Sync last 7 days
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Sync last 7 days using EST timezone (Smithey is US-based)
+    // This ensures consistent window regardless of server location
+    const now = new Date();
+    const estFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const estParts = estFormatter.formatToParts(now);
+    const estYear = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+    const estMonth = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1;
+    const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
+
+    // Create date at midnight EST, then subtract 7 days
+    const todayEST = new Date(Date.UTC(estYear, estMonth, estDay, 5, 0, 0)); // 5 AM UTC = midnight EST
+    const sevenDaysAgo = new Date(todayEST.getTime() - 7 * 24 * 60 * 60 * 1000);
     const fromDate = sevenDaysAgo.toISOString();
 
     // Fetch orders
