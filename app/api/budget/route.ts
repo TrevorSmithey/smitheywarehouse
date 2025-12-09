@@ -368,10 +368,12 @@ export async function GET(request: Request) {
     const budgetConditions = months.map(m => `and(year.eq.${m.year},month.eq.${m.month})`);
 
     // Query budgets from Supabase
+    // Explicit limit to prevent silent truncation (default is 1000)
     const { data: budgetData, error: budgetError } = await supabase
       .from("budgets")
       .select("sku, year, month, budget")
-      .or(budgetConditions.join(","));
+      .or(budgetConditions.join(","))
+      .limit(5000);
 
     if (budgetError) {
       throw new Error(`Failed to fetch budgets: ${budgetError.message}`);
@@ -403,7 +405,7 @@ export async function GET(request: Request) {
     }
 
     // Query retail sales (line_items joined with orders)
-    // IMPORTANT: Supabase defaults to 1000 rows, we need more for accurate totals
+    // CRITICAL: DB has 415k+ line items, need high limit to avoid silent truncation
     const { data: retailData, error: retailError } = await supabase
       .from("line_items")
       .select(`
@@ -414,10 +416,15 @@ export async function GET(request: Request) {
       .gte("orders.created_at", start)
       .lte("orders.created_at", end)
       .eq("orders.canceled", false)
-      .limit(100000);
+      .limit(500000);
 
     if (retailError) {
       throw new Error(`Failed to fetch retail sales: ${retailError.message}`);
+    }
+
+    // Warn if we hit the limit (data truncation)
+    if (retailData && retailData.length >= 500000) {
+      console.warn(`BUDGET API WARNING: Retail data hit 500k limit - data may be truncated!`);
     }
 
     // Query B2B fulfilled
