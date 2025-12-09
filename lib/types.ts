@@ -415,6 +415,30 @@ export type BudgetDateRange = "mtd" | "2months" | "qtd" | "ytd" | "6months" | "c
 
 export type BudgetCategory = "accessories" | "carbon_steel" | "cast_iron" | "glass_lid";
 
+// Comparison period types
+export type CompareType = "previous_period" | "same_period_last_year" | "custom";
+
+export interface ComparisonTotals {
+  budget: number;
+  actual: number;
+  variance: number;
+  variancePct: number;
+  pace: number;
+  // Delta vs comparison period
+  delta: number;       // raw difference (current actual - comparison actual)
+  deltaPct: number;    // percentage change vs comparison ((current - comparison) / comparison * 100)
+}
+
+export interface BudgetSkuComparison {
+  displayName: string;
+  sku: string;
+  budget: number;
+  actual: number;
+  comparisonActual: number;
+  delta: number;
+  deltaPct: number;
+}
+
 export interface BudgetSkuRow {
   displayName: string;
   sku: string;
@@ -459,4 +483,20 @@ export interface BudgetResponse {
   periodProgress: number; // e.g., 8/31 = 0.26 (26% through month)
   daysInPeriod: number;
   daysElapsed: number;
+  // Comparison data (optional - only when compare mode is enabled)
+  comparison?: {
+    periodLabel: string;
+    daysInPeriod: number;
+    daysElapsed: number;
+    categories: BudgetCategoryComparison[];
+    cookwareTotal: ComparisonTotals;
+    grandTotal: ComparisonTotals;
+  };
+}
+
+export interface BudgetCategoryComparison {
+  category: BudgetCategory;
+  displayName: string;
+  skus: BudgetSkuComparison[];
+  totals: ComparisonTotals;
 }
