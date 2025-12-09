@@ -110,10 +110,7 @@ async function syncInventory() {
 
   console.log(`Prepared ${inventoryRecords.length} inventory records\n`);
 
-  // 4. Filter to only SKUs in official nomenclature
-  const knownSkus = [...new Set(inventoryRecords.map((r) => r.sku))]
-    .filter((sku) => getCanonicalSku(sku) !== null);
-
+  // 4. Filter to only SKUs in official nomenclature and normalize to canonical casing
   const unknownSkus = [...new Set(inventoryRecords.map((r) => r.sku))]
     .filter((sku) => getCanonicalSku(sku) === null);
 
@@ -123,8 +120,16 @@ async function syncInventory() {
     console.log("");
   }
 
-  // Filter inventory records to only known SKUs
-  inventoryRecords = inventoryRecords.filter((r) => getCanonicalSku(r.sku) !== null);
+  // Filter and normalize SKUs to canonical casing
+  // This ensures consistent casing in the database regardless of ShipHero's casing
+  inventoryRecords = inventoryRecords
+    .filter((r) => getCanonicalSku(r.sku) !== null)
+    .map((r) => ({
+      ...r,
+      sku: getCanonicalSku(r.sku)!, // Normalize to canonical casing
+    }));
+
+  const knownSkus = [...new Set(inventoryRecords.map((r) => r.sku))];
   console.log(`${inventoryRecords.length} inventory records after filtering\n`);
 
   // 5. Ensure products exist in products table
