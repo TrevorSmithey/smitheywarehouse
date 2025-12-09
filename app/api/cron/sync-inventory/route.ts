@@ -102,8 +102,14 @@ export async function GET(request: Request) {
       .select("sku")
       .in("sku", uniqueSkus);
 
-    const existingSkus = new Set(existingProducts?.map((p) => p.sku) || []);
-    const newSkus = uniqueSkus.filter((sku) => !existingSkus.has(sku));
+    // Use lowercase keys for case-insensitive matching
+    // This prevents duplicate products if ShipHero returns different casing
+    const existingSkus = new Set(
+      existingProducts?.map((p) => p.sku.toLowerCase()) || []
+    );
+    const newSkus = uniqueSkus.filter(
+      (sku) => !existingSkus.has(sku.toLowerCase())
+    );
 
     if (newSkus.length > 0) {
       const newProducts = newSkus.map((sku) => ({

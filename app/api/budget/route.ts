@@ -666,10 +666,12 @@ export async function GET(request: Request) {
 
     // Aggregate budgets by SKU (FULL month budgets - no pro-rating)
     // User wants to see progress against full month target, not prorated target
+    // Use lowercase keys for case-insensitive matching
     const budgetsBySku = new Map<string, number>();
     for (const row of budgetData || []) {
-      const current = budgetsBySku.get(row.sku) || 0;
-      budgetsBySku.set(row.sku, current + row.budget);
+      const skuLower = row.sku.toLowerCase();
+      const current = budgetsBySku.get(skuLower) || 0;
+      budgetsBySku.set(skuLower, current + row.budget);
     }
 
     // Get unique SKUs that have budgets
@@ -823,7 +825,7 @@ export async function GET(request: Request) {
 
       if (!category) continue;
 
-      const budget = budgetsBySku.get(sku) || 0;
+      const budget = budgetsBySku.get(sku.toLowerCase()) || 0;
       const actual = salesBySku.get(sku.toLowerCase()) || 0;
       const variance = actual - budget;
       const variancePct = budget > 0 ? (variance / budget) * 100 : 0;
