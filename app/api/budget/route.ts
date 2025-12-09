@@ -69,7 +69,7 @@ async function fetchB2BFromShopify(
 
   while (hasMore) {
     try {
-      const response = await fetch(
+      const response: Response = await fetch(
         `https://${SHOPIFY_B2B_URL}/admin/api/2024-10/graphql.json`,
         {
           method: "POST",
