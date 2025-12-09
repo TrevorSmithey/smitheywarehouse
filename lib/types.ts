@@ -47,6 +47,8 @@ export interface InventoryResponse {
   salesVelocity: {
     cast_iron: SkuSalesVelocity[];
     carbon_steel: SkuSalesVelocity[];
+    accessory: SkuSalesVelocity[];
+    glass_lid: SkuSalesVelocity[];
   };
   lastSynced: string | null;
 }

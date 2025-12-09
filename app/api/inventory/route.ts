@@ -147,31 +147,24 @@ export async function GET(request: Request) {
       monthlySalesBySku.set(skuLower, retail + b2b);
     }
 
-    // Query 3-day sales for sales velocity (cookware only) - using EST
-    // Get today's date in EST
+    // Query 3-day sales for sales velocity - EST complete days
+    // Uses 3 COMPLETE days: yesterday, day before, day before that
+    // Excludes today since it's incomplete
     const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
-    const todayESTDate = new Date(estYear, estMonth0, estDay);
 
-    // 3 days ago at EST midnight = UTC 5am
-    const threeDaysAgoEST = new Date(todayESTDate);
-    threeDaysAgoEST.setDate(threeDaysAgoEST.getDate() - 3);
-    const threeDayStart = new Date(Date.UTC(
-      threeDaysAgoEST.getFullYear(),
-      threeDaysAgoEST.getMonth(),
-      threeDaysAgoEST.getDate(),
-      5, 0, 0
-    )).toISOString();
+    // Build EST date strings directly (YYYY-MM-DD format)
+    // Today's date in EST
+    const todayEST = `${estYear}-${String(estMonth).padStart(2, '0')}-${String(estDay).padStart(2, '0')}`;
 
-    // 6 days ago at EST midnight for prior 3-day comparison
-    const sixDaysAgoEST = new Date(todayESTDate);
-    sixDaysAgoEST.setDate(sixDaysAgoEST.getDate() - 6);
-    const sixDayStart = new Date(Date.UTC(
-      sixDaysAgoEST.getFullYear(),
-      sixDaysAgoEST.getMonth(),
-      sixDaysAgoEST.getDate(),
-      5, 0, 0
-    )).toISOString();
+    // 3 days ago in EST
+    const threeDaysAgo = new Date(estYear, estMonth - 1, estDay - 3);
+    const threeDayStartEST = `${threeDaysAgo.getFullYear()}-${String(threeDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(threeDaysAgo.getDate()).padStart(2, '0')}`;
 
+    // 6 days ago in EST
+    const sixDaysAgo = new Date(estYear, estMonth - 1, estDay - 6);
+    const sixDayStartEST = `${sixDaysAgo.getFullYear()}-${String(sixDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sixDaysAgo.getDate()).padStart(2, '0')}`;
+
+    // Get orders from 3 complete EST days (excludes today)
     const { data: sales3DayData } = await supabase
       .from("line_items")
       .select(`
@@ -179,10 +172,12 @@ export async function GET(request: Request) {
         quantity,
         orders!inner(created_at, canceled)
       `)
-      .gte("orders.created_at", threeDayStart)
+      .gte("orders.created_at", threeDayStartEST)
+      .lt("orders.created_at", todayEST)
       .eq("orders.canceled", false)
       .limit(1000000);
 
+    // Prior 3 days for comparison (days 4-6 ago)
     const { data: salesPrior3DayData } = await supabase
       .from("line_items")
       .select(`
@@ -190,8 +185,8 @@ export async function GET(request: Request) {
         quantity,
         orders!inner(created_at, canceled)
       `)
-      .gte("orders.created_at", sixDayStart)
-      .lt("orders.created_at", threeDayStart)
+      .gte("orders.created_at", sixDayStartEST)
+      .lt("orders.created_at", threeDayStartEST)
       .eq("orders.canceled", false)
       .limit(1000000);
 
@@ -333,8 +328,8 @@ export async function GET(request: Request) {
       byCategory[item.category].push(item);
     }
 
-    // Build sales velocity data for cookware SKUs (3-day moving average)
-    const buildVelocity = (category: "cast_iron" | "carbon_steel"): SkuSalesVelocity[] => {
+    // Build sales velocity data for all SKUs (3-day moving average)
+    const buildVelocity = (category: "cast_iron" | "carbon_steel" | "accessory" | "glass_lid"): SkuSalesVelocity[] => {
       const velocityList: SkuSalesVelocity[] = [];
 
       // Get all products for this category
@@ -370,6 +365,8 @@ export async function GET(request: Request) {
     const salesVelocity = {
       cast_iron: buildVelocity("cast_iron"),
       carbon_steel: buildVelocity("carbon_steel"),
+      accessory: buildVelocity("accessory"),
+      glass_lid: buildVelocity("glass_lid"),
     };
 
     const response: InventoryResponse = {

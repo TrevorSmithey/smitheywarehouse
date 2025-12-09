@@ -203,7 +203,9 @@ export default function Dashboard() {
   // Inventory tab state
   const [inventory, setInventory] = useState<InventoryResponse | null>(null);
   const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [inventoryCategory, setInventoryCategory] = useState<InventoryCategoryTab>("cast_iron");
+  const [inventoryExpandedCategories, setInventoryExpandedCategories] = useState<Set<string>>(
+    new Set(["cast_iron", "carbon_steel", "accessory"]) // factory_second collapsed by default
+  );
 
   // Holiday tab state
   const [holidayData, setHolidayData] = useState<HolidayResponse | null>(null);
@@ -1000,8 +1002,15 @@ export default function Dashboard() {
         <InventoryDashboard
           inventory={inventory}
           loading={inventoryLoading}
-          category={inventoryCategory}
-          setCategory={setInventoryCategory}
+          expandedCategories={inventoryExpandedCategories}
+          onToggleCategory={(cat) => {
+            setInventoryExpandedCategories((prev) => {
+              const next = new Set(prev);
+              if (next.has(cat)) next.delete(cat);
+              else next.add(cat);
+              return next;
+            });
+          }}
           onRefresh={fetchInventory}
         />
       )}
@@ -2116,22 +2125,20 @@ function processChartData(daily: DailyFulfillment[], backlog: DailyBacklog[] = [
 }
 
 // Inventory Dashboard - See. Understand. Prioritize.
+// 4-table collapsible layout like Budget vs Actual
 function InventoryDashboard({
   inventory,
   loading,
-  category,
-  setCategory,
+  expandedCategories,
+  onToggleCategory,
   onRefresh,
 }: {
   inventory: InventoryResponse | null;
   loading: boolean;
-  category: InventoryCategoryTab;
-  setCategory: (cat: InventoryCategoryTab) => void;
+  expandedCategories: Set<string>;
+  onToggleCategory: (category: string) => void;
   onRefresh: () => void;
 }) {
-  const [sortBy, setSortBy] = useState<"total" | "pipefitter" | "hobson" | "selery" | "doi">("doi");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc"); // For DOI, "desc" = low-to-high (most urgent first)
-  const [healthFilter, setHealthFilter] = useState<"backorder" | "urgent" | "watch" | null>(null);
 
   // Download inventory as CSV
   const downloadCSV = () => {
@@ -2232,36 +2239,68 @@ function InventoryDashboard({
     URL.revokeObjectURL(url);
   };
 
-  // Get products for current category
-  const categoryProducts = category === "accessory"
-    ? [...(inventory?.byCategory.accessory || []), ...(inventory?.byCategory.glass_lid || [])]
-    : inventory?.byCategory[category] || [];
+  // Category config - factory seconds last, collapsed by default
+  const categoryConfig: {
+    key: InventoryCategoryTab;
+    label: string;
+    showDoi: boolean;
+    showVelocity: boolean;
+  }[] = [
+    { key: "cast_iron", label: "CAST IRON", showDoi: true, showVelocity: true },
+    { key: "carbon_steel", label: "CARBON STEEL", showDoi: true, showVelocity: true },
+    { key: "accessory", label: "ACCESSORIES", showDoi: true, showVelocity: true },
+    { key: "factory_second", label: "FACTORY SECONDS", showDoi: false, showVelocity: false },
+  ];
 
-  // Filter by health status if selected
-  const filteredProducts = healthFilter
-    ? categoryProducts.filter(p => {
-        if (healthFilter === "backorder") return p.isBackordered;
-        if (healthFilter === "urgent") return !p.isBackordered && p.doi !== undefined && p.doi < 7;
-        if (healthFilter === "watch") return !p.isBackordered && p.doi !== undefined && p.doi >= 7 && p.doi < 30;
-        return true;
-      })
-    : categoryProducts;
+  // Build velocity lookup for quick SKU access (store full data for tooltips)
+  const velocityBySku = new Map<string, { avg: number; total: number; prior: number }>();
+  if (inventory?.salesVelocity) {
+    const allVelocity = [
+      ...(inventory.salesVelocity.cast_iron || []),
+      ...(inventory.salesVelocity.carbon_steel || []),
+      ...(inventory.salesVelocity.accessory || []),
+      ...(inventory.salesVelocity.glass_lid || []),
+    ];
+    for (const item of allVelocity) {
+      velocityBySku.set(item.sku.toLowerCase(), {
+        avg: item.sales3DayAvg,
+        total: item.sales3DayTotal,
+        prior: item.prior3DayAvg
+      });
+    }
+  }
 
-  // Sort products (handle doi specially - backordered items go to top, then by DOI)
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    if (sortBy === "doi") {
-      // Backordered items get -1 (most urgent), undefined DOI goes to end with 9999
+  // Get products for a category, sorted by DOI ascending (lowest first = most urgent)
+  const getProductsForCategory = (cat: InventoryCategoryTab): ProductInventory[] => {
+    let products: ProductInventory[] = [];
+    if (cat === "accessory") {
+      products = [
+        ...(inventory?.byCategory.accessory || []),
+        ...(inventory?.byCategory.glass_lid || []),
+      ];
+    } else {
+      products = inventory?.byCategory[cat] || [];
+    }
+    // Sort by DOI ascending: backordered first (-1), then lowest DOI, then no DOI at end
+    return [...products].sort((a, b) => {
       const aVal = a.isBackordered ? -1 : (a.doi ?? 9999);
       const bVal = b.isBackordered ? -1 : (b.doi ?? 9999);
-      return sortDir === "desc" ? aVal - bVal : bVal - aVal;
-    }
-    const aVal = a[sortBy];
-    const bVal = b[sortBy];
-    return sortDir === "desc" ? bVal - aVal : aVal - bVal;
-  });
+      return aVal - bVal;
+    });
+  };
 
-  // Calculate totals (all products)
-  const totals = inventory?.totals || { pipefitter: 0, hobson: 0, selery: 0, total: 0 };
+  // Calculate totals for a category
+  const getCategoryTotals = (products: ProductInventory[]) => {
+    return products.reduce(
+      (acc, p) => ({
+        pipefitter: acc.pipefitter + p.pipefitter,
+        hobson: acc.hobson + p.hobson,
+        selery: acc.selery + p.selery,
+        total: acc.total + p.total,
+      }),
+      { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
+    );
+  };
 
   // Calculate cookware totals (cast iron + carbon steel only)
   const cookwareProducts = [
@@ -2293,73 +2332,25 @@ function InventoryDashboard({
     { backorder: 0, urgent: 0, critical: 0, watch: 0, healthy: 0, noForecast: 0, backorderItems: [] as string[], urgentItems: [] as string[], criticalItems: [] as string[] }
   );
 
-  // Check if DOI applies to current category
-  const showDoi = category !== "factory_second";
-
-  // Category config
-  const categoryLabels: Record<InventoryCategoryTab, string> = {
-    cast_iron: "CAST IRON",
-    carbon_steel: "CARBON STEEL",
-    accessory: "ACCESSORIES",
-    factory_second: "FACTORY SECOND",
+  // Get DOI status color
+  const getDoiColor = (product: ProductInventory): string => {
+    if (product.isBackordered) return "#F87171"; // red-400
+    if (product.doi === undefined) return "#6B7280"; // gray-500
+    if (product.doi < 7) return "#F87171"; // red-400
+    if (product.doi < 30) return "#F59E0B"; // amber-500
+    if (product.doi < 60) return "#FBBF24"; // yellow-400
+    return "#34D399"; // emerald-400
   };
 
-  // Calculate category totals for footer
-  const categoryTotals = sortedProducts.reduce(
-    (acc, p) => ({
-      pipefitter: acc.pipefitter + p.pipefitter,
-      hobson: acc.hobson + p.hobson,
-      selery: acc.selery + p.selery,
-      total: acc.total + p.total,
-    }),
-    { pipefitter: 0, hobson: 0, selery: 0, total: 0 }
-  );
-
-  // Calculate max values for heat map intensity (per column)
-  const maxValues = {
-    pipefitter: Math.max(...sortedProducts.map(p => p.pipefitter), 1),
-    hobson: Math.max(...sortedProducts.map(p => p.hobson), 1),
-    selery: Math.max(...sortedProducts.map(p => p.selery), 1),
-    total: Math.max(...sortedProducts.map(p => p.total), 1),
-  };
-
-  // Get intensity (0-1) for heat map coloring
-  const getIntensity = (value: number, max: number): number => {
-    if (value === 0) return 0;
-    // Use sqrt for more gradual gradient (not linear)
-    return Math.sqrt(value / max);
-  };
-
-  // Color configs for each warehouse (using consistent palette)
-  const warehouseColors = {
-    pipefitter: { r: 59, g: 130, b: 246 },  // blue-500
-    hobson: { r: 245, g: 158, b: 11 },      // amber-500
-    selery: { r: 34, g: 197, b: 94 },       // green-500
-  };
-
-  // Get background style with color intensity
-  const getCellStyle = (value: number, warehouse: "pipefitter" | "hobson" | "selery") => {
-    const intensity = getIntensity(value, maxValues[warehouse]);
-    const color = warehouseColors[warehouse];
-    // Background opacity scales from 0 to 0.25 based on intensity
-    const bgOpacity = intensity * 0.25;
-    return {
-      backgroundColor: `rgba(${color.r}, ${color.g}, ${color.b}, ${bgOpacity})`,
-    };
-  };
-
-  const handleSort = (col: typeof sortBy) => {
-    if (sortBy === col) {
-      setSortDir(d => d === "desc" ? "asc" : "desc");
-    } else {
-      setSortBy(col);
-      setSortDir("desc");
-    }
-  };
-
-  const SortIcon = ({ col }: { col: typeof sortBy }) => {
-    if (sortBy !== col) return null;
-    return <span className="ml-1 opacity-60">{sortDir === "desc" ? "↓" : "↑"}</span>;
+  // Get status label based on lowest DOI in category
+  const getCategoryStatus = (products: ProductInventory[]): { label: string; color: string } => {
+    const hasBackorder = products.some(p => p.isBackordered);
+    if (hasBackorder) return { label: "BACKORDER", color: "#F87171" };
+    const lowestDoi = Math.min(...products.filter(p => p.doi !== undefined).map(p => p.doi!), 9999);
+    if (lowestDoi < 7) return { label: "URGENT", color: "#F87171" };
+    if (lowestDoi < 30) return { label: "WATCH", color: "#F59E0B" };
+    if (lowestDoi < 60) return { label: "OK", color: "#FBBF24" };
+    return { label: "HEALTHY", color: "#34D399" };
   };
 
   // Loading state with branded spinner
@@ -2381,28 +2372,46 @@ function InventoryDashboard({
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Category Tabs + Health Status */}
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header with Health Status + Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        {/* Category Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto">
-          {(["cast_iron", "carbon_steel", "accessory", "factory_second"] as InventoryCategoryTab[]).map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
-                category === cat
-                  ? "bg-accent-blue text-white shadow-lg shadow-accent-blue/20"
-                  : "text-text-secondary hover:text-text-primary hover:bg-bg-secondary"
-              }`}
-            >
-              {categoryLabels[cat]}
-            </button>
-          ))}
+        {/* Health Summary */}
+        <div className="flex items-center gap-2 bg-bg-secondary rounded-xl px-3 py-2 border border-border/30">
+          {doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
+            <>
+              {doiHealth.backorder > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-1">
+                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
+                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">BACKORDER</span>
+                </div>
+              )}
+              {doiHealth.urgent > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-1">
+                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
+                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">URGENT</span>
+                </div>
+              )}
+              {doiHealth.critical > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-1">
+                  <span className="text-sm font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
+                  <span className="text-[10px] text-amber-400/80 font-semibold tracking-wide">WATCH</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs text-emerald-400 font-semibold">All Healthy</span>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
           <button
             onClick={onRefresh}
             aria-label="Refresh inventory"
-            className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ml-2"
+            className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
           >
             <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -2415,457 +2424,229 @@ function InventoryDashboard({
             <Download className="w-4 h-4 text-text-tertiary" />
           </button>
         </div>
-
-        {/* Inventory Health - Compact horizontal status bar */}
-        <div className="flex items-center gap-2 bg-bg-secondary/50 rounded-lg px-3 py-1.5 border border-border/30">
-          {doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
-            <>
-              {doiHealth.backorder > 0 && (
-                <button
-                  onClick={() => setHealthFilter(healthFilter === "backorder" ? null : "backorder")}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
-                    healthFilter === "backorder"
-                      ? "bg-red-500/30 ring-1 ring-red-500/50"
-                      : "hover:bg-red-500/10"
-                  }`}
-                >
-                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
-                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">BACKORDER</span>
-                </button>
-              )}
-              {doiHealth.urgent > 0 && (
-                <button
-                  onClick={() => setHealthFilter(healthFilter === "urgent" ? null : "urgent")}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
-                    healthFilter === "urgent"
-                      ? "bg-red-500/30 ring-1 ring-red-500/50"
-                      : "hover:bg-red-500/10"
-                  }`}
-                >
-                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
-                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">URGENT</span>
-                </button>
-              )}
-              {doiHealth.critical > 0 && (
-                <button
-                  onClick={() => setHealthFilter(healthFilter === "watch" ? null : "watch")}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ${
-                    healthFilter === "watch"
-                      ? "bg-amber-500/30 ring-1 ring-amber-500/50"
-                      : "hover:bg-amber-500/10"
-                  }`}
-                >
-                  <span className="text-sm font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
-                  <span className="text-[10px] text-amber-400/80 font-semibold tracking-wide">WATCH</span>
-                </button>
-              )}
-              {healthFilter && (
-                <button
-                  onClick={() => setHealthFilter(null)}
-                  className="text-text-muted hover:text-text-primary text-[10px] ml-1 px-1.5 py-0.5 rounded hover:bg-white/5"
-                >
-                  ✕
-                </button>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-2 px-2 py-1">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs text-emerald-400 font-semibold">All Healthy</span>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* Inventory Table with Heat Map */}
-      <div className="bg-bg-secondary rounded-xl border border-border/50 overflow-hidden">
-        <div className="max-h-[520px] overflow-y-auto custom-scrollbar">
-          <table className="w-full">
-            <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-border">
-              <tr>
-                <th className="text-left px-5 py-3 text-xs text-text-tertiary font-medium tracking-wide w-[180px]">
-                  PRODUCT
-                </th>
-                <th
-                  onClick={() => handleSort("hobson")}
-                  className="text-right px-4 py-3 text-xs text-amber-400 font-medium cursor-pointer select-none tracking-wide"
-                >
-                  HOBSON<SortIcon col="hobson" />
-                </th>
-                <th
-                  onClick={() => handleSort("selery")}
-                  className="text-right px-4 py-3 text-xs text-green-400 font-medium cursor-pointer select-none tracking-wide"
-                >
-                  SELERY<SortIcon col="selery" />
-                </th>
-                <th
-                  onClick={() => handleSort("pipefitter")}
-                  className="text-right px-4 py-3 text-xs text-blue-400 font-medium cursor-pointer select-none tracking-wide"
-                >
-                  PIPEFITTER<SortIcon col="pipefitter" />
-                </th>
-                <th
-                  onClick={() => handleSort("total")}
-                  className={`text-right py-3 text-sm text-white font-semibold cursor-pointer select-none tracking-wide ${showDoi ? "px-4" : "px-5"}`}
-                >
-                  TOTAL<SortIcon col="total" />
-                </th>
-                {showDoi && (
-                  <th
-                    onClick={() => handleSort("doi")}
-                    className="text-right px-5 py-3 text-xs text-purple-400 font-medium cursor-pointer select-none tracking-wide"
-                  >
-                    DOI<SortIcon col="doi" />
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={showDoi ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-sm">
-                    Loading...
-                  </td>
-                </tr>
-              ) : sortedProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={showDoi ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-sm">
-                    No products in this category
-                  </td>
-                </tr>
-              ) : (
-                <>
-                  {sortedProducts.map((product) => {
-                    return (
-                      <tr
-                        key={product.sku}
-                        className="border-b border-border/30 group cursor-default"
-                        title={product.monthBudget
-                          ? `${product.displayName}\nDec Budget: ${product.monthBudget?.toLocaleString()} | Sold: ${product.monthSold?.toLocaleString()} (${product.monthPct}%)`
-                          : product.displayName}
-                      >
-                        <td className="px-5 py-2.5">
-                          <span className={`text-base font-medium ${
-                            product.isBackordered
-                              ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
-                              : product.doi !== undefined && product.doi < 7
-                              ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
-                              : "text-text-primary"
-                          }`}>{product.displayName}</span>
-                          {product.monthBudget && (
-                            <div className="text-xs mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <span className="text-text-muted">Budget:</span>
-                              <span className="text-text-secondary ml-1">{product.monthBudget?.toLocaleString()}</span>
-                              <span className="text-text-muted ml-2">Sold:</span>
-                              <span className={`ml-1 ${
-                                (product.monthPct || 0) >= 100 ? "text-status-good" :
-                                (product.monthPct || 0) >= 75 ? "text-status-warning" :
-                                "text-status-bad"
-                              }`}>
-                                {product.monthSold?.toLocaleString()} ({product.monthPct}%)
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          className="text-right px-4 py-2.5 tabular-nums"
-                          style={getCellStyle(product.hobson, "hobson")}
-                        >
-                          <span className={`text-base font-medium ${
-                            product.hobson < 0
-                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
-                              : product.hobson > 0
-                              ? "text-text-primary"
-                              : "text-text-muted/50"
-                          }`}>
-                            {formatNumber(product.hobson)}
-                          </span>
-                        </td>
-                        <td
-                          className="text-right px-4 py-2.5 tabular-nums"
-                          style={getCellStyle(product.selery, "selery")}
-                        >
-                          <span className={`text-base font-medium ${
-                            product.selery < 0
-                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
-                              : product.selery > 0
-                              ? "text-text-primary"
-                              : "text-text-muted/50"
-                          }`}>
-                            {formatNumber(product.selery)}
-                          </span>
-                        </td>
-                        <td
-                          className="text-right px-4 py-2.5 tabular-nums"
-                          style={getCellStyle(product.pipefitter, "pipefitter")}
-                        >
-                          <span className={`text-base font-medium ${
-                            product.pipefitter < 0
-                              ? "text-red-400 bg-red-500/20 px-1.5 rounded font-bold"
-                              : product.pipefitter > 0
-                              ? "text-text-primary"
-                              : "text-text-muted/50"
-                          }`}>
-                            {formatNumber(product.pipefitter)}
-                          </span>
-                        </td>
-                        <td className={`text-right py-2.5 tabular-nums ${showDoi ? "px-4" : "px-5"}`}>
-                          <span className={`text-lg font-bold ${product.isBackordered ? "text-red-400 bg-red-500/20 px-1.5 rounded" : "text-white"}`}>
-                            {formatNumber(product.total)}
-                          </span>
-                        </td>
-                        {showDoi && (
-                          <td className="text-right px-5 py-2.5 tabular-nums">
-                            {product.isBackordered ? (
-                              <span className="text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold text-sm uppercase">
-                                Backorder
-                              </span>
-                            ) : product.doi !== undefined ? (
-                              <span
-                                className={`text-base font-medium cursor-help ${
-                                  product.doi < 7
-                                    ? "text-red-400 bg-red-500/20 px-2 py-0.5 rounded font-bold"
-                                    : product.doi < 30
-                                    ? "text-status-bad"
-                                    : product.doi < 60
-                                    ? "text-status-warning"
-                                    : "text-status-good"
-                                }`}
-                                title={product.stockoutWeek && product.stockoutYear
-                                  ? `Stockout: Week ${product.stockoutWeek}, ${product.stockoutYear}`
-                                  : undefined}
-                              >
-                                ~{product.doi}d
-                              </span>
-                            ) : (
-                              <span className="text-text-muted/50">—</span>
-                            )}
-                          </td>
+      {/* Category Cards - Full width for readable headings */}
+      <div className="space-y-4">
+        {categoryConfig.map((cat) => {
+          const products = getProductsForCategory(cat.key);
+          const totals = getCategoryTotals(products);
+          const isExpanded = expandedCategories.has(cat.key);
+          const status = cat.showDoi ? getCategoryStatus(products) : { label: "N/A", color: "#6B7280" };
+
+          return (
+            <div key={cat.key} className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+              {/* Collapsible Header - Category is hero */}
+              <button
+                onClick={() => onToggleCategory(cat.key)}
+                className="w-full text-left hover:bg-bg-tertiary/30 transition-colors"
+              >
+                <div className="px-4 py-3 flex items-center justify-between">
+                  {/* Left: Category name as hero */}
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm transition-transform text-text-muted ${isExpanded ? "rotate-90" : ""}`}>
+                      ▶
+                    </span>
+                    <span className="text-base font-bold uppercase tracking-wide text-text-primary">
+                      {cat.label}
+                    </span>
+                    <span className="text-sm text-text-tertiary">({products.length})</span>
+                  </div>
+
+                  {/* Right: Warehouse totals */}
+                  <div className="text-sm tabular-nums flex items-center gap-1">
+                    <span className="text-amber-400">{formatNumber(totals.hobson)}</span>
+                    <span className="text-text-muted/50">/</span>
+                    <span className="text-green-400">{formatNumber(totals.selery)}</span>
+                    <span className="text-text-muted/50">/</span>
+                    <span className="text-blue-400">{formatNumber(totals.pipefitter)}</span>
+                    <span className="text-text-muted/50 mx-1">=</span>
+                    <span className="text-text-primary font-bold">{formatNumber(totals.total)}</span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Expanded Table */}
+              {isExpanded && (
+                <div className="border-t border-border">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      <col className="w-[22%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      {cat.showDoi && <col className="w-[13%]" />}
+                      {cat.showVelocity && <col className="w-[13%]" />}
+                    </colgroup>
+                    <thead>
+                      <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
+                        <th className="text-left py-2.5 px-3 font-medium">Product</th>
+                        <th className="text-right py-2.5 px-4 font-medium text-amber-400">Hobson</th>
+                        <th className="text-right py-2.5 px-4 font-medium text-green-400">Selery</th>
+                        <th className="text-right py-2.5 px-4 font-medium text-blue-400">Pipefitter</th>
+                        <th className="text-right py-2.5 px-4 font-medium">Total</th>
+                        {cat.showDoi && (
+                          <th className="text-right py-2.5 px-4 font-medium text-purple-400">DOI</th>
+                        )}
+                        {cat.showVelocity && (
+                          <th className="text-right py-2.5 px-4 font-medium text-cyan-400">Vel</th>
                         )}
                       </tr>
-                    );
-                  })}
-                  {/* Category Total */}
-                  <tr className="bg-bg-tertiary sticky bottom-0 border-t-2 border-border">
-                    <td className="px-5 py-4 text-base text-text-primary font-bold">
-                      {categoryLabels[category]} TOTAL
-                    </td>
-                    <td className="text-right px-4 py-4 text-lg text-amber-400 font-bold tabular-nums">
-                      {formatNumber(categoryTotals.hobson)}
-                    </td>
-                    <td className="text-right px-4 py-4 text-lg text-green-400 font-bold tabular-nums">
-                      {formatNumber(categoryTotals.selery)}
-                    </td>
-                    <td className="text-right px-4 py-4 text-lg text-blue-400 font-bold tabular-nums">
-                      {formatNumber(categoryTotals.pipefitter)}
-                    </td>
-                    <td className={`text-right py-4 text-lg text-text-primary font-bold tabular-nums ${showDoi ? "px-4" : "px-5"}`}>
-                      {formatNumber(categoryTotals.total)}
-                    </td>
-                    {showDoi && (
-                      <td className="text-right px-5 py-4">
-                        {/* DOI column - no aggregate */}
-                      </td>
-                    )}
-                  </tr>
-                </>
+                    </thead>
+                    <tbody>
+                      {products.map((product, idx) => {
+                        const doiColor = getDoiColor(product);
+                        const velocity = velocityBySku.get(product.sku.toLowerCase());
+                        const isNegative = product.total < 0;
+                        // Build tooltip with budget % and velocity
+                        const tooltipParts: string[] = [];
+                        if (product.monthPct !== undefined) {
+                          tooltipParts.push(`MTD: ${product.monthSold}/${product.monthBudget} (${product.monthPct}%)`);
+                        }
+                        if (velocity) {
+                          tooltipParts.push(`Velocity: ${velocity.avg}/day (${velocity.total} last 3d)`);
+                        }
+                        if (product.stockoutWeek && product.stockoutYear) {
+                          tooltipParts.push(`Stockout: Wk ${product.stockoutWeek}, ${product.stockoutYear}`);
+                        }
+                        const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
+
+                        return (
+                          <tr
+                            key={product.sku}
+                            className={`border-b border-border/20 hover:bg-bg-tertiary/40 transition-colors ${
+                              isNegative ? "bg-red-500/10" : idx % 2 === 1 ? "bg-bg-tertiary/10" : ""
+                            }`}
+                          >
+                            <td className="py-3 px-3" title={tooltip}>
+                              <div className="flex items-center gap-2">
+                                {cat.showDoi && (
+                                  <div
+                                    className="w-2 h-2 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: doiColor }}
+                                  />
+                                )}
+                                <span className={`text-sm font-medium truncate ${isNegative ? "text-red-400" : "text-text-primary"}`}>
+                                  {product.displayName}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
+                              product.hobson < 0 ? "text-red-400" : "text-amber-400"
+                            }`}>
+                              {formatNumber(product.hobson)}
+                            </td>
+                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
+                              product.selery < 0 ? "text-red-400" : "text-green-400"
+                            }`}>
+                              {formatNumber(product.selery)}
+                            </td>
+                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
+                              product.pipefitter < 0 ? "text-red-400" : "text-blue-400"
+                            }`}>
+                              {formatNumber(product.pipefitter)}
+                            </td>
+                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-bold ${
+                              isNegative ? "text-red-400" : "text-text-primary"
+                            }`}>
+                              {formatNumber(product.total)}
+                            </td>
+                            {cat.showDoi && (
+                              <td className="py-3 px-4 text-right">
+                                {product.isBackordered ? (
+                                  <span className="text-sm font-bold text-red-400 uppercase">
+                                    BACKORDER
+                                  </span>
+                                ) : product.doi !== undefined ? (
+                                  <span
+                                    className="inline-block text-sm font-bold tabular-nums px-2 py-0.5 rounded"
+                                    style={{ backgroundColor: `${doiColor}20`, color: doiColor }}
+                                  >
+                                    {product.doi}d
+                                  </span>
+                                ) : (
+                                  <span className="text-text-muted/50">—</span>
+                                )}
+                              </td>
+                            )}
+                            {cat.showVelocity && (
+                              <td className="py-3 px-4 text-right">
+                                {velocity ? (
+                                  <span className={`text-sm font-bold tabular-nums ${
+                                    velocity.avg >= 10 ? "text-emerald-400" :
+                                    velocity.avg >= 5 ? "text-cyan-400" :
+                                    velocity.avg > 0 ? "text-text-secondary" :
+                                    "text-text-muted"
+                                  }`}>
+                                    {velocity.avg}/d
+                                  </span>
+                                ) : (
+                                  <span className="text-text-muted/50">—</span>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border bg-bg-tertiary/40">
+                        <td className="py-3 px-3 text-sm font-bold text-text-primary">TOTAL</td>
+                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-amber-400">
+                          {formatNumber(totals.hobson)}
+                        </td>
+                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-green-400">
+                          {formatNumber(totals.selery)}
+                        </td>
+                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-blue-400">
+                          {formatNumber(totals.pipefitter)}
+                        </td>
+                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">
+                          {formatNumber(totals.total)}
+                        </td>
+                        {cat.showDoi && <td className="py-3 px-4" />}
+                        {cat.showVelocity && <td className="py-3 px-4" />}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Daily Velocity Section - Cookware Only */}
-      {inventory?.salesVelocity && (
-        <div className="mt-8 bg-bg-secondary rounded-xl border border-border/50 p-5 sm:p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.2em]">
-              DAILY VELOCITY
-            </h3>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] text-text-muted tracking-wide">3-day avg vs prior 3 days</span>
-              <button
-                onClick={downloadVelocityCSV}
-                aria-label="Download velocity CSV"
-                className="p-1.5 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
-              >
-                <Download className="w-3.5 h-3.5 text-text-tertiary" />
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Cast Iron */}
-            <div className="bg-bg-tertiary/30 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                  Cast Iron
-                </div>
-                <div className="text-xs text-text-muted tabular-nums">
-                  {formatNumber(inventory.salesVelocity.cast_iron.reduce((sum, i) => sum + i.sales3DayAvg, 0))}/day total
-                </div>
-              </div>
-              <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
-                {inventory.salesVelocity.cast_iron.map((item) => {
-                  const maxVelocity = Math.max(...inventory.salesVelocity.cast_iron.map(i => i.sales3DayAvg), 1);
-                  const barWidth = (item.sales3DayAvg / maxVelocity) * 100;
-                  return (
-                    <div
-                      key={item.sku}
-                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all cursor-default"
-                    >
-                      {/* Background bar */}
-                      <div
-                        className="absolute left-0 top-0 bottom-0 rounded-lg opacity-[0.08] transition-all group-hover:opacity-[0.12]"
-                        style={{
-                          width: `${barWidth}%`,
-                          background: item.sales3DayAvg >= 10
-                            ? "linear-gradient(90deg, #10B981, #059669)"
-                            : item.sales3DayAvg >= 5
-                            ? "linear-gradient(90deg, #0EA5E9, #0284C7)"
-                            : "linear-gradient(90deg, #64748B, #475569)",
-                        }}
-                      />
-                      <span className="relative text-sm text-text-primary font-medium">{item.displayName}</span>
-                      <div className="relative flex items-center gap-2">
-                        {item.delta !== 0 && (
-                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            item.delta > 0
-                              ? "bg-emerald-500/20 text-emerald-400"
-                              : "bg-red-500/20 text-red-400"
-                          }`}>
-                            {item.delta > 0 ? "↑" : "↓"}
-                          </span>
-                        )}
-                        <span className={`text-sm font-bold tabular-nums min-w-[28px] text-right ${
-                          item.sales3DayAvg >= 10 ? "text-emerald-400" :
-                          item.sales3DayAvg >= 5 ? "text-text-primary" :
-                          item.sales3DayAvg > 0 ? "text-text-secondary" :
-                          "text-text-muted"
-                        }`}>
-                          {item.sales3DayAvg}
-                        </span>
-                      </div>
-                      {/* Hover tooltip */}
-                      <div className="absolute right-0 top-full mt-1 z-20 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-                        <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg min-w-[180px]">
-                          <div className="text-[10px] text-text-muted uppercase tracking-wide mb-2">{item.displayName}</div>
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between">
-                              <span className="text-xs text-text-tertiary">3-day total</span>
-                              <span className="text-xs text-text-primary font-medium tabular-nums">{formatNumber(item.sales3DayTotal)} units</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-text-tertiary">Prior avg</span>
-                              <span className="text-xs text-text-secondary tabular-nums">{item.prior3DayAvg}/day</span>
-                            </div>
-                            {item.delta !== 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-xs text-text-tertiary">Change</span>
-                                <span className={`text-xs font-semibold tabular-nums ${
-                                  item.delta > 0 ? "text-emerald-400" : "text-red-400"
-                                }`}>
-                                  {item.delta > 0 ? "+" : ""}{item.delta}%
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Carbon Steel */}
-            <div className="bg-bg-tertiary/30 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                  Carbon Steel
-                </div>
-                <div className="text-xs text-text-muted tabular-nums">
-                  {formatNumber(inventory.salesVelocity.carbon_steel.reduce((sum, i) => sum + i.sales3DayAvg, 0))}/day total
-                </div>
-              </div>
-              <div className="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar pr-1">
-                {inventory.salesVelocity.carbon_steel.map((item) => {
-                  const maxVelocity = Math.max(...inventory.salesVelocity.carbon_steel.map(i => i.sales3DayAvg), 1);
-                  const barWidth = (item.sales3DayAvg / maxVelocity) * 100;
-                  return (
-                    <div
-                      key={item.sku}
-                      className="group relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/[0.03] transition-all cursor-default"
-                    >
-                      {/* Background bar */}
-                      <div
-                        className="absolute left-0 top-0 bottom-0 rounded-lg opacity-[0.08] transition-all group-hover:opacity-[0.12]"
-                        style={{
-                          width: `${barWidth}%`,
-                          background: item.sales3DayAvg >= 10
-                            ? "linear-gradient(90deg, #10B981, #059669)"
-                            : item.sales3DayAvg >= 5
-                            ? "linear-gradient(90deg, #0EA5E9, #0284C7)"
-                            : "linear-gradient(90deg, #64748B, #475569)",
-                        }}
-                      />
-                      <span className="relative text-sm text-text-primary font-medium">{item.displayName}</span>
-                      <div className="relative flex items-center gap-2">
-                        {item.delta !== 0 && (
-                          <span className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            item.delta > 0
-                              ? "bg-emerald-500/20 text-emerald-400"
-                              : "bg-red-500/20 text-red-400"
-                          }`}>
-                            {item.delta > 0 ? "↑" : "↓"}
-                          </span>
-                        )}
-                        <span className={`text-sm font-bold tabular-nums min-w-[28px] text-right ${
-                          item.sales3DayAvg >= 10 ? "text-emerald-400" :
-                          item.sales3DayAvg >= 5 ? "text-text-primary" :
-                          item.sales3DayAvg > 0 ? "text-text-secondary" :
-                          "text-text-muted"
-                        }`}>
-                          {item.sales3DayAvg}
-                        </span>
-                      </div>
-                      {/* Hover tooltip */}
-                      <div className="absolute right-0 top-full mt-1 z-20 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-                        <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg min-w-[180px]">
-                          <div className="text-[10px] text-text-muted uppercase tracking-wide mb-2">{item.displayName}</div>
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between">
-                              <span className="text-xs text-text-tertiary">3-day total</span>
-                              <span className="text-xs text-text-primary font-medium tabular-nums">{formatNumber(item.sales3DayTotal)} units</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-text-tertiary">Prior avg</span>
-                              <span className="text-xs text-text-secondary tabular-nums">{item.prior3DayAvg}/day</span>
-                            </div>
-                            {item.delta !== 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-xs text-text-tertiary">Change</span>
-                                <span className={`text-xs font-semibold tabular-nums ${
-                                  item.delta > 0 ? "text-emerald-400" : "text-red-400"
-                                }`}>
-                                  {item.delta > 0 ? "+" : ""}{item.delta}%
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+      {/* Legend */}
+      <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] text-text-muted">
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-text-secondary">DOI:</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-400" />
+            <span>&lt;7d Urgent</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span>&lt;30d Watch</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-yellow-400" />
+            <span>&lt;60d OK</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span>60d+ Healthy</span>
+          </span>
         </div>
-      )}
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-text-secondary">Vel:</span>
+          <span>3-day avg sales/day</span>
+        </div>
+      </div>
 
       {/* Last synced */}
       {inventory?.lastSynced && (
-        <div className="mt-3 text-xs text-text-muted text-right">
+        <div className="mt-2 text-xs text-text-muted text-right">
           Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
         </div>
       )}
