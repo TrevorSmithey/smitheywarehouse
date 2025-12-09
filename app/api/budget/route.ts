@@ -377,22 +377,12 @@ export async function GET(request: Request) {
       throw new Error(`Failed to fetch budgets: ${budgetError.message}`);
     }
 
-    // Build month lookup for pro-rating (year-month -> pro-rate factor)
-    const monthProRate = new Map<string, number>();
-    for (const m of months) {
-      const key = `${m.year}-${m.month}`;
-      // Pro-rate = daysInRange / totalDays (e.g., 15/30 = 0.5 for half a month)
-      monthProRate.set(key, m.daysInRange / m.totalDays);
-    }
-
-    // Aggregate budgets by SKU with pro-rating
+    // Aggregate budgets by SKU (FULL month budgets - no pro-rating)
+    // User wants to see progress against full month target, not prorated target
     const budgetsBySku = new Map<string, number>();
     for (const row of budgetData || []) {
-      const key = `${row.year}-${row.month}`;
-      const proRate = monthProRate.get(key) || 1;
-      const proratedBudget = Math.round(row.budget * proRate);
       const current = budgetsBySku.get(row.sku) || 0;
-      budgetsBySku.set(row.sku, current + proratedBudget);
+      budgetsBySku.set(row.sku, current + row.budget);
     }
 
     // Get unique SKUs that have budgets
