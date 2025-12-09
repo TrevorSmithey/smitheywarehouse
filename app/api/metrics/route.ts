@@ -76,11 +76,18 @@ export async function GET(request: Request) {
     const prevRangeStart = new Date(prevRangeEnd.getTime() - rangeDuration);
 
     // Use EST/EDT for "today" calculations (Smithey is US-based)
-    // EST = UTC - 5 hours, so subtract 5 hours from UTC to get EST time
-    const estTime = new Date(now.getTime() - 5 * 60 * 60 * 1000);
-    const todayEST = estTime.toISOString().split("T")[0];
-    // Convert EST midnight to UTC for database queries
-    const todayStartUTC = new Date(`${todayEST}T05:00:00.000Z`); // EST midnight = UTC 5am
+    // Proper timezone handling that accounts for DST
+    const estFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const estParts = estFormatter.formatToParts(now);
+    const estYear = estParts.find(p => p.type === "year")?.value || "2025";
+    const estMonth = estParts.find(p => p.type === "month")?.value || "01";
+    const estDay = estParts.find(p => p.type === "day")?.value || "01";
+    const todayEST = `${estYear}-${estMonth}-${estDay}`;
 
     // Fixed 30-day window for transit time data (independent of date selector)
     // This ensures the map always has sufficient data to populate all states
@@ -690,11 +697,20 @@ function processDailyFulfillments(
 }
 
 // Convert UTC timestamp to EST date string (YYYY-MM-DD)
+// Uses Intl.DateTimeFormat to properly handle DST
 function utcToEstDate(utcTimestamp: string): string {
   const date = new Date(utcTimestamp);
-  // EST is UTC-5 (ignoring DST for simplicity - within 1 hour)
-  const estDate = new Date(date.getTime() - 5 * 60 * 60 * 1000);
-  return estDate.toISOString().split("T")[0];
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find(p => p.type === "year")?.value || "2025";
+  const month = parts.find(p => p.type === "month")?.value || "01";
+  const day = parts.find(p => p.type === "day")?.value || "01";
+  return `${year}-${month}-${day}`;
 }
 
 function processWeeklyFulfillments(
