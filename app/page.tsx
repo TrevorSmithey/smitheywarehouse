@@ -4290,31 +4290,10 @@ function BudgetDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Compact Header Row - Production style */}
+      {/* Header Row with Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
-          <div className="flex items-baseline gap-2">
-            <span
-              className="text-2xl font-bold tabular-nums"
-              style={{ color: getPaceColor(data.grandTotal.pace) }}
-            >
-              {data.grandTotal.pace}%
-            </span>
-          </div>
-          <div className="text-sm text-text-muted">
-            <span className="text-text-secondary font-medium tabular-nums">{formatNumber(data.grandTotal.actual)}</span>
-            <span className="mx-1">/</span>
-            <span className="tabular-nums">{formatNumber(data.grandTotal.budget)}</span>
-          </div>
-          <div className="text-sm">
-            <span className="tabular-nums font-medium" style={{ color: pctThroughPeriod >= 90 ? colors.amber : colors.slate }}>
-              {pctThroughPeriod}%
-            </span>
-            <span className="text-text-muted ml-1">through</span>
-            <span className="text-text-tertiary ml-1 text-xs">
-              ({data.periodLabel.split("(")[0].trim()})
-            </span>
-          </div>
+        <div className="text-sm text-text-muted">
+          {data.periodLabel}
         </div>
         <div className="flex items-center gap-2">
           {/* Date Range Buttons */}
