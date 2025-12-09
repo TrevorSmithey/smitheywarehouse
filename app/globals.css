@@ -1,38 +1,52 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Background Colors */
-  --color-bg-primary: #0B0E1A;
-  --color-bg-secondary: #12151F;
-  --color-bg-tertiary: #1A1D2A;
+  /* ========================================
+     SMITHEY OPERATIONS DESIGN SYSTEM
+     ======================================== */
 
-  /* Text Colors */
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #94A3B8;
-  --color-text-tertiary: #64748B;
-  --color-text-muted: #475569;
+  /* BACKGROUNDS - Depth hierarchy for dark theme */
+  --color-bg-primary: #0B0E1A;      /* Base canvas */
+  --color-bg-secondary: #12151F;    /* Card surfaces */
+  --color-bg-tertiary: #1A1D2A;     /* Elevated elements, hover states */
 
-  /* Border Colors */
+  /* TEXT - Information hierarchy */
+  --color-text-primary: #FFFFFF;    /* Headlines, key metrics */
+  --color-text-secondary: #94A3B8;  /* Labels, descriptions */
+  --color-text-tertiary: #64748B;   /* De-emphasized, reference data */
+  --color-text-muted: #475569;      /* Nearly invisible, decorative */
+
+  /* BORDERS */
   --color-border: rgba(255, 255, 255, 0.06);
   --color-border-subtle: rgba(255, 255, 255, 0.03);
   --color-border-hover: rgba(255, 255, 255, 0.1);
 
-  /* Accent Colors */
-  --color-accent-blue: #0EA5E9;
-  --color-accent-cyan: #06B6D4;
+  /* ACCENT - Primary data color (single accent for focus) */
+  --color-accent-blue: #0EA5E9;     /* Primary data, active states, links */
+  --color-accent-blue-dim: #0284C7; /* Darker variant for gradients */
+  --color-accent-cyan: #06B6D4;     /* Secondary accent (use sparingly) */
 
-  /* Status Colors */
-  --color-status-good: #10B981;
-  --color-status-warning: #F59E0B;
-  --color-status-bad: #DC2626;
+  /* STATUS - ONLY for status indication */
+  --color-status-good: #10B981;     /* On-track, healthy, within target */
+  --color-status-good-dim: #059669; /* Darker variant for gradients */
+  --color-status-warning: #F59E0B;  /* Needs attention, approaching limit */
+  --color-status-warning-dim: #D97706;
+  --color-status-bad: #DC2626;      /* Problem, behind target, urgent */
+  --color-status-bad-dim: #B91C1C;  /* Darker variant for gradients */
 
-  /* Assembly / Forge Colors */
+  /* REFERENCE - For grid lines, targets, baselines */
+  --color-reference: #94A3B8;       /* Target lines, reference values */
+  --color-reference-dim: #64748B;   /* Subtle reference elements */
+  --color-axis: #1E293B;            /* Axis lines (barely visible) */
+
+  /* FORGE PALETTE - Assembly/Production specific */
   --color-forge-copper: #D97706;
   --color-forge-ember: #EA580C;
   --color-forge-iron: #78716C;
   --color-forge-glow: #FCD34D;
+  --color-forge-heat: #F59E0B;
 
-  /* Typography */
+  /* TYPOGRAPHY */
   --font-inter: 'Inter', sans-serif;
 
   /* Custom Font Sizes */

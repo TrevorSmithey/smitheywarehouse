@@ -1569,8 +1569,8 @@ function BacklogChart({
           <AreaChart data={chartData}>
             <defs>
               <linearGradient id="backlogGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                <stop offset="5%" stopColor="#DC2626" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#DC2626" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
@@ -1607,7 +1607,7 @@ function BacklogChart({
             <Area
               type="monotone"
               dataKey="backlog"
-              stroke="#EF4444"
+              stroke="#DC2626"
               strokeWidth={2}
               fill="url(#backlogGradient)"
             />
@@ -1822,7 +1822,7 @@ function WarehouseSplitChart({
               labelStyle={{ color: "#94A3B8" }}
               formatter={(value: number, name: string) => [`${value}%`, name]}
             />
-            <ReferenceLine y={50} stroke="#374151" strokeDasharray="3 3" />
+            <ReferenceLine y={50} stroke="#64748B" strokeDasharray="3 3" strokeOpacity={0.5} />
             <Line
               type="monotone"
               dataKey="Smithey"
@@ -2144,7 +2144,7 @@ function InventoryDashboard({
             <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
             <div
               className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: "#3B82F6", borderRightColor: "#0EA5E9" }}
+              style={{ borderTopColor: "#0EA5E9", borderRightColor: "#0284C7" }}
             />
           </div>
           <span className="text-sm text-text-tertiary tracking-widest uppercase">Opening the vault...</span>
@@ -2494,7 +2494,7 @@ function InventoryDashboard({
                           background: item.sales3DayAvg >= 10
                             ? "linear-gradient(90deg, #10B981, #059669)"
                             : item.sales3DayAvg >= 5
-                            ? "linear-gradient(90deg, #3B82F6, #2563EB)"
+                            ? "linear-gradient(90deg, #0EA5E9, #0284C7)"
                             : "linear-gradient(90deg, #64748B, #475569)",
                         }}
                       />
@@ -2577,7 +2577,7 @@ function InventoryDashboard({
                           background: item.sales3DayAvg >= 10
                             ? "linear-gradient(90deg, #10B981, #059669)"
                             : item.sales3DayAvg >= 5
-                            ? "linear-gradient(90deg, #3B82F6, #2563EB)"
+                            ? "linear-gradient(90deg, #0EA5E9, #0284C7)"
                             : "linear-gradient(90deg, #64748B, #475569)",
                         }}
                       />
@@ -3502,7 +3502,7 @@ function AssemblyDashboard({
             <ComposedChart data={dailyChartData} margin={{ top: 20, right: 10, left: -10, bottom: 20 }}>
               <defs>
                 <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#34D399" stopOpacity={1} />
+                  <stop offset="0%" stopColor="#10B981" stopOpacity={1} />
                   <stop offset="100%" stopColor="#059669" stopOpacity={0.85} />
                 </linearGradient>
                 <linearGradient id="emberGradient" x1="0" y1="0" x2="0" y2="1">
@@ -3607,12 +3607,8 @@ function AssemblyDashboard({
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
                 <defs>
-                  <linearGradient id="weeklyGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8B5CF6" />
-                    <stop offset="100%" stopColor="#6366F1" />
-                  </linearGradient>
                   <linearGradient id="weeklyGreenGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#34D399" />
+                    <stop offset="0%" stopColor="#10B981" />
                     <stop offset="100%" stopColor="#059669" />
                   </linearGradient>
                   <linearGradient id="weeklyEmberGradient" x1="0" y1="0" x2="0" y2="1">
@@ -3637,7 +3633,7 @@ function AssemblyDashboard({
                   cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                   contentStyle={{
                     backgroundColor: "rgba(18, 21, 31, 0.98)",
-                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    border: "1px solid rgba(234, 88, 12, 0.3)",
                     borderRadius: "8px",
                     boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
                     padding: "10px 14px",
@@ -3645,7 +3641,7 @@ function AssemblyDashboard({
                   labelStyle={{ color: "#94A3B8", fontSize: 11, marginBottom: 4 }}
                   formatter={(value: number, name: string) => {
                     if (name === "total") return [
-                      <span key="v" style={{ color: "#A78BFA", fontWeight: 600 }}>{fmt.number(value)}</span>,
+                      <span key="v" style={{ color: "#FCD34D", fontWeight: 600 }}>{fmt.number(value)}</span>,
                       "Total"
                     ];
                     return [value, name];
@@ -3653,14 +3649,10 @@ function AssemblyDashboard({
                 />
                 <ReferenceLine
                   y={5000}
-                  stroke={forge.heat}
+                  stroke="#94A3B8"
                   strokeDasharray="6 4"
-                  label={{
-                    value: "5K Target",
-                    position: "insideTopRight",
-                    fill: forge.heat,
-                    fontSize: 10,
-                  }}
+                  strokeWidth={1}
+                  strokeOpacity={0.5}
                 />
                 <Bar
                   dataKey="total"
@@ -3686,7 +3678,7 @@ function AssemblyDashboard({
               <BarChart data={dowChartData} margin={{ top: 20, right: 10, left: -10, bottom: 20 }}>
                 <defs>
                   <linearGradient id="dowGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#34D399" stopOpacity={1} />
+                    <stop offset="0%" stopColor="#10B981" stopOpacity={1} />
                     <stop offset="100%" stopColor="#059669" stopOpacity={0.85} />
                   </linearGradient>
                 </defs>
@@ -3938,16 +3930,16 @@ function BudgetDashboard({
   expandedCategories: Set<string>;
   onToggleCategory: (category: string) => void;
 }) {
-  // Brand colors
+  // Design system colors (matches globals.css)
   const colors = {
-    emerald: "#10B981",
-    emeraldDark: "#059669",
-    amber: "#F59E0B",
-    amberDark: "#D97706",
-    rose: "#F43F5E",
-    roseDark: "#E11D48",
-    slate: "#64748B",
-    accent: "#3B82F6",
+    emerald: "#10B981",      // status-good
+    emeraldDark: "#059669",  // status-good-dim
+    amber: "#F59E0B",        // status-warning
+    amberDark: "#D97706",    // status-warning-dim
+    rose: "#DC2626",         // status-bad (was rose, now consistent)
+    roseDark: "#B91C1C",     // status-bad-dim
+    slate: "#64748B",        // text-tertiary
+    accent: "#0EA5E9",       // accent-blue
   };
 
   // Date range options

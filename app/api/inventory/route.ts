@@ -96,6 +96,7 @@ export async function GET(request: Request) {
     const monthEnd = new Date(Date.UTC(estYear, estMonth0, lastDayOfMonth, 28, 59, 59)).toISOString(); // 4:59:59 AM UTC next day = 11:59:59 PM EST
 
     // Query monthly retail orders by SKU (quantity ordered this month by order date)
+    // IMPORTANT: Supabase defaults to 1000 rows, we need more for accurate totals
     const { data: monthlySalesData } = await supabase
       .from("line_items")
       .select(`
@@ -105,14 +106,16 @@ export async function GET(request: Request) {
       `)
       .gte("orders.created_at", monthStart)
       .lte("orders.created_at", monthEnd)
-      .eq("orders.canceled", false);
+      .eq("orders.canceled", false)
+      .limit(100000);
 
     // Query monthly B2B fulfilled by SKU (quantity fulfilled this month by fulfillment date)
     const { data: monthlyB2BData } = await supabase
       .from("b2b_fulfilled")
       .select("sku, quantity")
       .gte("fulfilled_at", monthStart)
-      .lte("fulfilled_at", monthEnd);
+      .lte("fulfilled_at", monthEnd)
+      .limit(50000);
 
     // Aggregate retail ordered quantity by SKU (case-insensitive)
     const retailSalesBySku = new Map<string, number>();
@@ -176,7 +179,8 @@ export async function GET(request: Request) {
         orders!inner(created_at, canceled)
       `)
       .gte("orders.created_at", threeDayStart)
-      .eq("orders.canceled", false);
+      .eq("orders.canceled", false)
+      .limit(50000);
 
     const { data: salesPrior3DayData } = await supabase
       .from("line_items")
@@ -187,7 +191,8 @@ export async function GET(request: Request) {
       `)
       .gte("orders.created_at", sixDayStart)
       .lt("orders.created_at", threeDayStart)
-      .eq("orders.canceled", false);
+      .eq("orders.canceled", false)
+      .limit(50000);
 
     // Aggregate 3-day sales by SKU
     const sales3DayBySku = new Map<string, number>();

@@ -42,9 +42,58 @@ const CATEGORY_DISPLAY_NAMES: Record<BudgetCategory, string> = {
 const CATEGORY_ORDER: BudgetCategory[] = [
   "cast_iron",
   "carbon_steel",
-  "glass_lid",
   "accessories",
+  "glass_lid",
 ];
+
+// SKU sort order within each category (matches budget spreadsheet row order exactly)
+const SKU_SORT_ORDER: Record<string, number> = {
+  // Accessories (order from budget spreadsheet)
+  "smith-ac-scrub1": 1,     // Chainmail Scrubber
+  "smith-ac-fgph": 2,       // Leather Potholder
+  "smith-ac-sleeve1": 3,    // Short Sleeve
+  "smith-ac-sleeve2": 4,    // Long Sleeve
+  "smith-ac-spatw1": 5,     // Slotted Spat
+  "smith-ac-spatb1": 6,     // Mighty Spat
+  "smith-ac-phtlg": 7,      // Suede Potholder
+  "smith-ac-keeperw": 8,    // Salt Keeper
+  "smith-ac-season": 9,     // Seasoning Oil
+  "smith-ac-carekit": 10,   // Care Kit (was Brush)
+  "smith-bottle1": 11,      // Bottle Opener
+  // Carbon Steel (order from budget spreadsheet)
+  "smith-cs-farm12": 1,     // Farmhouse Skillet
+  "smith-cs-deep12": 2,     // Deep Farm
+  "smith-cs-rroastm": 3,    // Round Roaster
+  "smith-cs-ovalm": 4,      // Oval Roaster
+  "smith-cs-wokm": 5,       // Wok
+  "smith-cs-round17n": 6,   // Paella Pan
+  "smith-cs-farm9": 7,      // Little Farm
+  "smith-cs-fish": 8,       // Fish Skillet
+  // Cast Iron (order from budget spreadsheet)
+  "smith-ci-skil8": 1,      // 8Chef
+  "smith-ci-chef10": 2,     // 10Chef
+  "smith-ci-flat10": 3,     // 10Flat
+  "smith-ci-flat12": 4,     // 12Flat
+  "smith-ci-skil6": 5,      // 6Trad
+  "smith-ci-skil10": 6,     // 10Trad
+  "smith-ci-skil12": 7,     // 12Trad
+  "smith-ci-tradskil14": 8, // 14Trad
+  "smith-ci-skil14": 9,     // 14Dual
+  "smith-ci-dskil11": 10,   // 11Deep
+  "smith-ci-grill12": 11,   // 12Grill
+  "smith-ci-dutch4": 12,    // 3.5 Dutch
+  "smith-ci-dutch5": 13,    // 5.5 Dutch
+  "smith-ci-dutch7": 14,    // 7.25 Dutch
+  "smith-ci-dual6": 15,     // 6Dual
+  "smith-ci-griddle18": 16, // Double Burner Griddle
+  "smith-ci-dual12": 17,    // 12Dual
+  "smith-ci-sauce1": 18,    // Sauce Pan
+  // Glass Lids (order from budget spreadsheet)
+  "smith-ac-glid10": 1,     // 10Lid
+  "smith-ac-glid12": 2,     // 12Lid
+  "smith-ac-glid14": 3,     // 14Lid
+  "smith-ac-cslid12": 4,    // CS 12 Lid
+};
 
 // Map inventory categories to budget categories
 function mapToBudgetCategory(category: string): BudgetCategory | null {
@@ -364,6 +413,7 @@ export async function GET(request: Request) {
     }
 
     // Query retail sales (line_items joined with orders)
+    // IMPORTANT: Supabase defaults to 1000 rows, we need more for accurate totals
     const { data: retailData, error: retailError } = await supabase
       .from("line_items")
       .select(`
@@ -373,7 +423,8 @@ export async function GET(request: Request) {
       `)
       .gte("orders.created_at", start)
       .lte("orders.created_at", end)
-      .eq("orders.canceled", false);
+      .eq("orders.canceled", false)
+      .limit(100000);
 
     if (retailError) {
       throw new Error(`Failed to fetch retail sales: ${retailError.message}`);
@@ -384,7 +435,8 @@ export async function GET(request: Request) {
       .from("b2b_fulfilled")
       .select("sku, quantity")
       .gte("fulfilled_at", start)
-      .lte("fulfilled_at", end);
+      .lte("fulfilled_at", end)
+      .limit(50000);
 
     if (b2bError) {
       throw new Error(`Failed to fetch B2B sales: ${b2bError.message}`);
@@ -454,7 +506,12 @@ export async function GET(request: Request) {
 
     for (const cat of CATEGORY_ORDER) {
       const skus = categoryDataMap.get(cat) || [];
-      skus.sort((a, b) => b.budget - a.budget);
+      // Sort by budget spreadsheet order (using SKU_SORT_ORDER map)
+      skus.sort((a, b) => {
+        const orderA = SKU_SORT_ORDER[a.sku.toLowerCase()] ?? 999;
+        const orderB = SKU_SORT_ORDER[b.sku.toLowerCase()] ?? 999;
+        return orderA - orderB;
+      });
 
       const totals = skus.reduce(
         (acc, row) => ({

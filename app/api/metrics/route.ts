@@ -92,7 +92,8 @@ export async function GET(request: Request) {
     const { data: restorationItems } = await supabase
       .from("line_items")
       .select("order_id, orders!inner(warehouse, fulfillment_status, canceled)")
-      .ilike("sku", "%-Rest-%");
+      .ilike("sku", "%-Rest-%")
+      .limit(20000);
 
     const restorationOrderIds = new Set(
       (restorationItems || []).map((item) => item.order_id)
