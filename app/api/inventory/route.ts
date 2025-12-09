@@ -1,62 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "fs";
-import { join } from "path";
 import type {
   ProductInventory,
   InventoryCategory,
   InventoryResponse,
   SkuSalesVelocity,
 } from "@/lib/types";
-import { calculateDOI } from "@/lib/doi";
-
-// Load official monthly budgets from JSON file
-// Structure: { "2025": { "SKU": { "Dec": 1234 } }, "2026": { "SKU": { "Jan": 100, ... } } }
-type MonthlyBudgetData = Record<string, Record<string, Record<string, number>>>;
-
-function loadMonthlyBudgets(): MonthlyBudgetData | null {
-  try {
-    const filePath = join(process.cwd(), "data", "monthly-budgets.json");
-    const data = readFileSync(filePath, "utf-8");
-    return JSON.parse(data) as MonthlyBudgetData;
-  } catch {
-    console.error("Failed to load monthly budgets");
-    return null;
-  }
-}
-
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-function getMonthlyBudgetFromFile(sku: string, budgetData: MonthlyBudgetData | null): number | undefined {
-  if (!budgetData) return undefined;
-
-  const now = new Date();
-  const currentYear = now.getFullYear().toString();
-  const currentMonth = now.getMonth(); // 0-indexed
-  const monthName = MONTH_NAMES[currentMonth];
-
-  // Look up budget for current year and month
-  const yearData = budgetData[currentYear];
-  if (!yearData) return undefined;
-
-  // Try direct lookup first
-  let skuBudgets = yearData[sku];
-
-  // Case-insensitive fallback
-  if (!skuBudgets) {
-    const lowerSku = sku.toLowerCase();
-    for (const key of Object.keys(yearData)) {
-      if (key.toLowerCase() === lowerSku) {
-        skuBudgets = yearData[key];
-        break;
-      }
-    }
-  }
-
-  if (!skuBudgets) return undefined;
-
-  return skuBudgets[monthName];
-}
+import { calculateDOI, buildBudgetLookup } from "@/lib/doi";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -79,8 +29,38 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const categoryFilter = searchParams.get("category") as InventoryCategory | null;
 
-    // Load official monthly budgets
-    const budgetData = loadMonthlyBudgets();
+    // Get current year/month in EST for budget lookup
+    const now = new Date();
+    const estFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const estParts = estFormatter.formatToParts(now);
+    const estYear = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+    const estMonth = parseInt(estParts.find(p => p.type === "month")?.value || "1"); // 1-indexed for DB
+
+    // Query current month's budgets from Supabase (for monthly % display)
+    const { data: currentMonthBudgets } = await supabase
+      .from("budgets")
+      .select("sku, budget")
+      .eq("year", estYear)
+      .eq("month", estMonth);
+
+    // Create current month budget lookup (for display)
+    const budgetBySku = new Map<string, number>();
+    for (const b of currentMonthBudgets || []) {
+      budgetBySku.set(b.sku.toLowerCase(), b.budget);
+    }
+
+    // Query ALL budgets for DOI calculation (needs full year projection)
+    const { data: allBudgets } = await supabase
+      .from("budgets")
+      .select("sku, year, month, budget");
+
+    // Build budget lookup for DOI calculation
+    const budgetLookup = buildBudgetLookup(allBudgets || []);
 
     // Fetch inventory with product details
     // Using AVAILABLE (sellable inventory) not on_hand
@@ -108,26 +88,12 @@ export async function GET(request: Request) {
       throw new Error(`Failed to fetch products: ${productsError.message}`);
     }
 
-    // Note: DOI is calculated using weekly weights from lib/doi.ts
-    // Forecasts are embedded in the module - no database fetch needed
-
-    // Get current month's date range in EST timezone
-    const now = new Date();
-    const estFormatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const estParts = estFormatter.formatToParts(now);
-    const estYear = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
-    const estMonth = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1; // 0-indexed
-
     // Month boundaries in EST, converted to UTC for database queries
+    const estMonth0 = estMonth - 1; // 0-indexed for Date constructor
     // EST midnight = UTC 5am (or 4am during DST, but 5am is safe buffer)
-    const monthStart = new Date(Date.UTC(estYear, estMonth, 1, 5, 0, 0)).toISOString();
-    const lastDayOfMonth = new Date(estYear, estMonth + 1, 0).getDate();
-    const monthEnd = new Date(Date.UTC(estYear, estMonth, lastDayOfMonth, 28, 59, 59)).toISOString(); // 4:59:59 AM UTC next day = 11:59:59 PM EST
+    const monthStart = new Date(Date.UTC(estYear, estMonth0, 1, 5, 0, 0)).toISOString();
+    const lastDayOfMonth = new Date(estYear, estMonth0 + 1, 0).getDate();
+    const monthEnd = new Date(Date.UTC(estYear, estMonth0, lastDayOfMonth, 28, 59, 59)).toISOString(); // 4:59:59 AM UTC next day = 11:59:59 PM EST
 
     // Query monthly retail orders by SKU (quantity ordered this month by order date)
     const { data: monthlySalesData } = await supabase
@@ -180,7 +146,7 @@ export async function GET(request: Request) {
     // Query 3-day sales for sales velocity (cookware only) - using EST
     // Get today's date in EST
     const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
-    const todayESTDate = new Date(estYear, estMonth, estDay);
+    const todayESTDate = new Date(estYear, estMonth0, estDay);
 
     // 3 days ago at EST midnight = UTC 5am
     const threeDaysAgoEST = new Date(todayESTDate);
@@ -299,13 +265,13 @@ export async function GET(request: Request) {
 
       // Include products with any inventory (including negative/backordered)
       if (total !== 0) {
-        // Calculate DOI using weekly weights methodology
+        // Calculate DOI using monthly budgets from database
         // Only calculate for positive inventory
-        const doiResult = total > 0 ? calculateDOI(sku, total) : undefined;
+        const doiResult = total > 0 ? calculateDOI(sku, total, budgetLookup) : undefined;
 
-        // Get monthly metrics using official budgets from file
+        // Get monthly metrics using budgets from Supabase
         const monthSold = monthlySalesBySku.get(sku.toLowerCase()) || 0;
-        const monthBudget = getMonthlyBudgetFromFile(sku, budgetData);
+        const monthBudget = budgetBySku.get(sku.toLowerCase());
         const monthPct = monthBudget && monthBudget > 0
           ? Math.round((monthSold / monthBudget) * 100)
           : undefined;

@@ -56,11 +56,14 @@ import type {
   HolidayData,
   AssemblyResponse,
   DailyAssembly,
+  BudgetResponse,
+  BudgetDateRange,
+  BudgetCategoryData,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment";
+type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget";
 type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -208,6 +211,14 @@ export default function Dashboard() {
   const [assemblyData, setAssemblyData] = useState<AssemblyResponse | null>(null);
   const [assemblyLoading, setAssemblyLoading] = useState(false);
 
+  // Budget tab state
+  const [budgetData, setBudgetData] = useState<BudgetResponse | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const [budgetDateRange, setBudgetDateRange] = useState<BudgetDateRange>("mtd");
+  const [budgetCustomStart, setBudgetCustomStart] = useState<string>("");
+  const [budgetCustomEnd, setBudgetCustomEnd] = useState<string>("");
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(["cast_iron", "carbon_steel", "glass_lid", "accessories"]));
+
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
     try {
@@ -273,6 +284,54 @@ export default function Dashboard() {
       fetchAssembly();
     }
   }, [primaryTab, assemblyData, assemblyLoading, fetchAssembly]);
+
+  // Fetch budget data
+  const fetchBudget = useCallback(async (
+    range: BudgetDateRange = budgetDateRange,
+    customStart?: string,
+    customEnd?: string
+  ) => {
+    try {
+      setBudgetLoading(true);
+      let url = `/api/budget?range=${range}`;
+      if (range === "custom" && customStart && customEnd) {
+        url += `&start=${customStart}&end=${customEnd}`;
+      }
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch budget data");
+      const data: BudgetResponse = await res.json();
+      setBudgetData(data);
+    } catch (err) {
+      console.error("Budget fetch error:", err);
+    } finally {
+      setBudgetLoading(false);
+    }
+  }, [budgetDateRange]);
+
+  // Load budget data when switching to budget tab
+  useEffect(() => {
+    if (primaryTab === "budget" && !budgetData && !budgetLoading) {
+      fetchBudget();
+    }
+  }, [primaryTab, budgetData, budgetLoading, fetchBudget]);
+
+  // Refetch budget when date range or custom dates change
+  // Note: primaryTab and budgetData are intentionally excluded from dependencies
+  // - primaryTab: we don't want to refetch when switching tabs (handled by separate useEffect above)
+  // - budgetData: we check it as a guard, not as a trigger (prevents infinite loop)
+  // - fetchBudget: stable callback, but including it would cause unnecessary refetches
+  useEffect(() => {
+    if (primaryTab === "budget" && budgetData) {
+      if (budgetDateRange === "custom") {
+        if (budgetCustomStart && budgetCustomEnd) {
+          fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd);
+        }
+      } else {
+        fetchBudget(budgetDateRange);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetDateRange, budgetCustomStart, budgetCustomEnd]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -479,6 +538,17 @@ export default function Dashboard() {
           >
             <Package className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             FULFILLMENT
+          </button>
+          <button
+            onClick={() => setPrimaryTab("budget")}
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+              primaryTab === "budget"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Target className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            BUDGET V ACTUAL
           </button>
         </div>
 
@@ -758,6 +828,33 @@ export default function Dashboard() {
           data={assemblyData}
           loading={assemblyLoading}
           onRefresh={fetchAssembly}
+        />
+      )}
+
+      {/* BUDGET TAB */}
+      {primaryTab === "budget" && (
+        <BudgetDashboard
+          data={budgetData}
+          loading={budgetLoading}
+          dateRange={budgetDateRange}
+          onDateRangeChange={(range) => setBudgetDateRange(range)}
+          customStart={budgetCustomStart}
+          customEnd={budgetCustomEnd}
+          onCustomStartChange={setBudgetCustomStart}
+          onCustomEndChange={setBudgetCustomEnd}
+          onRefresh={() => fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd)}
+          expandedCategories={expandedCategories}
+          onToggleCategory={(cat) => {
+            setExpandedCategories((prev) => {
+              const next = new Set(prev);
+              if (next.has(cat)) {
+                next.delete(cat);
+              } else {
+                next.add(cat);
+              }
+              return next;
+            });
+          }}
         />
       )}
     </div>
@@ -3234,11 +3331,13 @@ function AssemblyDashboard({
   });
 
   // Weekly comparison data
+  const WEEKLY_TARGET = 5000;
   const weeklyChartData = weeklyData.map((w) => ({
     week: `W${w.week_num}`,
     total: w.total,
     dailyAvg: w.daily_avg,
     daysWorked: w.days_worked,
+    fill: w.total >= WEEKLY_TARGET ? "url(#weeklyGreenGradient)" : "url(#weeklyEmberGradient)",
   }));
 
   // Day of week data
@@ -3512,6 +3611,14 @@ function AssemblyDashboard({
                     <stop offset="0%" stopColor="#8B5CF6" />
                     <stop offset="100%" stopColor="#6366F1" />
                   </linearGradient>
+                  <linearGradient id="weeklyGreenGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#34D399" />
+                    <stop offset="100%" stopColor="#059669" />
+                  </linearGradient>
+                  <linearGradient id="weeklyEmberGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={forge.heat} />
+                    <stop offset="100%" stopColor={forge.ember} />
+                  </linearGradient>
                 </defs>
                 <XAxis
                   dataKey="week"
@@ -3545,11 +3652,11 @@ function AssemblyDashboard({
                   }}
                 />
                 <ReferenceLine
-                  y={summary.weeklyTarget}
+                  y={5000}
                   stroke={forge.heat}
                   strokeDasharray="6 4"
                   label={{
-                    value: `Target`,
+                    value: "5K Target",
                     position: "insideTopRight",
                     fill: forge.heat,
                     fontSize: 10,
@@ -3557,10 +3664,13 @@ function AssemblyDashboard({
                 />
                 <Bar
                   dataKey="total"
-                  fill="url(#weeklyGradient)"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={48}
-                />
+                >
+                  {weeklyChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -3798,6 +3908,444 @@ function AssemblyDashboard({
           Last synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Budget Dashboard Component
+function BudgetDashboard({
+  data,
+  loading,
+  dateRange,
+  onDateRangeChange,
+  customStart,
+  customEnd,
+  onCustomStartChange,
+  onCustomEndChange,
+  onRefresh,
+  expandedCategories,
+  onToggleCategory,
+}: {
+  data: BudgetResponse | null;
+  loading: boolean;
+  dateRange: BudgetDateRange;
+  onDateRangeChange: (range: BudgetDateRange) => void;
+  customStart: string;
+  customEnd: string;
+  onCustomStartChange: (date: string) => void;
+  onCustomEndChange: (date: string) => void;
+  onRefresh: () => void;
+  expandedCategories: Set<string>;
+  onToggleCategory: (category: string) => void;
+}) {
+  // Brand colors
+  const colors = {
+    emerald: "#10B981",
+    emeraldDark: "#059669",
+    amber: "#F59E0B",
+    amberDark: "#D97706",
+    rose: "#F43F5E",
+    roseDark: "#E11D48",
+    slate: "#64748B",
+    accent: "#3B82F6",
+  };
+
+  // Date range options
+  const dateRangeOptions: { value: BudgetDateRange; label: string; short: string }[] = [
+    { value: "mtd", label: "Month to Date", short: "MTD" },
+    { value: "2months", label: "2 Months", short: "2Mo" },
+    { value: "qtd", label: "Quarter to Date", short: "QTD" },
+    { value: "ytd", label: "Year to Date", short: "YTD" },
+    { value: "6months", label: "6 Months", short: "6Mo" },
+    { value: "custom", label: "Custom", short: "Custom" },
+  ];
+
+  // Get variance color based on percentage
+  const getVarianceColor = (pct: number) => {
+    if (pct >= 0) return colors.emerald;
+    if (pct >= -20) return colors.amber;
+    return colors.rose;
+  };
+
+  const getVarianceTextClass = (pct: number) => {
+    if (pct >= 0) return "text-status-good";
+    if (pct >= -20) return "text-status-warning";
+    return "text-status-bad";
+  };
+
+  const getVarianceBgClass = (pct: number) => {
+    if (pct >= 0) return "bg-status-good/10";
+    if (pct >= -20) return "bg-status-warning/10";
+    return "bg-status-bad/10";
+  };
+
+  // Export to CSV function
+  const exportToCSV = () => {
+    if (!data) return;
+
+    const rows: string[] = [];
+    rows.push("Category,Product,SKU,Budget,Actual,Variance,Variance %");
+
+    for (const cat of data.categories) {
+      for (const sku of cat.skus) {
+        rows.push(
+          `"${cat.displayName}","${sku.displayName}","${sku.sku}",${sku.budget},${sku.actual},${sku.variance},${sku.variancePct.toFixed(1)}%`
+        );
+      }
+      rows.push(
+        `"${cat.displayName} Total","","",${cat.totals.budget},${cat.totals.actual},${cat.totals.variance},${cat.totals.variancePct.toFixed(1)}%`
+      );
+    }
+    rows.push(
+      `"Cookware Total","","",${data.cookwareTotal.budget},${data.cookwareTotal.actual},${data.cookwareTotal.variance},${data.cookwareTotal.variancePct.toFixed(1)}%`
+    );
+    rows.push(
+      `"Grand Total","","",${data.grandTotal.budget},${data.grandTotal.actual},${data.grandTotal.variance},${data.grandTotal.variancePct.toFixed(1)}%`
+    );
+
+    const csvContent = rows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `budget-vs-actual-${dateRange}-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
+            <div
+              className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: colors.emerald, borderRightColor: colors.accent }}
+            />
+          </div>
+          <span className="text-sm text-text-tertiary tracking-widest uppercase">Crunching numbers...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <Target className="w-16 h-16 text-text-muted" />
+        <span className="text-text-tertiary tracking-wide">No budget data available</span>
+        <button
+          onClick={onRefresh}
+          className="px-6 py-2.5 text-sm font-medium tracking-wider uppercase transition-all border-2 rounded hover:bg-accent-blue/10"
+          style={{ borderColor: colors.accent, color: colors.accent }}
+        >
+          Refresh
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with Date Range Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-light tracking-wide text-text-primary">BUDGET VS ACTUAL</h2>
+          <p className="text-sm text-text-tertiary mt-1">{data.periodLabel}</p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Date Range Buttons */}
+          <div className="flex bg-bg-tertiary rounded-lg p-1">
+            {dateRangeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onDateRangeChange(opt.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                  dateRange === opt.value
+                    ? "bg-accent-blue text-white"
+                    : "text-text-tertiary hover:text-text-secondary"
+                }`}
+              >
+                {opt.short}
+              </button>
+            ))}
+          </div>
+          {/* Custom Date Inputs */}
+          {dateRange === "custom" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => onCustomStartChange(e.target.value)}
+                className="px-2 py-1.5 text-xs bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+              />
+              <span className="text-text-muted text-xs">to</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => onCustomEndChange(e.target.value)}
+                className="px-2 py-1.5 text-xs bg-bg-secondary border border-border rounded text-text-primary focus:border-accent-blue focus:outline-none"
+              />
+            </div>
+          )}
+          {/* Export Button */}
+          <button
+            onClick={exportToCSV}
+            className="p-2 text-text-tertiary hover:text-text-secondary transition-colors"
+            title="Export to CSV"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+          {/* Refresh Button */}
+          <button
+            onClick={onRefresh}
+            className="p-2 text-text-tertiary hover:text-text-secondary transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards - Cookware Total and Grand Total */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Cookware Total */}
+        <div className="bg-gradient-to-br from-bg-secondary to-bg-tertiary rounded-lg border border-border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-accent-blue" />
+              <h3 className="text-sm font-semibold tracking-wider text-text-secondary uppercase">
+                Cookware Total
+              </h3>
+            </div>
+            <span className="text-xs text-text-muted">Cast Iron + Carbon Steel</span>
+          </div>
+          <div className="flex items-baseline gap-3 mb-3">
+            <span
+              className={`text-4xl font-light tabular-nums ${getVarianceTextClass(data.cookwareTotal.variancePct)}`}
+            >
+              {Math.round((data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%
+            </span>
+            <span className="text-sm text-text-tertiary">of budget</span>
+          </div>
+          <div className="text-sm text-text-muted mb-4">
+            {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
+          </div>
+          {/* Progress Bar */}
+          <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${Math.min(100, (data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%`,
+                background: `linear-gradient(90deg, ${getVarianceColor(data.cookwareTotal.variancePct)}, ${
+                  data.cookwareTotal.variancePct >= 0 ? colors.emeraldDark : data.cookwareTotal.variancePct >= -20 ? colors.amberDark : colors.roseDark
+                })`,
+              }}
+            />
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+              style={{ left: `${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Grand Total */}
+        <div className="bg-gradient-to-br from-bg-secondary to-bg-tertiary rounded-lg border border-border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-accent-blue" />
+              <h3 className="text-sm font-semibold tracking-wider text-text-secondary uppercase">
+                Grand Total
+              </h3>
+            </div>
+            <span className="text-xs text-text-muted">All Categories</span>
+          </div>
+          <div className="flex items-baseline gap-3 mb-3">
+            <span
+              className={`text-4xl font-light tabular-nums ${getVarianceTextClass(data.grandTotal.variancePct)}`}
+            >
+              {Math.round((data.grandTotal.actual / data.grandTotal.budget) * 100)}%
+            </span>
+            <span className="text-sm text-text-tertiary">of budget</span>
+          </div>
+          <div className="text-sm text-text-muted mb-4">
+            {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
+          </div>
+          {/* Progress Bar */}
+          <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${Math.min(100, (data.grandTotal.actual / data.grandTotal.budget) * 100)}%`,
+                background: `linear-gradient(90deg, ${getVarianceColor(data.grandTotal.variancePct)}, ${
+                  data.grandTotal.variancePct >= 0 ? colors.emeraldDark : data.grandTotal.variancePct >= -20 ? colors.amberDark : colors.roseDark
+                })`,
+              }}
+            />
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+              style={{ left: `${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Category Details - Unified Cards with Progress + Table */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {data.categories.map((cat) => {
+          const pctOfBudget = cat.totals.budget > 0
+            ? Math.round((cat.totals.actual / cat.totals.budget) * 100)
+            : 0;
+          const pctThroughPeriod = Math.round((data.daysElapsed / data.daysInPeriod) * 100);
+          const onTrack = pctOfBudget >= pctThroughPeriod - 5;
+          const ahead = pctOfBudget >= pctThroughPeriod + 5;
+          const isExpanded = expandedCategories.has(cat.category);
+          const statusColor = ahead ? colors.emerald : onTrack ? colors.amber : colors.rose;
+          const statusColorDark = ahead ? colors.emeraldDark : onTrack ? colors.amberDark : colors.roseDark;
+
+          return (
+            <div key={cat.category} className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
+              {/* Rich Header with Progress */}
+              <button
+                onClick={() => onToggleCategory(cat.category)}
+                className="w-full text-left hover:bg-bg-tertiary/30 transition-colors"
+              >
+                <div className="p-4 pb-3">
+                  {/* Top row: Category name + status badge */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        style={{ color: statusColor }}
+                      >
+                        ▶
+                      </span>
+                      <span className="text-sm font-semibold tracking-wider text-text-primary uppercase">
+                        {cat.displayName}
+                      </span>
+                      <span className="text-xs text-text-muted">({cat.skus.length})</span>
+                    </div>
+                    <span
+                      className="text-xs px-2 py-0.5 rounded font-medium"
+                      style={{
+                        backgroundColor: `${statusColor}15`,
+                        color: statusColor
+                      }}
+                    >
+                      {ahead ? "Ahead" : onTrack ? "On Track" : "Behind"}
+                    </span>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="flex items-baseline justify-between">
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className="text-2xl font-light tabular-nums"
+                        style={{ color: statusColor }}
+                      >
+                        {pctOfBudget}%
+                      </span>
+                      <span className="text-xs text-text-muted">of budget</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm text-text-primary tabular-nums font-medium">
+                        {formatNumber(cat.totals.actual)}
+                      </span>
+                      <span className="text-sm text-text-muted"> / </span>
+                      <span className="text-sm text-text-tertiary tabular-nums">
+                        {formatNumber(cat.totals.budget)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="relative h-1.5 bg-bg-tertiary rounded-full overflow-hidden mt-3">
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.min(100, pctOfBudget)}%`,
+                        background: `linear-gradient(90deg, ${statusColor}, ${statusColorDark})`,
+                      }}
+                    />
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-white/60"
+                      style={{ left: `${pctThroughPeriod}%` }}
+                      title={`${pctThroughPeriod}% through period`}
+                    />
+                  </div>
+                </div>
+              </button>
+
+              {/* SKU Table - Expanded by default, no scroll */}
+              {isExpanded && (
+                <div className="border-t border-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/50 text-text-muted text-xs uppercase tracking-wider bg-bg-tertiary/30">
+                        <th className="text-left py-2 px-3 font-medium">Product</th>
+                        <th className="text-right py-2 px-2 font-medium">Budget</th>
+                        <th className="text-right py-2 px-2 font-medium">Actual</th>
+                        <th className="text-right py-2 px-3 font-medium">Pace</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cat.skus.map((sku, idx) => {
+                        const skuPct = sku.budget > 0
+                          ? Math.round((sku.actual / sku.budget) * 100)
+                          : 0;
+                        const skuAhead = skuPct >= pctThroughPeriod + 5;
+                        const skuOnTrack = skuPct >= pctThroughPeriod - 5;
+                        const skuColor = skuAhead ? colors.emerald : skuOnTrack ? colors.amber : colors.rose;
+
+                        return (
+                          <tr
+                            key={sku.sku}
+                            className={`border-b border-border/20 hover:bg-bg-tertiary/40 transition-colors ${
+                              idx % 2 === 1 ? "bg-bg-tertiary/10" : ""
+                            }`}
+                          >
+                            <td className="py-1.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-2 h-2 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: skuColor }}
+                                />
+                                <div>
+                                  <div className="text-text-primary text-xs font-medium">{sku.displayName}</div>
+                                  <div className="text-text-muted text-[10px]">{sku.sku}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-text-muted tabular-nums text-xs">
+                              {formatNumber(sku.budget)}
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-text-primary tabular-nums text-xs font-medium">
+                              {formatNumber(sku.actual)}
+                            </td>
+                            <td className="py-1.5 px-3 text-right">
+                              <span
+                                className="inline-block text-xs font-semibold tabular-nums px-2 py-0.5 rounded"
+                                style={{
+                                  backgroundColor: `${skuColor}20`,
+                                  color: skuColor
+                                }}
+                              >
+                                {skuPct}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
     </div>
   );
 }

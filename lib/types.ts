@@ -407,3 +407,50 @@ export interface AssemblyResponse {
   config: AssemblyConfig;
   lastSynced: string | null;
 }
+
+// Budget vs Actual Types
+export type BudgetDateRange = "mtd" | "2months" | "qtd" | "ytd" | "6months" | "custom";
+
+export type BudgetCategory = "accessories" | "carbon_steel" | "cast_iron" | "glass_lid";
+
+export interface BudgetSkuRow {
+  displayName: string;
+  sku: string;
+  budget: number;
+  actual: number;
+  variance: number;
+  variancePct: number;
+}
+
+export interface BudgetCategoryData {
+  category: BudgetCategory;
+  displayName: string;
+  skus: BudgetSkuRow[];
+  totals: {
+    budget: number;
+    actual: number;
+    variance: number;
+    variancePct: number;
+  };
+}
+
+export interface BudgetResponse {
+  categories: BudgetCategoryData[];
+  cookwareTotal: {
+    budget: number;
+    actual: number;
+    variance: number;
+    variancePct: number;
+  };
+  grandTotal: {
+    budget: number;
+    actual: number;
+    variance: number;
+    variancePct: number;
+  };
+  dateRange: BudgetDateRange;
+  periodLabel: string;
+  periodProgress: number; // e.g., 8/31 = 0.26 (26% through month)
+  daysInPeriod: number;
+  daysElapsed: number;
+}
