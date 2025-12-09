@@ -4056,7 +4056,9 @@ function BudgetDashboard({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-light tracking-wide text-text-primary">BUDGET VS ACTUAL</h2>
-          <p className="text-sm text-text-tertiary mt-1">{data.periodLabel}</p>
+          <p className="text-sm text-text-tertiary mt-1">
+            {data.periodLabel} • {Math.round((data.daysElapsed / data.daysInPeriod) * 100)}% through
+          </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {/* Date Range Buttons */}
@@ -4133,19 +4135,8 @@ function BudgetDashboard({
             </span>
             <span className="text-sm text-text-tertiary">of budget</span>
           </div>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-text-muted">
-              {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
-            </span>
-            <span
-              className="text-xs px-2 py-0.5 rounded font-medium"
-              style={{
-                backgroundColor: `${getPaceColor(data.cookwareTotal.pace)}15`,
-                color: getPaceColor(data.cookwareTotal.pace)
-              }}
-            >
-              {data.cookwareTotal.pace}% pace
-            </span>
+          <div className="text-sm text-text-muted mb-4">
+            {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
           </div>
           {/* Progress Bar */}
           <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
@@ -4183,19 +4174,8 @@ function BudgetDashboard({
             </span>
             <span className="text-sm text-text-tertiary">of budget</span>
           </div>
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-text-muted">
-              {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
-            </span>
-            <span
-              className="text-xs px-2 py-0.5 rounded font-medium"
-              style={{
-                backgroundColor: `${getPaceColor(data.grandTotal.pace)}15`,
-                color: getPaceColor(data.grandTotal.pace)
-              }}
-            >
-              {data.grandTotal.pace}% pace
-            </span>
+          <div className="text-sm text-text-muted mb-4">
+            {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
           </div>
           {/* Progress Bar */}
           <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
@@ -4224,10 +4204,8 @@ function BudgetDashboard({
           const pctThroughPeriod = Math.round((data.daysElapsed / data.daysInPeriod) * 100);
           const isExpanded = expandedCategories.has(cat.category);
           // Use pace from API for consistent color logic
-          const pace = cat.totals.pace;
-          const statusColor = getPaceColor(pace);
-          const statusColorDark = getPaceColorDark(pace);
-          const statusLabel = pace >= 100 ? "Hot" : pace >= 90 ? "On Track" : pace >= 80 ? "Slow" : "Behind";
+          const statusColor = getPaceColor(cat.totals.pace);
+          const statusColorDark = getPaceColorDark(cat.totals.pace);
 
           return (
             <div key={cat.category} className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
@@ -4237,29 +4215,18 @@ function BudgetDashboard({
                 className="w-full text-left hover:bg-bg-tertiary/30 transition-colors"
               >
                 <div className="p-4 pb-3">
-                  {/* Top row: Category name + status badge */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                        style={{ color: statusColor }}
-                      >
-                        ▶
-                      </span>
-                      <span className="text-sm font-semibold tracking-wider text-text-primary uppercase">
-                        {cat.displayName}
-                      </span>
-                      <span className="text-xs text-text-muted">({cat.skus.length})</span>
-                    </div>
+                  {/* Top row: Category name */}
+                  <div className="flex items-center gap-2 mb-2">
                     <span
-                      className="text-xs px-2 py-0.5 rounded font-medium"
-                      style={{
-                        backgroundColor: `${statusColor}15`,
-                        color: statusColor
-                      }}
+                      className={`text-xs transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                      style={{ color: statusColor }}
                     >
-                      {statusLabel} ({pace}%)
+                      ▶
                     </span>
+                    <span className="text-sm font-semibold tracking-wider text-text-primary uppercase">
+                      {cat.displayName}
+                    </span>
+                    <span className="text-xs text-text-muted">({cat.skus.length})</span>
                   </div>
 
                   {/* Stats row */}
