@@ -4311,14 +4311,17 @@ function BudgetDashboard({
                         <th className="text-left py-2 px-3 font-medium">Product</th>
                         <th className="text-right py-2 px-2 font-medium">Budget</th>
                         <th className="text-right py-2 px-2 font-medium">Actual</th>
-                        <th className="text-right py-2 px-3 font-medium">Pace</th>
+                        <th className="text-right py-2 px-3 font-medium">%</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cat.skus.map((sku, idx) => {
-                        // Use pace from API for consistent color logic
-                        const skuPace = sku.pace;
-                        const skuColor = getPaceColor(skuPace);
+                        // Display: raw % to monthly budget
+                        // Color: based on pace (are we on track?)
+                        const pctOfBudget = sku.budget > 0
+                          ? Math.round((sku.actual / sku.budget) * 100)
+                          : 0;
+                        const skuColor = getPaceColor(sku.pace);
 
                         return (
                           <tr
@@ -4353,7 +4356,7 @@ function BudgetDashboard({
                                   color: skuColor
                                 }}
                               >
-                                {skuPace}%
+                                {pctOfBudget}%
                               </span>
                             </td>
                           </tr>
