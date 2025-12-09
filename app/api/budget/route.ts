@@ -405,26 +405,36 @@ export async function GET(request: Request) {
     }
 
     // Query retail sales (line_items joined with orders)
-    // High limit to prevent any future truncation issues
-    const { data: retailData, error: retailError } = await supabase
-      .from("line_items")
-      .select(`
-        sku,
-        quantity,
-        orders!inner(created_at, canceled)
-      `)
-      .gte("orders.created_at", start)
-      .lte("orders.created_at", end)
-      .eq("orders.canceled", false)
-      .limit(2000000);
+    // Use pagination to avoid Supabase row limits
+    const PAGE_SIZE = 50000;
+    const retailData: Array<{ sku: string | null; quantity: number }> = [];
+    let offset = 0;
+    let hasMore = true;
 
-    if (retailError) {
-      throw new Error(`Failed to fetch retail sales: ${retailError.message}`);
-    }
+    while (hasMore) {
+      const { data: page, error: pageError } = await supabase
+        .from("line_items")
+        .select(`
+          sku,
+          quantity,
+          orders!inner(created_at, canceled)
+        `)
+        .gte("orders.created_at", start)
+        .lte("orders.created_at", end)
+        .eq("orders.canceled", false)
+        .range(offset, offset + PAGE_SIZE - 1);
 
-    // Warn if we hit the limit (data truncation)
-    if (retailData && retailData.length >= 2000000) {
-      console.warn(`BUDGET API WARNING: Retail data hit 2M limit - data may be truncated!`);
+      if (pageError) {
+        throw new Error(`Failed to fetch retail sales: ${pageError.message}`);
+      }
+
+      if (page && page.length > 0) {
+        retailData.push(...page);
+        offset += page.length;
+        hasMore = page.length === PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
     }
 
     // Query B2B fulfilled

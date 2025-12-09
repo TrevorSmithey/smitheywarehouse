@@ -507,6 +507,17 @@ export default function Dashboard() {
             INVENTORY
           </button>
           <button
+            onClick={() => setPrimaryTab("budget")}
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+              primaryTab === "budget"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Target className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            BUDGET V ACTUAL
+          </button>
+          <button
             onClick={() => setPrimaryTab("assembly")}
             className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "assembly"
@@ -538,17 +549,6 @@ export default function Dashboard() {
           >
             <Package className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             FULFILLMENT
-          </button>
-          <button
-            onClick={() => setPrimaryTab("budget")}
-            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
-              primaryTab === "budget"
-                ? "text-accent-blue border-accent-blue"
-                : "text-text-tertiary border-transparent hover:text-text-secondary"
-            }`}
-          >
-            <Target className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
-            BUDGET V ACTUAL
           </button>
         </div>
 
@@ -4249,10 +4249,10 @@ function BudgetDashboard({
             <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
             <div
               className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: colors.emerald, borderRightColor: colors.accent }}
+              style={{ borderTopColor: colors.accent, borderRightColor: colors.emerald }}
             />
           </div>
-          <span className="text-sm text-text-tertiary tracking-widest uppercase">Crunching numbers...</span>
+          <span className="text-sm text-text-tertiary tracking-widest uppercase">Analyzing sales...</span>
         </div>
       </div>
     );
@@ -4274,17 +4274,50 @@ function BudgetDashboard({
     );
   }
 
+  // Pace status helpers
+  const getPaceStatus = (pace: number) => {
+    if (pace >= 110) return { label: "Hot", icon: "🔥" };
+    if (pace >= 100) return { label: "On Pace", icon: "✓" };
+    if (pace >= 90) return { label: "Close", icon: "→" };
+    if (pace >= 80) return { label: "Behind", icon: "↓" };
+    return { label: "Slow", icon: "⚠" };
+  };
+
+  const pctThroughPeriod = Math.round((data.daysElapsed / data.daysInPeriod) * 100);
+  const grandPctOfBudget = data.grandTotal.budget > 0
+    ? Math.round((data.grandTotal.actual / data.grandTotal.budget) * 100)
+    : 0;
+
   return (
     <div className="space-y-6">
-      {/* Header with Date Range Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-light tracking-wide text-text-primary">BUDGET VS ACTUAL</h2>
-          <p className="text-sm text-text-tertiary mt-1">
-            {data.periodLabel} • {Math.round((data.daysElapsed / data.daysInPeriod) * 100)}% through
-          </p>
+      {/* Compact Header Row - Production style */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
+          <div className="flex items-baseline gap-2">
+            <span
+              className="text-2xl font-bold tabular-nums"
+              style={{ color: getPaceColor(data.grandTotal.pace) }}
+            >
+              {data.grandTotal.pace}%
+            </span>
+            <span className="text-xs text-text-muted">pace</span>
+          </div>
+          <div className="text-sm text-text-muted">
+            <span className="text-text-secondary font-medium tabular-nums">{formatNumber(data.grandTotal.actual)}</span>
+            <span className="mx-1">/</span>
+            <span className="tabular-nums">{formatNumber(data.grandTotal.budget)}</span>
+          </div>
+          <div className="text-sm">
+            <span className="tabular-nums font-medium" style={{ color: pctThroughPeriod >= 90 ? colors.amber : colors.slate }}>
+              {pctThroughPeriod}%
+            </span>
+            <span className="text-text-muted ml-1">through</span>
+            <span className="text-text-tertiary ml-1 text-xs">
+              ({data.periodLabel.split("(")[0].trim()})
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
           {/* Date Range Buttons */}
           <div className="flex bg-bg-tertiary rounded-lg p-1">
             {dateRangeOptions.map((opt) => (
@@ -4330,10 +4363,10 @@ function BudgetDashboard({
           {/* Refresh Button */}
           <button
             onClick={onRefresh}
-            className="p-2 text-text-tertiary hover:text-text-secondary transition-colors"
-            title="Refresh"
+            className="p-2 rounded-lg transition-all hover:bg-white/5"
+            aria-label="Refresh data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -4341,23 +4374,26 @@ function BudgetDashboard({
       {/* Summary Cards - Cookware Total and Grand Total */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Cookware Total */}
-        <div className="bg-gradient-to-br from-bg-secondary to-bg-tertiary rounded-lg border border-border p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-accent-blue" />
-              <h3 className="text-sm font-semibold tracking-wider text-text-secondary uppercase">
-                Cookware Total
-              </h3>
+              <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">COOKWARE TOTAL</span>
             </div>
-            <span className="text-xs text-text-muted">Cast Iron + Carbon Steel</span>
+            <span
+              className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(data.cookwareTotal.pace)}`}
+              style={{ color: getPaceColor(data.cookwareTotal.pace) }}
+            >
+              {getPaceStatus(data.cookwareTotal.pace).label}
+            </span>
           </div>
           <div className="flex items-baseline gap-3 mb-1">
             <span
-              className={`text-4xl font-light tabular-nums ${getPaceTextClass(data.cookwareTotal.pace)}`}
+              className={`text-3xl sm:text-4xl font-bold tabular-nums`}
+              style={{ color: getPaceColor(data.cookwareTotal.pace) }}
             >
               {Math.round((data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%
             </span>
-            <span className="text-sm text-text-tertiary">of budget</span>
+            <span className="text-xs text-text-muted">of budget</span>
           </div>
           <div className="text-sm text-text-muted mb-4">
             {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
@@ -4373,30 +4409,36 @@ function BudgetDashboard({
             />
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-white/50"
-              style={{ left: `${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}%` }}
-              title={`${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}% through period`}
+              style={{ left: `${pctThroughPeriod}%` }}
+              title={`${pctThroughPeriod}% through period`}
             />
+          </div>
+          <div className="text-xs text-text-tertiary mt-2">
+            Cast Iron + Carbon Steel • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.cookwareTotal.pace) }}>{data.cookwareTotal.pace}%</span>
           </div>
         </div>
 
         {/* Grand Total */}
-        <div className="bg-gradient-to-br from-bg-secondary to-bg-tertiary rounded-lg border border-border p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-accent-blue" />
-              <h3 className="text-sm font-semibold tracking-wider text-text-secondary uppercase">
-                Grand Total
-              </h3>
+              <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">GRAND TOTAL</span>
             </div>
-            <span className="text-xs text-text-muted">All Categories</span>
+            <span
+              className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(data.grandTotal.pace)}`}
+              style={{ color: getPaceColor(data.grandTotal.pace) }}
+            >
+              {getPaceStatus(data.grandTotal.pace).label}
+            </span>
           </div>
           <div className="flex items-baseline gap-3 mb-1">
             <span
-              className={`text-4xl font-light tabular-nums ${getPaceTextClass(data.grandTotal.pace)}`}
+              className={`text-3xl sm:text-4xl font-bold tabular-nums`}
+              style={{ color: getPaceColor(data.grandTotal.pace) }}
             >
-              {Math.round((data.grandTotal.actual / data.grandTotal.budget) * 100)}%
+              {grandPctOfBudget}%
             </span>
-            <span className="text-sm text-text-tertiary">of budget</span>
+            <span className="text-xs text-text-muted">of budget</span>
           </div>
           <div className="text-sm text-text-muted mb-4">
             {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
@@ -4406,15 +4448,18 @@ function BudgetDashboard({
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
-                width: `${Math.min(100, (data.grandTotal.actual / data.grandTotal.budget) * 100)}%`,
+                width: `${Math.min(100, grandPctOfBudget)}%`,
                 background: `linear-gradient(90deg, ${getPaceColor(data.grandTotal.pace)}, ${getPaceColorDark(data.grandTotal.pace)})`,
               }}
             />
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-white/50"
-              style={{ left: `${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}%` }}
-              title={`${Math.round((data.daysElapsed / data.daysInPeriod) * 100)}% through period`}
+              style={{ left: `${pctThroughPeriod}%` }}
+              title={`${pctThroughPeriod}% through period`}
             />
+          </div>
+          <div className="text-xs text-text-tertiary mt-2">
+            All Categories • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.grandTotal.pace) }}>{data.grandTotal.pace}%</span>
           </div>
         </div>
       </div>
@@ -4432,32 +4477,40 @@ function BudgetDashboard({
           const statusColorDark = getPaceColorDark(cat.totals.pace);
 
           return (
-            <div key={cat.category} className="bg-bg-secondary rounded-lg border border-border overflow-hidden">
+            <div key={cat.category} className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
               {/* Rich Header with Progress */}
               <button
                 onClick={() => onToggleCategory(cat.category)}
                 className="w-full text-left hover:bg-bg-tertiary/30 transition-colors"
               >
                 <div className="p-4 pb-3">
-                  {/* Top row: Category name */}
-                  <div className="flex items-center gap-2 mb-2">
+                  {/* Top row: Category name + pace badge */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        style={{ color: statusColor }}
+                      >
+                        ▶
+                      </span>
+                      <span className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+                        {cat.displayName}
+                      </span>
+                      <span className="text-[10px] text-text-tertiary">({cat.skus.length})</span>
+                    </div>
                     <span
-                      className={`text-xs transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(cat.totals.pace)}`}
                       style={{ color: statusColor }}
                     >
-                      ▶
+                      {getPaceStatus(cat.totals.pace).label}
                     </span>
-                    <span className="text-sm font-semibold tracking-wider text-text-primary uppercase">
-                      {cat.displayName}
-                    </span>
-                    <span className="text-xs text-text-muted">({cat.skus.length})</span>
                   </div>
 
                   {/* Stats row */}
                   <div className="flex items-baseline justify-between">
                     <div className="flex items-baseline gap-2">
                       <span
-                        className="text-2xl font-light tabular-nums"
+                        className="text-2xl font-bold tabular-nums"
                         style={{ color: statusColor }}
                       >
                         {pctOfBudget}%
