@@ -2261,7 +2261,7 @@ function InventoryDashboard({
   ];
 
   // Build velocity lookup for quick SKU access (store full data for tooltips)
-  const velocityBySku = new Map<string, { avg: number; total: number; prior: number }>();
+  const velocityBySku = new Map<string, { avg: number; total: number; prior: number; delta: number }>();
   if (inventory?.salesVelocity) {
     const allVelocity = [
       ...(inventory.salesVelocity.cast_iron || []),
@@ -2273,7 +2273,8 @@ function InventoryDashboard({
       velocityBySku.set(item.sku.toLowerCase(), {
         avg: item.sales3DayAvg,
         total: item.sales3DayTotal,
-        prior: item.prior3DayAvg
+        prior: item.prior3DayAvg,
+        delta: item.delta
       });
     }
   }
@@ -2507,25 +2508,34 @@ function InventoryDashboard({
                         const doiColor = getDoiColor(product);
                         const velocity = velocityBySku.get(product.sku.toLowerCase());
                         const isNegative = product.total < 0;
+                        const hasWarehouseNegative = product.hobson < 0 || product.selery < 0;
                         // Build tooltip with budget % and velocity
                         const tooltipParts: string[] = [];
                         if (product.monthPct !== undefined) {
                           tooltipParts.push(`MTD: ${product.monthSold}/${product.monthBudget} (${product.monthPct}%)`);
                         }
                         if (velocity) {
-                          tooltipParts.push(`Velocity: ${velocity.avg}/day (${velocity.total} last 3d)`);
+                          const deltaStr = velocity.delta >= 0 ? `+${velocity.delta}%` : `${velocity.delta}%`;
+                          tooltipParts.push(`Velocity: ${velocity.avg}/day (${deltaStr} vs prior)`);
                         }
                         if (product.stockoutWeek && product.stockoutYear) {
                           tooltipParts.push(`Stockout: Wk ${product.stockoutWeek}, ${product.stockoutYear}`);
                         }
                         const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
 
+                        // Row background: red if total negative, amber if Hobson/Selery negative
+                        const rowBg = isNegative
+                          ? "bg-red-500/10"
+                          : hasWarehouseNegative
+                          ? "bg-amber-500/10"
+                          : idx % 2 === 1
+                          ? "bg-bg-tertiary/10"
+                          : "";
+
                         return (
                           <tr
                             key={product.sku}
-                            className={`border-b border-border/20 hover:bg-bg-tertiary/40 transition-colors ${
-                              isNegative ? "bg-red-500/10" : idx % 2 === 1 ? "bg-bg-tertiary/10" : ""
-                            }`}
+                            className={`border-b border-border/20 hover:bg-bg-tertiary/40 transition-colors ${rowBg}`}
                           >
                             <td className="py-3 px-3" title={tooltip}>
                               <div className="flex items-center gap-2">
