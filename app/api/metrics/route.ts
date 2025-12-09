@@ -644,8 +644,13 @@ export async function GET(request: Request) {
     const filteredLeadTimeData = filterRestorationOrders(leadTimeResult.data || []);
     const fulfillmentLeadTime = processFulfillmentLeadTime(filteredLeadTimeData, rangeMidpoint);
 
-    // Process engraving queue
-    const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
+    // Process engraving queue - filter out restoration orders for consistency
+    // Restoration orders follow a different fulfillment cycle (waiting on customer)
+    const engravingQueue = processEngravingQueue(
+      (engravingQueueResult.data || []).filter(
+        (row: { order_id: number }) => !restorationOrderIds.has(row.order_id)
+      )
+    );
 
     // Process order aging for bar chart - uses filteredAgingData created earlier
     const orderAging = processOrderAging(filteredAgingData, now);
