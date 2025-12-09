@@ -459,6 +459,68 @@ export async function GET(request: Request) {
       }
     }
 
+    // CARE KIT BUNDLE ADJUSTMENT (effective July 1, 2025)
+    // Each Cleaning & Care Kit (smith-ac-carekit) contains:
+    // - 1x Chainmail Scrubber (smith-ac-scrub1)
+    // - 1x Seasoning Oil (smith-ac-season)
+    // We need to add these component quantities to their respective actuals
+    const CARE_KIT_SKU = "smith-ac-carekit";
+    const CHAINMAIL_SKU = "smith-ac-scrub1";
+    const SEASONING_OIL_SKU = "smith-ac-season";
+    const CARE_KIT_BUNDLE_START = "2025-07-01";
+
+    // Only apply adjustment if date range includes dates >= July 1, 2025
+    const bundleStartDate = new Date(Date.UTC(2025, 6, 1, 5, 0, 0)); // July 1, 2025 EST
+    const rangeEndDate = new Date(end);
+
+    if (rangeEndDate >= bundleStartDate) {
+      // Determine the effective start for counting Care Kits
+      // Either the range start or July 1, 2025 - whichever is later
+      const effectiveStart = new Date(start) > bundleStartDate
+        ? start
+        : bundleStartDate.toISOString();
+
+      // Query Care Kit retail sales from July 1, 2025 onwards (within our range)
+      const { data: careKitRetail } = await supabase
+        .from("line_items")
+        .select(`
+          sku,
+          quantity,
+          orders!inner(created_at, canceled)
+        `)
+        .ilike("sku", CARE_KIT_SKU)
+        .gte("orders.created_at", effectiveStart)
+        .lte("orders.created_at", end)
+        .eq("orders.canceled", false)
+        .limit(100000);
+
+      // Query Care Kit B2B fulfilled from July 1, 2025 onwards
+      const { data: careKitB2B } = await supabase
+        .from("b2b_fulfilled")
+        .select("sku, quantity")
+        .ilike("sku", CARE_KIT_SKU)
+        .gte("fulfilled_at", effectiveStart)
+        .lte("fulfilled_at", end)
+        .limit(100000);
+
+      // Count total Care Kits sold after July 1, 2025
+      let careKitCount = 0;
+      for (const item of careKitRetail || []) {
+        careKitCount += item.quantity || 0;
+      }
+      for (const item of careKitB2B || []) {
+        careKitCount += item.quantity || 0;
+      }
+
+      // Add Care Kit bundle components to their respective SKU actuals
+      if (careKitCount > 0) {
+        const currentChainmail = salesBySku.get(CHAINMAIL_SKU) || 0;
+        const currentSeasoningOil = salesBySku.get(SEASONING_OIL_SKU) || 0;
+        salesBySku.set(CHAINMAIL_SKU, currentChainmail + careKitCount);
+        salesBySku.set(SEASONING_OIL_SKU, currentSeasoningOil + careKitCount);
+      }
+    }
+
     // Build category data
     const categoryDataMap = new Map<BudgetCategory, BudgetSkuRow[]>();
     for (const cat of CATEGORY_ORDER) {

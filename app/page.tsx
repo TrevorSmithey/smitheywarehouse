@@ -185,8 +185,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  // Global date range state - default to 3 days
-  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("3days");
+  // Global date range state - default to 7 days
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>("7days");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
 
@@ -442,8 +442,8 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Date Range Selector - only show on Fulfillment tab */}
-        {primaryTab === "fulfillment" && (
+        {/* Date Range Selector - only show on Fulfillment Tracking sub-tab */}
+        {primaryTab === "fulfillment" && fulfillmentSubTab === "tracking" && (
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex gap-2">
               {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
@@ -593,149 +593,341 @@ export default function Dashboard() {
       {/* FULFILLMENT DASHBOARD */}
       {primaryTab === "fulfillment" && fulfillmentSubTab === "dashboard" && (
         <>
-          {/* KPI Cards - with change indicators like Lathe app */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <KPICard
-          label="IN QUEUE"
-          subtitle="(running total, excl. restorations)"
-          value={totals.queue}
-          loading={loading}
-          status={totals.queue > 500 ? "warning" : undefined}
-        />
-        <KPICard
-          label={
-            dateRangeOption === "today" ? "SHIPPED TODAY" :
-            dateRangeOption === "yesterday" ? "SHIPPED YESTERDAY" :
-            dateRangeOption === "3days" ? "SHIPPED (3D)" :
-            dateRangeOption === "7days" ? "SHIPPED (7D)" :
-            dateRangeOption === "30days" ? "SHIPPED (30D)" :
-            "SHIPPED"
-          }
-          value={totals.today}
-          loading={loading}
-          status="good"
-          change={todayVsAvg}
-          changeLabel="vs avg"
-        />
-        <EngravingQueueCard
-          data={metrics?.engravingQueue}
-          loading={loading}
-        />
-      </div>
-
-      {/* Warehouse Panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {metrics?.warehouses?.map((wh) => (
-          <WarehousePanel
-            key={wh.warehouse}
-            data={wh}
-            queueHealth={metrics.queueHealth?.find(
-              (q) => q.warehouse === wh.warehouse
-            )}
-            transitData={metrics.transitAnalytics?.find(
-              (t) => t.warehouse === wh.warehouse
-            )}
-            leadTimeData={metrics.fulfillmentLeadTime?.find(
-              (l) => l.warehouse === wh.warehouse
-            )}
-            loading={loading}
-            dateRangeOption={dateRangeOption}
-          />
-        ))}
-      </div>
-
-      {/* Two-column layout: Chart + Top SKUs */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* Fulfillment Trend Chart */}
-        <div className="lg:col-span-2 bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
-          <div className="mb-6">
-            <h3 className="text-label font-medium text-text-tertiary">
-              FULFILLMENT TREND
-            </h3>
-          </div>
-          {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="smitheyGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="seleryGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#64748B" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#64748B" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="date"
-                  stroke="#64748B"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  stroke="#64748B"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  width={35}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#12151F",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                  }}
-                  labelStyle={{ color: "#94A3B8" }}
-                  itemStyle={{ color: "#FFFFFF" }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Smithey"
-                  stroke="#0EA5E9"
-                  strokeWidth={2}
-                  fill="url(#smitheyGradient)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Selery"
-                  stroke="#64748B"
-                  strokeWidth={2}
-                  fill="url(#seleryGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[220px] flex items-center justify-center text-text-muted text-sm">
-              No data available
+          {/* Hero Section - Key metrics + engraving */}
+          <div className="bg-bg-secondary rounded border border-border p-6 mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+              <h2 className="text-label text-text-tertiary">OPERATIONS OVERVIEW</h2>
+              <div className="flex items-center gap-1">
+                {(["today", "3days", "7days", "30days"] as const).map((option) => {
+                  const labels = { today: "Today", "3days": "3D", "7days": "7D", "30days": "30D" };
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => setDateRangeOption(option)}
+                      className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
+                        dateRangeOption === option
+                          ? "bg-accent-blue text-white"
+                          : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
+                      }`}
+                    >
+                      {labels[option]}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          )}
-          <div className="flex justify-center gap-6 mt-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-accent-blue" />
-              <span className="text-context text-text-secondary">Smithey</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-text-tertiary" />
-              <span className="text-context text-text-secondary">Selery</span>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6 md:gap-8">
+              {/* 1. In Queue */}
+              <div>
+                <div className={`text-4xl font-light ${totals.queue > 500 ? "text-status-warning" : "text-text-primary"}`}>
+                  {loading ? "—" : formatNumber(totals.queue)}
+                </div>
+                <div className="text-context text-text-muted mt-1">in queue</div>
+              </div>
+
+              {/* 2. Avg Per Day */}
+              {(() => {
+                const daysInRange = getDaysInRange(dateRangeOption);
+                const avgPerDay = daysInRange > 0 ? Math.round(totals.today / daysInRange) : 0;
+                return (
+                  <div>
+                    <div className="text-4xl font-light text-text-primary">
+                      {loading || avgPerDay === 0 ? "—" : formatNumber(avgPerDay)}
+                    </div>
+                    <div className="text-context text-text-muted mt-1">avg/day</div>
+                  </div>
+                );
+              })()}
+
+              {/* 3. Days to Clear */}
+              {(() => {
+                const daysInRange = getDaysInRange(dateRangeOption);
+                const avgPerDay = daysInRange > 0 ? Math.round(totals.today / daysInRange) : 0;
+                const daysToClear = avgPerDay > 0 ? Math.round(totals.queue / avgPerDay) : 0;
+                return (
+                  <div>
+                    <div className={`text-4xl font-light ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
+                      {loading || avgPerDay === 0 ? "—" : `~${daysToClear}d`}
+                    </div>
+                    <div className="text-context text-text-muted mt-1">to clear</div>
+                  </div>
+                );
+              })()}
+
+              {/* 4. Total Shipped */}
+              <div>
+                <div className="text-4xl font-light text-status-good">
+                  {loading ? "—" : formatNumber(totals.today)}
+                </div>
+                <div className="text-context mt-1">
+                  <span className="text-text-muted">shipped</span>
+                  {todayVsAvg !== undefined && !loading && (
+                    <span className={`ml-2 ${todayVsAvg > 0 ? "text-status-good" : todayVsAvg < 0 ? "text-status-bad" : "text-text-tertiary"}`}>
+                      {todayVsAvg > 0 ? "↑" : todayVsAvg < 0 ? "↓" : "→"}{Math.abs(todayVsAvg).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. Engraving */}
+              <div>
+                <div className={`text-4xl font-light ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-primary"}`}>
+                  {loading ? "—" : formatNumber(metrics?.engravingQueue?.total_units || 0)}
+                </div>
+                <div className="text-context mt-1">
+                  <span className="text-text-muted">engraving</span>
+                  <span className={`ml-2 ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-secondary"}`}>
+                    ~{metrics?.engravingQueue?.estimated_days || 0}d
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Queue Aging */}
-        <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
-      </div>
+          {/* Warehouse Cards - Combined metrics + speed */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            {metrics?.warehouses?.map((wh) => {
+              const qh = metrics.queueHealth?.find(q => q.warehouse === wh.warehouse);
+              const lt = metrics.fulfillmentLeadTime?.find(l => l.warehouse === wh.warehouse);
+              const tr = metrics.transitAnalytics?.find(t => t.warehouse === wh.warehouse);
+              const isSmithey = wh.warehouse === "smithey";
+              const daysInRange = getDaysInRange(dateRangeOption);
+              const avgPerDay = daysInRange > 0 ? Math.round(wh.fulfilled_today / daysInRange) : 0;
+              const queueSize = wh.unfulfilled_count + wh.partial_count;
+              const daysToClear = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
 
-      {/* Backlog Chart - separate, smaller, 10-day window */}
-      <BacklogChart backlog={metrics?.dailyBacklog || []} loading={loading} />
+              return (
+                <div key={wh.warehouse} className={`bg-bg-secondary rounded border border-border overflow-hidden transition-all hover:border-border-hover ${isSmithey ? "border-l-2 border-l-accent-blue" : "border-l-2 border-l-text-tertiary"}`}>
+                  {/* Header */}
+                  <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+                    <span className={`text-label font-medium ${isSmithey ? "text-accent-blue" : "text-text-primary"}`}>{wh.warehouse.toUpperCase()}</span>
+                    {wh.week_over_week_change !== 0 && (
+                      <span className={`text-context ${wh.week_over_week_change > 0 ? "text-status-good" : "text-status-bad"}`}>
+                        {wh.week_over_week_change > 0 ? "+" : ""}{wh.week_over_week_change.toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
 
-      {/* Warehouse Distribution Chart */}
-      <WarehouseSplitChart dailyOrders={metrics?.dailyOrders || []} loading={loading} />
+                  <div className="p-5">
+                    {/* Primary Metrics Row - matches hero order: Queue, Avg/Day, To Clear, Shipped */}
+                    <div className="grid grid-cols-4 gap-4 mb-4">
+                      <div>
+                        <div className="text-2xl font-light text-text-primary">{formatNumber(queueSize)}</div>
+                        <div className="text-label text-text-tertiary mt-1">Queue</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-light text-text-primary">{formatNumber(avgPerDay)}</div>
+                        <div className="text-label text-text-tertiary mt-1">Avg/Day</div>
+                      </div>
+                      <div>
+                        <div className={`text-2xl font-light ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
+                          {avgPerDay > 0 ? `~${daysToClear}d` : "—"}
+                        </div>
+                        <div className="text-label text-text-tertiary mt-1">To Clear</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-light text-status-good">{formatNumber(wh.fulfilled_today)}</div>
+                        <div className="text-label text-text-tertiary mt-1">Shipped</div>
+                      </div>
+                    </div>
 
-      {/* Top SKUs in Queue - full width at bottom */}
-      <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
+                    {/* Aging + Speed Row */}
+                    <div className="flex flex-wrap items-start justify-between gap-4 pt-4 border-t border-border-subtle">
+                      {/* Aging */}
+                      {qh && (() => {
+                        const fresh = queueSize - qh.waiting_1_day;
+                        const days1to3 = qh.waiting_1_day - qh.waiting_3_days;
+                        const days3to7 = qh.waiting_3_days - qh.waiting_7_days;
+                        const days7plus = qh.waiting_7_days;
+                        return (
+                          <div>
+                            <div className="text-label text-text-tertiary mb-2">AGING</div>
+                            <div className="flex gap-3 text-context">
+                              <span><span className="text-status-good font-medium">{fresh}</span> <span className="text-text-muted">&lt;1d</span></span>
+                              <span><span className="text-text-primary font-medium">{days1to3}</span> <span className="text-text-muted">1-3d</span></span>
+                              <span><span className={days3to7 > 0 ? "text-status-warning font-medium" : "text-text-primary font-medium"}>{days3to7}</span> <span className="text-text-muted">3-7d</span></span>
+                              <span><span className={days7plus > 0 ? "text-status-bad font-medium" : "text-text-primary font-medium"}>{days7plus}</span> <span className="text-text-muted">7d+</span></span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Speed */}
+                      {lt && lt.total_fulfilled > 0 && (
+                        <div>
+                          <div className="text-label text-text-tertiary mb-2">SPEED</div>
+                          <div className="flex gap-3 text-context">
+                            <span>
+                              <span className="text-text-primary font-medium">{lt.avg_hours < 24 ? `${lt.avg_hours}h` : `${lt.avg_days}d`}</span>
+                              <span className="text-text-muted ml-1">avg</span>
+                            </span>
+                            <span><span className="text-status-good font-medium">{lt.within_24h}%</span> <span className="text-text-muted">&lt;24h</span></span>
+                            <span><span className={lt.over_72h > 10 ? "text-status-warning font-medium" : "text-text-secondary font-medium"}>{lt.over_72h}%</span> <span className="text-text-muted">&gt;72h</span></span>
+                            {tr && tr.total_delivered > 0 && (
+                              <span><span className="text-text-primary font-medium">{tr.avg_transit_days}d</span> <span className="text-text-muted">transit</span></span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Section 4: Full-Width Fulfillment Chart */}
+          <div className="bg-bg-secondary rounded border border-border p-6 mb-6 transition-all hover:border-border-hover">
+            {(() => {
+              // Calculate distribution stats
+              const dailyOrders = metrics?.dailyOrders || [];
+              const avgSmithey = dailyOrders.length > 0
+                ? Math.round(dailyOrders.reduce((sum, d) => sum + d.smithey_pct, 0) / dailyOrders.length)
+                : 0;
+
+              // Merge fulfillment data with warehouse split percentages
+              const splitByDate = new Map(dailyOrders.map(d => [d.date, { smitheyPct: d.smithey_pct, total: d.total }]));
+              const combinedData = chartData.map(d => {
+                const split = splitByDate.get(d.rawDate);
+                return {
+                  ...d,
+                  Total: d.Smithey + d.Selery,
+                  SmitheyPct: split?.smitheyPct ?? null,
+                };
+              });
+
+              return (
+                <>
+                  {/* Header with stats */}
+                  <div className="flex items-start justify-between mb-6">
+                    <div>
+                      <h3 className="text-label font-medium text-text-tertiary tracking-wide">FULFILLMENT TREND</h3>
+                      <p className="text-xs text-text-muted mt-1">Daily shipments by warehouse</p>
+                    </div>
+                    <div className="flex items-center gap-6 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-sm bg-accent-blue" />
+                        <span className="text-text-secondary">Smithey</span>
+                        <span className="text-accent-blue font-medium">{avgSmithey}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-sm bg-[#475569]" />
+                        <span className="text-text-secondary">Selery</span>
+                        <span className="text-text-tertiary font-medium">{100 - avgSmithey}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Chart - Grouped Bars + Distribution Line */}
+                  {combinedData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <ComposedChart data={combinedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} barGap={2} barCategoryGap="20%">
+                        <XAxis
+                          dataKey="date"
+                          stroke="#64748B"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={{ stroke: "#1E293B" }}
+                          dy={8}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          stroke="#64748B"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          width={45}
+                          tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          stroke="#64748B"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          width={40}
+                          domain={[0, 100]}
+                          tickFormatter={(v) => `${v}%`}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "rgba(15, 23, 42, 0.95)",
+                            border: "1px solid rgba(255,255,255,0.1)",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+                          }}
+                          labelStyle={{ color: "#94A3B8", marginBottom: "4px", fontWeight: 500 }}
+                          formatter={(value: number, name: string) => {
+                            if (name === "SmitheyPct") return [`${value}%`, "Smithey %"];
+                            return [formatNumber(value), name === "Smithey" ? "Smithey" : "Selery"];
+                          }}
+                        />
+                        <ReferenceLine yAxisId="right" y={50} stroke="#334155" strokeDasharray="3 3" />
+                        <Bar
+                          yAxisId="left"
+                          dataKey="Smithey"
+                          fill="#0EA5E9"
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={32}
+                        />
+                        <Bar
+                          yAxisId="left"
+                          dataKey="Selery"
+                          fill="#475569"
+                          radius={[3, 3, 0, 0]}
+                          maxBarSize={32}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="SmitheyPct"
+                          stroke="#F59E0B"
+                          strokeWidth={2.5}
+                          dot={{ fill: "#F59E0B", r: 3, strokeWidth: 0 }}
+                          activeDot={{ fill: "#F59E0B", r: 5, strokeWidth: 2, stroke: "#0F172A" }}
+                          connectNulls
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[240px] flex items-center justify-center text-text-muted text-sm">No data available</div>
+                  )}
+
+                  {/* Bottom legend */}
+                  <div className="flex items-center justify-center gap-8 mt-4 pt-4 border-t border-border-subtle">
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-3 h-3 rounded-sm bg-accent-blue" />
+                      <span className="text-text-muted">Smithey</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-3 h-3 rounded-sm bg-[#475569]" />
+                      <span className="text-text-muted">Selery</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-5 h-0.5 bg-amber-500 rounded" />
+                      <span className="text-text-muted">Smithey %</span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Section 5: Collapsible Details */}
+          <CollapsibleSection title="QUEUE AGING" defaultOpen={false}>
+            <OrderAgingChart aging={metrics?.orderAging || []} loading={loading} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="TOP SKUS IN QUEUE" defaultOpen={false}>
+            <TopSkusPanel skus={metrics?.topSkusInQueue || []} loading={loading} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="BACKLOG TREND" defaultOpen={false}>
+            <BacklogChart backlog={metrics?.dailyBacklog || []} loading={loading} />
+          </CollapsibleSection>
         </>
       )}
 
@@ -1614,6 +1806,38 @@ function BacklogChart({
           </AreaChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between bg-bg-secondary rounded border border-border px-5 py-3 hover:border-border-hover transition-all"
+      >
+        <span className="text-label font-medium text-text-tertiary">{title}</span>
+        <svg
+          className={`w-4 h-4 text-text-tertiary transition-transform ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && <div className="mt-2">{children}</div>}
     </div>
   );
 }
