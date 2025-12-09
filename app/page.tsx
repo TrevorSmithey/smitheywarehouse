@@ -4147,12 +4147,14 @@ function BudgetDashboard({
             <div className="flex items-center gap-2">
               <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">COOKWARE TOTAL</span>
             </div>
-            <span
-              className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(data.cookwareTotal.pace)}`}
-              style={{ color: getPaceColor(data.cookwareTotal.pace) }}
-            >
-              {getPaceStatus(data.cookwareTotal.pace).label}
-            </span>
+            {dateRange === "mtd" && (
+              <span
+                className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(data.cookwareTotal.pace)}`}
+                style={{ color: getPaceColor(data.cookwareTotal.pace) }}
+              >
+                {getPaceStatus(data.cookwareTotal.pace).label}
+              </span>
+            )}
           </div>
           <div className="flex items-baseline gap-3 mb-1">
             <span
@@ -4175,14 +4177,16 @@ function BudgetDashboard({
                 background: `linear-gradient(90deg, ${getPaceColor(data.cookwareTotal.pace)}, ${getPaceColorDark(data.cookwareTotal.pace)})`,
               }}
             />
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-white/50"
-              style={{ left: `${pctThroughPeriod}%` }}
-              title={`${pctThroughPeriod}% through period`}
-            />
+            {dateRange === "mtd" && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+                style={{ left: `${pctThroughPeriod}%` }}
+                title={`${pctThroughPeriod}% through period`}
+              />
+            )}
           </div>
           <div className="text-xs text-text-tertiary mt-2">
-            Cast Iron + Carbon Steel{data.cookwareTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.cookwareTotal.pace) }}>{data.cookwareTotal.pace}%</span></>}
+            Cast Iron + Carbon Steel{dateRange === "mtd" && data.cookwareTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.cookwareTotal.pace) }}>{data.cookwareTotal.pace}%</span></>}
           </div>
         </div>
 
@@ -4192,12 +4196,14 @@ function BudgetDashboard({
             <div className="flex items-center gap-2">
               <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">GRAND TOTAL</span>
             </div>
-            <span
-              className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(data.grandTotal.pace)}`}
-              style={{ color: getPaceColor(data.grandTotal.pace) }}
-            >
-              {getPaceStatus(data.grandTotal.pace).label}
-            </span>
+            {dateRange === "mtd" && (
+              <span
+                className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(data.grandTotal.pace)}`}
+                style={{ color: getPaceColor(data.grandTotal.pace) }}
+              >
+                {getPaceStatus(data.grandTotal.pace).label}
+              </span>
+            )}
           </div>
           <div className="flex items-baseline gap-3 mb-1">
             <span
@@ -4220,14 +4226,16 @@ function BudgetDashboard({
                 background: `linear-gradient(90deg, ${getPaceColor(data.grandTotal.pace)}, ${getPaceColorDark(data.grandTotal.pace)})`,
               }}
             />
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-white/50"
-              style={{ left: `${pctThroughPeriod}%` }}
-              title={`${pctThroughPeriod}% through period`}
-            />
+            {dateRange === "mtd" && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+                style={{ left: `${pctThroughPeriod}%` }}
+                title={`${pctThroughPeriod}% through period`}
+              />
+            )}
           </div>
           <div className="text-xs text-text-tertiary mt-2">
-            All Categories{data.grandTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.grandTotal.pace) }}>{data.grandTotal.pace}%</span></>}
+            All Categories{dateRange === "mtd" && data.grandTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.grandTotal.pace) }}>{data.grandTotal.pace}%</span></>}
           </div>
         </div>
       </div>
@@ -4266,12 +4274,14 @@ function BudgetDashboard({
                       </span>
                       <span className="text-[10px] text-text-tertiary">({cat.skus.length})</span>
                     </div>
-                    <span
-                      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(cat.totals.pace)}`}
-                      style={{ color: statusColor }}
-                    >
-                      {getPaceStatus(cat.totals.pace).label}
-                    </span>
+                    {dateRange === "mtd" && (
+                      <span
+                        className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${getPaceBgClass(cat.totals.pace)}`}
+                        style={{ color: statusColor }}
+                      >
+                        {getPaceStatus(cat.totals.pace).label}
+                      </span>
+                    )}
                   </div>
 
                   {/* Stats row */}
@@ -4305,11 +4315,13 @@ function BudgetDashboard({
                         background: `linear-gradient(90deg, ${statusColor}, ${statusColorDark})`,
                       }}
                     />
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-white/60"
-                      style={{ left: `${pctThroughPeriod}%` }}
-                      title={`${pctThroughPeriod}% through period`}
-                    />
+                    {dateRange === "mtd" && (
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-white/60"
+                        style={{ left: `${pctThroughPeriod}%` }}
+                        title={`${pctThroughPeriod}% through period`}
+                      />
+                    )}
                   </div>
                 </div>
               </button>
