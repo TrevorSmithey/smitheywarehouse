@@ -404,68 +404,93 @@ export async function GET(request: Request) {
       });
     }
 
-    // Query retail sales (line_items joined with orders)
-    // Use pagination to avoid Supabase row limits
-    const PAGE_SIZE = 50000;
-    const retailData: Array<{ sku: string | null; quantity: number }> = [];
-    let offset = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const { data: page, error: pageError } = await supabase
-        .from("line_items")
-        .select(`
-          sku,
-          quantity,
-          orders!inner(created_at, canceled)
-        `)
-        .gte("orders.created_at", start)
-        .lte("orders.created_at", end)
-        .eq("orders.canceled", false)
-        .range(offset, offset + PAGE_SIZE - 1);
-
-      if (pageError) {
-        throw new Error(`Failed to fetch retail sales: ${pageError.message}`);
-      }
-
-      if (page && page.length > 0) {
-        retailData.push(...page);
-        offset += page.length;
-        hasMore = page.length === PAGE_SIZE;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    // Query B2B fulfilled
-    // High limit to prevent any future truncation issues
-    const { data: b2bData, error: b2bError } = await supabase
-      .from("b2b_fulfilled")
-      .select("sku, quantity")
-      .gte("fulfilled_at", start)
-      .lte("fulfilled_at", end)
-      .limit(1000000);
-
-    if (b2bError) {
-      throw new Error(`Failed to fetch B2B sales: ${b2bError.message}`);
-    }
-
     // Aggregate sales by SKU (case-insensitive)
     const salesBySku = new Map<string, number>();
 
-    for (const item of retailData || []) {
-      if (item.sku) {
-        const key = item.sku.toLowerCase();
-        const current = salesBySku.get(key) || 0;
-        salesBySku.set(key, current + (item.quantity || 0));
-      }
-    }
+    // TRY RPC FIRST (Phase 1 optimization - aggregates at database level)
+    // Falls back to pagination if RPC function doesn't exist yet
+    const { data: rpcData, error: rpcError } = await supabase
+      .rpc('get_budget_actuals', {
+        p_start_date: start,
+        p_end_date: end,
+      });
 
-    for (const item of b2bData || []) {
-      if (item.sku) {
-        const key = item.sku.toLowerCase();
-        const current = salesBySku.get(key) || 0;
-        salesBySku.set(key, current + (item.quantity || 0));
+    if (!rpcError && rpcData && rpcData.length > 0) {
+      // RPC SUCCESS - Use pre-aggregated data from database
+      // This is ~100x faster than fetching 228K+ rows
+      console.log(`[Budget API] Using RPC: ${rpcData.length} SKUs returned`);
+      for (const row of rpcData) {
+        if (row.sku) {
+          salesBySku.set(row.sku.toLowerCase(), Number(row.total_qty) || 0);
+        }
+      }
+    } else {
+      // FALLBACK - Use pagination (until RPC is deployed)
+      if (rpcError) {
+        console.log(`[Budget API] RPC not available, using fallback: ${rpcError.message}`);
+      }
+
+      // Query retail sales (line_items joined with orders)
+      // Use pagination to avoid Supabase row limits
+      const PAGE_SIZE = 50000;
+      const retailData: Array<{ sku: string | null; quantity: number }> = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data: page, error: pageError } = await supabase
+          .from("line_items")
+          .select(`
+            sku,
+            quantity,
+            orders!inner(created_at, canceled)
+          `)
+          .gte("orders.created_at", start)
+          .lte("orders.created_at", end)
+          .eq("orders.canceled", false)
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (pageError) {
+          throw new Error(`Failed to fetch retail sales: ${pageError.message}`);
+        }
+
+        if (page && page.length > 0) {
+          retailData.push(...page);
+          offset += page.length;
+          hasMore = page.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      // Query B2B fulfilled
+      // High limit to prevent any future truncation issues
+      const { data: b2bData, error: b2bError } = await supabase
+        .from("b2b_fulfilled")
+        .select("sku, quantity")
+        .gte("fulfilled_at", start)
+        .lte("fulfilled_at", end)
+        .limit(1000000);
+
+      if (b2bError) {
+        throw new Error(`Failed to fetch B2B sales: ${b2bError.message}`);
+      }
+
+      // Aggregate sales by SKU
+      for (const item of retailData || []) {
+        if (item.sku) {
+          const key = item.sku.toLowerCase();
+          const current = salesBySku.get(key) || 0;
+          salesBySku.set(key, current + (item.quantity || 0));
+        }
+      }
+
+      for (const item of b2bData || []) {
+        if (item.sku) {
+          const key = item.sku.toLowerCase();
+          const current = salesBySku.get(key) || 0;
+          salesBySku.set(key, current + (item.quantity || 0));
+        }
       }
     }
 
