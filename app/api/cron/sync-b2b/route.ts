@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendSyncFailureAlert } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes max for Vercel
@@ -164,6 +165,8 @@ async function upsertItems(items: B2BSold[]): Promise<number> {
 }
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
+
   try {
     // Verify cron secret
     const authHeader = request.headers.get("authorization");
@@ -183,7 +186,6 @@ export async function GET(request: Request) {
     }
 
     console.log("Starting B2B sync (orders sold)...");
-    const startTime = Date.now();
 
     // Sync last 7 days using EST timezone (Smithey is US-based)
     // This ensures consistent window regardless of server location
@@ -215,14 +217,32 @@ export async function GET(request: Request) {
     // Upsert to Supabase
     const upserted = await upsertItems(items);
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const elapsed = Date.now() - startTime;
+    const elapsedSec = (elapsed / 1000).toFixed(1);
 
     // Get totals for response
     const totalUnits = items.reduce((sum, i) => sum + i.quantity, 0);
 
+    // Log sync result
+    await supabase.from("sync_logs").insert({
+      sync_type: "b2b",
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      status: "success",
+      records_expected: items.length,
+      records_synced: upserted,
+      details: {
+        ordersFound: orders.length,
+        itemsExtracted: items.length,
+        unitsInPeriod: totalUnits,
+      },
+      duration_ms: elapsed,
+    });
+
     return NextResponse.json({
       success: true,
-      elapsed: `${elapsed}s`,
+      status: "success",
+      elapsed: `${elapsedSec}s`,
       ordersFound: orders.length,
       itemsExtracted: items.length,
       recordsUpserted: upserted,
@@ -230,10 +250,38 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("B2B sync failed:", error);
+
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+    // Send email alert
+    await sendSyncFailureAlert({
+      syncType: "B2B Orders",
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Log failure (wrapped in try-catch to not fail if logging fails)
+    const elapsed = Date.now() - startTime;
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "b2b",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 0,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch {
+      // Don't fail if logging fails
+    }
+
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Sync failed",
+        status: "failed",
+        error: errorMessage,
       },
       { status: 500 }
     );

@@ -62,6 +62,7 @@ import type {
   CompareType,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
+import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
 type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget";
@@ -591,6 +592,9 @@ export default function Dashboard() {
           </div>
         )}
       </header>
+
+      {/* Sync Health Banner - visible alert when data syncs are failing */}
+      <SyncHealthBanner />
 
       {error && (
         <div className="mb-6 p-4 bg-status-bad/10 border border-status-bad/30 rounded text-status-bad text-sm">
