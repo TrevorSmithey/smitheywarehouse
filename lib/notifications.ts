@@ -118,7 +118,8 @@ export async function sendSyncRecoveryAlert(syncType: string): Promise<void> {
         </div>
       `,
     });
-  } catch {
-    // Silently fail recovery alerts
+  } catch (err) {
+    // Log but don't throw - recovery alerts are non-critical
+    console.error("[ALERT] Recovery email send error:", err);
   }
 }

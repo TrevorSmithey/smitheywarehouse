@@ -44,8 +44,13 @@ async function fetchAllPaginated<T>(
 
     const { data, error } = await query.range(offset, offset + pageSize - 1);
 
-    if (error || !data) {
-      console.error("Pagination error:", error);
+    if (error) {
+      console.error(`[PAGINATION ERROR] Table ${table} at offset ${offset}:`, error);
+      // Throw instead of silently returning partial data
+      throw new Error(`Pagination failed for ${table}: ${error.message}`);
+    }
+
+    if (!data) {
       break;
     }
 
@@ -468,6 +473,34 @@ export async function GET(request: Request) {
     checkQueryLimit(leadTimeResult.data?.length || 0, QUERY_LIMITS.LEAD_TIME, "lead_time");
     checkQueryLimit(engravingQueueResult.data?.length || 0, QUERY_LIMITS.ENGRAVING_QUEUE, "engraving_queue");
     checkQueryLimit(agingDataResult.data?.length || 0, QUERY_LIMITS.AGING_DATA, "aging_data");
+
+    // Check for errors in count queries - log but don't fail the entire request
+    const countQueryResults = [
+      { name: "unfulfilledSmithey", result: unfulfilledSmitheyCount },
+      { name: "unfulfilledSelery", result: unfulfilledSeleryCount },
+      { name: "partialSmithey", result: partialSmitheyCount },
+      { name: "partialSelery", result: partialSeleryCount },
+      { name: "fulfilledTodaySmithey", result: fulfilledTodaySmitheyCount },
+      { name: "fulfilledTodaySelery", result: fulfilledTodaySeleryCount },
+      { name: "fulfilled7dSmithey", result: fulfilled7dSmitheyCount },
+      { name: "fulfilled7dSelery", result: fulfilled7dSeleryCount },
+      { name: "fulfilled30dSmithey", result: fulfilled30dSmitheyCount },
+      { name: "fulfilled30dSelery", result: fulfilled30dSeleryCount },
+      { name: "prevPeriodSmithey", result: prevPeriodSmitheyCount },
+      { name: "prevPeriodSelery", result: prevPeriodSeleryCount },
+      { name: "waiting1dSmithey", result: waiting1dSmithey },
+      { name: "waiting1dSelery", result: waiting1dSelery },
+      { name: "waiting3dSmithey", result: waiting3dSmithey },
+      { name: "waiting3dSelery", result: waiting3dSelery },
+      { name: "waiting7dSmithey", result: waiting7dSmithey },
+      { name: "waiting7dSelery", result: waiting7dSelery },
+    ];
+
+    for (const { name, result } of countQueryResults) {
+      if ("error" in result && result.error) {
+        console.error(`[COUNT QUERY ERROR] ${name}:`, result.error);
+      }
+    }
 
     // Build warehouse metrics from count queries
     const smitheyUnfulfilled = unfulfilledSmitheyCount.count || 0;

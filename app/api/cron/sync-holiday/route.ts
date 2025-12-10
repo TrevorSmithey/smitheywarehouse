@@ -43,6 +43,8 @@ function parseExcelDate(value: string | number | undefined): string | null {
 }
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
+
   // Verify cron secret for Vercel cron jobs
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -98,6 +100,23 @@ export async function GET(request: Request) {
     // Count rows with 2025 data
     const rowsWith2025 = records.filter((r) => r.orders_2025 !== null).length;
 
+    // Log successful sync for health tracking
+    const elapsed = Date.now() - startTime;
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "holiday",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "success",
+        records_expected: jsonData.length,
+        records_synced: records.length,
+        details: { rowsWith2025Data: rowsWith2025 },
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      console.error("Failed to log holiday sync health:", logError);
+    }
+
     return NextResponse.json({
       success: true,
       totalRows: records.length,
@@ -106,8 +125,27 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Holiday sync error:", error);
+
+    // Log failed sync for health tracking
+    const elapsed = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : "Sync failed";
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "holiday",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 0,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      console.error("Failed to log holiday sync failure:", logError);
+    }
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Sync failed" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

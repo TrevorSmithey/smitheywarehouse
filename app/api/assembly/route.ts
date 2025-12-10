@@ -108,14 +108,21 @@ export async function GET() {
     if (targetError) throw new Error(`Target data error: ${targetError.message}`);
 
     // Fetch products for display names
-    const { data: productsData } = await supabase
+    const { data: productsData, error: productsError } = await supabase
       .from("products")
       .select("sku, display_name");
 
-    // Create SKU to display name map
+    if (productsError) {
+      console.error("Failed to fetch product display names:", productsError);
+    }
+
+    // Create SKU to display name map (case-insensitive lookup)
+    // Products and assembly_targets may have different SKU casing
     const displayNameMap: Record<string, string> = {};
     for (const p of productsData || []) {
+      // Store both original and lowercase keys for case-insensitive lookup
       displayNameMap[p.sku] = p.display_name;
+      displayNameMap[p.sku.toLowerCase()] = p.display_name;
     }
 
     // Fetch T7 (trailing 7 days) per SKU - based on latest data date, not server date
@@ -157,7 +164,8 @@ export async function GET() {
     const daily = (dailyData || []) as DailyAssembly[];
     const targets = (targetData || []).map((t) => ({
       ...t,
-      display_name: displayNameMap[t.sku] || t.sku.replace("Smith-", "").replace(/-/g, " "),
+      // Case-insensitive display name lookup (try original, then lowercase)
+      display_name: displayNameMap[t.sku] || displayNameMap[t.sku.toLowerCase()] || t.sku.replace("Smith-", "").replace(/-/g, " "),
       t7: t7BySku[t.sku] || 0,
     })) as AssemblyTarget[];
 

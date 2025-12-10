@@ -81,8 +81,9 @@ export async function POST(request: NextRequest) {
         error_message: errorMessage,
         duration_ms: elapsed,
       });
-    } catch {
-      // Don't fail if logging fails
+    } catch (logError) {
+      // Don't fail if logging fails, but log for visibility
+      console.error("Failed to log webhook failure to sync_logs:", logError);
     }
 
     return NextResponse.json(

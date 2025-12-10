@@ -3,6 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import crypto from "crypto";
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const body = await request.text();
     const signature = request.headers.get("x-shopify-hmac-sha256");
@@ -31,9 +33,51 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled B2B webhook topic: ${topic}`);
     }
 
+    // Log successful B2B webhook processing for health tracking
+    const elapsed = Date.now() - startTime;
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "b2b",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "success",
+        records_expected: 1,
+        records_synced: 1,
+        details: {
+          topic,
+          orderId: order.id,
+          orderName: order.name,
+        },
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      // Don't fail the webhook if logging fails
+      console.error("Failed to log B2B webhook health:", logError);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("B2B webhook processing error:", error);
+
+    // Log failed B2B webhook for health tracking
+    const elapsed = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    try {
+      const supabase = createServiceClient();
+      await supabase.from("sync_logs").insert({
+        sync_type: "b2b",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 1,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      console.error("Failed to log B2B webhook failure to sync_logs:", logError);
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
