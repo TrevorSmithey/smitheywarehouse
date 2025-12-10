@@ -48,10 +48,10 @@ export async function GET(request: Request) {
     const prevRangeEnd = new Date(rangeStart.getTime() - 1);
     const prevRangeStart = new Date(prevRangeEnd.getTime() - rangeDuration);
 
-    // Build base query for current period
+    // Build base query for current period (paginated with filters)
     let ticketsQuery = supabase
       .from("support_tickets")
-      .select("*", { count: "exact" })
+      .select("id, reamaze_id, created_at, subject, category, sentiment, summary, urgency, perma_url", { count: "exact" })
       .gte("created_at", rangeStart.toISOString())
       .lte("created_at", rangeEnd.toISOString())
       .order("created_at", { ascending: false });
@@ -64,7 +64,6 @@ export async function GET(request: Request) {
       ticketsQuery = ticketsQuery.eq("sentiment", sentiment);
     }
     if (search) {
-      // Escape special characters in search to prevent injection
       const escapedSearch = search.replace(/[%_\\]/g, "\\$&");
       ticketsQuery = ticketsQuery.or(
         `summary.ilike.%${escapedSearch}%,subject.ilike.%${escapedSearch}%`
@@ -75,58 +74,89 @@ export async function GET(request: Request) {
     const offset = (page - 1) * ITEMS_PER_PAGE;
     ticketsQuery = ticketsQuery.range(offset, offset + ITEMS_PER_PAGE - 1);
 
-    const {
-      data: tickets,
-      count: totalCount,
-      error: ticketsError,
-    } = await ticketsQuery;
+    // Execute ALL queries in parallel for performance
+    const [
+      ticketsResult,
+      allTicketsResult,
+      prevTicketsResult,
+      orderCountResult,
+      prevOrderCountResult,
+      lastSyncedResult,
+      dailyTicketsResult,
+      dailyOrdersResult,
+    ] = await Promise.all([
+      // Paginated tickets for display
+      ticketsQuery,
+      // All tickets for aggregates (current period)
+      supabase
+        .from("support_tickets")
+        .select("category, sentiment, summary")
+        .gte("created_at", rangeStart.toISOString())
+        .lte("created_at", rangeEnd.toISOString()),
+      // Previous period tickets for delta
+      supabase
+        .from("support_tickets")
+        .select("category, sentiment, summary")
+        .gte("created_at", prevRangeStart.toISOString())
+        .lte("created_at", prevRangeEnd.toISOString()),
+      // Order count (current period)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", rangeStart.toISOString())
+        .lte("created_at", rangeEnd.toISOString())
+        .eq("canceled", false),
+      // Order count (previous period)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", prevRangeStart.toISOString())
+        .lte("created_at", prevRangeEnd.toISOString())
+        .eq("canceled", false),
+      // Last synced time
+      supabase
+        .from("support_tickets")
+        .select("synced_at")
+        .order("synced_at", { ascending: false })
+        .limit(1)
+        .single(),
+      // Daily ticket counts for TOR trend chart
+      supabase
+        .from("support_tickets")
+        .select("created_at")
+        .gte("created_at", rangeStart.toISOString())
+        .lte("created_at", rangeEnd.toISOString()),
+      // Daily order counts for TOR trend chart
+      supabase
+        .from("orders")
+        .select("created_at")
+        .gte("created_at", rangeStart.toISOString())
+        .lte("created_at", rangeEnd.toISOString())
+        .eq("canceled", false),
+    ]);
+
+    // Destructure results
+    const { data: tickets, count: totalCount, error: ticketsError } = ticketsResult;
+    const { data: allTickets, error: allError } = allTicketsResult;
+    const { data: prevTickets, error: prevError } = prevTicketsResult;
+    const { count: orderCount, error: orderError } = orderCountResult;
+    const { count: prevOrderCount, error: prevOrderError } = prevOrderCountResult;
+    const { data: lastSyncedData } = lastSyncedResult;
+    const { data: dailyTickets } = dailyTicketsResult;
+    const { data: dailyOrders } = dailyOrdersResult;
 
     if (ticketsError) {
       throw new Error(`Tickets query error: ${ticketsError.message}`);
     }
-
-    // Get all tickets in current period for aggregates (without pagination)
-    const { data: allTickets, error: allError } = await supabase
-      .from("support_tickets")
-      .select("category, sentiment, summary")
-      .gte("created_at", rangeStart.toISOString())
-      .lte("created_at", rangeEnd.toISOString());
-
     if (allError) {
       throw new Error(`All tickets query error: ${allError.message}`);
     }
-
-    // Get previous period tickets for delta
-    const { data: prevTickets, error: prevError } = await supabase
-      .from("support_tickets")
-      .select("category, sentiment, summary")
-      .gte("created_at", prevRangeStart.toISOString())
-      .lte("created_at", prevRangeEnd.toISOString());
-
     if (prevError) {
       throw new Error(`Previous period query error: ${prevError.message}`);
     }
-
-    // Get order counts for TOR calculation
-    const { count: orderCount, error: orderError } = await supabase
-      .from("orders")
-      .select("*", { count: "exact", head: true })
-      .gte("created_at", rangeStart.toISOString())
-      .lte("created_at", rangeEnd.toISOString())
-      .eq("canceled", false);
-
     if (orderError) {
       console.error("Order count error:", orderError.message);
     }
-
-    // Get previous period order count
-    const { count: prevOrderCount, error: prevOrderError } = await supabase
-      .from("orders")
-      .select("*", { count: "exact", head: true })
-      .gte("created_at", prevRangeStart.toISOString())
-      .lte("created_at", prevRangeEnd.toISOString())
-      .eq("canceled", false);
-
     if (prevOrderError) {
       console.error("Previous order count error:", prevOrderError.message);
     }
@@ -175,37 +205,12 @@ export async function GET(request: Request) {
       sentimentBreakdown
     );
 
-    // Get last synced time
-    const { data: lastSyncedData } = await supabase
-      .from("support_tickets")
-      .select("synced_at")
-      .order("synced_at", { ascending: false })
-      .limit(1)
-      .single();
+    // Calculate TOR trend data for line chart
+    const torTrend = calculateTORTrend(dailyTickets || [], dailyOrders || []);
 
-    // Try to fetch CSAT metrics from Re:amaze (optional - only if credentials are set)
-    let csat: CSATMetrics | undefined;
-    try {
-      const reamaze = createReamazeClient();
-      const csatData = await reamaze.fetchCSATMetrics(
-        rangeStart.toISOString(),
-        rangeEnd.toISOString()
-      );
-
-      // Fetch previous period CSAT for comparison
-      const prevCsatData = await reamaze.fetchCSATMetrics(
-        prevRangeStart.toISOString(),
-        prevRangeEnd.toISOString()
-      );
-
-      csat = {
-        ...csatData,
-        previousSatisfactionRate: prevCsatData.satisfactionRate,
-      };
-    } catch {
-      // Re:amaze credentials not configured - CSAT will be undefined
-      // This is expected in local dev without credentials
-    }
+    // Note: CSAT from Re:amaze is disabled for performance
+    // Re:amaze API calls add 2-4 seconds of latency
+    // If CSAT is needed, implement as separate endpoint
 
     const response: TicketsResponse = {
       tickets: (tickets || []) as SupportTicket[],
@@ -221,7 +226,7 @@ export async function GET(request: Request) {
       wordCloud,
       topicThemes,
       insights,
-      csat,
+      torTrend,
       lastSynced: lastSyncedData?.synced_at || null,
     };
 
@@ -731,4 +736,45 @@ function generateInsights(
 
   // Limit to top 4 most important insights
   return insights.slice(0, 4);
+}
+
+/**
+ * Calculate TOR trend over time for line chart
+ * Groups tickets and orders by day, calculates daily TOR
+ */
+function calculateTORTrend(
+  tickets: { created_at: string }[],
+  orders: { created_at: string }[]
+): { date: string; tickets: number; orders: number; tor: number }[] {
+  // Group tickets by date
+  const ticketsByDate = new Map<string, number>();
+  for (const ticket of tickets) {
+    const date = ticket.created_at.slice(0, 10); // YYYY-MM-DD
+    ticketsByDate.set(date, (ticketsByDate.get(date) || 0) + 1);
+  }
+
+  // Group orders by date
+  const ordersByDate = new Map<string, number>();
+  for (const order of orders) {
+    const date = order.created_at.slice(0, 10); // YYYY-MM-DD
+    ordersByDate.set(date, (ordersByDate.get(date) || 0) + 1);
+  }
+
+  // Get all unique dates and sort
+  const allDates = new Set([...ticketsByDate.keys(), ...ordersByDate.keys()]);
+  const sortedDates = [...allDates].sort();
+
+  // Calculate TOR for each day
+  return sortedDates.map((date) => {
+    const ticketCount = ticketsByDate.get(date) || 0;
+    const orderCount = ordersByDate.get(date) || 0;
+    const tor = orderCount > 0 ? Math.round((ticketCount / orderCount) * 1000) / 10 : 0;
+
+    return {
+      date,
+      tickets: ticketCount,
+      orders: orderCount,
+      tor,
+    };
+  });
 }

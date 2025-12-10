@@ -608,6 +608,13 @@ export interface CSATMetrics {
   previousSatisfactionRate?: number; // for delta
 }
 
+export interface TORTrendPoint {
+  date: string; // YYYY-MM-DD
+  tickets: number;
+  orders: number;
+  tor: number; // Ticket-to-Order Ratio as percentage
+}
+
 export interface TicketsResponse {
   tickets: SupportTicket[];
   totalCount: number;
@@ -622,6 +629,7 @@ export interface TicketsResponse {
   wordCloud: WordCloudItem[];
   topicThemes: TopicTheme[];
   insights: VOCInsight[];
+  torTrend: TORTrendPoint[]; // Daily TOR trend data for line chart
   csat?: CSATMetrics; // Optional - only when Re:amaze credentials are configured
   lastSynced: string | null;
 }

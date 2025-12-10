@@ -16,6 +16,15 @@ import {
   Lightbulb,
   CheckCircle,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
 import type {
   TicketsResponse,
   SupportTicket,
@@ -24,6 +33,7 @@ import type {
   TopicTheme,
   VOCInsight,
   WordCloudItem,
+  TORTrendPoint,
 } from "@/lib/types";
 
 interface VoiceOfCustomerDashboardProps {
@@ -331,6 +341,115 @@ function WordCloud({ words, onWordClick }: { words: WordCloudItem[]; onWordClick
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// TOR Trend Chart Component
+function TORTrendChart({ data, avgTOR }: { data: TORTrendPoint[]; avgTOR: number }) {
+  if (!data || data.length === 0) return null;
+
+  // Format chart data with display dates
+  const chartData = data.map((point) => ({
+    ...point,
+    displayDate: format(new Date(point.date), "MMM d"),
+  }));
+
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: TORTrendPoint & { displayDate: string } }> }) => {
+    if (!active || !payload || !payload.length) return null;
+    const item = payload[0].payload;
+    return (
+      <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg">
+        <p className="text-xs text-text-muted mb-2">{format(new Date(item.date), "EEEE, MMM d, yyyy")}</p>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-text-secondary">TOR</span>
+            <span className="text-xs font-medium text-accent-blue tabular-nums">{item.tor.toFixed(1)}%</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-text-secondary">Tickets</span>
+            <span className="text-xs font-medium text-text-primary tabular-nums">{item.tickets}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs text-text-secondary">Orders</span>
+            <span className="text-xs font-medium text-text-primary tabular-nums">{item.orders}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">
+            TICKET-TO-ORDER RATIO OVER TIME
+          </h3>
+          <p className="text-[10px] text-text-muted">
+            Daily TOR trend showing tickets vs orders
+          </p>
+        </div>
+        <div className="text-right">
+          <span className="text-lg font-semibold text-accent-blue tabular-nums">{avgTOR.toFixed(1)}%</span>
+          <p className="text-[10px] text-text-muted">Period Average</p>
+        </div>
+      </div>
+
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
+            <defs>
+              <linearGradient id="torGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="displayDate"
+              tick={{ fill: "#64748B", fontSize: 10 }}
+              axisLine={{ stroke: "#1E293B" }}
+              tickLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fill: "#64748B", fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              width={35}
+              tickFormatter={(value) => `${value}%`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine
+              y={avgTOR}
+              stroke="#64748B"
+              strokeDasharray="3 3"
+              strokeOpacity={0.5}
+            />
+            <Area
+              type="monotone"
+              dataKey="tor"
+              stroke="#0EA5E9"
+              strokeWidth={2}
+              fill="url(#torGradient)"
+              dot={false}
+              activeDot={{ r: 4, fill: "#0EA5E9", stroke: "#0c4a6e", strokeWidth: 2 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-border/20">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-0.5 rounded-full bg-accent-blue" />
+          <span className="text-[10px] text-text-tertiary">Daily TOR</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-0 border-t border-dashed border-text-tertiary" />
+          <span className="text-[10px] text-text-tertiary">Period Average</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -739,6 +858,11 @@ export function VoiceOfCustomerDashboard({
           </div>
         </div>
       </div>
+
+      {/* TOR Trend Chart */}
+      {data?.torTrend && data.torTrend.length > 1 && (
+        <TORTrendChart data={data.torTrend} avgTOR={tor} />
+      )}
     </div>
   );
 }
