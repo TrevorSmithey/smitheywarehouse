@@ -418,7 +418,7 @@ export default function Dashboard() {
   const chartData = processChartData(metrics?.daily || [], metrics?.dailyBacklog || []);
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary p-6">
+    <div className="min-h-screen bg-bg-primary text-text-primary p-4 sm:p-6 overscroll-none">
       {/* Header */}
       <header className="mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -503,7 +503,7 @@ export default function Dashboard() {
         )}
 
         {/* Primary Tab Selector */}
-        <div className="flex gap-1 mt-4 border-b border-border overflow-x-auto">
+        <div className="flex gap-1 mt-4 border-b border-border overflow-x-auto touch-pan-x">
           <button
             onClick={() => setPrimaryTab("inventory")}
             className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${

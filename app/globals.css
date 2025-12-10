@@ -69,8 +69,32 @@
     -webkit-touch-callout: none;
   }
 
+  html {
+    /* Prevent pull-to-refresh and overscroll bounce on mobile */
+    overscroll-behavior: none;
+  }
+
+  body {
+    /* Prevent pull-to-refresh gesture */
+    overscroll-behavior-y: none;
+  }
+
   button, a, input[type="button"], input[type="submit"], label[for] {
     touch-action: manipulation;
+    /* Ensure buttons respond instantly */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Smooth scrolling for horizontal scroll containers on iOS */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
   }
 }
 
