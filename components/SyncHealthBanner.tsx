@@ -25,6 +25,7 @@ interface SyncHealthResponse {
 
 const SYNC_DISPLAY_NAMES: Record<string, string> = {
   inventory: "Inventory",
+  d2c: "D2C Orders",
   b2b: "B2B Orders",
   assembly: "Assembly",
   holiday: "Holiday",

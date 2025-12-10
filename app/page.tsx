@@ -418,7 +418,7 @@ export default function Dashboard() {
   const chartData = processChartData(metrics?.daily || [], metrics?.dailyBacklog || []);
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary p-6">
+    <div className="min-h-screen bg-bg-primary text-text-primary p-4 sm:p-6 overscroll-none">
       {/* Header */}
       <header className="mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -503,7 +503,7 @@ export default function Dashboard() {
         )}
 
         {/* Primary Tab Selector */}
-        <div className="flex gap-1 mt-4 border-b border-border overflow-x-auto">
+        <div className="flex gap-1 mt-4 border-b border-border overflow-x-auto touch-pan-x">
           <button
             onClick={() => setPrimaryTab("inventory")}
             className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
@@ -1068,6 +1068,9 @@ export default function Dashboard() {
           }}
         />
       )}
+
+      {/* Sync Health Banner - data freshness indicator at bottom of ALL pages */}
+      <SyncHealthBanner />
     </div>
   );
 }
@@ -2463,8 +2466,8 @@ function InventoryDashboard({
                     <span className="text-sm text-text-tertiary">({products.length})</span>
                   </div>
 
-                  {/* Right: Warehouse totals */}
-                  <div className="text-sm tabular-nums flex items-center gap-1">
+                  {/* Right: Warehouse totals - hidden on mobile */}
+                  <div className="hidden sm:flex text-sm tabular-nums items-center gap-1">
                     <span className="text-amber-400">{formatNumber(totals.hobson)}</span>
                     <span className="text-text-muted/50">/</span>
                     <span className="text-green-400">{formatNumber(totals.selery)}</span>
@@ -2481,26 +2484,26 @@ function InventoryDashboard({
                 <div className="border-t border-border">
                   <table className="w-full text-sm table-fixed">
                     <colgroup>
-                      <col className="w-[22%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
-                      {cat.showDoi && <col className="w-[13%]" />}
-                      {cat.showVelocity && <col className="w-[13%]" />}
+                      <col className="w-[35%] sm:w-[22%]" />
+                      <col className="w-[20%] sm:w-[13%]" />
+                      <col className="w-[20%] sm:w-[13%]" />
+                      <col className="hidden sm:table-column w-[13%]" />
+                      <col className="w-[25%] sm:w-[13%]" />
+                      {cat.showDoi && <col className="sm:w-[13%]" />}
+                      {cat.showVelocity && <col className="hidden sm:table-column w-[13%]" />}
                     </colgroup>
                     <thead>
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
-                        <th className="text-left py-2.5 px-3 font-medium">Product</th>
-                        <th className="text-right py-2.5 px-4 font-medium text-amber-400">Hobson</th>
-                        <th className="text-right py-2.5 px-4 font-medium text-green-400">Selery</th>
-                        <th className="text-right py-2.5 px-4 font-medium text-blue-400">Pipefitter</th>
-                        <th className="text-right py-2.5 px-4 font-medium">Total</th>
+                        <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-amber-400">Hobson</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-green-400">Selery</th>
+                        <th className="hidden sm:table-cell text-right py-2.5 px-4 font-medium text-blue-400">Pipefitter</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium">Total</th>
                         {cat.showDoi && (
-                          <th className="text-right py-2.5 px-4 font-medium text-purple-400">DOI</th>
+                          <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">DOI</th>
                         )}
                         {cat.showVelocity && (
-                          <th className="text-right py-2.5 px-4 font-medium text-cyan-400">Vel</th>
+                          <th className="hidden sm:table-cell text-right py-2.5 px-4 font-medium text-cyan-400">Vel</th>
                         )}
                       </tr>
                     </thead>
@@ -2538,7 +2541,7 @@ function InventoryDashboard({
                             key={product.sku}
                             className={`border-b border-border/20 hover:bg-bg-tertiary/40 transition-colors ${rowBg}`}
                           >
-                            <td className="py-3 px-3" title={tooltip}>
+                            <td className="py-3 px-2 sm:px-3" title={tooltip}>
                               <div className="flex items-center gap-2">
                                 {cat.showDoi && (
                                   <div
@@ -2551,28 +2554,28 @@ function InventoryDashboard({
                                 </span>
                               </div>
                             </td>
-                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
+                            <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
                               product.hobson < 0 ? "text-red-400" : "text-amber-400"
                             }`}>
                               {formatNumber(product.hobson)}
                             </td>
-                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
+                            <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
                               product.selery < 0 ? "text-red-400" : "text-green-400"
                             }`}>
                               {formatNumber(product.selery)}
                             </td>
-                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
+                            <td className={`hidden sm:table-cell py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
                               product.pipefitter < 0 ? "text-red-400" : "text-blue-400"
                             }`}>
                               {formatNumber(product.pipefitter)}
                             </td>
-                            <td className={`py-3 px-4 text-right tabular-nums text-[15px] font-bold ${
+                            <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold ${
                               isNegative ? "text-red-400" : "text-text-primary"
                             }`}>
                               {formatNumber(product.total)}
                             </td>
                             {cat.showDoi && (
-                              <td className="py-3 px-4 text-right">
+                              <td className="py-3 px-2 sm:px-4 text-right">
                                 {product.isBackordered ? (
                                   <span className="text-sm font-bold text-red-400 uppercase">
                                     BACKORDER
@@ -2590,7 +2593,7 @@ function InventoryDashboard({
                               </td>
                             )}
                             {cat.showVelocity && (
-                              <td className="py-3 px-4 text-right">
+                              <td className="hidden sm:table-cell py-3 px-4 text-right">
                                 {velocity ? (
                                   <span className={`text-sm font-bold tabular-nums ${
                                     velocity.avg >= 10 ? "text-emerald-400" :
@@ -2611,21 +2614,21 @@ function InventoryDashboard({
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-border bg-bg-tertiary/40">
-                        <td className="py-3 px-3 text-sm font-bold text-text-primary">TOTAL</td>
-                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-amber-400">
+                        <td className="py-3 px-2 sm:px-3 text-sm font-bold text-text-primary">TOTAL</td>
+                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-amber-400">
                           {formatNumber(totals.hobson)}
                         </td>
-                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-green-400">
+                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-green-400">
                           {formatNumber(totals.selery)}
                         </td>
-                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-blue-400">
+                        <td className="hidden sm:table-cell py-3 px-4 text-right tabular-nums text-[15px] font-bold text-blue-400">
                           {formatNumber(totals.pipefitter)}
                         </td>
-                        <td className="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">
+                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">
                           {formatNumber(totals.total)}
                         </td>
-                        {cat.showDoi && <td className="py-3 px-4" />}
-                        {cat.showVelocity && <td className="py-3 px-4" />}
+                        {cat.showDoi && <td className="py-3 px-2 sm:px-4" />}
+                        {cat.showVelocity && <td className="hidden sm:table-cell py-3 px-4" />}
                       </tr>
                     </tfoot>
                   </table>
@@ -4462,10 +4465,6 @@ function BudgetDashboard({
           );
         })}
       </div>
-
-      {/* Sync Health Banner - data freshness indicator at bottom of page */}
-      <SyncHealthBanner />
-
     </div>
   );
 }
