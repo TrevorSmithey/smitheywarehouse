@@ -474,31 +474,15 @@ export async function GET(request: Request) {
     checkQueryLimit(engravingQueueResult.data?.length || 0, QUERY_LIMITS.ENGRAVING_QUEUE, "engraving_queue");
     checkQueryLimit(agingDataResult.data?.length || 0, QUERY_LIMITS.AGING_DATA, "aging_data");
 
-    // Check for errors in count queries - log but don't fail the entire request
-    const countQueryResults = [
+    // Fail fast if critical count queries error - these are essential for ops dashboard
+    // Using head:true means error is in .error, count is in .count
+    const criticalCounts = [
       { name: "unfulfilledSmithey", result: unfulfilledSmitheyCount },
       { name: "unfulfilledSelery", result: unfulfilledSeleryCount },
-      { name: "partialSmithey", result: partialSmitheyCount },
-      { name: "partialSelery", result: partialSeleryCount },
-      { name: "fulfilledTodaySmithey", result: fulfilledTodaySmitheyCount },
-      { name: "fulfilledTodaySelery", result: fulfilledTodaySeleryCount },
-      { name: "fulfilled7dSmithey", result: fulfilled7dSmitheyCount },
-      { name: "fulfilled7dSelery", result: fulfilled7dSeleryCount },
-      { name: "fulfilled30dSmithey", result: fulfilled30dSmitheyCount },
-      { name: "fulfilled30dSelery", result: fulfilled30dSeleryCount },
-      { name: "prevPeriodSmithey", result: prevPeriodSmitheyCount },
-      { name: "prevPeriodSelery", result: prevPeriodSeleryCount },
-      { name: "waiting1dSmithey", result: waiting1dSmithey },
-      { name: "waiting1dSelery", result: waiting1dSelery },
-      { name: "waiting3dSmithey", result: waiting3dSmithey },
-      { name: "waiting3dSelery", result: waiting3dSelery },
-      { name: "waiting7dSmithey", result: waiting7dSmithey },
-      { name: "waiting7dSelery", result: waiting7dSelery },
     ];
-
-    for (const { name, result } of countQueryResults) {
-      if ("error" in result && result.error) {
-        console.error(`[COUNT QUERY ERROR] ${name}:`, result.error);
+    for (const { name, result } of criticalCounts) {
+      if (result.error) {
+        throw new Error(`Critical count query failed (${name}): ${result.error.message}`);
       }
     }
 
