@@ -30,6 +30,7 @@ import {
   MapPin,
   AlertTriangle,
   Calendar,
+  CalendarDays,
   Pen,
   BarChart3,
   Gift,
@@ -3434,8 +3435,38 @@ function AssemblyDashboard({
       </div>
 
       {/* Production Stats Row */}
+      {(() => {
+        // Calculate MTD production (current month)
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        const currentDay = now.getDate();
+
+        // This year's MTD
+        const mtdThisYear = daily
+          .filter(d => {
+            const date = new Date(d.date);
+            return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+          })
+          .reduce((sum, d) => sum + d.daily_total, 0);
+
+        // Last year's same period (same month, up to same day)
+        const mtdLastYear = daily
+          .filter(d => {
+            const date = new Date(d.date);
+            return date.getMonth() === currentMonth &&
+                   date.getFullYear() === currentYear - 1 &&
+                   date.getDate() <= currentDay;
+          })
+          .reduce((sum, d) => sum + d.daily_total, 0);
+
+        const mtdDelta = mtdLastYear > 0
+          ? ((mtdThisYear - mtdLastYear) / mtdLastYear) * 100
+          : mtdThisYear > 0 ? 100 : 0;
+
+        return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Latest Day */}
+        {/* Yesterday's Production */}
         <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30">
           <div className="flex items-center justify-between mb-2 sm:mb-3">
             <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">
@@ -3443,35 +3474,27 @@ function AssemblyDashboard({
             </span>
             <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-text-muted" />
           </div>
-          <div className={`text-2xl sm:text-3xl font-bold tabular-nums ${
-            summary.yesterdayProduction >= summary.dailyTarget
-              ? "text-status-good"
-              : summary.yesterdayProduction >= summary.dailyTarget * 0.8
-                ? "text-status-warning"
-                : "text-status-bad"
-          }`}>
+          <div className="text-2xl sm:text-3xl font-bold tabular-nums text-text-primary">
             {fmt.number(summary.yesterdayProduction)}
           </div>
-          <div className="text-xs text-text-tertiary mt-1">
-            {summary.yesterdayProduction >= summary.dailyTarget ? (
-              <span className="text-status-good">{fmt.number(summary.yesterdayProduction - summary.dailyTarget)} above target</span>
-            ) : (
-              <span className="text-status-bad">{fmt.number(summary.dailyTarget - summary.yesterdayProduction)} below target</span>
-            )}
+          <div className={`text-xs mt-1 flex items-center gap-1 ${summary.yesterdayDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+            {summary.yesterdayDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {fmt.delta(summary.yesterdayDelta)} vs prior day
           </div>
         </div>
 
-        {/* Daily Target */}
-        <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30" style={{ borderColor: `${forge.heat}30` }}>
+        {/* MTD Production */}
+        <div className="bg-bg-secondary rounded-xl p-3 sm:p-5 border border-border/30">
           <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">DAILY TARGET</span>
-            <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: forge.heat }} />
+            <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">MTD</span>
+            <CalendarDays className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-text-muted" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold tabular-nums" style={{ color: forge.heat }}>
-            {fmt.number(summary.dailyTarget)}
+          <div className="text-2xl sm:text-3xl font-bold tabular-nums text-text-primary">
+            {fmt.number(mtdThisYear)}
           </div>
-          <div className="text-xs text-text-tertiary mt-1">
-            {fmt.number(summary.totalDeficit)} left to build
+          <div className={`text-xs mt-1 flex items-center gap-1 ${mtdDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+            {mtdDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {fmt.delta(mtdDelta)} vs last Dec
           </div>
         </div>
 
@@ -3505,6 +3528,8 @@ function AssemblyDashboard({
           </div>
         </div>
       </div>
+        );
+      })()}
 
       {/* Daily Production Chart - Full Width with Rolling Average */}
       <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
