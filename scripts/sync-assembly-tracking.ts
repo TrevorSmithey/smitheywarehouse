@@ -27,6 +27,13 @@ const EXCEL_PATH = path.join(
   "Cookware Assembly Tracking.xlsx"
 );
 
+// Delay in seconds before reading Excel (allows OneDrive to finish syncing)
+const STARTUP_DELAY_SECONDS = 5;
+
+function sleep(seconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
 interface DailyRow {
   date: string;
   daily_total: number;
@@ -260,6 +267,10 @@ async function syncTargetData(workbook: XLSX.WorkBook): Promise<number> {
 async function main() {
   console.log("Assembly Tracking Sync");
   console.log("======================\n");
+
+  // Wait for OneDrive to finish syncing
+  console.log(`Waiting ${STARTUP_DELAY_SECONDS}s for OneDrive sync...`);
+  await sleep(STARTUP_DELAY_SECONDS);
 
   // Check if file exists
   if (!fs.existsSync(EXCEL_PATH)) {
