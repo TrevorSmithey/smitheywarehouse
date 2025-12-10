@@ -8,6 +8,8 @@ import {
 import type { ShopifyOrder } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     // Get raw body for HMAC verification
     const body = await request.text();
@@ -38,9 +40,51 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled webhook topic: ${topic}`);
     }
 
+    // Log successful D2C webhook processing for health tracking
+    const elapsed = Date.now() - startTime;
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "d2c",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "success",
+        records_expected: 1,
+        records_synced: 1,
+        details: {
+          topic,
+          orderId: order.id,
+          orderName: order.name,
+        },
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      // Don't fail the webhook if logging fails
+      console.error("Failed to log D2C webhook health:", logError);
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Webhook processing error:", error);
+
+    // Log failed D2C webhook for health tracking
+    const elapsed = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    try {
+      const supabase = createServiceClient();
+      await supabase.from("sync_logs").insert({
+        sync_type: "d2c",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 1,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch {
+      // Don't fail if logging fails
+    }
+
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
