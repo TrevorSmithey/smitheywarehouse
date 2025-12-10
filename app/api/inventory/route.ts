@@ -97,7 +97,7 @@ export async function GET(request: Request) {
 
     // Query monthly retail orders by SKU (quantity ordered this month by order date)
     // High limit to prevent any future truncation issues
-    const { data: monthlySalesData } = await supabase
+    const { data: monthlySalesData, error: monthlySalesError } = await supabase
       .from("line_items")
       .select(`
         sku,
@@ -109,14 +109,22 @@ export async function GET(request: Request) {
       .eq("orders.canceled", false)
       .limit(2000000);
 
+    if (monthlySalesError) {
+      throw new Error(`Failed to fetch monthly sales: ${monthlySalesError.message}`);
+    }
+
     // Query monthly B2B fulfilled by SKU (quantity fulfilled this month by fulfillment date)
     // High limit to prevent any future truncation issues
-    const { data: monthlyB2BData } = await supabase
+    const { data: monthlyB2BData, error: monthlyB2BError } = await supabase
       .from("b2b_fulfilled")
       .select("sku, quantity")
       .gte("fulfilled_at", monthStart)
       .lte("fulfilled_at", monthEnd)
       .limit(1000000);
+
+    if (monthlyB2BError) {
+      throw new Error(`Failed to fetch monthly B2B data: ${monthlyB2BError.message}`);
+    }
 
     // Aggregate retail ordered quantity by SKU (case-insensitive)
     const retailSalesBySku = new Map<string, number>();
@@ -165,7 +173,7 @@ export async function GET(request: Request) {
     const sixDayStartEST = `${sixDaysAgo.getFullYear()}-${String(sixDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sixDaysAgo.getDate()).padStart(2, '0')}`;
 
     // Get orders from 3 complete EST days (excludes today)
-    const { data: sales3DayData } = await supabase
+    const { data: sales3DayData, error: sales3DayError } = await supabase
       .from("line_items")
       .select(`
         sku,
@@ -177,8 +185,12 @@ export async function GET(request: Request) {
       .eq("orders.canceled", false)
       .limit(1000000);
 
+    if (sales3DayError) {
+      throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
+    }
+
     // Prior 3 days for comparison (days 4-6 ago)
-    const { data: salesPrior3DayData } = await supabase
+    const { data: salesPrior3DayData, error: salesPrior3DayError } = await supabase
       .from("line_items")
       .select(`
         sku,
@@ -189,6 +201,10 @@ export async function GET(request: Request) {
       .lt("orders.created_at", threeDayStartEST)
       .eq("orders.canceled", false)
       .limit(1000000);
+
+    if (salesPrior3DayError) {
+      throw new Error(`Failed to fetch prior 3-day sales: ${salesPrior3DayError.message}`);
+    }
 
     // Aggregate 3-day sales by SKU
     const sales3DayBySku = new Map<string, number>();

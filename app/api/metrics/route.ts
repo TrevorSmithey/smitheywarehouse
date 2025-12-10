@@ -476,9 +476,14 @@ export async function GET(request: Request) {
 
     // Fail fast if critical count queries error - these are essential for ops dashboard
     // Using head:true means error is in .error, count is in .count
+    // Critical: unfulfilled (queue size), partial (affects queue), fulfilled_today (daily progress)
     const criticalCounts = [
       { name: "unfulfilledSmithey", result: unfulfilledSmitheyCount },
       { name: "unfulfilledSelery", result: unfulfilledSeleryCount },
+      { name: "partialSmithey", result: partialSmitheyCount },
+      { name: "partialSelery", result: partialSeleryCount },
+      { name: "fulfilledTodaySmithey", result: fulfilledTodaySmitheyCount },
+      { name: "fulfilledTodaySelery", result: fulfilledTodaySeleryCount },
     ];
     for (const { name, result } of criticalCounts) {
       if (result.error) {

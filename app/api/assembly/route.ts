@@ -133,10 +133,14 @@ export async function GET() {
     sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 6); // -6 because we include latest date
     const t7StartDate = sevenDaysAgoDate.toISOString().split("T")[0];
 
-    const { data: skuDailyData } = await supabase
+    const { data: skuDailyData, error: skuDailyError } = await supabase
       .from("assembly_sku_daily")
       .select("sku, quantity")
       .gte("date", t7StartDate);
+
+    if (skuDailyError) {
+      throw new Error(`SKU daily data error: ${skuDailyError.message}`);
+    }
 
     // Aggregate T7 by SKU
     const t7BySku: Record<string, number> = {};
@@ -145,9 +149,13 @@ export async function GET() {
     }
 
     // Fetch config
-    const { data: configData } = await supabase
+    const { data: configData, error: configError } = await supabase
       .from("assembly_config")
       .select("key, value");
+
+    if (configError) {
+      throw new Error(`Config data error: ${configError.message}`);
+    }
 
     const configMap: Record<string, string> = {};
     for (const c of configData || []) {
