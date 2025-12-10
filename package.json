@@ -15,9 +15,11 @@
     "sync-b2b": "tsx scripts/sync-b2b.ts",
     "import-forecasts": "tsx scripts/import-forecasts.ts",
     "sync-holiday": "tsx scripts/sync-holiday-tracking.ts",
-    "sync-assembly": "tsx scripts/sync-assembly-tracking.ts"
+    "sync-assembly": "tsx scripts/sync-assembly-tracking.ts",
+    "backfill-reamaze": "tsx scripts/backfill-reamaze.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.86.2",
     "@vercel/analytics": "^1.6.1",

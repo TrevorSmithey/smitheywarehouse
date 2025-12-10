@@ -500,3 +500,149 @@ export interface BudgetCategoryComparison {
   skus: BudgetSkuComparison[];
   totals: ComparisonTotals;
 }
+
+// Support Ticket Types (Re:amaze → Claude AI → Supabase)
+export type TicketCategory =
+  | "Spam"
+  | "Product Inquiry"
+  | "Product Recommendation"
+  | "Ordering Inquiry"
+  | "Engraving Question"
+  | "Order Status"
+  | "Shipping Status"
+  | "Order Cancellation or Edit"
+  | "Cooking Advice"
+  | "Seasoning & Care"
+  | "Seasoning Issue" // Legacy - mapped to "Seasoning & Care"
+  | "Dutch Oven Issue"
+  | "Website Issue"
+  | "Quality Issue"
+  | "Glass Lid Issue"
+  | "Promotion or Sale Inquiry"
+  | "Factory Seconds Question"
+  | "Shipping Setup Issue"
+  | "Delivery Delay or Problem"
+  | "Return or Exchange"
+  | "Wholesale Request"
+  | "Metal Testing"
+  | "Positive Feedback"
+  | "Phone Call (No Context)"
+  | "Other";
+
+export type TicketSentiment = "Positive" | "Negative" | "Neutral" | "Mixed";
+
+export type TicketUrgency = "High" | "Normal" | null;
+
+export interface SupportTicket {
+  id: number;
+  reamaze_id: string;
+  created_at: string;
+  subject: string | null;
+  message_body: string | null;
+  channel: string | null;
+  perma_url: string | null;
+  // AI classification
+  category: TicketCategory;
+  sentiment: TicketSentiment;
+  summary: string;
+  urgency: TicketUrgency;
+  // Metadata
+  analyzed_at: string;
+  synced_at: string;
+}
+
+export interface TicketCategoryCount {
+  category: TicketCategory;
+  count: number;
+  delta: number; // vs prior period
+}
+
+export interface TicketSentimentBreakdown {
+  positive: number;
+  neutral: number;
+  negative: number;
+  mixed: number;
+  positivePct: number;
+  neutralPct: number;
+  negativePct: number;
+  mixedPct: number;
+}
+
+export interface TicketAlertCounts {
+  qualityNegative: number; // Quality Issue + Negative sentiment
+  deliveryProblems: number; // Delivery Delay or Problem
+  returnRequests: number; // Return or Exchange
+  allNegative: number; // All tickets with Negative sentiment
+}
+
+export interface WordCloudItem {
+  text: string;
+  value: number; // frequency/weight
+  sentiment: "positive" | "negative" | "neutral" | "mixed"; // dominant sentiment for this word
+  sentimentScore: number; // -1 to 1 scale
+}
+
+export interface TopicTheme {
+  name: string;
+  count: number;
+  previousCount: number; // previous period count for delta
+  delta: number; // change from previous period
+  deltaPct: number; // percentage change
+  sentiment: "positive" | "negative" | "neutral" | "mixed";
+  categories: string[];
+}
+
+export interface VOCInsight {
+  type: "alert" | "trend" | "positive" | "info";
+  title: string;
+  description: string;
+  metric?: string; // e.g., "+23%" or "105 tickets"
+  action?: string; // suggested action
+}
+
+export interface CSATMetrics {
+  totalRatings: number;
+  averageScore: number; // 1-5 scale
+  distribution: { [key: number]: number }; // 1-5 distribution
+  satisfactionRate: number; // % of 4-5 ratings (CSAT score)
+  previousSatisfactionRate?: number; // for delta
+}
+
+export interface TicketsResponse {
+  tickets: SupportTicket[];
+  totalCount: number;
+  previousTotalCount: number; // for delta
+  orderCount: number; // orders in same period for TOR
+  previousOrderCount: number;
+  ticketToOrderRatio: number; // TOR as percentage
+  previousTOR: number;
+  categoryCounts: TicketCategoryCount[];
+  sentimentBreakdown: TicketSentimentBreakdown;
+  alertCounts: TicketAlertCounts;
+  wordCloud: WordCloudItem[];
+  topicThemes: TopicTheme[];
+  insights: VOCInsight[];
+  csat?: CSATMetrics; // Optional - only when Re:amaze credentials are configured
+  lastSynced: string | null;
+}
+
+// Re:amaze API types
+export interface ReamazeConversation {
+  slug: string; // unique identifier
+  created_at: string;
+  subject: string | null;
+  category: {
+    channel: number;
+    name?: string;
+  };
+  message: {
+    body: string;
+  };
+  perma_url: string;
+}
+
+export interface ReamazeConversationsResponse {
+  conversations: ReamazeConversation[];
+  page_count: number;
+  page_size: number;
+}

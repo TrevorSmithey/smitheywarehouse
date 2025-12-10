@@ -1,0 +1,185 @@
+/**
+ * Re:amaze Sync Cron Job
+ * Polls Re:amaze API for new conversations, classifies them with Claude, stores in Supabase
+ *
+ * Triggered by Vercel cron every 5 minutes
+ */
+
+import { NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { ReamazeClient, cleanMessageBody } from "@/lib/reamaze";
+import { classifyTicket } from "@/lib/ticket-classifier";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 300; // 5 minutes max for cron
+
+// Verify cron secret for security
+function verifyCronSecret(request: Request): boolean {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret) {
+    console.warn("CRON_SECRET not configured");
+    return false;
+  }
+
+  return authHeader === `Bearer ${cronSecret}`;
+}
+
+export async function GET(request: Request) {
+  // Verify this is a legitimate cron call
+  if (!verifyCronSecret(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const startTime = Date.now();
+
+  try {
+    console.log("[REAMAZE SYNC] Starting sync...");
+
+    // Initialize clients
+    const supabase = createServiceClient();
+
+    // Check for required env vars
+    const brand = process.env.REAMAZE_BRAND;
+    const email = process.env.REAMAZE_EMAIL;
+    const apiToken = process.env.REAMAZE_API_TOKEN;
+
+    if (!brand || !email || !apiToken) {
+      return NextResponse.json(
+        { error: "Missing Re:amaze configuration" },
+        { status: 500 }
+      );
+    }
+
+    const reamaze = new ReamazeClient({ brand, email, apiToken });
+
+    // Get last sync time from most recent ticket
+    const { data: lastTicket } = await supabase
+      .from("support_tickets")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    // Default to 24 hours ago if no tickets exist
+    const lastSyncTime = lastTicket?.created_at
+      ? new Date(lastTicket.created_at).toISOString()
+      : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    console.log(`[REAMAZE SYNC] Fetching conversations since ${lastSyncTime}`);
+
+    // Fetch new conversations from Re:amaze
+    const conversations = await reamaze.fetchNewConversations(lastSyncTime);
+
+    if (conversations.length === 0) {
+      console.log("[REAMAZE SYNC] No new conversations");
+      return NextResponse.json({
+        success: true,
+        message: "No new conversations",
+        processed: 0,
+        duration: Date.now() - startTime,
+      });
+    }
+
+    console.log(`[REAMAZE SYNC] Found ${conversations.length} new conversations`);
+
+    // Process each conversation
+    let processed = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const conv of conversations) {
+      try {
+        // Check if already exists
+        const { data: existing } = await supabase
+          .from("support_tickets")
+          .select("id")
+          .eq("reamaze_id", conv.slug)
+          .single();
+
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        // Clean the message body for classification
+        const cleanBody = cleanMessageBody(conv.message?.body || "");
+
+        // Classify with Claude
+        const classification = await classifyTicket(cleanBody);
+
+        // Build permalink
+        const permaUrl = ReamazeClient.getPermalink(brand, conv.slug);
+
+        // Insert into Supabase
+        const { error: insertError } = await supabase
+          .from("support_tickets")
+          .insert({
+            reamaze_id: conv.slug,
+            created_at: conv.created_at,
+            subject: conv.subject,
+            message_body: cleanBody.substring(0, 10000), // Truncate to prevent DB overflow
+            channel: conv.category?.name || String(conv.category?.channel),
+            perma_url: permaUrl,
+            category: classification.category,
+            sentiment: classification.sentiment,
+            summary: classification.summary,
+            urgency: classification.urgency,
+          });
+
+        if (insertError) {
+          console.error(`[REAMAZE SYNC] Insert error for ${conv.slug}:`, insertError);
+          errors++;
+        } else {
+          processed++;
+        }
+
+        // Log progress every 10 tickets
+        if ((processed + skipped + errors) % 10 === 0) {
+          console.log(`[REAMAZE SYNC] Progress: ${processed} processed, ${skipped} skipped, ${errors} errors`);
+        }
+
+      } catch (err) {
+        console.error(`[REAMAZE SYNC] Error processing ${conv.slug}:`, err);
+        errors++;
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[REAMAZE SYNC] Complete: ${processed} processed, ${skipped} skipped, ${errors} errors in ${duration}ms`);
+
+    return NextResponse.json({
+      success: true,
+      processed,
+      skipped,
+      errors,
+      total: conversations.length,
+      duration,
+    });
+
+  } catch (error) {
+    console.error("[REAMAZE SYNC] Fatal error:", error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Sync failed",
+        duration: Date.now() - startTime,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// POST handler for manual triggers
+export async function POST(request: Request) {
+  // Allow manual triggers without cron secret for testing
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Reuse GET logic
+  return GET(request);
+}

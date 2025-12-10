@@ -37,6 +37,10 @@ import {
   Hammer,
   Target,
   Download,
+  MessageCircle,
+  ExternalLink,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -61,12 +65,15 @@ import type {
   BudgetDateRange,
   BudgetCategoryData,
   CompareType,
+  TicketsResponse,
+  TicketCategory,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
+import { VoiceOfCustomerDashboard } from "@/components/VoiceOfCustomerDashboard";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget";
+type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget" | "voc";
 type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -224,6 +231,17 @@ export default function Dashboard() {
   const [budgetCustomEnd, setBudgetCustomEnd] = useState<string>("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(["cast_iron", "carbon_steel", "glass_lid", "accessories"]));
 
+  // Support tickets tab state
+  const [ticketsData, setTicketsData] = useState<TicketsResponse | null>(null);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketsDateRange, setTicketsDateRange] = useState<"today" | "7days" | "30days" | "90days" | "custom">("30days");
+  const [ticketsCustomStart, setTicketsCustomStart] = useState<string>("");
+  const [ticketsCustomEnd, setTicketsCustomEnd] = useState<string>("");
+  const [ticketsCategoryFilter, setTicketsCategoryFilter] = useState<TicketCategory | "all">("all");
+  const [ticketsSentimentFilter, setTicketsSentimentFilter] = useState<"all" | "Positive" | "Negative" | "Neutral" | "Mixed">("all");
+  const [ticketsSearch, setTicketsSearch] = useState<string>("");
+  const [ticketsPage, setTicketsPage] = useState(1);
+
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
     try {
@@ -337,6 +355,72 @@ export default function Dashboard() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetDateRange, budgetCustomStart, budgetCustomEnd]);
+
+  // Fetch tickets data
+  const fetchTickets = useCallback(async () => {
+    try {
+      setTicketsLoading(true);
+      const params = new URLSearchParams();
+      params.set("page", ticketsPage.toString());
+
+      // Date range
+      const now = new Date();
+      let startDate: Date;
+      if (ticketsDateRange === "today") {
+        // Start of today (midnight)
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      } else if (ticketsDateRange === "7days") {
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (ticketsDateRange === "30days") {
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      } else if (ticketsDateRange === "90days") {
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      } else if (ticketsDateRange === "custom" && ticketsCustomStart && ticketsCustomEnd) {
+        startDate = new Date(ticketsCustomStart);
+        params.set("end", ticketsCustomEnd);
+      } else {
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+      params.set("start", startDate.toISOString());
+      if (ticketsDateRange !== "custom") {
+        params.set("end", now.toISOString());
+      }
+
+      if (ticketsCategoryFilter !== "all") {
+        params.set("category", ticketsCategoryFilter);
+      }
+      if (ticketsSentimentFilter !== "all") {
+        params.set("sentiment", ticketsSentimentFilter);
+      }
+      if (ticketsSearch) {
+        params.set("search", ticketsSearch);
+      }
+
+      const res = await fetch(`/api/tickets?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch tickets");
+      const data: TicketsResponse = await res.json();
+      setTicketsData(data);
+    } catch (err) {
+      console.error("Tickets fetch error:", err);
+    } finally {
+      setTicketsLoading(false);
+    }
+  }, [ticketsDateRange, ticketsCustomStart, ticketsCustomEnd, ticketsCategoryFilter, ticketsSentimentFilter, ticketsSearch, ticketsPage]);
+
+  // Load tickets when switching to support tab
+  useEffect(() => {
+    if (primaryTab === "voc" && !ticketsData && !ticketsLoading) {
+      fetchTickets();
+    }
+  }, [primaryTab, ticketsData, ticketsLoading, fetchTickets]);
+
+  // Refetch tickets when filters change
+  useEffect(() => {
+    if (primaryTab === "voc" && ticketsData) {
+      fetchTickets();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketsDateRange, ticketsCustomStart, ticketsCustomEnd, ticketsCategoryFilter, ticketsSentimentFilter, ticketsSearch, ticketsPage]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -554,6 +638,17 @@ export default function Dashboard() {
           >
             <Package className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             FULFILLMENT
+          </button>
+          <button
+            onClick={() => setPrimaryTab("voc")}
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+              primaryTab === "voc"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <MessageCircle className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            VOC
           </button>
         </div>
 
@@ -1060,6 +1155,29 @@ export default function Dashboard() {
               return next;
             });
           }}
+        />
+      )}
+
+      {/* VOICE OF CUSTOMER TAB */}
+      {primaryTab === "voc" && (
+        <VoiceOfCustomerDashboard
+          data={ticketsData}
+          loading={ticketsLoading}
+          dateRange={ticketsDateRange}
+          onDateRangeChange={setTicketsDateRange}
+          customStart={ticketsCustomStart}
+          customEnd={ticketsCustomEnd}
+          onCustomStartChange={setTicketsCustomStart}
+          onCustomEndChange={setTicketsCustomEnd}
+          categoryFilter={ticketsCategoryFilter}
+          onCategoryFilterChange={setTicketsCategoryFilter}
+          sentimentFilter={ticketsSentimentFilter}
+          onSentimentFilterChange={setTicketsSentimentFilter}
+          search={ticketsSearch}
+          onSearchChange={setTicketsSearch}
+          page={ticketsPage}
+          onPageChange={setTicketsPage}
+          onRefresh={fetchTickets}
         />
       )}
 
@@ -4431,3 +4549,4 @@ function BudgetDashboard({
     </div>
   );
 }
+
