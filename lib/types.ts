@@ -411,7 +411,7 @@ export interface AssemblyResponse {
 }
 
 // Budget vs Actual Types
-export type BudgetDateRange = "mtd" | "2months" | "qtd" | "ytd" | "6months" | "custom";
+export type BudgetDateRange = "mtd" | "last_month" | "qtd" | "ytd" | "6months" | "custom";
 
 export type BudgetCategory = "accessories" | "carbon_steel" | "cast_iron" | "glass_lid";
 

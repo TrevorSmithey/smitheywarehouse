@@ -3450,19 +3450,23 @@ function AssemblyDashboard({
           })
           .reduce((sum, d) => sum + d.daily_total, 0);
 
-        // Last year's same period (same month, up to same day)
-        const mtdLastYear = daily
+        // Last month's same period (up to same day)
+        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+        const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+        const mtdLastMonth = daily
           .filter(d => {
             const date = new Date(d.date);
-            return date.getMonth() === currentMonth &&
-                   date.getFullYear() === currentYear - 1 &&
+            return date.getMonth() === lastMonth &&
+                   date.getFullYear() === lastMonthYear &&
                    date.getDate() <= currentDay;
           })
           .reduce((sum, d) => sum + d.daily_total, 0);
 
-        const mtdDelta = mtdLastYear > 0
-          ? ((mtdThisYear - mtdLastYear) / mtdLastYear) * 100
+        const mtdDelta = mtdLastMonth > 0
+          ? ((mtdThisYear - mtdLastMonth) / mtdLastMonth) * 100
           : mtdThisYear > 0 ? 100 : 0;
+
+        const lastMonthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][lastMonth];
 
         return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -3494,7 +3498,7 @@ function AssemblyDashboard({
           </div>
           <div className={`text-xs mt-1 flex items-center gap-1 ${mtdDelta >= 0 ? "text-status-good" : "text-status-bad"}`}>
             {mtdDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {fmt.delta(mtdDelta)} vs last Dec
+            {fmt.delta(mtdDelta)} vs {lastMonthName}
           </div>
         </div>
 
@@ -4010,7 +4014,7 @@ function BudgetDashboard({
   // Date range options
   const dateRangeOptions: { value: BudgetDateRange; label: string; short: string }[] = [
     { value: "mtd", label: "Month to Date", short: "MTD" },
-    { value: "2months", label: "2 Months", short: "2Mo" },
+    { value: "last_month", label: "Last Month", short: "LM" },
     { value: "qtd", label: "Quarter to Date", short: "QTD" },
     { value: "ytd", label: "Year to Date", short: "YTD" },
     { value: "6months", label: "6 Months", short: "6Mo" },

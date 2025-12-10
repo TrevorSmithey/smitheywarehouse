@@ -296,17 +296,17 @@ function calculateDateRange(
       break;
     }
 
-    case "2months": {
+    case "last_month": {
+      // Previous complete month only
       let prevMonth = estMonth - 1;
       let prevYear = estYear;
       if (prevMonth < 0) {
         prevMonth = 11;
         prevYear--;
       }
-      startDate = new Date(prevYear, prevMonth, 1);
-      endDate = new Date(estYear, estMonth, estDay);
       const prevDays = getDaysInMonth(prevYear, prevMonth);
-      const currDays = getDaysInMonth(estYear, estMonth);
+      startDate = new Date(prevYear, prevMonth, 1);
+      endDate = new Date(prevYear, prevMonth, prevDays);
       months.push({
         year: prevYear,
         month: prevMonth + 1,
@@ -314,14 +314,7 @@ function calculateDateRange(
         daysInRange: prevDays,
         totalDays: prevDays,
       });
-      months.push({
-        year: estYear,
-        month: estMonth + 1,
-        monthName: MONTH_NAMES[estMonth],
-        daysInRange: estDay,
-        totalDays: currDays,
-      });
-      periodLabel = `${MONTH_NAMES[prevMonth]} - ${MONTH_NAMES[estMonth]} ${estYear}`;
+      periodLabel = `${MONTH_NAMES[prevMonth]} ${prevYear}`;
       break;
     }
 
@@ -614,10 +607,10 @@ export async function GET(request: Request) {
     const compareStart = searchParams.get("compareStart") || undefined;
     const compareEnd = searchParams.get("compareEnd") || undefined;
 
-    const validRanges: BudgetDateRange[] = ["mtd", "2months", "qtd", "ytd", "6months", "custom"];
+    const validRanges: BudgetDateRange[] = ["mtd", "last_month", "qtd", "ytd", "6months", "custom"];
     if (!validRanges.includes(range)) {
       return NextResponse.json(
-        { error: "Invalid range. Use: mtd, 2months, qtd, ytd, 6months, custom" },
+        { error: "Invalid range. Use: mtd, last_month, qtd, ytd, 6months, custom" },
         { status: 400 }
       );
     }
