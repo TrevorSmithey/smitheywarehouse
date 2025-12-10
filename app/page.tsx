@@ -3401,30 +3401,8 @@ function AssemblyDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Compact Header with Progress */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold tabular-nums" style={{ color: forge.copper }}>
-              {summary.progressPct.toFixed(0)}%
-            </span>
-            <span className="text-xs text-text-muted">complete</span>
-          </div>
-          <div className="text-sm text-text-muted">
-            <span className="text-text-secondary font-medium tabular-nums">{fmt.number(summary.totalAssembled)}</span>
-            <span className="mx-1">/</span>
-            <span className="tabular-nums">{fmt.number(summary.totalRevisedPlan)}</span>
-          </div>
-          <div className="text-sm">
-            <span className="tabular-nums font-medium" style={{ color: summary.daysRemaining <= 3 ? "#DC2626" : forge.glow }}>
-              {summary.daysRemaining}
-            </span>
-            <span className="text-text-muted ml-1">days left</span>
-            <span className="text-text-tertiary ml-1 text-xs">
-              ({format(new Date(config.manufacturing_cutoff + "T00:00:00"), "EEE MMM d")})
-            </span>
-          </div>
-        </div>
+      {/* Refresh Button */}
+      <div className="flex justify-end">
         <button
           onClick={onRefresh}
           aria-label="Refresh data"
