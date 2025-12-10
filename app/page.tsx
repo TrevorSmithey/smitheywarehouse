@@ -596,6 +596,17 @@ export default function Dashboard() {
             INVENTORY
           </button>
           <button
+            onClick={() => setPrimaryTab("voc")}
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+              primaryTab === "voc"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <MessageCircle className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            VOC
+          </button>
+          <button
             onClick={() => setPrimaryTab("budget")}
             className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "budget"
@@ -618,17 +629,6 @@ export default function Dashboard() {
             PRODUCTION
           </button>
           <button
-            onClick={() => setPrimaryTab("holiday")}
-            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
-              primaryTab === "holiday"
-                ? "text-accent-blue border-accent-blue"
-                : "text-text-tertiary border-transparent hover:text-text-secondary"
-            }`}
-          >
-            <Gift className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
-            Q4 PACE
-          </button>
-          <button
             onClick={() => setPrimaryTab("fulfillment")}
             className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
               primaryTab === "fulfillment"
@@ -640,15 +640,15 @@ export default function Dashboard() {
             FULFILLMENT
           </button>
           <button
-            onClick={() => setPrimaryTab("voc")}
+            onClick={() => setPrimaryTab("holiday")}
             className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
-              primaryTab === "voc"
+              primaryTab === "holiday"
                 ? "text-accent-blue border-accent-blue"
                 : "text-text-tertiary border-transparent hover:text-text-secondary"
             }`}
           >
-            <MessageCircle className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
-            VOC
+            <Gift className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            Q4 PACE
           </button>
         </div>
 
