@@ -222,7 +222,6 @@ export default function Dashboard() {
   const [budgetDateRange, setBudgetDateRange] = useState<BudgetDateRange>("mtd");
   const [budgetCustomStart, setBudgetCustomStart] = useState<string>("");
   const [budgetCustomEnd, setBudgetCustomEnd] = useState<string>("");
-  const [budgetCompareType, setBudgetCompareType] = useState<CompareType | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(["cast_iron", "carbon_steel", "glass_lid", "accessories"]));
 
   // Fetch inventory when tab becomes active
@@ -295,17 +294,13 @@ export default function Dashboard() {
   const fetchBudget = useCallback(async (
     range: BudgetDateRange = budgetDateRange,
     customStart?: string,
-    customEnd?: string,
-    compareType?: CompareType | null
+    customEnd?: string
   ) => {
     try {
       setBudgetLoading(true);
       let url = `/api/budget?range=${range}`;
       if (range === "custom" && customStart && customEnd) {
         url += `&start=${customStart}&end=${customEnd}`;
-      }
-      if (compareType) {
-        url += `&compare=${compareType}`;
       }
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch budget data");
@@ -325,7 +320,7 @@ export default function Dashboard() {
     }
   }, [primaryTab, budgetData, budgetLoading, fetchBudget]);
 
-  // Refetch budget when date range, custom dates, or compare type change
+  // Refetch budget when date range or custom dates change
   // Note: primaryTab and budgetData are intentionally excluded from dependencies
   // - primaryTab: we don't want to refetch when switching tabs (handled by separate useEffect above)
   // - budgetData: we check it as a guard, not as a trigger (prevents infinite loop)
@@ -334,14 +329,14 @@ export default function Dashboard() {
     if (primaryTab === "budget" && budgetData) {
       if (budgetDateRange === "custom") {
         if (budgetCustomStart && budgetCustomEnd) {
-          fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd, budgetCompareType);
+          fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd);
         }
       } else {
-        fetchBudget(budgetDateRange, undefined, undefined, budgetCompareType);
+        fetchBudget(budgetDateRange);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [budgetDateRange, budgetCustomStart, budgetCustomEnd, budgetCompareType]);
+  }, [budgetDateRange, budgetCustomStart, budgetCustomEnd]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -1052,9 +1047,7 @@ export default function Dashboard() {
           customEnd={budgetCustomEnd}
           onCustomStartChange={setBudgetCustomStart}
           onCustomEndChange={setBudgetCustomEnd}
-          compareType={budgetCompareType}
-          onCompareTypeChange={setBudgetCompareType}
-          onRefresh={() => fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd, budgetCompareType)}
+          onRefresh={() => fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd)}
           expandedCategories={expandedCategories}
           onToggleCategory={(cat) => {
             setExpandedCategories((prev) => {
@@ -3957,8 +3950,6 @@ function BudgetDashboard({
   customEnd,
   onCustomStartChange,
   onCustomEndChange,
-  compareType,
-  onCompareTypeChange,
   onRefresh,
   expandedCategories,
   onToggleCategory,
@@ -3971,8 +3962,6 @@ function BudgetDashboard({
   customEnd: string;
   onCustomStartChange: (date: string) => void;
   onCustomEndChange: (date: string) => void;
-  compareType: CompareType | null;
-  onCompareTypeChange: (type: CompareType | null) => void;
   onRefresh: () => void;
   expandedCategories: Set<string>;
   onToggleCategory: (category: string) => void;
@@ -3999,11 +3988,6 @@ function BudgetDashboard({
     { value: "custom", label: "Custom", short: "Custom" },
   ];
 
-  // Comparison period options
-  const compareOptions: { value: CompareType; label: string; short: string }[] = [
-    { value: "previous_period", label: "Previous Period", short: "Prev" },
-    { value: "same_period_last_year", label: "Same Period Last Year", short: "YoY" },
-  ];
 
   // Get delta color (green for positive, red for negative)
   const getDeltaColor = (delta: number) => {
@@ -4166,34 +4150,6 @@ function BudgetDashboard({
               />
             </div>
           )}
-          {/* Divider */}
-          <div className="w-px h-6 bg-border/50" />
-          {/* Compare Toggle */}
-          <div className="flex bg-bg-tertiary rounded-lg p-1">
-            <button
-              onClick={() => onCompareTypeChange(null)}
-              className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
-                compareType === null
-                  ? "bg-bg-secondary text-text-primary"
-                  : "text-text-tertiary hover:text-text-secondary"
-              }`}
-            >
-              Off
-            </button>
-            {compareOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => onCompareTypeChange(opt.value)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
-                  compareType === opt.value
-                    ? "bg-accent-blue text-white"
-                    : "text-text-tertiary hover:text-text-secondary"
-                }`}
-              >
-                {opt.short}
-              </button>
-            ))}
-          </div>
           {/* Export Button */}
           <button
             onClick={exportToCSV}
