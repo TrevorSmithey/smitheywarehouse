@@ -204,10 +204,12 @@ export async function GET() {
     const dailyTarget = daysRemaining > 0 ? Math.ceil(totalDeficit / daysRemaining) : 0;
     const weeklyTarget = dailyTarget * 7;
 
-    // Yesterday's production (most recent day with data)
-    const sortedDaily = [...daily].sort((a, b) => b.date.localeCompare(a.date));
+    // Yesterday's production (exclude today's partial data, get most recent complete day)
+    const sortedDaily = [...daily]
+      .filter(d => d.date < todayEST) // Exclude today - we want yesterday's complete data
+      .sort((a, b) => b.date.localeCompare(a.date));
     const yesterdayProduction = sortedDaily[0]?.daily_total || 0;
-    // latestDate already defined above for T7 calculation
+    const yesterdayDate = sortedDaily[0]?.date || null; // Track which day this actually is
 
     // Prior day production (day before yesterday) for % change
     const priorDayProduction = sortedDaily[1]?.daily_total || 0;
@@ -273,7 +275,7 @@ export async function GET() {
       totalAssembled,
       totalRevisedPlan,
       progressPct,
-      latestDate,
+      latestDate: yesterdayDate, // Use yesterday's date (excludes today's partial data)
     };
 
     // Weekly aggregates
