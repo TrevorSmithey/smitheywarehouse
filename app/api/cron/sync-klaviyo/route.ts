@@ -88,17 +88,17 @@ export async function GET(request: Request) {
     const klaviyo = createKlaviyoClient();
 
     // ============================================================
-    // 1. Sync sent campaigns from last 90 days
+    // 1. Sync sent campaigns from last 365 days
     // ============================================================
-    console.log("[KLAVIYO SYNC] Fetching sent campaigns...");
+    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 365 days)...");
 
-    const ninetyDaysAgo = daysAgo(90);
+    const oneYearAgo = daysAgo(365);
     const now = new Date();
 
     // Get campaigns list and bulk reports in parallel
     const [sentCampaigns, campaignReports] = await Promise.all([
-      klaviyo.getSentCampaigns(ninetyDaysAgo, now),
-      klaviyo.getAllCampaignReports("last_90_days"),
+      klaviyo.getSentCampaigns(oneYearAgo, now),
+      klaviyo.getAllCampaignReports("last_365_days"),
     ]);
 
     console.log(`[KLAVIYO SYNC] Found ${sentCampaigns.length} sent campaigns, ${campaignReports.size} with reports`);
