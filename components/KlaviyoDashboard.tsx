@@ -15,6 +15,10 @@ import {
   ArrowUpRight,
   BarChart3,
   Sparkles,
+  DollarSign,
+  UserMinus,
+  Target,
+  Scale,
 } from "lucide-react";
 import {
   AreaChart,
@@ -504,7 +508,7 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
             </defs>
 
             <XAxis
-              dataKey="shortMonth"
+              dataKey="displayMonth"
               tick={{ fill: "#64748B", fontSize: 10, fontWeight: 500 }}
               axisLine={{ stroke: "#1E293B" }}
               tickLine={false}
@@ -968,33 +972,118 @@ export function KlaviyoDashboard({
       </div>
 
       {/* ================================================================
-          KPI CARDS (5 columns)
+          TOTAL EMAIL REVENUE + BREAKDOWN
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Total Email Revenue - Hero KPI */}
+        <div className="lg:col-span-1 bg-bg-secondary rounded-xl border border-border/30 p-6">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2">
+            Total Email Revenue
+          </div>
+          <div className="text-4xl font-bold tracking-tight text-status-good tabular-nums mb-3">
+            {formatCurrency(totalEmailRevenue)}
+          </div>
+          <div className="text-xs text-text-tertiary">
+            {stats.campaigns_sent || 0} campaigns sent
+          </div>
+        </div>
+
+        {/* Campaign/Flow Split - Critical for email health */}
+        <div className="lg:col-span-2 bg-bg-secondary rounded-xl border border-border/30 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Scale className="w-4 h-4 text-text-tertiary" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                Revenue Split
+              </span>
+            </div>
+            <span className={`text-[10px] px-2 py-0.5 rounded ${
+              Math.abs(campaignPct - 50) <= 15
+                ? "bg-status-good/20 text-status-good"
+                : "bg-status-warning/20 text-status-warning"
+            }`}>
+              {Math.abs(campaignPct - 50) <= 15 ? "Balanced" : "Review Mix"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-2xl font-bold text-status-good tabular-nums">
+                  {formatCurrency(stats.campaign_revenue || 0)}
+                </span>
+                <span className="text-sm text-text-muted">({campaignPct.toFixed(0)}%)</span>
+              </div>
+              <div className="text-xs text-text-tertiary mb-2">Campaigns</div>
+              <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-status-good transition-all duration-500"
+                  style={{ width: `${campaignPct}%` }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-2xl font-bold text-status-warning tabular-nums">
+                  {formatCurrency(stats.flow_revenue || 0)}
+                </span>
+                <span className="text-sm text-text-muted">({flowPct.toFixed(0)}%)</span>
+              </div>
+              <div className="text-xs text-text-tertiary mb-2">Flows</div>
+              <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-status-warning transition-all duration-500"
+                  style={{ width: `${flowPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-border/20 text-[10px] text-text-muted">
+            Target: 40-60% split between campaigns and flows
+          </div>
+        </div>
+      </div>
+
+      {/* ================================================================
+          ADVANCED KPIs (RPR, Unsubscribe Rate, etc.)
           ================================================================ */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <BreakdownCard
-          label="Total Email Revenue"
-          value={formatCurrency(totalEmailRevenue)}
-          subValue={`${stats.campaigns_sent || 0} campaigns`}
-          icon={Mail}
-          color="green"
+          label="Campaign RPR"
+          value={`$${(stats.campaign_rpr || 0).toFixed(2)}`}
+          subValue={
+            (stats.campaign_rpr || 0) >= 0.10
+              ? "Above benchmark ($0.10)"
+              : "Below benchmark ($0.10)"
+          }
+          icon={DollarSign}
+          color={(stats.campaign_rpr || 0) >= 0.10 ? "green" : "amber"}
         />
 
         <BreakdownCard
-          label="Campaign Revenue"
-          value={formatCurrency(stats.campaign_revenue || 0)}
-          subValue={`${campaignPct.toFixed(0)}% of email`}
-          icon={Mail}
-          color="green"
-          percentage={campaignPct}
+          label="Placed Order Rate"
+          value={formatRate(stats.placed_order_rate || 0)}
+          subValue={
+            (stats.placed_order_rate || 0) >= 0.001
+              ? "Healthy (≥0.10%)"
+              : "Below target (0.10%)"
+          }
+          icon={Target}
+          color={(stats.placed_order_rate || 0) >= 0.001 ? "green" : "amber"}
         />
 
         <BreakdownCard
-          label="Flow Revenue"
-          value={formatCurrency(stats.flow_revenue || 0)}
-          subValue={`${flowPct.toFixed(0)}% of email`}
-          icon={Zap}
-          color="amber"
-          percentage={flowPct}
+          label="Unsubscribe Rate"
+          value={formatRate(stats.unsubscribe_rate || 0)}
+          subValue={
+            (stats.unsubscribe_rate || 0) <= 0.005
+              ? "Healthy (<0.5%)"
+              : "High (>0.5%)"
+          }
+          icon={UserMinus}
+          color={(stats.unsubscribe_rate || 0) <= 0.005 ? "green" : "amber"}
         />
 
         <BreakdownCard

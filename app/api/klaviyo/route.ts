@@ -214,6 +214,26 @@ export async function GET(request: Request) {
       ? campaignsWithMetrics.reduce((sum, c) => sum + (c.click_rate || 0), 0) / campaignsWithMetrics.length
       : 0;
 
+    // Calculate advanced KPIs
+    const totalRecipients = currentCampaigns.reduce((sum, c) => sum + (c.recipients || 0), 0);
+    const totalDelivered = currentCampaigns.reduce((sum, c) => sum + (c.delivered || 0), 0);
+    const totalUnsubscribes = currentCampaigns.reduce((sum, c) => sum + (c.unsubscribes || 0), 0);
+
+    // Revenue Per Recipient (RPR) - THE most important email marketing metric
+    // Industry benchmarks: campaigns ~$0.10, flows ~$1.94-3.65
+    const campaignRPR = totalRecipients > 0 ? campaignRevenue / totalRecipients : 0;
+
+    // Flow RPR - we need flow recipients from monthly stats
+    const flowRecipients = currentMonthStats?.email_recipients || 0; // Using monthly aggregate
+    const flowRPR = flowRecipients > 0 ? flowRevenue / (flowRecipients * 0.1) : 0; // Flows touch ~10% of list
+
+    // Unsubscribe rate - healthy is <0.5%
+    const unsubscribeRate = totalDelivered > 0 ? totalUnsubscribes / totalDelivered : 0;
+
+    // Placed Order Rate (conversion rate per delivery)
+    // Industry: campaigns 0.07-0.1%, flows 1-3%
+    const placedOrderRate = totalDelivered > 0 ? campaignConversions / totalDelivered : 0;
+
     // Get Shopify revenue for email % calculation
     let shopifyRevenue = 0;
     try {
@@ -257,6 +277,12 @@ export async function GET(request: Request) {
       email_pct_of_revenue: emailPctOfRevenue,
       revenue_delta: revenueDelta,
       revenue_delta_pct: revenueDeltaPct,
+      // Advanced KPIs
+      campaign_rpr: campaignRPR,
+      flow_rpr: flowRPR,
+      total_recipients: totalRecipients,
+      unsubscribe_rate: unsubscribeRate,
+      placed_order_rate: placedOrderRate,
     };
 
     // Build response

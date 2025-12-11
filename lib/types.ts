@@ -755,6 +755,12 @@ export interface KlaviyoStats {
   // Period comparison
   revenue_delta: number; // vs previous period
   revenue_delta_pct: number;
+  // Advanced KPIs
+  campaign_rpr: number; // Revenue Per Recipient (campaigns)
+  flow_rpr: number; // Revenue Per Recipient (flows)
+  total_recipients: number; // Total recipients in period
+  unsubscribe_rate: number; // Unsubscribes / Delivered
+  placed_order_rate: number; // Conversions / Delivered
 }
 
 export interface KlaviyoResponse {
