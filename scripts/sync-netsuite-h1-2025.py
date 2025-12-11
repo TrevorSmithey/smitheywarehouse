@@ -105,14 +105,15 @@ def supabase_request(endpoint, method='GET', data=None, on_conflict=None):
     return response
 
 def sync_transactions():
-    """Sync wholesale transactions for H1 2025"""
+    """Sync wholesale transactions for H1 2025 using cursor-based pagination"""
     print("\n" + "="*70)
     print(f"SYNCING WHOLESALE TRANSACTIONS: {START_DATE} to {END_DATE}")
     print("="*70)
+    print("Using cursor-based pagination (WHERE t.id > last_id)")
 
     ns_url = f"https://{NS_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql"
 
-    offset = 0
+    last_id = 0
     limit = 1000
     batch_num = 0
     total_transactions = 0
@@ -120,10 +121,11 @@ def sync_transactions():
     while True:
         batch_num += 1
 
-        # Query with date filter and customer ID exclusion
+        # Use cursor-based pagination with subquery for customer filtering
+        # CRITICAL: OFFSET doesn't work correctly with JOINs in SuiteQL
         query = {
             "q": f"""
-            SELECT DISTINCT
+            SELECT
                 t.id as transaction_id,
                 t.tranid,
                 t.type as transaction_type,
@@ -132,21 +134,22 @@ def sync_transactions():
                 t.status,
                 t.entity as customer_id
             FROM transaction t
-            JOIN customer c ON t.entity = c.id
-            WHERE c.isperson = 'F'
-            AND c.id NOT IN (493, 2501)
+            WHERE t.entity IN (
+                SELECT c.id FROM customer c WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+            )
             AND t.type IN ('CashSale', 'CustInvc')
             AND t.trandate >= TO_DATE('{START_DATE}', 'YYYY-MM-DD')
             AND t.trandate <= TO_DATE('{END_DATE}', 'YYYY-MM-DD')
-            ORDER BY t.trandate, t.id
-            OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
+            AND t.id > {last_id}
+            ORDER BY t.id
+            FETCH NEXT {limit} ROWS ONLY
             """
         }
 
         response = make_ns_request(ns_url, method='POST', body=query)
 
         if response is None or response.status_code != 200:
-            print(f"Error fetching transactions at offset {offset}")
+            print(f"Error fetching transactions after ID {last_id}")
             if response:
                 print(f"  Status: {response.status_code}")
                 print(f"  Error: {response.text[:200]}")
@@ -156,8 +159,11 @@ def sync_transactions():
         items = data.get('items', [])
 
         if not items:
-            print(f"  No more transactions at offset {offset}")
+            print(f"  No more transactions after ID {last_id}")
             break
+
+        # Update cursor for next batch
+        last_id = max(t['transaction_id'] for t in items)
 
         # Transform and upsert transactions
         records = []
@@ -180,27 +186,28 @@ def sync_transactions():
             total_transactions += len(records)
             dates = [r['tran_date'] for r in records if r['tran_date']]
             date_range = f"{min(dates)} to {max(dates)}" if dates else "N/A"
-            print(f"  Batch {batch_num}: {len(records)} transactions | Total: {total_transactions:,} | Dates: {date_range}")
+            ids = [r['ns_transaction_id'] for r in records]
+            print(f"  Batch {batch_num}: {len(records)} txns | IDs {min(ids)}-{max(ids)} | Dates: {date_range} | Total: {total_transactions:,}")
 
         if len(items) < limit:
             print(f"  Last batch (only {len(items)} items)")
             break
 
-        offset += limit
         time.sleep(0.3)
 
     print(f"\nTransaction sync complete: {total_transactions:,} transactions")
     return total_transactions
 
 def sync_line_items():
-    """Sync wholesale line items for H1 2025"""
+    """Sync wholesale line items for H1 2025 using cursor-based pagination"""
     print("\n" + "-"*70)
     print(f"SYNCING LINE ITEMS: {START_DATE} to {END_DATE}")
     print("-"*70)
+    print("Using cursor-based pagination (WHERE tl.id > last_id)")
 
     ns_url = f"https://{NS_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql"
 
-    offset = 0
+    last_line_id = 0
     limit = 1000
     batch_num = 0
     total_line_items = 0
@@ -208,6 +215,8 @@ def sync_line_items():
     while True:
         batch_num += 1
 
+        # Use cursor-based pagination with subquery for customer filtering
+        # CRITICAL: OFFSET doesn't work correctly with JOINs in SuiteQL
         query = {
             "q": f"""
             SELECT
@@ -222,23 +231,24 @@ def sync_line_items():
                 tl.itemtype
             FROM transactionline tl
             JOIN transaction t ON tl.transaction = t.id
-            JOIN customer c ON t.entity = c.id
-            WHERE c.isperson = 'F'
-            AND c.id NOT IN (493, 2501)
+            WHERE t.entity IN (
+                SELECT c.id FROM customer c WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+            )
             AND t.type IN ('CashSale', 'CustInvc')
             AND t.trandate >= TO_DATE('{START_DATE}', 'YYYY-MM-DD')
             AND t.trandate <= TO_DATE('{END_DATE}', 'YYYY-MM-DD')
             AND tl.mainline = 'F'
             AND tl.item IS NOT NULL
-            ORDER BY t.id, tl.linesequencenumber
-            OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
+            AND tl.id > {last_line_id}
+            ORDER BY tl.id
+            FETCH NEXT {limit} ROWS ONLY
             """
         }
 
         response = make_ns_request(ns_url, method='POST', body=query)
 
         if response is None or response.status_code != 200:
-            print(f"Error fetching line items at offset {offset}")
+            print(f"Error fetching line items after ID {last_line_id}")
             if response:
                 print(f"  Status: {response.status_code}")
                 print(f"  Error: {response.text[:200]}")
@@ -248,8 +258,11 @@ def sync_line_items():
         items = data.get('items', [])
 
         if not items:
-            print(f"  No more line items at offset {offset}")
+            print(f"  No more line items after ID {last_line_id}")
             break
+
+        # Update cursor for next batch
+        last_line_id = max(li['line_id'] for li in items)
 
         # Transform and upsert line items
         records = []
@@ -272,13 +285,13 @@ def sync_line_items():
             print(f"  Batch {batch_num}: ERROR - {sb_response.text[:100]}")
         else:
             total_line_items += len(records)
-            print(f"  Batch {batch_num}: {len(records)} line items | Total: {total_line_items:,}")
+            line_ids = [r['ns_line_id'] for r in records]
+            print(f"  Batch {batch_num}: {len(records)} lines | IDs {min(line_ids)}-{max(line_ids)} | Total: {total_line_items:,}")
 
         if len(items) < limit:
             print(f"  Last batch (only {len(items)} items)")
             break
 
-        offset += limit
         time.sleep(0.3)
 
     print(f"\nLine item sync complete: {total_line_items:,} line items")

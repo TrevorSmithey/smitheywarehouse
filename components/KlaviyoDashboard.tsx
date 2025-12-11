@@ -341,17 +341,22 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
   const chartData: MonthlyChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
+    // Sort chronologically
     const sorted = [...monthly].sort((a, b) =>
       new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
     );
 
-    const recent = sorted.slice(-12);
+    // Filter to current year only (Jan 2025 onwards)
+    const currentYear = new Date().getFullYear();
+    const yearStart = new Date(currentYear, 0, 1); // Jan 1 of current year
+    const thisYear = sorted.filter(m => new Date(m.month_start) >= yearStart);
 
-    return recent.map(m => {
+    return thisYear.map(m => {
       const date = new Date(m.month_start);
       const campaignRev = m.email_revenue || 0;
       const flowRev = m.flow_revenue || 0;
 
+      // Find same month last year for YoY comparison
       const lastYear = new Date(date);
       lastYear.setFullYear(lastYear.getFullYear() - 1);
       const yoyMonth = sorted.find(prev => {
@@ -368,7 +373,7 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
 
       return {
         month: m.month_start,
-        displayMonth: format(date, "MMM ''yy"),
+        displayMonth: format(date, "MMM"), // Just month name for current year
         shortMonth: format(date, "MMM"),
         campaignRevenue: campaignRev,
         flowRevenue: flowRev,
@@ -588,14 +593,18 @@ function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }
       new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
     );
 
-    // Filter to only months with subscriber data and take last 12
-    const withData = sorted.filter(m =>
-      m.subscribers_120day !== null || m.subscribers_365day !== null
-    ).slice(-12);
+    // Filter to current year only (Jan 2025 onwards) with subscriber data
+    const currentYear = new Date().getFullYear();
+    const yearStart = new Date(currentYear, 0, 1);
+    const thisYear = sorted.filter(m => {
+      const monthDate = new Date(m.month_start);
+      return monthDate >= yearStart &&
+        (m.subscribers_120day !== null || m.subscribers_365day !== null);
+    });
 
-    return withData.map(m => ({
+    return thisYear.map(m => ({
       month: m.month_start,
-      displayMonth: format(new Date(m.month_start), "MMM ''yy"),
+      displayMonth: format(new Date(m.month_start), "MMM"), // Just month name for current year
       active120Day: m.subscribers_120day,
       engaged365Day: m.subscribers_365day,
     }));
