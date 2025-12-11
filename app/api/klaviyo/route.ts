@@ -260,7 +260,7 @@ function buildCampaignsQuery(
   let query = supabase
     .from("klaviyo_campaigns")
     .select("*")
-    .eq("status", "sent")
+    .eq("status", "Sent")
     .gte("send_time", startDate.toISOString())
     .lte("send_time", endDate.toISOString())
     .order("send_time", { ascending: false });
