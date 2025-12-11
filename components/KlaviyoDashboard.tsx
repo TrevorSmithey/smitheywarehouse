@@ -7,7 +7,6 @@ import {
   TrendingUp,
   TrendingDown,
   Mail,
-  Calendar,
   Zap,
   ChevronDown,
   ChevronUp,
@@ -16,28 +15,24 @@ import {
   Eye,
   ShoppingCart,
   ArrowUpRight,
-  Minus,
   BarChart3,
   Sparkles,
 } from "lucide-react";
 import {
   AreaChart,
   Area,
-  BarChart,
   Bar,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  Cell,
   ComposedChart,
   Line,
 } from "recharts";
 import type {
   KlaviyoResponse,
   KlaviyoCampaignSummary,
-  KlaviyoUpcomingCampaign,
   KlaviyoMonthlySummary,
 } from "@/lib/types";
 
@@ -859,96 +854,6 @@ function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }
 }
 
 // ============================================================================
-// UPCOMING CAMPAIGN CARD
-// ============================================================================
-
-function UpcomingCard({ campaign }: { campaign: KlaviyoUpcomingCampaign }) {
-  const scheduledDate = new Date(campaign.scheduled_time);
-  const now = new Date();
-  const isToday = now.toDateString() === scheduledDate.toDateString();
-  const isTomorrow = new Date(Date.now() + 86400000).toDateString() === scheduledDate.toDateString();
-  const daysUntil = Math.ceil((scheduledDate.getTime() - now.getTime()) / 86400000);
-
-  return (
-    <div className={`flex items-center gap-4 p-3.5 rounded-lg border transition-all ${
-      isToday
-        ? "bg-status-warning/5 border-status-warning/30"
-        : isTomorrow
-          ? "bg-accent-blue/5 border-accent-blue/30"
-          : "bg-bg-tertiary/30 border-border/20 hover:border-border/40"
-    }`}>
-      {/* Date badge */}
-      <div className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg text-center ${
-        isToday ? "bg-status-warning/20" :
-        isTomorrow ? "bg-accent-blue/20" :
-        "bg-bg-tertiary"
-      }`}>
-        <span className={`text-[9px] font-semibold uppercase leading-tight ${
-          isToday ? "text-status-warning" :
-          isTomorrow ? "text-accent-blue" :
-          "text-text-muted"
-        }`}>
-          {format(scheduledDate, "MMM")}
-        </span>
-        <span className={`text-lg font-bold leading-tight ${
-          isToday ? "text-status-warning" :
-          isTomorrow ? "text-accent-blue" :
-          "text-text-secondary"
-        }`}>
-          {format(scheduledDate, "d")}
-        </span>
-      </div>
-
-      {/* Campaign info */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-text-primary font-medium truncate">{campaign.name}</div>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-[10px] text-text-muted">
-            {format(scheduledDate, "h:mm a")}
-          </span>
-          {isToday && (
-            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-status-warning text-bg-primary rounded">
-              Today
-            </span>
-          )}
-          {isTomorrow && (
-            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-accent-blue text-white rounded">
-              Tomorrow
-            </span>
-          )}
-          {!isToday && !isTomorrow && daysUntil <= 7 && (
-            <span className="text-[10px] text-text-tertiary">
-              in {daysUntil}d
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Audience + Predicted */}
-      <div className="flex items-center gap-3">
-        {campaign.audience_size && campaign.audience_size > 0 && (
-          <div className="text-right">
-            <div className="text-sm font-semibold text-text-primary tabular-nums">
-              {formatNumber(campaign.audience_size)}
-            </div>
-            <div className="text-[9px] text-text-muted uppercase tracking-wide">Audience</div>
-          </div>
-        )}
-
-        {campaign.predicted_revenue && campaign.predicted_revenue > 0 && (
-          <div className="text-right pl-3 border-l border-border/30">
-            <div className="text-sm font-semibold text-status-good tabular-nums">
-              {formatCurrency(campaign.predicted_revenue)}
-            </div>
-            <div className="text-[9px] text-text-muted uppercase tracking-wide">Predicted</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // MAIN DASHBOARD
 // ============================================================================
 
@@ -1052,7 +957,7 @@ export function KlaviyoDashboard({
     );
   }
 
-  const { stats, upcoming } = data;
+  const { stats } = data;
 
   // Calculate totals
   const totalEmailRevenue = (stats.campaign_revenue || 0) + (stats.flow_revenue || 0);
@@ -1216,11 +1121,9 @@ export function KlaviyoDashboard({
       )}
 
       {/* ================================================================
-          MAIN CONTENT: Campaign Table + Upcoming
+          CAMPAIGN PERFORMANCE TABLE
           ================================================================ */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Campaign Performance Table (3/4) */}
-        <div className="xl:col-span-3 bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+      <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
           <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-text-tertiary" />
@@ -1326,40 +1229,6 @@ export function KlaviyoDashboard({
               <span className="text-xs mt-1">Try a different time period</span>
             </div>
           )}
-        </div>
-
-        {/* Upcoming Campaigns (1/4) */}
-        <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-text-tertiary" />
-              <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
-                SCHEDULED
-              </h3>
-            </div>
-            {upcoming && upcoming.length > 0 && (
-              <span className="text-[10px] text-text-muted tabular-nums">
-                {upcoming.length} upcoming
-              </span>
-            )}
-          </div>
-
-          {upcoming && upcoming.length > 0 ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
-              {upcoming.map((campaign) => (
-                <UpcomingCard key={campaign.klaviyo_id} campaign={campaign} />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-56 text-text-muted">
-              <Calendar className="w-10 h-10 mb-3 opacity-40" />
-              <span className="text-sm font-medium">No campaigns scheduled</span>
-              <span className="text-xs mt-1 text-center">
-                Schedule in Klaviyo<br />to see here
-              </span>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

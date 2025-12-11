@@ -5,7 +5,7 @@
  * Triggered by Vercel cron daily at 6 AM UTC (1 AM EST)
  *
  * Syncs:
- * - Sent campaigns from last 90 days (with full metrics)
+ * - Sent campaigns from last 2 years (with full metrics)
  * - Scheduled campaigns (for inventory planning)
  * - Flow revenue data
  * - Subscriber counts from key segments
@@ -88,17 +88,23 @@ export async function GET(request: Request) {
     const klaviyo = createKlaviyoClient();
 
     // ============================================================
-    // 1. Sync sent campaigns from last 365 days
+    // 1. Sync sent campaigns from last 2 years (730 days)
     // ============================================================
-    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 365 days)...");
+    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 2 years)...");
 
-    const oneYearAgo = daysAgo(365);
+    const twoYearsAgo = daysAgo(730);
     const now = new Date();
+
+    // Build custom timeframe for reports (2 years back)
+    const customTimeframe = {
+      start: twoYearsAgo.toISOString().split("T")[0],
+      end: now.toISOString().split("T")[0],
+    };
 
     // Get campaigns list and bulk reports in parallel
     const [sentCampaigns, campaignReports] = await Promise.all([
-      klaviyo.getSentCampaigns(oneYearAgo, now),
-      klaviyo.getAllCampaignReports("last_365_days"),
+      klaviyo.getSentCampaigns(twoYearsAgo, now),
+      klaviyo.getAllCampaignReports(customTimeframe),
     ]);
 
     console.log(`[KLAVIYO SYNC] Found ${sentCampaigns.length} sent campaigns, ${campaignReports.size} with reports`);
@@ -321,10 +327,10 @@ export async function GET(request: Request) {
     // Get subscriber counts (current)
     const subscriberCounts = await klaviyo.getSubscriberCounts();
 
-    // Get historical data for backfilling charts
+    // Get historical data for backfilling charts (2 years)
     const [subscriberHistory, flowRevenueHistory] = await Promise.all([
-      klaviyo.getSubscriberHistory(),
-      klaviyo.getFlowRevenueHistory(),
+      klaviyo.getSubscriberHistory(customTimeframe),
+      klaviyo.getFlowRevenueHistory(customTimeframe),
     ]);
 
     console.log(`[KLAVIYO SYNC] Flow revenue MTD: $${mtdFlowRevenue.toFixed(2)}, Subscribers: ${subscriberCounts.engaged365}`);
@@ -339,12 +345,12 @@ export async function GET(request: Request) {
     const currentMonth = startOfMonth(now);
     const previousMonth = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-    // Find all distinct months with campaigns (last 12 months)
+    // Find all distinct months with campaigns (last 2 years)
     const { data: campaignMonths } = await supabase
       .from("klaviyo_campaigns")
       .select("send_time")
       .eq("status", "Sent")
-      .gte("send_time", daysAgo(365).toISOString())
+      .gte("send_time", twoYearsAgo.toISOString())
       .order("send_time", { ascending: false });
 
     // Build unique set of month starts

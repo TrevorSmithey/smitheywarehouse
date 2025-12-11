@@ -249,18 +249,25 @@ export class KlaviyoClient {
    * Note: The Klaviyo Reports API requires:
    * - timeframe (key like 'last_90_days' or custom start/end)
    * - conversion_metric_id (for revenue/conversion stats)
+   *
+   * @param timeframeKeyOrCustom - Either a predefined key or an object with start/end dates
    */
-  async getAllCampaignReports(timeframeKey = "last_90_days"): Promise<Map<string, CampaignReportData["statistics"]>> {
+  async getAllCampaignReports(
+    timeframeKeyOrCustom: string | { start: string; end: string } = "last_90_days"
+  ): Promise<Map<string, CampaignReportData["statistics"]>> {
     const statsMap = new Map<string, CampaignReportData["statistics"]>();
 
     try {
+      // Support both predefined keys and custom date ranges
+      const timeframe = typeof timeframeKeyOrCustom === "string"
+        ? { key: timeframeKeyOrCustom }
+        : { start: timeframeKeyOrCustom.start, end: timeframeKeyOrCustom.end };
+
       const body = {
         data: {
           type: "campaign-values-report",
           attributes: {
-            timeframe: {
-              key: timeframeKey,
-            },
+            timeframe,
             conversion_metric_id: PLACED_ORDER_METRIC_ID,
             statistics: [
               "opens",
@@ -415,15 +422,23 @@ export class KlaviyoClient {
 
   /**
    * Get historical monthly flow revenue using flow-series-reports
-   * Returns monthly revenue for the past 12 months
+   * Returns monthly revenue for the specified timeframe
+   * @param timeframeKeyOrCustom - Either a predefined key or an object with start/end dates
    */
-  async getFlowRevenueHistory(): Promise<{ date: string; revenue: number; conversions: number }[]> {
+  async getFlowRevenueHistory(
+    timeframeKeyOrCustom: string | { start: string; end: string } = "last_365_days"
+  ): Promise<{ date: string; revenue: number; conversions: number }[]> {
     try {
+      // Support both predefined keys and custom date ranges
+      const timeframe = typeof timeframeKeyOrCustom === "string"
+        ? { key: timeframeKeyOrCustom }
+        : { start: timeframeKeyOrCustom.start, end: timeframeKeyOrCustom.end };
+
       const body = {
         data: {
           type: "flow-series-report",
           attributes: {
-            timeframe: { key: "last_365_days" },
+            timeframe,
             interval: "monthly",
             conversion_metric_id: PLACED_ORDER_METRIC_ID,
             statistics: ["conversions", "conversion_value"],
@@ -529,16 +544,25 @@ export class KlaviyoClient {
 
   /**
    * Get historical subscriber counts from segment series reports
-   * Returns monthly member counts for the past 12 months
+   * Returns monthly member counts for the specified timeframe
+   * @param timeframeKeyOrCustom - Either a predefined key or an object with start/end dates
    */
-  async getSegmentHistory(segmentId: string): Promise<{ date: string; count: number }[]> {
+  async getSegmentHistory(
+    segmentId: string,
+    timeframeKeyOrCustom: string | { start: string; end: string } = "last_365_days"
+  ): Promise<{ date: string; count: number }[]> {
     try {
+      // Support both predefined keys and custom date ranges
+      const timeframe = typeof timeframeKeyOrCustom === "string"
+        ? { key: timeframeKeyOrCustom }
+        : { start: timeframeKeyOrCustom.start, end: timeframeKeyOrCustom.end };
+
       const body = {
         data: {
           type: "segment-series-report",
           attributes: {
             statistics: ["total_members"],
-            timeframe: { key: "last_365_days" },
+            timeframe,
             interval: "monthly",
             filter: `equals(segment_id,"${segmentId}")`,
           },
@@ -582,14 +606,17 @@ export class KlaviyoClient {
 
   /**
    * Get historical subscriber counts for both key segments
+   * @param timeframeKeyOrCustom - Either a predefined key or an object with start/end dates
    */
-  async getSubscriberHistory(): Promise<{
+  async getSubscriberHistory(
+    timeframeKeyOrCustom: string | { start: string; end: string } = "last_365_days"
+  ): Promise<{
     active120Day: { date: string; count: number }[];
     engaged365Day: { date: string; count: number }[];
   }> {
     const [active120Day, engaged365Day] = await Promise.all([
-      this.getSegmentHistory(KLAVIYO_SEGMENTS.ACTIVE_120_DAY),
-      this.getSegmentHistory(KLAVIYO_SEGMENTS.ENGAGED_365),
+      this.getSegmentHistory(KLAVIYO_SEGMENTS.ACTIVE_120_DAY, timeframeKeyOrCustom),
+      this.getSegmentHistory(KLAVIYO_SEGMENTS.ENGAGED_365, timeframeKeyOrCustom),
     ]);
 
     return { active120Day, engaged365Day };
