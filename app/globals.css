@@ -162,16 +162,20 @@ body {
 }
 
 /* Safety stock violation - subtle pulsing amber */
-/* Outside @layer so keyframes work correctly */
 .ss-violation {
-  animation: ss-pulse 3s ease-in-out infinite;
+  animation: ss-pulse 2.5s ease-in-out infinite !important;
+  background-color: rgba(245, 158, 11, 0.12);
+}
+
+.ss-violation:hover {
+  animation: ss-pulse 2.5s ease-in-out infinite !important;
 }
 
 @keyframes ss-pulse {
   0%, 100% {
-    background-color: rgba(245, 158, 11, 0.08);
+    background-color: rgba(245, 158, 11, 0.1);
   }
   50% {
-    background-color: rgba(245, 158, 11, 0.2);
+    background-color: rgba(245, 158, 11, 0.22);
   }
 }

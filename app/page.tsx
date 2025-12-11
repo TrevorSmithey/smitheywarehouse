@@ -2653,10 +2653,12 @@ function InventoryDashboard({
                           ? "bg-bg-tertiary/10"
                           : "";
 
+                        const hasHighlight = rowBg && rowBg !== "bg-bg-tertiary/10";
+
                         return (
                           <tr
                             key={product.sku}
-                            className={`border-b border-border/20 hover:bg-bg-tertiary/40 transition-colors ${rowBg}`}
+                            className={`border-b border-border/20 transition-colors ${rowBg} ${!hasHighlight ? "hover:bg-bg-tertiary/40" : ""}`}
                           >
                             <td className="py-3 px-2 sm:px-3" title={tooltip}>
                               <div className="flex items-center gap-2">
