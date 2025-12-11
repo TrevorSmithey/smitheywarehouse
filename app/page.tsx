@@ -2598,12 +2598,12 @@ function InventoryDashboard({
                 <div className="border-t border-border">
                   <table className="w-full text-sm table-fixed">
                     <colgroup>
-                      <col className="w-[34%] sm:w-[30%]" />
+                      <col className="w-[32%] sm:w-[26%]" />
                       <col className="w-[20%] sm:w-[16%]" />
                       <col className="w-[20%] sm:w-[16%]" />
-                      <col className="w-[26%] sm:w-[16%]" />
-                      {cat.showDoi && <col className="sm:w-[12%]" />}
-                      {cat.showVelocity && <col className="hidden sm:table-column w-[10%]" />}
+                      <col className="w-[28%] sm:w-[16%]" />
+                      {cat.showDoi && <col className="sm:w-[13%]" />}
+                      {cat.showVelocity && <col className="hidden sm:table-column w-[13%]" />}
                     </colgroup>
                     <thead>
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
@@ -2626,6 +2626,8 @@ function InventoryDashboard({
                         const isNegative = product.total < 0;
                         const hasWarehouseNegative = product.hobson < 0 || product.selery < 0;
                         const hasLowStock = product.hobson < 10 || product.selery < 10;
+                        const safetyStock = SAFETY_STOCK[product.sku];
+                        const isBelowSafetyStock = safetyStock && product.total < safetyStock;
                         // Build tooltip with budget % and velocity
                         const tooltipParts: string[] = [];
                         if (product.monthPct !== undefined) {
@@ -2640,8 +2642,10 @@ function InventoryDashboard({
                         }
                         const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
 
-                        // Row background: red if negative, orange if low stock (<10), else zebra stripe
-                        const rowBg = isNegative || hasWarehouseNegative
+                        // Row background priority: SS violation (pulsing) > negative > low stock > zebra
+                        const rowBg = isBelowSafetyStock
+                          ? "ss-violation"
+                          : isNegative || hasWarehouseNegative
                           ? "bg-red-500/10"
                           : hasLowStock
                           ? "bg-status-warning/15"

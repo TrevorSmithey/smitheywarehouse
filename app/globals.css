@@ -159,4 +159,18 @@ body {
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
+
+  /* Safety stock violation - pulsing red row */
+  .ss-violation {
+    animation: ss-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes ss-pulse {
+    0%, 100% {
+      background-color: rgba(220, 38, 38, 0.15);
+    }
+    50% {
+      background-color: rgba(220, 38, 38, 0.25);
+    }
+  }
 }
