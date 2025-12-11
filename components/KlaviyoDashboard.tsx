@@ -18,10 +18,23 @@ import {
   ArrowUpRight,
   Minus,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  Cell,
+} from "recharts";
 import type {
   KlaviyoResponse,
   KlaviyoCampaignSummary,
   KlaviyoUpcomingCampaign,
+  KlaviyoMonthlySummary,
 } from "@/lib/types";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
@@ -303,6 +316,192 @@ function SortableHeader({
         </span>
       </div>
     </th>
+  );
+}
+
+// ============================================================================
+// MONTHLY REVENUE TREND CHART
+// ============================================================================
+
+interface MonthlyChartData {
+  month: string;
+  displayMonth: string;
+  campaignRevenue: number;
+  flowRevenue: number;
+  totalRevenue: number;
+  yoyRevenue?: number;
+  yoyChange?: number;
+}
+
+function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) {
+  // Process data for chart - sort chronologically and take last 12 months
+  const chartData: MonthlyChartData[] = useMemo(() => {
+    if (!monthly || monthly.length === 0) return [];
+
+    // Sort by date ascending
+    const sorted = [...monthly].sort((a, b) =>
+      new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
+    );
+
+    // Take last 12 months
+    const recent = sorted.slice(-12);
+
+    return recent.map(m => {
+      const date = new Date(m.month_start);
+      const campaignRev = m.email_revenue || 0;
+      const flowRev = m.flow_revenue || 0;
+
+      // Find YoY comparison (same month last year)
+      const lastYear = new Date(date);
+      lastYear.setFullYear(lastYear.getFullYear() - 1);
+      const yoyMonth = sorted.find(prev => {
+        const prevDate = new Date(prev.month_start);
+        return prevDate.getMonth() === lastYear.getMonth() &&
+               prevDate.getFullYear() === lastYear.getFullYear();
+      });
+
+      const yoyRevenue = yoyMonth ? (yoyMonth.email_revenue || 0) + (yoyMonth.flow_revenue || 0) : undefined;
+      const totalRev = campaignRev + flowRev;
+      const yoyChange = yoyRevenue && yoyRevenue > 0
+        ? ((totalRev - yoyRevenue) / yoyRevenue) * 100
+        : undefined;
+
+      return {
+        month: m.month_start,
+        displayMonth: format(date, "MMM ''yy"),
+        campaignRevenue: campaignRev,
+        flowRevenue: flowRev,
+        totalRevenue: totalRev,
+        yoyRevenue,
+        yoyChange,
+      };
+    });
+  }, [monthly]);
+
+  if (chartData.length < 2) return null;
+
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload }: {
+    active?: boolean;
+    payload?: Array<{ payload: MonthlyChartData }>
+  }) => {
+    if (!active || !payload || !payload.length) return null;
+    const item = payload[0].payload;
+
+    return (
+      <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg min-w-[180px]">
+        <p className="text-xs font-medium text-text-primary mb-2">
+          {format(new Date(item.month), "MMMM yyyy")}
+        </p>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-status-good" />
+              <span className="text-[10px] text-text-secondary">Campaigns</span>
+            </div>
+            <span className="text-xs font-medium text-text-primary tabular-nums">
+              {formatCurrency(item.campaignRevenue)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-status-warning" />
+              <span className="text-[10px] text-text-secondary">Flows</span>
+            </div>
+            <span className="text-xs font-medium text-text-primary tabular-nums">
+              {formatCurrency(item.flowRevenue)}
+            </span>
+          </div>
+          <div className="border-t border-border/30 pt-1.5 mt-1.5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-[10px] text-text-secondary">Total</span>
+              <span className="text-xs font-semibold text-text-primary tabular-nums">
+                {formatCurrency(item.totalRevenue)}
+              </span>
+            </div>
+          </div>
+          {item.yoyChange !== undefined && (
+            <div className="flex items-center justify-between gap-4 pt-1">
+              <span className="text-[10px] text-text-muted">vs Last Year</span>
+              <span className={`text-[10px] font-medium tabular-nums ${
+                item.yoyChange >= 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}%
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Calculate average for reference line
+  const avgRevenue = chartData.reduce((sum, d) => sum + d.totalRevenue, 0) / chartData.length;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">
+            MONTHLY EMAIL REVENUE TREND
+          </h3>
+          <p className="text-[10px] text-text-muted">
+            Campaign + Flow revenue by month
+          </p>
+        </div>
+        <div className="text-right">
+          <span className="text-lg font-semibold text-text-primary tabular-nums">
+            {formatCurrency(avgRevenue)}
+          </span>
+          <p className="text-[10px] text-text-muted">avg/month</p>
+        </div>
+      </div>
+
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
+            <XAxis
+              dataKey="displayMonth"
+              tick={{ fill: "#64748B", fontSize: 10 }}
+              axisLine={{ stroke: "#1E293B" }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: "#64748B", fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              width={50}
+              tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.02)" }} />
+            <ReferenceLine
+              y={avgRevenue}
+              stroke="#64748B"
+              strokeDasharray="3 3"
+              strokeOpacity={0.5}
+            />
+            <Bar dataKey="campaignRevenue" stackId="revenue" fill="#10B981" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="flowRevenue" stackId="revenue" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-border/20">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm bg-status-good" />
+          <span className="text-[10px] text-text-tertiary">Campaign Revenue</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm bg-status-warning" />
+          <span className="text-[10px] text-text-tertiary">Flow Revenue</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-0 border-t border-dashed border-text-tertiary" />
+          <span className="text-[10px] text-text-tertiary">Average</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -604,6 +803,13 @@ export function KlaviyoDashboard({
           icon={MousePointerClick}
         />
       </div>
+
+      {/* ================================================================
+          MONTHLY TREND CHART
+          ================================================================ */}
+      {data.monthly && data.monthly.length > 1 && (
+        <MonthlyRevenueTrend monthly={data.monthly} />
+      )}
 
       {/* ================================================================
           MAIN CONTENT: Campaign Table + Upcoming
