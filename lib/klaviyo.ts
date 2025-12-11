@@ -246,7 +246,7 @@ export class KlaviyoClient {
     do {
       const params = new URLSearchParams({
         "page[size]": "50",
-        filter: `and(equals(status,'sent'),greater-or-equal(send_time,${startIso}),less-than(send_time,${endIso}))`,
+        filter: `and(equals(status,"Sent"),greater-or-equal(send_time,${startIso}),less-than(send_time,${endIso}))`,
       });
 
       if (cursor) {
@@ -287,7 +287,7 @@ export class KlaviyoClient {
     do {
       const params = new URLSearchParams({
         "page[size]": "50",
-        filter: "equals(status,'scheduled')",
+        filter: 'equals(status,"Scheduled")',
       });
 
       if (cursor) {
