@@ -130,7 +130,7 @@ export async function GET(request: Request) {
       supabase
         .from("ns_wholesale_customers")
         .select("*")
-        .order("total_revenue", { ascending: false }),
+        .order("lifetime_revenue", { ascending: false }),
       // Transactions in current period
       supabase
         .from("ns_wholesale_transactions")
@@ -224,52 +224,43 @@ export async function GET(request: Request) {
       }
     }
 
-    // Process customers with health metrics
+    // Process customers - the DB already computes health_status, segment, etc.
     const customers: WholesaleCustomer[] = (customersResult.data || []).map((c) => {
-      const daysSinceLastOrder = c.last_sale_date
-        ? Math.floor((now.getTime() - new Date(c.last_sale_date).getTime()) / (1000 * 60 * 60 * 24))
-        : null;
+      // Map DB columns to our type
+      // DB schema: ns_customer_id, company_name, lifetime_revenue, lifetime_orders,
+      //            avg_order_value, ytd_revenue, ytd_orders, prior_year_revenue,
+      //            first_order_date, last_order_date, days_since_last_order,
+      //            segment, health_status, yoy_revenue_change_pct, is_at_risk, etc.
 
-      // Calculate trends from transaction data
-      const customerCurrentTxns = (transactionsResult.data || []).filter(
-        (t) => t.ns_customer_id === c.ns_customer_id
-      );
-      const customerPrevTxns = (prevTransactionsResult.data || []).filter(
-        (t) => t.ns_customer_id === c.ns_customer_id
-      );
+      const orderCount = c.lifetime_orders || 0;
+      const totalRevenue = parseFloat(c.lifetime_revenue) || 0;
+      const yoyChange = c.yoy_revenue_change_pct ? parseFloat(c.yoy_revenue_change_pct) / 100 : 0;
 
-      const currentRevenue = customerCurrentTxns.reduce(
-        (sum, t) => sum + (parseFloat(t.foreign_total) || 0),
-        0
-      );
-      const prevRevenue = customerPrevTxns.reduce(
-        (sum, t) => sum + (parseFloat(t.foreign_total) || 0),
-        0
-      );
+      // Use DB-computed health_status but handle never_ordered case
+      let healthStatus = c.health_status as CustomerHealthStatus;
+      if (orderCount === 0) {
+        healthStatus = "never_ordered";
+      }
 
-      const revenueTrend = prevRevenue > 0 ? (currentRevenue - prevRevenue) / prevRevenue : 0;
-      const orderTrend =
-        customerPrevTxns.length > 0
-          ? (customerCurrentTxns.length - customerPrevTxns.length) / customerPrevTxns.length
-          : 0;
+      // Use DB-computed segment or compute if not present
+      const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
 
       return {
-        ns_customer_id: c.ns_customer_id,
-        entity_id: c.entity_id,
-        company_name: c.company_name || `Customer ${c.entity_id}`,
-        email: c.email,
-        phone: c.phone,
-        first_sale_date: c.first_sale_date,
-        last_sale_date: c.last_sale_date,
-        total_revenue: parseFloat(c.total_revenue) || 0,
-        order_count: c.order_count || 0,
-        health_status: getHealthStatus(daysSinceLastOrder, c.order_count || 0, revenueTrend),
-        segment: getCustomerSegment(parseFloat(c.total_revenue) || 0),
-        avg_order_value:
-          c.order_count > 0 ? (parseFloat(c.total_revenue) || 0) / c.order_count : 0,
-        days_since_last_order: daysSinceLastOrder,
-        revenue_trend: revenueTrend,
-        order_trend: orderTrend,
+        ns_customer_id: parseInt(c.ns_customer_id) || 0,
+        entity_id: c.ns_customer_id?.toString() || "",
+        company_name: c.company_name || `Customer ${c.ns_customer_id}`,
+        email: null, // Not in current schema
+        phone: null, // Not in current schema
+        first_sale_date: c.first_order_date,
+        last_sale_date: c.last_order_date,
+        total_revenue: totalRevenue,
+        order_count: orderCount,
+        health_status: healthStatus,
+        segment: segment,
+        avg_order_value: parseFloat(c.avg_order_value) || 0,
+        days_since_last_order: c.days_since_last_order,
+        revenue_trend: yoyChange,
+        order_trend: 0, // Not computed in DB
       };
     });
 
@@ -293,8 +284,8 @@ export async function GET(request: Request) {
         days_since_last_order: c.days_since_last_order || 0,
         order_count: c.order_count,
         avg_order_value: c.avg_order_value,
-        risk_score: calculateRiskScore(c),
-        recommended_action: getRecommendedAction(c),
+        risk_score: c.days_since_last_order ? Math.min(100, Math.round(c.days_since_last_order / 3.65)) : 0,
+        recommended_action: c.days_since_last_order && c.days_since_last_order > 180 ? "Re-engagement campaign" : "Check-in call",
       }));
 
     // Growth opportunities (customers with positive trends)
@@ -320,27 +311,28 @@ export async function GET(request: Request) {
 
     // Never ordered customers - sales opportunities
     // These are accounts in NetSuite that have never placed an order
+    // Current DB schema uses lifetime_orders, created_at instead of order_count, date_created
     const neverOrderedCustomers: WholesaleNeverOrderedCustomer[] = (customersResult.data || [])
-      .filter((c) => (c.order_count || 0) === 0 && !c.is_inactive)
+      .filter((c) => (c.lifetime_orders || 0) === 0)
       .sort((a, b) => {
-        // Sort by date created (newest first) - these are the hottest leads
-        const aDate = a.date_created ? new Date(a.date_created).getTime() : 0;
-        const bDate = b.date_created ? new Date(b.date_created).getTime() : 0;
+        // Sort by created_at (newest first) - these are the hottest leads
+        const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
         return bDate - aDate;
       })
       .slice(0, 50)
       .map((c) => ({
-        ns_customer_id: c.ns_customer_id,
-        entity_id: c.entity_id,
-        company_name: c.company_name || `Customer ${c.entity_id}`,
-        email: c.email,
-        phone: c.phone,
-        date_created: c.date_created,
-        days_since_created: c.date_created
-          ? Math.floor((now.getTime() - new Date(c.date_created).getTime()) / (1000 * 60 * 60 * 24))
+        ns_customer_id: parseInt(c.ns_customer_id) || 0,
+        entity_id: c.ns_customer_id?.toString() || "",
+        company_name: c.company_name || `Customer ${c.ns_customer_id}`,
+        email: null, // Not in current schema
+        phone: null, // Not in current schema
+        date_created: c.created_at,
+        days_since_created: c.created_at
+          ? Math.floor((now.getTime() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24))
           : null,
-        category: c.category,
-        is_inactive: c.is_inactive || false,
+        category: null, // Not in current schema
+        is_inactive: false, // Not in current schema
       }));
 
     // Recent transactions
