@@ -41,6 +41,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronRight,
+  Mail,
 } from "lucide-react";
 import type {
   MetricsResponse,
@@ -71,10 +72,12 @@ import type {
 import { USTransitMap } from "@/components/USTransitMap";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import { VoiceOfCustomerDashboard } from "@/components/VoiceOfCustomerDashboard";
+import { KlaviyoDashboard } from "@/components/KlaviyoDashboard";
 import { SAFETY_STOCK } from "@/lib/shiphero";
+import type { KlaviyoResponse } from "@/lib/types";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget" | "voc";
+type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget" | "voc" | "marketing";
 type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -242,6 +245,12 @@ export default function Dashboard() {
   const [ticketsSentimentFilter, setTicketsSentimentFilter] = useState<"all" | "Positive" | "Negative" | "Neutral" | "Mixed">("all");
   const [ticketsSearch, setTicketsSearch] = useState<string>("");
   const [ticketsPage, setTicketsPage] = useState(1);
+
+  // Klaviyo marketing tab state
+  const [klaviyoData, setKlaviyoData] = useState<KlaviyoResponse | null>(null);
+  const [klaviyoLoading, setKlaviyoLoading] = useState(false);
+  const [klaviyoPeriod, setKlaviyoPeriod] = useState<"mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d">("mtd");
+  const [klaviyoChannelFilter, setKlaviyoChannelFilter] = useState<"all" | "email" | "sms">("all");
 
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
@@ -422,6 +431,41 @@ export default function Dashboard() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketsDateRange, ticketsCustomStart, ticketsCustomEnd, ticketsCategoryFilter, ticketsSentimentFilter, ticketsSearch, ticketsPage]);
+
+  // Fetch Klaviyo marketing data
+  const fetchKlaviyo = useCallback(async () => {
+    try {
+      setKlaviyoLoading(true);
+      const params = new URLSearchParams();
+      params.set("period", klaviyoPeriod);
+      if (klaviyoChannelFilter !== "all") {
+        params.set("channel", klaviyoChannelFilter);
+      }
+      const res = await fetch(`/api/klaviyo?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch Klaviyo data");
+      const data: KlaviyoResponse = await res.json();
+      setKlaviyoData(data);
+    } catch (err) {
+      console.error("Klaviyo fetch error:", err);
+    } finally {
+      setKlaviyoLoading(false);
+    }
+  }, [klaviyoPeriod, klaviyoChannelFilter]);
+
+  // Load Klaviyo data when switching to marketing tab
+  useEffect(() => {
+    if (primaryTab === "marketing" && !klaviyoData && !klaviyoLoading) {
+      fetchKlaviyo();
+    }
+  }, [primaryTab, klaviyoData, klaviyoLoading, fetchKlaviyo]);
+
+  // Refetch Klaviyo when filters change
+  useEffect(() => {
+    if (primaryTab === "marketing" && klaviyoData) {
+      fetchKlaviyo();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [klaviyoPeriod, klaviyoChannelFilter]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -650,6 +694,17 @@ export default function Dashboard() {
           >
             <Gift className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             Q4 PACE
+          </button>
+          <button
+            onClick={() => setPrimaryTab("marketing")}
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+              primaryTab === "marketing"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <Mail className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            MARKETING
           </button>
         </div>
 
@@ -1182,6 +1237,19 @@ export default function Dashboard() {
           page={ticketsPage}
           onPageChange={setTicketsPage}
           onRefresh={fetchTickets}
+        />
+      )}
+
+      {/* MARKETING TAB (Klaviyo) */}
+      {primaryTab === "marketing" && (
+        <KlaviyoDashboard
+          data={klaviyoData}
+          loading={klaviyoLoading}
+          period={klaviyoPeriod}
+          onPeriodChange={setKlaviyoPeriod}
+          channelFilter={klaviyoChannelFilter}
+          onChannelFilterChange={setKlaviyoChannelFilter}
+          onRefresh={fetchKlaviyo}
         />
       )}
 

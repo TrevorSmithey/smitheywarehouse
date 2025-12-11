@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/sync-reamaze",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-klaviyo",
+      "schedule": "0 6 * * *"
     }
   ]
 }

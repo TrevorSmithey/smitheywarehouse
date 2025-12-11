@@ -667,3 +667,106 @@ export interface ReamazeConversationsResponse {
   page_count: number;
   page_size: number;
 }
+
+// ============================================================
+// Klaviyo Marketing Types
+// ============================================================
+
+export type KlaviyoChannel = "email" | "sms";
+
+export interface KlaviyoCampaignSummary {
+  klaviyo_id: string;
+  name: string;
+  channel: KlaviyoChannel;
+  send_time: string;
+  recipients: number;
+  delivered: number;
+  opens: number;
+  clicks: number;
+  conversions: number;
+  conversion_value: number;
+  open_rate: number | null;
+  click_rate: number | null;
+  conversion_rate: number | null;
+  unsubscribes: number;
+}
+
+export interface KlaviyoMonthlySummary {
+  month_start: string;
+  // Email metrics
+  email_campaigns_sent: number;
+  email_recipients: number;
+  email_delivered: number;
+  email_opens: number;
+  email_clicks: number;
+  email_conversions: number;
+  email_revenue: number;
+  email_unsubscribes: number;
+  email_avg_open_rate: number | null;
+  email_avg_click_rate: number | null;
+  // SMS metrics
+  sms_campaigns_sent: number;
+  sms_recipients: number;
+  sms_delivered: number;
+  sms_clicks: number;
+  sms_conversions: number;
+  sms_revenue: number;
+  sms_credits_used: number;
+  sms_spend: number;
+  // Combined
+  total_revenue: number;
+  total_conversions: number;
+}
+
+export interface KlaviyoUpcomingCampaign {
+  klaviyo_id: string;
+  name: string;
+  channel: KlaviyoChannel;
+  scheduled_time: string;
+  audience_size: number | null;
+  predicted_opens: number | null;
+  predicted_conversions: number | null;
+  predicted_revenue: number | null;
+}
+
+export interface KlaviyoFlow {
+  klaviyo_id: string;
+  name: string;
+  status: "draft" | "manual" | "live";
+  trigger_type: string | null;
+  total_recipients: number;
+  total_conversions: number;
+  total_revenue: number;
+  conversion_rate: number | null;
+}
+
+export interface KlaviyoStats {
+  // Period totals
+  email_revenue: number;
+  sms_revenue: number;
+  total_revenue: number;
+  total_conversions: number;
+  campaigns_sent: number;
+  // Averages
+  avg_open_rate: number;
+  avg_click_rate: number;
+  avg_conversion_rate: number;
+  // Period comparison
+  revenue_delta: number; // vs previous period
+  revenue_delta_pct: number;
+}
+
+export interface KlaviyoResponse {
+  // Monthly stats for trend chart
+  monthly: KlaviyoMonthlySummary[];
+  // Recent campaigns
+  campaigns: KlaviyoCampaignSummary[];
+  // Upcoming scheduled campaigns
+  upcoming: KlaviyoUpcomingCampaign[];
+  // Flows
+  flows: KlaviyoFlow[];
+  // Period summary stats
+  stats: KlaviyoStats;
+  // Metadata
+  lastSynced: string | null;
+}
