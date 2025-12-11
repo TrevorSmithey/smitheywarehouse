@@ -2597,12 +2597,12 @@ function InventoryDashboard({
                 <div className="border-t border-border">
                   <table className="w-full text-sm table-fixed">
                     <colgroup>
-                      <col className="w-[35%] sm:w-[28%]" />
-                      <col className="w-[20%] sm:w-[15%]" />
-                      <col className="w-[20%] sm:w-[15%]" />
-                      <col className="w-[25%] sm:w-[15%]" />
-                      {cat.showDoi && <col className="sm:w-[14%]" />}
-                      {cat.showVelocity && <col className="hidden sm:table-column w-[13%]" />}
+                      <col className="w-[40%] sm:w-[36%]" />
+                      <col className="w-[18%] sm:w-[14%]" />
+                      <col className="w-[18%] sm:w-[14%]" />
+                      <col className="w-[24%] sm:w-[14%]" />
+                      {cat.showDoi && <col className="sm:w-[12%]" />}
+                      {cat.showVelocity && <col className="hidden sm:table-column w-[10%]" />}
                     </colgroup>
                     <thead>
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
