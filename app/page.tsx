@@ -2642,13 +2642,13 @@ function InventoryDashboard({
                         }
                         const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
 
-                        // Row background priority: negative > SS violation (pulsing) > low stock > zebra
+                        // Row background priority: negative (solid red) > low stock (orange) > SS violation (pulsing amber) > zebra
                         const rowBg = isNegative || hasWarehouseNegative
-                          ? "bg-red-500/10"
-                          : isBelowSafetyStock
-                          ? "ss-violation"
+                          ? "bg-red-500/15"
                           : hasLowStock
                           ? "bg-status-warning/15"
+                          : isBelowSafetyStock
+                          ? "ss-violation"
                           : idx % 2 === 1
                           ? "bg-bg-tertiary/10"
                           : "";

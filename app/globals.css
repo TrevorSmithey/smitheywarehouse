@@ -160,17 +160,17 @@ body {
     background: var(--color-text-muted);
   }
 
-  /* Safety stock violation - pulsing red row */
+  /* Safety stock violation - subtle pulsing amber */
   .ss-violation {
-    animation: ss-pulse 2s ease-in-out infinite;
+    animation: ss-pulse 3s ease-in-out infinite;
   }
 
   @keyframes ss-pulse {
     0%, 100% {
-      background-color: rgba(220, 38, 38, 0.15);
+      background-color: rgba(245, 158, 11, 0.08);
     }
     50% {
-      background-color: rgba(220, 38, 38, 0.25);
+      background-color: rgba(245, 158, 11, 0.18);
     }
   }
 }
