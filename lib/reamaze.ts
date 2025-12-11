@@ -33,6 +33,18 @@ export interface ReamazeCategory {
   slug?: string;
 }
 
+export interface ReamazeAuthor {
+  id: number;
+  name: string;
+  email: string;
+  data?: {
+    "(smithey-iron-ware.myshopify.com) Order count"?: string;
+    "(smithey-iron-ware.myshopify.com) Total spent"?: string;
+    "(smithey-iron-ware.myshopify.com) Recent order"?: string | null;
+    [key: string]: string | null | undefined;
+  };
+}
+
 export interface ReamazeConversation {
   slug: string; // Unique identifier
   subject: string | null;
@@ -42,6 +54,7 @@ export interface ReamazeConversation {
   last_customer_message?: ReamazeMessage;
   category: ReamazeCategory;
   tag_list?: string[];
+  author?: ReamazeAuthor; // Customer who created the conversation
 }
 
 export interface ReamazeConversationsResponse {

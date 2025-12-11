@@ -327,6 +327,41 @@ export const SKU_DISPLAY_NAMES: Record<string, string> = {
 };
 
 /**
+ * Safety Stock by SKU (from Safety Stock q4 25.xlsx)
+ * Minimum inventory levels to maintain for Q4 2025
+ */
+export const SAFETY_STOCK: Record<string, number> = {
+  // Carbon Steel
+  "Smith-CS-Farm12": 35,
+  "Smith-CS-Farm9": 45,
+  "Smith-CS-Fish": 14,
+  "Smith-CS-OvalM": 36,
+  "Smith-CS-Round17N": 20,
+  "Smith-CS-Deep12": 35,
+  "Smith-CS-WokM": 32,
+  "Smith-CS-RRoastM": 36,
+  // Cast Iron
+  "Smith-CI-Skil12": 144,
+  "Smith-CI-Skil10": 144,
+  "Smith-CI-Flat12": 72,
+  "Smith-CI-Skil14": 50,
+  "Smith-CI-Griddle18": 88,
+  "Smith-CI-Skil8": 72,
+  "Smith-CI-Skil6": 72,
+  "Smith-CI-Tradskil14": 50,
+  "Smith-CI-TradSkil14": 50, // Case variation
+  "Smith-CI-Chef10": 144,
+  "Smith-CI-Dutch5": 50,
+  "Smith-CI-Dual12": 72,
+  "Smith-CI-DSkil11": 64,
+  "Smith-CI-Flat10": 72,
+  "Smith-CI-Dutch4": 60,
+  "Smith-CI-Dual6": 72,
+  "Smith-CI-Dutch7": 60,
+  "Smith-CI-Grill12": 72,
+};
+
+/**
  * Check if a SKU is in the official nomenclature
  * Returns the canonical SKU if found (handles case variations)
  */

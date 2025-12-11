@@ -46,11 +46,12 @@ const CLASSIFICATION_PROMPT = `You are an expert customer experience classificat
 - Return or Exchange
 - Wholesale Request
 - Metal Testing
+- New Product Inquiry
 - Positive Feedback
 - Phone Call (No Context)
 - Other
 
-If the message involves multiple issues, select the most specific or urgent one as the primary category and list secondary categories in the summary (e.g., 'Secondaries: Return or Exchange, Quality Issue'). If none fit clearly, create a new category. Keep new categories short (2–3 words), descriptive, in Title Case, and reusable (e.g., 'Warranty Claim'). Avoid one-off or redundant names.
+If the message involves multiple issues, select the most specific or urgent one as the primary category and list secondary categories in the summary (e.g., 'Secondaries: Return or Exchange, Quality Issue'). IMPORTANT: Always use one of the standard categories above. Only use 'Other' if the message truly doesn't fit any category. Do NOT create new custom categories - use 'Other' instead and note the specific topic in the summary.
 
 2. Use the following guidelines and examples:
 - 'Spam': Irrelevant promotions, ads, or unsolicited links.
@@ -74,6 +75,7 @@ If the message involves multiple issues, select the most specific or urgent one 
 - 'Return or Exchange': Refunds, replacements, or exchange requests.
 - 'Wholesale Request': Bulk, hospitality, or wholesale program inquiries.
 - 'Metal Testing': Questions about third-party testing for lead, cadmium, or harmful metals in Smithey products, product safety certifications, or safety information requests.
+- 'New Product Inquiry': Questions about upcoming products, future releases, when new products will be available, or requests for products not currently offered.
 - 'Positive Feedback': Praise or satisfaction without a request.
 - 'Phone Call (No Context)': Logged calls with no message or clear request.
 
@@ -128,6 +130,7 @@ const VALID_CATEGORIES: TicketCategory[] = [
   "Return or Exchange",
   "Wholesale Request",
   "Metal Testing",
+  "New Product Inquiry",
   "Positive Feedback",
   "Phone Call (No Context)",
   "Other",

@@ -40,6 +40,9 @@ export const QUERY_LIMITS = {
   BUDGETS: 1000000,
   RETAIL_ORDERS_PAGE: 1000,
   B2B_ORDERS: 100000,
+
+  // Support Tickets API
+  SUPPORT_TICKETS: 50000,
 } as const;
 
 /**

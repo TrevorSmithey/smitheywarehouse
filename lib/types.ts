@@ -525,6 +525,7 @@ export type TicketCategory =
   | "Return or Exchange"
   | "Wholesale Request"
   | "Metal Testing"
+  | "New Product Inquiry"
   | "Positive Feedback"
   | "Phone Call (No Context)"
   | "Other";
@@ -573,6 +574,17 @@ export interface TicketAlertCounts {
   deliveryProblems: number; // Delivery Delay or Problem
   returnRequests: number; // Return or Exchange
   allNegative: number; // All tickets with Negative sentiment
+}
+
+export interface PurchaseTimingBreakdown {
+  prePurchase: number; // Tickets where order_count = 0
+  postPurchase: number; // Tickets where order_count > 0
+  unknown: number; // Tickets without customer data
+  prePurchasePct: number;
+  postPurchasePct: number;
+  // By category breakdown (top 5 pre-purchase categories)
+  topPrePurchaseCategories: { category: string; count: number; pct: number }[];
+  topPostPurchaseCategories: { category: string; count: number; pct: number }[];
 }
 
 export interface WordCloudItem {
@@ -630,6 +642,7 @@ export interface TicketsResponse {
   topicThemes: TopicTheme[];
   insights: VOCInsight[];
   torTrend: TORTrendPoint[]; // Daily TOR trend data for line chart
+  purchaseTiming?: PurchaseTimingBreakdown; // Pre vs post-purchase breakdown
   csat?: CSATMetrics; // Optional - only when Re:amaze credentials are configured
   lastSynced: string | null;
 }

@@ -71,6 +71,7 @@ import type {
 import { USTransitMap } from "@/components/USTransitMap";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import { VoiceOfCustomerDashboard } from "@/components/VoiceOfCustomerDashboard";
+import { SAFETY_STOCK } from "@/lib/shiphero";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
 type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget" | "voc";
@@ -2664,6 +2665,11 @@ function InventoryDashboard({
                                 <span className={`text-sm font-medium truncate ${isNegative ? "text-red-400" : "text-text-primary"}`}>
                                   {product.displayName}
                                 </span>
+                                {SAFETY_STOCK[product.sku] && (
+                                  <span className="text-[10px] text-text-muted tabular-nums">
+                                    ss:{SAFETY_STOCK[product.sku]}
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${

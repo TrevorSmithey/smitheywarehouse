@@ -16,6 +16,7 @@ import type {
   TopicTheme,
   VOCInsight,
   CSATMetrics,
+  PurchaseTimingBreakdown,
 } from "@/lib/types";
 import { createReamazeClient } from "@/lib/reamaze";
 
@@ -87,10 +88,10 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       // Paginated tickets for display
       ticketsQuery,
-      // All tickets for aggregates (current period)
+      // All tickets for aggregates (current period) - includes order_count for purchase timing
       supabase
         .from("support_tickets")
-        .select("category, sentiment, summary")
+        .select("category, sentiment, summary, order_count, customer_email")
         .gte("created_at", rangeStart.toISOString())
         .lte("created_at", rangeEnd.toISOString()),
       // Previous period tickets for delta
@@ -208,6 +209,9 @@ export async function GET(request: Request) {
     // Calculate TOR trend data for line chart
     const torTrend = calculateTORTrend(dailyTickets || [], dailyOrders || []);
 
+    // Calculate pre/post purchase timing breakdown
+    const purchaseTiming = calculatePurchaseTiming(allTickets || []);
+
     // Note: CSAT from Re:amaze is disabled for performance
     // Re:amaze API calls add 2-4 seconds of latency
     // If CSAT is needed, implement as separate endpoint
@@ -227,6 +231,7 @@ export async function GET(request: Request) {
       topicThemes,
       insights,
       torTrend,
+      purchaseTiming,
       lastSynced: lastSyncedData?.synced_at || null,
     };
 
@@ -777,4 +782,77 @@ function calculateTORTrend(
       tor,
     };
   });
+}
+
+/**
+ * Calculate pre/post purchase timing breakdown
+ * Pre-purchase: customer has order_count = 0
+ * Post-purchase: customer has order_count > 0
+ */
+function calculatePurchaseTiming(
+  tickets: { category: string; order_count: number | null; customer_email: string | null }[]
+): PurchaseTimingBreakdown {
+  let prePurchase = 0;
+  let postPurchase = 0;
+  let unknown = 0;
+
+  const prePurchaseByCategory = new Map<string, number>();
+  const postPurchaseByCategory = new Map<string, number>();
+
+  for (const ticket of tickets) {
+    // No customer data = unknown
+    if (ticket.customer_email === null) {
+      unknown++;
+      continue;
+    }
+
+    // order_count = 0 or null = pre-purchase
+    if (ticket.order_count === null || ticket.order_count === 0) {
+      prePurchase++;
+      prePurchaseByCategory.set(
+        ticket.category,
+        (prePurchaseByCategory.get(ticket.category) || 0) + 1
+      );
+    } else {
+      postPurchase++;
+      postPurchaseByCategory.set(
+        ticket.category,
+        (postPurchaseByCategory.get(ticket.category) || 0) + 1
+      );
+    }
+  }
+
+  const totalKnown = prePurchase + postPurchase;
+  const prePurchasePct = totalKnown > 0 ? Math.round((prePurchase / totalKnown) * 1000) / 10 : 0;
+  const postPurchasePct = totalKnown > 0 ? Math.round((postPurchase / totalKnown) * 1000) / 10 : 0;
+
+  // Get top 5 pre-purchase categories
+  const topPrePurchaseCategories = [...prePurchaseByCategory.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([category, count]) => ({
+      category,
+      count,
+      pct: prePurchase > 0 ? Math.round((count / prePurchase) * 1000) / 10 : 0,
+    }));
+
+  // Get top 5 post-purchase categories
+  const topPostPurchaseCategories = [...postPurchaseByCategory.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([category, count]) => ({
+      category,
+      count,
+      pct: postPurchase > 0 ? Math.round((count / postPurchase) * 1000) / 10 : 0,
+    }));
+
+  return {
+    prePurchase,
+    postPurchase,
+    unknown,
+    prePurchasePct,
+    postPurchasePct,
+    topPrePurchaseCategories,
+    topPostPurchaseCategories,
+  };
 }

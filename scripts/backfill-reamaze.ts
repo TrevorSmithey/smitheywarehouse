@@ -8,9 +8,36 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { ReamazeClient, cleanMessageBody } from "../lib/reamaze";
+import { ReamazeClient, ReamazeConversation, cleanMessageBody } from "../lib/reamaze";
 import { classifyTicket } from "../lib/ticket-classifier";
 import dotenv from "dotenv";
+
+/**
+ * Extract customer data from Re:amaze author object
+ */
+function extractCustomerData(conv: ReamazeConversation): {
+  customer_email: string | null;
+  order_count: number;
+  total_spent: number;
+} {
+  const author = conv.author;
+  if (!author) {
+    return { customer_email: null, order_count: 0, total_spent: 0 };
+  }
+
+  const email = author.email || null;
+  const data = author.data || {};
+
+  // Parse order count - look for Shopify key
+  const orderCountStr = data["(smithey-iron-ware.myshopify.com) Order count"] || "0";
+  const orderCount = parseInt(orderCountStr, 10) || 0;
+
+  // Parse total spent - look for Shopify key
+  const totalSpentStr = data["(smithey-iron-ware.myshopify.com) Total spent"] || "0";
+  const totalSpent = parseFloat(totalSpentStr.replace(/[^0-9.]/g, "")) || 0;
+
+  return { customer_email: email, order_count: orderCount, total_spent: totalSpent };
+}
 
 // Load environment variables
 dotenv.config({ path: ".env.local" });
@@ -147,6 +174,9 @@ async function main() {
       // Build permalink
       const permaUrl = ReamazeClient.getPermalink(reamazeBrand, conv.slug);
 
+      // Extract customer data from author
+      const customerData = extractCustomerData(conv);
+
       // Insert into database
       const { error: insertError } = await supabase.from("support_tickets").insert({
         reamaze_id: conv.slug,
@@ -159,6 +189,9 @@ async function main() {
         sentiment: classification.sentiment,
         summary: classification.summary,
         urgency: classification.urgency,
+        customer_email: customerData.customer_email,
+        order_count: customerData.order_count,
+        total_spent: customerData.total_spent,
       });
 
       if (insertError) {
