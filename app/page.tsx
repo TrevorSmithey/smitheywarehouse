@@ -250,7 +250,6 @@ export default function Dashboard() {
   const [klaviyoData, setKlaviyoData] = useState<KlaviyoResponse | null>(null);
   const [klaviyoLoading, setKlaviyoLoading] = useState(false);
   const [klaviyoPeriod, setKlaviyoPeriod] = useState<"mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d">("mtd");
-  const [klaviyoChannelFilter, setKlaviyoChannelFilter] = useState<"all" | "email" | "sms">("all");
 
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
@@ -1247,8 +1246,6 @@ export default function Dashboard() {
           loading={klaviyoLoading}
           period={klaviyoPeriod}
           onPeriodChange={setKlaviyoPeriod}
-          channelFilter={klaviyoChannelFilter}
-          onChannelFilterChange={setKlaviyoChannelFilter}
           onRefresh={fetchKlaviyo}
         />
       )}

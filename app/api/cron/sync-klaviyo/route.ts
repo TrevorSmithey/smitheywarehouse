@@ -1,13 +1,14 @@
 /**
  * Klaviyo Sync Cron Job
- * Syncs email/SMS campaign performance data from Klaviyo to Supabase
+ * Syncs email campaign and flow performance data from Klaviyo to Supabase
  *
  * Triggered by Vercel cron daily at 6 AM UTC (1 AM EST)
  *
  * Syncs:
  * - Sent campaigns from last 90 days (with full metrics)
  * - Scheduled campaigns (for inventory planning)
- * - Flow performance data
+ * - Flow revenue data
+ * - Subscriber counts from key segments
  * - Monthly aggregated stats
  */
 
@@ -308,7 +309,22 @@ export async function GET(request: Request) {
     console.log(`[KLAVIYO SYNC] Synced ${stats.flowsSynced} flows`);
 
     // ============================================================
-    // 4. Update monthly stats (current + previous month)
+    // 4. Get flow revenue and subscriber counts
+    // ============================================================
+    console.log("[KLAVIYO SYNC] Fetching flow revenue and subscriber counts...");
+
+    // Get MTD flow revenue
+    const flowReports = await klaviyo.getFlowReports("this_month");
+    const mtdFlowRevenue = flowReports.totalRevenue;
+    const mtdFlowConversions = flowReports.totalConversions;
+
+    // Get subscriber counts
+    const subscriberCounts = await klaviyo.getSubscriberCounts();
+
+    console.log(`[KLAVIYO SYNC] Flow revenue MTD: $${mtdFlowRevenue.toFixed(2)}, Subscribers: ${subscriberCounts.engaged365}`);
+
+    // ============================================================
+    // 5. Update monthly stats (current + previous month)
     // ============================================================
     console.log("[KLAVIYO SYNC] Updating monthly stats...");
 
@@ -317,9 +333,10 @@ export async function GET(request: Request) {
 
     for (const monthStart of [currentMonth, previousMonth]) {
       const monthEnd = endOfMonth(monthStart);
+      const isCurrentMonth = monthStart.getTime() === currentMonth.getTime();
 
       try {
-        // Use the DB function to calculate stats
+        // Use the DB function to calculate campaign stats
         const { data: periodStats, error: statsError } = await supabase
           .rpc("calculate_klaviyo_period_stats", {
             p_start_date: monthStart.toISOString().split("T")[0],
@@ -332,8 +349,25 @@ export async function GET(request: Request) {
           continue;
         }
 
+        // Get flow revenue for this specific month
+        let monthFlowRevenue = 0;
+        let monthFlowConversions = 0;
+
+        if (isCurrentMonth) {
+          // Use already-fetched MTD data
+          monthFlowRevenue = mtdFlowRevenue;
+          monthFlowConversions = mtdFlowConversions;
+        } else {
+          // Fetch previous month's flow data
+          const prevFlowReports = await klaviyo.getFlowReports("last_month");
+          monthFlowRevenue = prevFlowReports.totalRevenue;
+          monthFlowConversions = prevFlowReports.totalConversions;
+        }
+
         if (periodStats && periodStats.length > 0) {
           const s = periodStats[0];
+          const emailRevenue = parseFloat(s.email_revenue) || 0;
+          const totalRevenue = emailRevenue + monthFlowRevenue;
 
           const { error: upsertError } = await supabase.from("klaviyo_monthly_stats").upsert(
             {
@@ -344,20 +378,16 @@ export async function GET(request: Request) {
               email_opens: s.email_opens,
               email_clicks: s.email_clicks,
               email_conversions: s.email_conversions,
-              email_revenue: s.email_revenue,
+              email_revenue: emailRevenue,
               email_unsubscribes: s.email_unsubscribes,
               email_avg_open_rate: s.email_avg_open_rate,
               email_avg_click_rate: s.email_avg_click_rate,
-              sms_campaigns_sent: s.sms_campaigns_sent,
-              sms_recipients: s.sms_recipients,
-              sms_delivered: s.sms_delivered,
-              sms_clicks: s.sms_clicks,
-              sms_conversions: s.sms_conversions,
-              sms_revenue: s.sms_revenue,
-              sms_credits_used: s.sms_credits_used,
-              sms_spend: s.sms_spend,
-              total_revenue: s.total_revenue,
-              total_conversions: s.total_conversions,
+              flow_revenue: monthFlowRevenue,
+              flow_conversions: monthFlowConversions,
+              subscribers_120day: isCurrentMonth ? subscriberCounts.active120Day : null,
+              subscribers_365day: isCurrentMonth ? subscriberCounts.engaged365 : null,
+              total_revenue: totalRevenue,
+              total_conversions: (s.total_conversions || 0) + monthFlowConversions,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "month_start" }

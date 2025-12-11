@@ -14,6 +14,12 @@ const KLAVIYO_API_BASE = "https://a.klaviyo.com/api";
 const KLAVIYO_REVISION = "2024-10-15"; // Stable revision
 const PLACED_ORDER_METRIC_ID = "TQuQA4"; // Smithey's Placed Order metric
 
+// Key segments for subscriber tracking
+export const KLAVIYO_SEGMENTS = {
+  ACTIVE_120_DAY: "RPnZc9", // M6_120DayActive+ New
+  ENGAGED_365: "SBuWZx", // 365ENG
+} as const;
+
 // ============================================================
 // Types
 // ============================================================
@@ -87,6 +93,23 @@ export interface CampaignReportData {
     conversion_value: number;
     unsubscribes: number;
   };
+}
+
+export interface FlowReportData {
+  flowId: string;
+  statistics: {
+    recipients: number;
+    delivered: number;
+    opens: number;
+    clicks: number;
+    conversions: number;
+    conversion_value: number;
+  };
+}
+
+export interface SubscriberCounts {
+  active120Day: number;
+  engaged365: number;
 }
 
 interface KlaviyoClientConfig {
@@ -305,6 +328,120 @@ export class KlaviyoClient {
       campaignId,
       statistics: stats,
     };
+  }
+
+  /**
+   * Get bulk flow performance reports
+   * Returns total flow revenue and per-flow breakdown
+   */
+  async getFlowReports(timeframeKey = "last_30_days"): Promise<{
+    totalRevenue: number;
+    totalConversions: number;
+    byFlow: Map<string, FlowReportData["statistics"]>;
+  }> {
+    const byFlow = new Map<string, FlowReportData["statistics"]>();
+    let totalRevenue = 0;
+    let totalConversions = 0;
+
+    try {
+      const body = {
+        data: {
+          type: "flow-values-report",
+          attributes: {
+            timeframe: { key: timeframeKey },
+            conversion_metric_id: PLACED_ORDER_METRIC_ID,
+            statistics: [
+              "recipients",
+              "delivered",
+              "opens",
+              "clicks",
+              "conversions",
+              "conversion_value",
+            ],
+          },
+        },
+      };
+
+      const response = await this.request<{
+        data: {
+          type: string;
+          attributes: {
+            results: Array<{
+              groupings: {
+                flow_id: string;
+                send_channel: string;
+                flow_message_id: string;
+              };
+              statistics: FlowReportData["statistics"];
+            }>;
+          };
+        };
+      }>("/flow-values-reports/", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      const results = response.data?.attributes?.results || [];
+
+      // Aggregate by flow_id (multiple messages per flow)
+      for (const result of results) {
+        const flowId = result.groupings.flow_id;
+        const stats = result.statistics;
+
+        totalRevenue += stats.conversion_value || 0;
+        totalConversions += stats.conversions || 0;
+
+        // Aggregate per flow
+        const existing = byFlow.get(flowId);
+        if (existing) {
+          existing.recipients += stats.recipients || 0;
+          existing.delivered += stats.delivered || 0;
+          existing.opens += stats.opens || 0;
+          existing.clicks += stats.clicks || 0;
+          existing.conversions += stats.conversions || 0;
+          existing.conversion_value += stats.conversion_value || 0;
+        } else {
+          byFlow.set(flowId, { ...stats });
+        }
+      }
+
+      console.log(`[KLAVIYO] Flow reports: $${totalRevenue.toFixed(2)} from ${byFlow.size} flows`);
+    } catch (error) {
+      console.error("[KLAVIYO] Failed to get flow reports:", error);
+    }
+
+    return { totalRevenue, totalConversions, byFlow };
+  }
+
+  /**
+   * Get subscriber counts from key segments
+   */
+  async getSubscriberCounts(): Promise<SubscriberCounts> {
+    const counts: SubscriberCounts = {
+      active120Day: 0,
+      engaged365: 0,
+    };
+
+    try {
+      // Get both segments with rate limiting
+      const active = await this.request<{
+        data: { attributes: { profile_count?: number } };
+      }>(`/segments/${KLAVIYO_SEGMENTS.ACTIVE_120_DAY}?additional-fields[segment]=profile_count`);
+      counts.active120Day = active.data?.attributes?.profile_count || 0;
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const engaged = await this.request<{
+        data: { attributes: { profile_count?: number } };
+      }>(`/segments/${KLAVIYO_SEGMENTS.ENGAGED_365}?additional-fields[segment]=profile_count`);
+      counts.engaged365 = engaged.data?.attributes?.profile_count || 0;
+
+      console.log(`[KLAVIYO] Subscriber counts: 120-day=${counts.active120Day}, 365-day=${counts.engaged365}`);
+    } catch (error) {
+      console.error("[KLAVIYO] Failed to get subscriber counts:", error);
+    }
+
+    return counts;
   }
 
   /**

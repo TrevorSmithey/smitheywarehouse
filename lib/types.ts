@@ -693,7 +693,7 @@ export interface KlaviyoCampaignSummary {
 
 export interface KlaviyoMonthlySummary {
   month_start: string;
-  // Email metrics
+  // Email campaign metrics
   email_campaigns_sent: number;
   email_recipients: number;
   email_delivered: number;
@@ -704,15 +704,12 @@ export interface KlaviyoMonthlySummary {
   email_unsubscribes: number;
   email_avg_open_rate: number | null;
   email_avg_click_rate: number | null;
-  // SMS metrics
-  sms_campaigns_sent: number;
-  sms_recipients: number;
-  sms_delivered: number;
-  sms_clicks: number;
-  sms_conversions: number;
-  sms_revenue: number;
-  sms_credits_used: number;
-  sms_spend: number;
+  // Flow metrics
+  flow_revenue: number;
+  flow_conversions: number;
+  // Subscriber counts
+  subscribers_120day: number | null;
+  subscribers_365day: number | null;
   // Combined
   total_revenue: number;
   total_conversions: number;
@@ -742,15 +739,19 @@ export interface KlaviyoFlow {
 
 export interface KlaviyoStats {
   // Period totals
-  email_revenue: number;
-  sms_revenue: number;
+  campaign_revenue: number;
+  flow_revenue: number;
   total_revenue: number;
   total_conversions: number;
   campaigns_sent: number;
+  // Subscriber counts
+  subscribers_120day: number;
+  subscribers_365day: number;
   // Averages
   avg_open_rate: number;
   avg_click_rate: number;
-  avg_conversion_rate: number;
+  // Email % of web revenue
+  email_pct_of_revenue: number;
   // Period comparison
   revenue_delta: number; // vs previous period
   revenue_delta_pct: number;

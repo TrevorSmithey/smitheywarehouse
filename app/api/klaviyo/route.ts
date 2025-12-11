@@ -151,14 +151,10 @@ export async function GET(request: Request) {
       email_unsubscribes: m.email_unsubscribes || 0,
       email_avg_open_rate: m.email_avg_open_rate,
       email_avg_click_rate: m.email_avg_click_rate,
-      sms_campaigns_sent: m.sms_campaigns_sent || 0,
-      sms_recipients: m.sms_recipients || 0,
-      sms_delivered: m.sms_delivered || 0,
-      sms_clicks: m.sms_clicks || 0,
-      sms_conversions: m.sms_conversions || 0,
-      sms_revenue: parseFloat(m.sms_revenue) || 0,
-      sms_credits_used: m.sms_credits_used || 0,
-      sms_spend: parseFloat(m.sms_spend) || 0,
+      flow_revenue: parseFloat(m.flow_revenue) || 0,
+      flow_conversions: m.flow_conversions || 0,
+      subscribers_120day: m.subscribers_120day,
+      subscribers_365day: m.subscribers_365day,
       total_revenue: parseFloat(m.total_revenue) || 0,
       total_conversions: m.total_conversions || 0,
     }));
@@ -191,13 +187,23 @@ export async function GET(request: Request) {
     const currentCampaigns = campaignsResult.data || [];
     const prevCampaigns = prevCampaignsResult.data || [];
 
-    const emailCampaigns = currentCampaigns.filter((c) => c.channel === "email");
-    const smsCampaigns = currentCampaigns.filter((c) => c.channel === "sms");
+    // Campaign revenue
+    const campaignRevenue = currentCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
+    const campaignConversions = currentCampaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
 
-    const emailRevenue = emailCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
-    const smsRevenue = smsCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
-    const totalRevenue = emailRevenue + smsRevenue;
-    const totalConversions = currentCampaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
+    // Get flow revenue and subscriber counts from current month's stats
+    const currentMonthStats = monthly.find(m => {
+      const monthDate = new Date(m.month_start);
+      return monthDate.getMonth() === now.getMonth() && monthDate.getFullYear() === now.getFullYear();
+    });
+
+    const flowRevenue = currentMonthStats?.flow_revenue || 0;
+    const flowConversions = currentMonthStats?.flow_conversions || 0;
+    const subscribers120day = currentMonthStats?.subscribers_120day || 0;
+    const subscribers365day = currentMonthStats?.subscribers_365day || 0;
+
+    const totalEmailRevenue = campaignRevenue + flowRevenue;
+    const totalConversions = campaignConversions + flowConversions;
 
     // Calculate averages
     const campaignsWithMetrics = currentCampaigns.filter((c) => c.recipients > 0);
@@ -207,24 +213,48 @@ export async function GET(request: Request) {
     const avgClickRate = campaignsWithMetrics.length > 0
       ? campaignsWithMetrics.reduce((sum, c) => sum + (c.click_rate || 0), 0) / campaignsWithMetrics.length
       : 0;
-    const avgConversionRate = campaignsWithMetrics.length > 0
-      ? campaignsWithMetrics.reduce((sum, c) => sum + (c.conversion_rate || 0), 0) / campaignsWithMetrics.length
-      : 0;
+
+    // Get Shopify revenue for email % calculation
+    let shopifyRevenue = 0;
+    try {
+      const { data: shopifyStats } = await supabase
+        .from("daily_stats")
+        .select("revenue")
+        .gte("date", rangeStart.toISOString().split("T")[0])
+        .lte("date", rangeEnd.toISOString().split("T")[0]);
+
+      if (shopifyStats) {
+        shopifyRevenue = shopifyStats.reduce((sum, d) => sum + (parseFloat(d.revenue) || 0), 0);
+      }
+    } catch (err) {
+      console.error("[KLAVIYO API] Failed to fetch Shopify revenue:", err);
+    }
+
+    const emailPctOfRevenue = shopifyRevenue > 0 ? (totalEmailRevenue / shopifyRevenue) * 100 : 0;
 
     // Previous period revenue for delta
-    const prevTotalRevenue = prevCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
-    const revenueDelta = totalRevenue - prevTotalRevenue;
+    const prevCampaignRevenue = prevCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
+    const prevMonthStats = monthly.find(m => {
+      const monthDate = new Date(m.month_start);
+      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return monthDate.getMonth() === prevMonth.getMonth() && monthDate.getFullYear() === prevMonth.getFullYear();
+    });
+    const prevFlowRevenue = prevMonthStats?.flow_revenue || 0;
+    const prevTotalRevenue = prevCampaignRevenue + prevFlowRevenue;
+    const revenueDelta = totalEmailRevenue - prevTotalRevenue;
     const revenueDeltaPct = prevTotalRevenue > 0 ? (revenueDelta / prevTotalRevenue) * 100 : 0;
 
     const stats: KlaviyoStats = {
-      email_revenue: emailRevenue,
-      sms_revenue: smsRevenue,
-      total_revenue: totalRevenue,
+      campaign_revenue: campaignRevenue,
+      flow_revenue: flowRevenue,
+      total_revenue: totalEmailRevenue,
       total_conversions: totalConversions,
       campaigns_sent: currentCampaigns.length,
+      subscribers_120day: subscribers120day,
+      subscribers_365day: subscribers365day,
       avg_open_rate: avgOpenRate,
       avg_click_rate: avgClickRate,
-      avg_conversion_rate: avgConversionRate,
+      email_pct_of_revenue: emailPctOfRevenue,
       revenue_delta: revenueDelta,
       revenue_delta_pct: revenueDeltaPct,
     };
