@@ -234,7 +234,7 @@ export default function Dashboard() {
   // Support tickets tab state
   const [ticketsData, setTicketsData] = useState<TicketsResponse | null>(null);
   const [ticketsLoading, setTicketsLoading] = useState(false);
-  const [ticketsDateRange, setTicketsDateRange] = useState<"today" | "7days" | "30days" | "90days" | "custom">("30days");
+  const [ticketsDateRange, setTicketsDateRange] = useState<"today" | "7days" | "30days" | "90days" | "custom">("7days");
   const [ticketsCustomStart, setTicketsCustomStart] = useState<string>("");
   const [ticketsCustomEnd, setTicketsCustomEnd] = useState<string>("");
   const [ticketsCategoryFilter, setTicketsCategoryFilter] = useState<TicketCategory | "all">("all");
@@ -779,6 +779,9 @@ export default function Dashboard() {
                   <span className="text-text-muted">ENGRAVING</span>
                   <span className={`ml-2 ${(metrics?.engravingQueue?.estimated_days || 0) > 3 ? "text-status-warning" : "text-text-secondary"}`}>
                     ~{metrics?.engravingQueue?.estimated_days || 0}d
+                  </span>
+                  <span className="ml-2 text-text-tertiary">
+                    ({formatNumber(metrics?.engravingQueue?.order_count || 0)} orders)
                   </span>
                 </div>
               </div>
@@ -2402,7 +2405,7 @@ function InventoryDashboard({
       products = [
         ...(inventory?.byCategory.accessory || []),
         ...(inventory?.byCategory.glass_lid || []),
-      ];
+      ].filter(p => p.sku !== "Smith-AC-Glid11"); // Hide 11Lid from accessories
     } else {
       products = inventory?.byCategory[cat] || [];
     }
@@ -2667,17 +2670,20 @@ function InventoryDashboard({
                               </div>
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.hobson < 0 ? "text-red-400" : "text-amber-400"
+                              product.hobson < 0 ? "text-red-400 bg-red-500/10" :
+                              product.hobson < 10 ? "text-amber-400 bg-status-warning/15" : "text-amber-400"
                             }`}>
                               {formatNumber(product.hobson)}
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.selery < 0 ? "text-red-400" : "text-green-400"
+                              product.selery < 0 ? "text-red-400 bg-red-500/10" :
+                              product.selery < 10 ? "text-green-400 bg-status-warning/15" : "text-green-400"
                             }`}>
                               {formatNumber(product.selery)}
                             </td>
                             <td className={`hidden sm:table-cell py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.pipefitter < 0 ? "text-red-400" : "text-blue-400"
+                              product.pipefitter < 0 ? "text-red-400 bg-red-500/10" :
+                              product.pipefitter < 10 ? "text-blue-400 bg-status-warning/15" : "text-blue-400"
                             }`}>
                               {formatNumber(product.pipefitter)}
                             </td>
