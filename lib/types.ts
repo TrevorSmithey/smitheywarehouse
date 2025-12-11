@@ -822,3 +822,151 @@ export interface KlaviyoResponse {
   // Metadata
   lastSynced: string | null;
 }
+
+// ============================================================
+// Wholesale Analytics Types (NetSuite → Supabase)
+// ============================================================
+
+export type WholesalePeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d" | "12m";
+
+export type CustomerHealthStatus =
+  | "thriving"    // Growing revenue, frequent orders
+  | "stable"      // Consistent ordering pattern
+  | "declining"   // Decreasing order frequency/value
+  | "at_risk"     // Significant decline, needs attention
+  | "churning"    // No orders in 6+ months after previous activity
+  | "churned"     // No orders in 12+ months
+  | "new"         // First order within last 90 days
+  | "one_time";   // Only one order ever
+
+export type CustomerSegment =
+  | "major"       // $50K+ lifetime revenue
+  | "large"       // $20-50K lifetime revenue
+  | "mid"         // $10-20K lifetime revenue
+  | "small"       // $5-10K lifetime revenue
+  | "starter"     // $2-5K lifetime revenue
+  | "minimal";    // <$2K lifetime revenue
+
+export interface WholesaleCustomer {
+  ns_customer_id: number;
+  entity_id: string;
+  company_name: string;
+  email: string | null;
+  phone: string | null;
+  first_sale_date: string | null;
+  last_sale_date: string | null;
+  total_revenue: number;
+  order_count: number;
+  // Calculated health metrics
+  health_status: CustomerHealthStatus;
+  segment: CustomerSegment;
+  avg_order_value: number;
+  days_since_last_order: number | null;
+  // Growth metrics
+  revenue_trend: number; // % change vs prior period
+  order_trend: number; // % change vs prior period
+}
+
+export interface WholesaleTransaction {
+  ns_transaction_id: number;
+  tran_id: string;
+  transaction_type: "CashSale" | "CustInvc";
+  tran_date: string;
+  ns_customer_id: number;
+  company_name: string;
+  foreign_total: number;
+  status: string | null;
+}
+
+export interface WholesaleLineItem {
+  ns_line_id: number;
+  ns_transaction_id: number;
+  sku: string;
+  quantity: number;
+  rate: number | null;
+  net_amount: number | null;
+  item_type: string | null;
+}
+
+export interface WholesaleMonthlyStats {
+  month: string; // YYYY-MM-01
+  transaction_count: number;
+  unique_customers: number;
+  total_units: number;
+  total_revenue: number;
+  // YoY comparison
+  prev_year_revenue?: number;
+  yoy_growth?: number;
+}
+
+export interface WholesaleSkuStats {
+  sku: string;
+  item_type: string | null;
+  order_count: number;
+  total_units: number;
+  total_revenue: number;
+  first_sold: string;
+  last_sold: string;
+}
+
+export interface WholesaleStats {
+  // Period totals
+  total_revenue: number;
+  total_transactions: number;
+  total_units: number;
+  unique_customers: number;
+  avg_order_value: number;
+  // Comparison vs previous period
+  revenue_delta: number;
+  revenue_delta_pct: number;
+  transaction_delta: number;
+  transaction_delta_pct: number;
+  // Customer health breakdown
+  customers_thriving: number;
+  customers_stable: number;
+  customers_at_risk: number;
+  customers_churning: number;
+  // Top metrics
+  top_customer_revenue: number;
+  top_customer_name: string;
+}
+
+export interface WholesaleAtRiskCustomer {
+  ns_customer_id: number;
+  company_name: string;
+  segment: CustomerSegment;
+  last_order_date: string;
+  days_since_last_order: number;
+  total_revenue: number;
+  avg_order_value: number;
+  order_count: number;
+  revenue_trend: number;
+  risk_reason: string;
+}
+
+export interface WholesaleGrowthOpportunity {
+  ns_customer_id: number;
+  company_name: string;
+  segment: CustomerSegment;
+  total_revenue: number;
+  recent_growth: number; // % revenue growth in last period
+  order_frequency_increase: number; // % increase in order frequency
+  opportunity_score: number; // 0-100 score
+}
+
+export interface WholesaleResponse {
+  // Monthly revenue trend for charts
+  monthly: WholesaleMonthlyStats[];
+  // Period summary stats
+  stats: WholesaleStats;
+  // Customer lists
+  topCustomers: WholesaleCustomer[];
+  atRiskCustomers: WholesaleAtRiskCustomer[];
+  growthOpportunities: WholesaleGrowthOpportunity[];
+  // Recent transactions
+  recentTransactions: WholesaleTransaction[];
+  // Top SKUs
+  topSkus: WholesaleSkuStats[];
+  // Metadata
+  lastSynced: string | null;
+}

@@ -74,10 +74,11 @@ import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import { VoiceOfCustomerDashboard } from "@/components/VoiceOfCustomerDashboard";
 import { KlaviyoDashboard } from "@/components/KlaviyoDashboard";
 import { SAFETY_STOCK } from "@/lib/shiphero";
-import type { KlaviyoResponse } from "@/lib/types";
+import type { KlaviyoResponse, WholesaleResponse, WholesalePeriod } from "@/lib/types";
+import { WholesaleDashboard } from "@/components/WholesaleDashboard";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget" | "voc" | "marketing";
+type PrimaryTab = "inventory" | "holiday" | "assembly" | "fulfillment" | "budget" | "voc" | "marketing" | "sales";
 type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -250,6 +251,11 @@ export default function Dashboard() {
   const [klaviyoData, setKlaviyoData] = useState<KlaviyoResponse | null>(null);
   const [klaviyoLoading, setKlaviyoLoading] = useState(false);
   const [klaviyoPeriod, setKlaviyoPeriod] = useState<"mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d">("mtd");
+
+  // Wholesale sales tab state
+  const [wholesaleData, setWholesaleData] = useState<WholesaleResponse | null>(null);
+  const [wholesaleLoading, setWholesaleLoading] = useState(false);
+  const [wholesalePeriod, setWholesalePeriod] = useState<WholesalePeriod>("ytd");
 
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
@@ -460,6 +466,36 @@ export default function Dashboard() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [klaviyoPeriod]);
+
+  // Fetch Wholesale sales data
+  const fetchWholesale = useCallback(async () => {
+    try {
+      setWholesaleLoading(true);
+      const res = await fetch(`/api/wholesale?period=${wholesalePeriod}`);
+      if (!res.ok) throw new Error("Failed to fetch wholesale data");
+      const data: WholesaleResponse = await res.json();
+      setWholesaleData(data);
+    } catch (err) {
+      console.error("Wholesale fetch error:", err);
+    } finally {
+      setWholesaleLoading(false);
+    }
+  }, [wholesalePeriod]);
+
+  // Load wholesale data when switching to sales tab
+  useEffect(() => {
+    if (primaryTab === "sales" && !wholesaleData && !wholesaleLoading) {
+      fetchWholesale();
+    }
+  }, [primaryTab, wholesaleData, wholesaleLoading, fetchWholesale]);
+
+  // Refetch wholesale when period changes
+  useEffect(() => {
+    if (primaryTab === "sales" && wholesaleData) {
+      fetchWholesale();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wholesalePeriod]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -722,6 +758,17 @@ export default function Dashboard() {
           >
             <Mail className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
             MARKETING
+          </button>
+          <button
+            onClick={() => setPrimaryTab("sales")}
+            className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+              primaryTab === "sales"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+            SALES
           </button>
         </div>
 
@@ -1265,6 +1312,17 @@ export default function Dashboard() {
           period={klaviyoPeriod}
           onPeriodChange={setKlaviyoPeriod}
           onRefresh={fetchKlaviyo}
+        />
+      )}
+
+      {/* SALES TAB (Wholesale) */}
+      {primaryTab === "sales" && (
+        <WholesaleDashboard
+          data={wholesaleData}
+          loading={wholesaleLoading}
+          period={wholesalePeriod}
+          onPeriodChange={setWholesalePeriod}
+          onRefresh={fetchWholesale}
         />
       )}
 
