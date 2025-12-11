@@ -43,6 +43,7 @@ import type {
   WholesaleResponse,
   WholesaleCustomer,
   WholesaleAtRiskCustomer,
+  WholesaleNeverOrderedCustomer,
   WholesaleTransaction,
   WholesaleSkuStats,
   WholesaleMonthlyStats,
@@ -134,6 +135,7 @@ function HealthBadge({ status }: { status: CustomerHealthStatus }) {
     churned: { label: "Churned", color: "text-text-muted", icon: <Clock className="w-3 h-3" /> },
     new: { label: "New", color: "text-purple-400", icon: <Sparkles className="w-3 h-3" /> },
     one_time: { label: "One-Time", color: "text-text-tertiary", icon: <Target className="w-3 h-3" /> },
+    never_ordered: { label: "Never Ordered", color: "text-amber-400", icon: <Users className="w-3 h-3" /> },
   };
   const { label, color, icon } = config[status];
   return (
@@ -615,6 +617,70 @@ function HealthDistributionCard({ distribution }: { distribution: Record<Custome
 
       <div className="text-[10px] text-text-muted pt-3 border-t border-border/20">
         {distribution.thriving + distribution.stable} healthy • {distribution.at_risk + distribution.churning} at risk
+        {distribution.never_ordered > 0 && (
+          <span className="text-amber-400"> • {distribution.never_ordered} never ordered</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// NEVER ORDERED CUSTOMERS SECTION
+// ============================================================================
+
+function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrderedCustomer[] }) {
+  if (!customers || customers.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-amber-500/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-amber-500/5">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-amber-400" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-semibold">
+            NEVER ORDERED - SALES OPPORTUNITIES
+          </h3>
+        </div>
+        <span className="text-[10px] text-amber-400 font-medium">
+          {customers.length} accounts
+        </span>
+      </div>
+
+      <div className="max-h-[400px] overflow-y-auto">
+        {customers.map((customer) => (
+          <div
+            key={customer.ns_customer_id}
+            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-text-primary truncate font-medium">
+                {customer.company_name}
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-text-muted">
+                {customer.email && <span>{customer.email}</span>}
+                {customer.phone && <span>• {customer.phone}</span>}
+              </div>
+            </div>
+            <div className="text-right">
+              {customer.days_since_created !== null && (
+                <div className={`text-xs font-medium tabular-nums ${
+                  customer.days_since_created < 30 ? "text-status-good" :
+                  customer.days_since_created < 90 ? "text-amber-400" :
+                  "text-text-muted"
+                }`}>
+                  {customer.days_since_created < 30 ? "Hot lead" :
+                   customer.days_since_created < 90 ? `${customer.days_since_created}d old` :
+                   `${Math.floor(customer.days_since_created / 30)}mo old`}
+                </div>
+              )}
+              {customer.category && (
+                <div className="text-[10px] text-text-muted">
+                  {customer.category}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1010,6 +1076,13 @@ export function WholesaleDashboard({
         <TopSkusTable skus={data.topSkus || []} />
         <RecentTransactionsCard transactions={data.recentTransactions || []} />
       </div>
+
+      {/* ================================================================
+          NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES
+          ================================================================ */}
+      {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 && (
+        <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
+      )}
 
       {/* ================================================================
           TOP CUSTOMERS TABLE

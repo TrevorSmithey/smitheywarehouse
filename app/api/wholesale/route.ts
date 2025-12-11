@@ -11,6 +11,7 @@ import type {
   WholesaleCustomer,
   WholesaleAtRiskCustomer,
   WholesaleGrowthOpportunity,
+  WholesaleNeverOrderedCustomer,
   WholesaleTransaction,
   WholesaleSkuStats,
   WholesaleStats,
@@ -37,6 +38,9 @@ function getHealthStatus(
   orderCount: number,
   revenueTrend: number
 ): CustomerHealthStatus {
+  // Never placed an order - sales opportunity
+  if (orderCount === 0) return "never_ordered";
+  // Has orders but no last_sale_date is a data issue, treat as new
   if (daysSinceLastOrder === null) return "new";
   if (orderCount === 1) return "one_time";
   if (daysSinceLastOrder > 365) return "churned";
@@ -314,6 +318,31 @@ export async function GET(request: Request) {
         opportunity_type: getOpportunityType(c),
       }));
 
+    // Never ordered customers - sales opportunities
+    // These are accounts in NetSuite that have never placed an order
+    const neverOrderedCustomers: WholesaleNeverOrderedCustomer[] = (customersResult.data || [])
+      .filter((c) => (c.order_count || 0) === 0 && !c.is_inactive)
+      .sort((a, b) => {
+        // Sort by date created (newest first) - these are the hottest leads
+        const aDate = a.date_created ? new Date(a.date_created).getTime() : 0;
+        const bDate = b.date_created ? new Date(b.date_created).getTime() : 0;
+        return bDate - aDate;
+      })
+      .slice(0, 50)
+      .map((c) => ({
+        ns_customer_id: c.ns_customer_id,
+        entity_id: c.entity_id,
+        company_name: c.company_name || `Customer ${c.entity_id}`,
+        email: c.email,
+        phone: c.phone,
+        date_created: c.date_created,
+        days_since_created: c.date_created
+          ? Math.floor((now.getTime() - new Date(c.date_created).getTime()) / (1000 * 60 * 60 * 24))
+          : null,
+        category: c.category,
+        is_inactive: c.is_inactive || false,
+      }));
+
     // Recent transactions
     const recentTransactions: WholesaleTransaction[] = (transactionsResult.data || [])
       .slice(0, 50)
@@ -371,6 +400,7 @@ export async function GET(request: Request) {
       churned: customers.filter((c) => c.health_status === "churned").length,
       new: customers.filter((c) => c.health_status === "new").length,
       one_time: customers.filter((c) => c.health_status === "one_time").length,
+      never_ordered: customers.filter((c) => c.health_status === "never_ordered").length,
     };
 
     // Segment distribution
@@ -415,6 +445,7 @@ export async function GET(request: Request) {
       topCustomers,
       atRiskCustomers,
       growthOpportunities,
+      neverOrderedCustomers,
       recentTransactions,
       topSkus,
       lastSynced: new Date().toISOString(),

@@ -830,14 +830,15 @@ export interface KlaviyoResponse {
 export type WholesalePeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d" | "12m";
 
 export type CustomerHealthStatus =
-  | "thriving"    // Growing revenue, frequent orders
-  | "stable"      // Consistent ordering pattern
-  | "declining"   // Decreasing order frequency/value
-  | "at_risk"     // Significant decline, needs attention
-  | "churning"    // No orders in 6+ months after previous activity
-  | "churned"     // No orders in 12+ months
-  | "new"         // First order within last 90 days
-  | "one_time";   // Only one order ever
+  | "thriving"      // Growing revenue, frequent orders
+  | "stable"        // Consistent ordering pattern
+  | "declining"     // Decreasing order frequency/value
+  | "at_risk"       // Significant decline, needs attention
+  | "churning"      // No orders in 6+ months after previous activity
+  | "churned"       // No orders in 12+ months
+  | "new"           // First order within last 90 days
+  | "one_time"      // Only one order ever
+  | "never_ordered"; // Account exists but has never placed an order - sales opportunity
 
 export type CustomerSegment =
   | "major"       // $50K+ lifetime revenue
@@ -919,6 +920,7 @@ export interface WholesaleHealthDistribution {
   churned: number;
   new: number;
   one_time: number;
+  never_ordered: number;
 }
 
 export interface WholesaleSegmentDistribution {
@@ -964,6 +966,19 @@ export interface WholesaleAtRiskCustomer {
 
 export type OpportunityType = "upsell" | "cross_sell" | "volume_increase" | "new_category";
 
+// Customers with accounts but zero orders - sales opportunities
+export interface WholesaleNeverOrderedCustomer {
+  ns_customer_id: number;
+  entity_id: string;
+  company_name: string;
+  email: string | null;
+  phone: string | null;
+  date_created: string | null;
+  days_since_created: number | null;
+  category: string | null;
+  is_inactive: boolean;
+}
+
 export interface WholesaleGrowthOpportunity {
   ns_customer_id: number;
   company_name: string;
@@ -984,6 +999,7 @@ export interface WholesaleResponse {
   topCustomers: WholesaleCustomer[];
   atRiskCustomers: WholesaleAtRiskCustomer[];
   growthOpportunities: WholesaleGrowthOpportunity[];
+  neverOrderedCustomers: WholesaleNeverOrderedCustomer[];
   // Recent transactions
   recentTransactions: WholesaleTransaction[];
   // Top SKUs

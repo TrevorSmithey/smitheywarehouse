@@ -101,13 +101,13 @@ def supabase_request(endpoint, method='GET', data=None):
     return response
 
 def sync_customers():
-    """Sync wholesale customers from NetSuite to Supabase.
+    """Sync ALL wholesale customers from NetSuite to Supabase.
 
-    OPTIMIZED: Only pulls customers who have wholesale transactions (CashSale or CustInvc).
-    This avoids pulling 400k+ D2C customers and focuses on ~1,018 actual wholesale customers.
+    Pulls all business customers (isperson='F') except D2C accounts (entityid 493 and 2501).
+    This includes customers who have never placed an order - valuable leads for sales team.
     """
     print("\n" + "="*70)
-    print("SYNCING WHOLESALE CUSTOMERS")
+    print("SYNCING WHOLESALE CUSTOMERS (ALL - INCLUDING NEVER ORDERED)")
     print("="*70)
 
     ns_url = f"https://{NS_ACCOUNT_ID}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql"
@@ -117,7 +117,9 @@ def sync_customers():
     limit = 1000
 
     while True:
-        # Use subquery to only get customers with wholesale transactions
+        # Get ALL business customers except D2C accounts
+        # c.id 493 = old D2C default, c.id 2501 = current D2C customer
+        # Note: c.id is the internal NetSuite customer ID, c.entityid is the visible entity number
         query = {
             "q": f"""
             SELECT DISTINCT
@@ -136,12 +138,7 @@ def sync_customers():
                 c.url
             FROM customer c
             WHERE c.isperson = 'F'
-            AND c.entityid != '493'
-            AND c.id IN (
-                SELECT DISTINCT t.entity
-                FROM transaction t
-                WHERE t.type IN ('CashSale', 'CustInvc')
-            )
+            AND c.id NOT IN (493, 2501)
             ORDER BY c.companyname
             OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
             """
