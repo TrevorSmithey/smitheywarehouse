@@ -1,11 +1,16 @@
 /**
  * Klaviyo API Client
- * Fetches email/SMS campaign performance data for marketing analytics
+ * Fetches email campaign performance data for marketing analytics
  * API Documentation: https://developers.klaviyo.com/en/reference/api-overview
+ *
+ * Key requirements:
+ * - Channel filter is REQUIRED for /campaigns endpoint
+ * - Filter syntax: filter=equals(field,"value") with double quotes
+ * - Pagination uses page[cursor] not page[size]
  */
 
 const KLAVIYO_API_BASE = "https://a.klaviyo.com/api";
-const KLAVIYO_REVISION = "2025-10-15"; // Latest GA revision
+const KLAVIYO_REVISION = "2024-10-15"; // Stable revision
 
 // ============================================================
 // Types
@@ -16,26 +21,16 @@ export interface KlaviyoCampaign {
   id: string;
   attributes: {
     name: string;
-    status: "draft" | "scheduled" | "sending" | "sent" | "cancelled";
+    status: string; // "Draft", "Scheduled", "Sending", "Sent", "Cancelled"
     archived: boolean;
-    channel: "email" | "sms";
-    message: string; // Message ID
     audiences: {
-      included: string[]; // List/segment IDs
+      included: string[];
       excluded: string[];
     };
-    send_options: {
-      use_smart_sending: boolean;
-      is_transactional: boolean;
-    };
-    tracking_options: {
-      is_tracking_opens: boolean;
-      is_tracking_clicks: boolean;
-    };
     send_strategy: {
-      method: "immediate" | "throttled" | "static";
+      method: string;
       options_static?: {
-        datetime: string; // ISO8601
+        datetime: string;
         is_local: boolean;
         send_past_recipients_immediately: boolean;
       };
@@ -52,31 +47,11 @@ export interface KlaviyoFlow {
   id: string;
   attributes: {
     name: string;
-    status: "draft" | "manual" | "live";
+    status: string;
     archived: boolean;
     trigger_type: string;
     created: string;
     updated: string;
-  };
-}
-
-export interface KlaviyoList {
-  type: "list";
-  id: string;
-  attributes: {
-    name: string;
-    created: string;
-    updated: string;
-  };
-}
-
-export interface KlaviyoMetricAggregate {
-  type: "metric-aggregate";
-  attributes: {
-    data: Array<{
-      dimensions: string[];
-      measurements: Record<string, number>;
-    }>;
   };
 }
 
@@ -162,12 +137,14 @@ export class KlaviyoClient {
   ): Promise<T> {
     const url = `${KLAVIYO_API_BASE}${endpoint}`;
 
+    console.log(`[KLAVIYO] Request: ${url}`);
+
     const response = await fetch(url, {
       ...options,
       headers: {
         Authorization: `Klaviyo-API-Key ${this.privateKey}`,
-        Accept: "application/vnd.api+json",
-        "Content-Type": "application/vnd.api+json",
+        Accept: "application/json",
+        "Content-Type": "application/json",
         revision: KLAVIYO_REVISION,
         ...options.headers,
       },
@@ -182,146 +159,81 @@ export class KlaviyoClient {
   }
 
   /**
-   * Get all campaigns with pagination
-   * Optionally filter by status
+   * Get all email campaigns with optional status filter
+   * Channel filter (email) is required by Klaviyo API
    */
-  async getCampaigns(
-    status?: "draft" | "scheduled" | "sent" | "cancelled"
-  ): Promise<KlaviyoCampaign[]> {
+  async getEmailCampaigns(status?: string): Promise<KlaviyoCampaign[]> {
     const campaigns: KlaviyoCampaign[] = [];
-    let cursor: string | null = null;
+    let nextUrl: string | null = null;
+    let isFirstRequest = true;
 
     do {
-      const params = new URLSearchParams({
-        "page[size]": "50",
-      });
+      let endpoint: string;
 
-      if (status) {
-        params.set("filter", `equals(messages.channel,'email'),equals(status,'${status}')`);
+      if (isFirstRequest) {
+        // Build filter - channel is required
+        let filter = 'equals(messages.channel,"email")';
+        if (status) {
+          filter = `and(${filter},equals(status,"${status}"))`;
+        }
+        endpoint = `/campaigns?filter=${encodeURIComponent(filter)}`;
+        isFirstRequest = false;
+      } else if (nextUrl) {
+        // Use the full next URL from pagination
+        endpoint = nextUrl.replace(KLAVIYO_API_BASE, "");
+      } else {
+        break;
       }
 
-      if (cursor) {
-        params.set("page[cursor]", cursor);
-      }
-
-      const response = await this.request<PaginatedResponse<KlaviyoCampaign>>(
-        `/campaigns?${params}`
-      );
-
+      const response = await this.request<PaginatedResponse<KlaviyoCampaign>>(endpoint);
       campaigns.push(...response.data);
 
-      // Extract next cursor from links.next URL
-      cursor = null;
-      if (response.links.next) {
-        try {
-          const nextUrl = new URL(response.links.next);
-          cursor = nextUrl.searchParams.get("page[cursor]");
-        } catch {
-          cursor = null;
-        }
-      }
+      // Get next page URL
+      nextUrl = response.links.next || null;
 
-      // Rate limiting - be nice to the API
-      if (cursor) {
+      // Rate limiting
+      if (nextUrl) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-    } while (cursor);
+    } while (nextUrl);
 
     return campaigns;
   }
 
   /**
-   * Get campaigns sent within a date range
+   * Get sent email campaigns, optionally filtered by date range
+   * Filters client-side since send_time is not a filterable field
    */
-  async getCampaignsByDateRange(
-    startDate: Date,
-    endDate: Date
-  ): Promise<KlaviyoCampaign[]> {
-    const campaigns: KlaviyoCampaign[] = [];
-    let cursor: string | null = null;
+  async getSentCampaigns(startDate?: Date, endDate?: Date): Promise<KlaviyoCampaign[]> {
+    const allCampaigns = await this.getEmailCampaigns("Sent");
 
-    const startIso = startDate.toISOString();
-    const endIso = endDate.toISOString();
+    if (!startDate && !endDate) {
+      return allCampaigns;
+    }
 
-    do {
-      // Note: send_time is not filterable, so we filter by status and scheduled_at, then filter results client-side
-      const params = new URLSearchParams({
-        "page[size]": "50",
-        filter: `and(equals(status,"Sent"),greater-or-equal(scheduled_at,${startIso}))`,
-      });
+    // Filter client-side by send_time
+    return allCampaigns.filter((campaign) => {
+      const sendTime = campaign.attributes.send_time;
+      if (!sendTime) return false;
 
-      if (cursor) {
-        params.set("page[cursor]", cursor);
-      }
+      const sendDate = new Date(sendTime);
 
-      const response = await this.request<PaginatedResponse<KlaviyoCampaign>>(
-        `/campaigns?${params}`
-      );
+      if (startDate && sendDate < startDate) return false;
+      if (endDate && sendDate > endDate) return false;
 
-      campaigns.push(...response.data);
-
-      cursor = null;
-      if (response.links.next) {
-        try {
-          const nextUrl = new URL(response.links.next);
-          cursor = nextUrl.searchParams.get("page[cursor]");
-        } catch {
-          cursor = null;
-        }
-      }
-
-      if (cursor) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    } while (cursor);
-
-    return campaigns;
+      return true;
+    });
   }
 
   /**
-   * Get scheduled campaigns (for inventory planning)
+   * Get scheduled email campaigns (for inventory planning)
    */
   async getScheduledCampaigns(): Promise<KlaviyoCampaign[]> {
-    const campaigns: KlaviyoCampaign[] = [];
-    let cursor: string | null = null;
-
-    do {
-      const params = new URLSearchParams({
-        "page[size]": "50",
-        filter: 'equals(status,"Scheduled")',
-      });
-
-      if (cursor) {
-        params.set("page[cursor]", cursor);
-      }
-
-      const response = await this.request<PaginatedResponse<KlaviyoCampaign>>(
-        `/campaigns?${params}`
-      );
-
-      campaigns.push(...response.data);
-
-      cursor = null;
-      if (response.links.next) {
-        try {
-          const nextUrl = new URL(response.links.next);
-          cursor = nextUrl.searchParams.get("page[cursor]");
-        } catch {
-          cursor = null;
-        }
-      }
-
-      if (cursor) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-    } while (cursor);
-
-    return campaigns;
+    return this.getEmailCampaigns("Scheduled");
   }
 
   /**
    * Get campaign performance report using the Reporting API
-   * This gives us the aggregated metrics we need for each campaign
    */
   async getCampaignReport(campaignId: string): Promise<CampaignReportData | null> {
     try {
@@ -332,21 +244,14 @@ export class KlaviyoClient {
             campaign_ids: [campaignId],
             statistics: [
               "bounced",
-              "bounced_or_failed",
               "bounce_rate",
               "clicked",
               "click_rate",
-              "click_to_open_rate",
               "delivered",
               "delivery_rate",
-              "failed",
-              "failed_rate",
               "opened",
               "open_rate",
               "recipients",
-              "revenue_per_recipient",
-              "spam_complaints",
-              "spam_complaint_rate",
               "total_revenue",
               "unique_clicks",
               "unique_click_rate",
@@ -363,7 +268,7 @@ export class KlaviyoClient {
 
       const response = await this.request<{
         data: {
-          type: "campaign-values-report";
+          type: string;
           attributes: {
             results: Array<{
               groupings: Record<string, string>;
@@ -376,7 +281,7 @@ export class KlaviyoClient {
         body: JSON.stringify(body),
       });
 
-      const result = response.data.attributes.results[0];
+      const result = response.data?.attributes?.results?.[0];
       if (!result) return null;
 
       return {
@@ -384,7 +289,7 @@ export class KlaviyoClient {
         statistics: result.statistics,
       };
     } catch (error) {
-      console.error(`Failed to get report for campaign ${campaignId}:`, error);
+      console.error(`[KLAVIYO] Failed to get report for campaign ${campaignId}:`, error);
       return null;
     }
   }
@@ -394,74 +299,67 @@ export class KlaviyoClient {
    */
   async getFlows(): Promise<KlaviyoFlow[]> {
     const flows: KlaviyoFlow[] = [];
-    let cursor: string | null = null;
+    let nextUrl: string | null = null;
+    let isFirstRequest = true;
 
     do {
-      const params = new URLSearchParams({
-        "page[size]": "50",
-      });
+      let endpoint: string;
 
-      if (cursor) {
-        params.set("page[cursor]", cursor);
+      if (isFirstRequest) {
+        endpoint = "/flows";
+        isFirstRequest = false;
+      } else if (nextUrl) {
+        endpoint = nextUrl.replace(KLAVIYO_API_BASE, "");
+      } else {
+        break;
       }
 
-      const response = await this.request<PaginatedResponse<KlaviyoFlow>>(
-        `/flows?${params}`
-      );
-
+      const response = await this.request<PaginatedResponse<KlaviyoFlow>>(endpoint);
       flows.push(...response.data);
 
-      cursor = null;
-      if (response.links.next) {
-        try {
-          const nextUrl = new URL(response.links.next);
-          cursor = nextUrl.searchParams.get("page[cursor]");
-        } catch {
-          cursor = null;
-        }
-      }
+      nextUrl = response.links.next || null;
 
-      if (cursor) {
+      if (nextUrl) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
-    } while (cursor);
+    } while (nextUrl);
 
     return flows;
   }
 
   /**
-   * Get list/segment size for audience estimation
+   * Get list profile count for audience estimation
    */
   async getListSize(listId: string): Promise<number> {
     try {
       const response = await this.request<{
         data: {
           attributes: {
-            profile_count: number;
+            profile_count?: number;
           };
         };
       }>(`/lists/${listId}`);
 
-      return response.data.attributes.profile_count || 0;
+      return response.data?.attributes?.profile_count || 0;
     } catch {
       return 0;
     }
   }
 
   /**
-   * Get segment size for audience estimation
+   * Get segment profile count for audience estimation
    */
   async getSegmentSize(segmentId: string): Promise<number> {
     try {
       const response = await this.request<{
         data: {
           attributes: {
-            profile_count: number;
+            profile_count?: number;
           };
         };
       }>(`/segments/${segmentId}`);
 
-      return response.data.attributes.profile_count || 0;
+      return response.data?.attributes?.profile_count || 0;
     } catch {
       return 0;
     }
@@ -472,9 +370,6 @@ export class KlaviyoClient {
 // Factory
 // ============================================================
 
-/**
- * Create a Klaviyo client from environment variables
- */
 export function createKlaviyoClient(): KlaviyoClient {
   const privateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
 
@@ -494,9 +389,7 @@ export function createKlaviyoClient(): KlaviyoClient {
 /**
  * Convert Klaviyo report statistics to our standard CampaignMetrics format
  */
-export function reportToMetrics(
-  report: CampaignReportData
-): CampaignMetrics {
+export function reportToMetrics(report: CampaignReportData): CampaignMetrics {
   const stats = report.statistics;
 
   return {
@@ -518,7 +411,6 @@ export function reportToMetrics(
 
 /**
  * Calculate predicted revenue for a scheduled campaign
- * Based on historical average conversion rate and AOV
  */
 export function predictCampaignRevenue(
   audienceSize: number,
