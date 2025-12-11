@@ -131,7 +131,7 @@ export async function GET(request: Request) {
         .from("ns_wholesale_customers")
         .select("*")
         .order("lifetime_revenue", { ascending: false }),
-      // Transactions in current period
+      // Transactions in current period with customer name join
       supabase
         .from("ns_wholesale_transactions")
         .select("*, ns_wholesale_customers(company_name)")
@@ -335,7 +335,7 @@ export async function GET(request: Request) {
         is_inactive: false, // Not in current schema
       }));
 
-    // Recent transactions
+    // Recent transactions with company names from join
     const recentTransactions: WholesaleTransaction[] = (transactionsResult.data || [])
       .slice(0, 50)
       .map((t) => ({
@@ -349,7 +349,7 @@ export async function GET(request: Request) {
         status: t.status,
       }));
 
-    // Process SKU stats
+    // Process SKU stats from view
     const topSkus: WholesaleSkuStats[] = (skuResult.data || []).slice(0, 30).map((s) => ({
       sku: s.sku,
       item_type: s.item_type,
