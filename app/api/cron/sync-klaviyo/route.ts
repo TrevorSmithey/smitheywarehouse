@@ -318,10 +318,14 @@ export async function GET(request: Request) {
     const mtdFlowRevenue = flowReports.totalRevenue;
     const mtdFlowConversions = flowReports.totalConversions;
 
-    // Get subscriber counts
+    // Get subscriber counts (current)
     const subscriberCounts = await klaviyo.getSubscriberCounts();
 
+    // Get historical subscriber counts (for backfilling the growth chart)
+    const subscriberHistory = await klaviyo.getSubscriberHistory();
+
     console.log(`[KLAVIYO SYNC] Flow revenue MTD: $${mtdFlowRevenue.toFixed(2)}, Subscribers: ${subscriberCounts.engaged365}`);
+    console.log(`[KLAVIYO SYNC] Got ${subscriberHistory.engaged365Day.length} months of subscriber history`);
 
     // ============================================================
     // 5. Update monthly stats (current + previous month)
@@ -407,6 +411,93 @@ export async function GET(request: Request) {
     }
 
     console.log(`[KLAVIYO SYNC] Updated ${stats.monthlyStatsUpdated} monthly stat records`);
+
+    // ============================================================
+    // 6. Backfill historical subscriber counts
+    // ============================================================
+    console.log("[KLAVIYO SYNC] Backfilling historical subscriber counts...");
+
+    // Build a map of month -> subscriber counts from history
+    const subscriberByMonth = new Map<string, { active120Day: number | null; engaged365Day: number | null }>();
+
+    for (const item of subscriberHistory.active120Day) {
+      const monthKey = item.date.substring(0, 7); // YYYY-MM
+      const existing = subscriberByMonth.get(monthKey) || { active120Day: null, engaged365Day: null };
+      existing.active120Day = item.count;
+      subscriberByMonth.set(monthKey, existing);
+    }
+
+    for (const item of subscriberHistory.engaged365Day) {
+      const monthKey = item.date.substring(0, 7); // YYYY-MM
+      const existing = subscriberByMonth.get(monthKey) || { active120Day: null, engaged365Day: null };
+      existing.engaged365Day = item.count;
+      subscriberByMonth.set(monthKey, existing);
+    }
+
+    // Update each month's record with historical subscriber data
+    let subscriberUpdates = 0;
+    for (const [monthKey, counts] of subscriberByMonth) {
+      const monthStart = `${monthKey}-01`;
+
+      try {
+        // First check if the record exists
+        const { data: existing } = await supabase
+          .from("klaviyo_monthly_stats")
+          .select("month_start, subscribers_120day, subscribers_365day")
+          .eq("month_start", monthStart)
+          .single();
+
+        if (existing) {
+          // Only update if values are different or null
+          const needsUpdate =
+            existing.subscribers_120day !== counts.active120Day ||
+            existing.subscribers_365day !== counts.engaged365Day;
+
+          if (needsUpdate) {
+            const { error } = await supabase
+              .from("klaviyo_monthly_stats")
+              .update({
+                subscribers_120day: counts.active120Day,
+                subscribers_365day: counts.engaged365Day,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("month_start", monthStart);
+
+            if (!error) {
+              subscriberUpdates++;
+            }
+          }
+        } else {
+          // Create a minimal record for historical months
+          const { error } = await supabase.from("klaviyo_monthly_stats").insert({
+            month_start: monthStart,
+            subscribers_120day: counts.active120Day,
+            subscribers_365day: counts.engaged365Day,
+            email_campaigns_sent: 0,
+            email_recipients: 0,
+            email_delivered: 0,
+            email_opens: 0,
+            email_clicks: 0,
+            email_conversions: 0,
+            email_revenue: 0,
+            email_unsubscribes: 0,
+            flow_revenue: 0,
+            flow_conversions: 0,
+            total_revenue: 0,
+            total_conversions: 0,
+            updated_at: new Date().toISOString(),
+          });
+
+          if (!error) {
+            subscriberUpdates++;
+          }
+        }
+      } catch (err) {
+        console.error(`[KLAVIYO SYNC] Error updating subscriber history for ${monthStart}:`, err);
+      }
+    }
+
+    console.log(`[KLAVIYO SYNC] Updated ${subscriberUpdates} months with historical subscriber data`);
 
     // ============================================================
     // Done

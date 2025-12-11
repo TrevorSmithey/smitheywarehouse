@@ -451,6 +451,74 @@ export class KlaviyoClient {
   }
 
   /**
+   * Get historical subscriber counts from segment series reports
+   * Returns monthly member counts for the past 12 months
+   */
+  async getSegmentHistory(segmentId: string): Promise<{ date: string; count: number }[]> {
+    try {
+      const body = {
+        data: {
+          type: "segment-series-report",
+          attributes: {
+            statistics: ["total_members"],
+            timeframe: { key: "last_365_days" },
+            interval: "monthly",
+            filter: `equals(segment_id,"${segmentId}")`,
+          },
+        },
+      };
+
+      const response = await this.request<{
+        data: {
+          attributes: {
+            results: Array<{
+              groupings: { segment_id: string };
+              statistics: { total_members: number[] };
+            }>;
+            date_times: string[];
+          };
+        };
+      }>("/segment-series-reports/", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      const dateTimes = response.data?.attributes?.date_times || [];
+      const counts = response.data?.attributes?.results?.[0]?.statistics?.total_members || [];
+
+      // Pair dates with counts
+      const history: { date: string; count: number }[] = [];
+      for (let i = 0; i < dateTimes.length && i < counts.length; i++) {
+        history.push({
+          date: dateTimes[i].split("T")[0], // YYYY-MM-DD
+          count: Math.round(counts[i]),
+        });
+      }
+
+      console.log(`[KLAVIYO] Got ${history.length} months of history for segment ${segmentId}`);
+      return history;
+    } catch (error) {
+      console.error(`[KLAVIYO] Failed to get segment history for ${segmentId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get historical subscriber counts for both key segments
+   */
+  async getSubscriberHistory(): Promise<{
+    active120Day: { date: string; count: number }[];
+    engaged365Day: { date: string; count: number }[];
+  }> {
+    const [active120Day, engaged365Day] = await Promise.all([
+      this.getSegmentHistory(KLAVIYO_SEGMENTS.ACTIVE_120_DAY),
+      this.getSegmentHistory(KLAVIYO_SEGMENTS.ENGAGED_365),
+    ]);
+
+    return { active120Day, engaged365Day };
+  }
+
+  /**
    * Get all flows
    */
   async getFlows(): Promise<KlaviyoFlow[]> {
