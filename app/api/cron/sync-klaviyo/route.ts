@@ -328,54 +328,89 @@ export async function GET(request: Request) {
     console.log(`[KLAVIYO SYNC] Got ${subscriberHistory.engaged365Day.length} months of subscriber history`);
 
     // ============================================================
-    // 5. Update monthly stats (current + previous month)
+    // 5. Update monthly stats for ALL months with campaign data
     // ============================================================
     console.log("[KLAVIYO SYNC] Updating monthly stats...");
 
     const currentMonth = startOfMonth(now);
     const previousMonth = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-    for (const monthStart of [currentMonth, previousMonth]) {
+    // Find all distinct months with campaigns (last 12 months)
+    const { data: campaignMonths } = await supabase
+      .from("klaviyo_campaigns")
+      .select("send_time")
+      .eq("status", "Sent")
+      .gte("send_time", daysAgo(365).toISOString())
+      .order("send_time", { ascending: false });
+
+    // Build unique set of month starts
+    const monthsToUpdate = new Set<string>();
+    monthsToUpdate.add(currentMonth.toISOString().split("T")[0]);
+    monthsToUpdate.add(previousMonth.toISOString().split("T")[0]);
+
+    if (campaignMonths) {
+      for (const row of campaignMonths) {
+        if (row.send_time) {
+          const date = new Date(row.send_time);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+          monthsToUpdate.add(monthKey);
+        }
+      }
+    }
+
+    console.log(`[KLAVIYO SYNC] Found ${monthsToUpdate.size} months to update`);
+
+    // Get flow revenue for current and previous month only (API limitation)
+    const prevFlowReports = await klaviyo.getFlowReports("last_month");
+
+    for (const monthStartStr of monthsToUpdate) {
+      const monthStart = new Date(monthStartStr);
       const monthEnd = endOfMonth(monthStart);
-      const isCurrentMonth = monthStart.getTime() === currentMonth.getTime();
+      const isCurrentMonth = monthStartStr === currentMonth.toISOString().split("T")[0];
+      const isPreviousMonth = monthStartStr === previousMonth.toISOString().split("T")[0];
 
       try {
         // Use the DB function to calculate campaign stats
         const { data: periodStats, error: statsError } = await supabase
           .rpc("calculate_klaviyo_period_stats", {
-            p_start_date: monthStart.toISOString().split("T")[0],
+            p_start_date: monthStartStr,
             p_end_date: monthEnd.toISOString().split("T")[0],
           });
 
         if (statsError) {
-          console.error(`[KLAVIYO SYNC] Error calculating stats for ${monthStart.toISOString()}:`, statsError);
+          console.error(`[KLAVIYO SYNC] Error calculating stats for ${monthStartStr}:`, statsError);
           stats.errors++;
           continue;
         }
 
-        // Get flow revenue for this specific month
+        // Get flow revenue (only available for current/previous month)
         let monthFlowRevenue = 0;
         let monthFlowConversions = 0;
 
         if (isCurrentMonth) {
-          // Use already-fetched MTD data
           monthFlowRevenue = mtdFlowRevenue;
           monthFlowConversions = mtdFlowConversions;
-        } else {
-          // Fetch previous month's flow data
-          const prevFlowReports = await klaviyo.getFlowReports("last_month");
+        } else if (isPreviousMonth) {
           monthFlowRevenue = prevFlowReports.totalRevenue;
           monthFlowConversions = prevFlowReports.totalConversions;
         }
+        // Historical months: flow revenue stays 0 (API doesn't provide historical data)
 
         if (periodStats && periodStats.length > 0) {
           const s = periodStats[0];
           const emailRevenue = parseFloat(s.email_revenue) || 0;
           const totalRevenue = emailRevenue + monthFlowRevenue;
 
+          // Get existing subscriber counts (preserve historical data)
+          const { data: existing } = await supabase
+            .from("klaviyo_monthly_stats")
+            .select("subscribers_120day, subscribers_365day")
+            .eq("month_start", monthStartStr)
+            .single();
+
           const { error: upsertError } = await supabase.from("klaviyo_monthly_stats").upsert(
             {
-              month_start: monthStart.toISOString().split("T")[0],
+              month_start: monthStartStr,
               email_campaigns_sent: s.email_campaigns_sent,
               email_recipients: s.email_recipients,
               email_delivered: s.email_delivered,
@@ -388,8 +423,13 @@ export async function GET(request: Request) {
               email_avg_click_rate: s.email_avg_click_rate,
               flow_revenue: monthFlowRevenue,
               flow_conversions: monthFlowConversions,
-              subscribers_120day: isCurrentMonth ? subscriberCounts.active120Day : null,
-              subscribers_365day: isCurrentMonth ? subscriberCounts.engaged365 : null,
+              // Preserve existing subscriber counts, or update if current month
+              subscribers_120day: isCurrentMonth
+                ? subscriberCounts.active120Day
+                : (existing?.subscribers_120day ?? null),
+              subscribers_365day: isCurrentMonth
+                ? subscriberCounts.engaged365
+                : (existing?.subscribers_365day ?? null),
               total_revenue: totalRevenue,
               total_conversions: (s.total_conversions || 0) + monthFlowConversions,
               updated_at: new Date().toISOString(),
@@ -398,14 +438,14 @@ export async function GET(request: Request) {
           );
 
           if (upsertError) {
-            console.error(`[KLAVIYO SYNC] Error upserting monthly stats:`, upsertError);
+            console.error(`[KLAVIYO SYNC] Error upserting monthly stats for ${monthStartStr}:`, upsertError);
             stats.errors++;
           } else {
             stats.monthlyStatsUpdated++;
           }
         }
       } catch (err) {
-        console.error(`[KLAVIYO SYNC] Error updating monthly stats for ${monthStart}:`, err);
+        console.error(`[KLAVIYO SYNC] Error updating monthly stats for ${monthStartStr}:`, err);
         stats.errors++;
       }
     }
