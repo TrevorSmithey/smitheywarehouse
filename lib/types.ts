@@ -894,9 +894,10 @@ export interface WholesaleMonthlyStats {
   unique_customers: number;
   total_units: number;
   total_revenue: number;
-  // YoY comparison
-  prev_year_revenue?: number;
-  yoy_growth?: number;
+  avg_order_value: number;
+  // YoY comparison (calculated in API)
+  yoy_revenue_change: number | null;
+  yoy_customer_change: number | null;
 }
 
 export interface WholesaleSkuStats {
@@ -909,49 +910,69 @@ export interface WholesaleSkuStats {
   last_sold: string;
 }
 
+export interface WholesaleHealthDistribution {
+  thriving: number;
+  stable: number;
+  declining: number;
+  at_risk: number;
+  churning: number;
+  churned: number;
+  new: number;
+  one_time: number;
+}
+
+export interface WholesaleSegmentDistribution {
+  major: number;
+  large: number;
+  mid: number;
+  small: number;
+  starter: number;
+  minimal: number;
+}
+
 export interface WholesaleStats {
   // Period totals
   total_revenue: number;
-  total_transactions: number;
-  total_units: number;
-  unique_customers: number;
+  total_orders: number;
+  total_customers: number;
+  active_customers: number;
   avg_order_value: number;
   // Comparison vs previous period
   revenue_delta: number;
   revenue_delta_pct: number;
-  transaction_delta: number;
-  transaction_delta_pct: number;
-  // Customer health breakdown
-  customers_thriving: number;
-  customers_stable: number;
-  customers_at_risk: number;
-  customers_churning: number;
-  // Top metrics
-  top_customer_revenue: number;
-  top_customer_name: string;
+  orders_delta: number;
+  orders_delta_pct: number;
+  customers_delta: number;
+  customers_delta_pct: number;
+  // Customer breakdown
+  health_distribution: WholesaleHealthDistribution;
+  segment_distribution: WholesaleSegmentDistribution;
 }
 
 export interface WholesaleAtRiskCustomer {
   ns_customer_id: number;
   company_name: string;
   segment: CustomerSegment;
-  last_order_date: string;
-  days_since_last_order: number;
   total_revenue: number;
-  avg_order_value: number;
+  last_order_date: string | null;
+  days_since_last_order: number;
   order_count: number;
-  revenue_trend: number;
-  risk_reason: string;
+  avg_order_value: number;
+  risk_score: number;
+  recommended_action: string;
 }
+
+export type OpportunityType = "upsell" | "cross_sell" | "volume_increase" | "new_category";
 
 export interface WholesaleGrowthOpportunity {
   ns_customer_id: number;
   company_name: string;
   segment: CustomerSegment;
-  total_revenue: number;
-  recent_growth: number; // % revenue growth in last period
-  order_frequency_increase: number; // % increase in order frequency
-  opportunity_score: number; // 0-100 score
+  current_revenue: number;
+  growth_potential: number;
+  revenue_trend: number;
+  order_trend: number;
+  opportunity_type: OpportunityType;
 }
 
 export interface WholesaleResponse {
