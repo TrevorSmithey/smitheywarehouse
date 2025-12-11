@@ -244,9 +244,10 @@ export class KlaviyoClient {
     const endIso = endDate.toISOString();
 
     do {
+      // Note: send_time is not filterable, so we filter by status and scheduled_at, then filter results client-side
       const params = new URLSearchParams({
         "page[size]": "50",
-        filter: `and(equals(status,"Sent"),greater-or-equal(send_time,${startIso}),less-than(send_time,${endIso}))`,
+        filter: `and(equals(status,"Sent"),greater-or-equal(scheduled_at,${startIso}))`,
       });
 
       if (cursor) {
