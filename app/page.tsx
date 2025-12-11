@@ -2625,7 +2625,6 @@ function InventoryDashboard({
                         const velocity = velocityBySku.get(product.sku.toLowerCase());
                         const isNegative = product.total < 0;
                         const hasWarehouseNegative = product.hobson < 0 || product.selery < 0;
-                        const hasLowStock = product.hobson < 10 || product.selery < 10;
                         const safetyStock = SAFETY_STOCK[product.sku];
                         const isBelowSafetyStock = safetyStock && product.total < safetyStock;
                         // Build tooltip with budget % and velocity
@@ -2642,11 +2641,9 @@ function InventoryDashboard({
                         }
                         const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
 
-                        // Row background priority: negative (solid red) > low stock (orange) > SS violation (pulsing amber) > zebra
+                        // Row background priority: negative (solid red) > SS violation (pulsing amber) > zebra
                         const rowBg = isNegative || hasWarehouseNegative
                           ? "bg-red-500/15"
-                          : hasLowStock
-                          ? "bg-status-warning/15"
                           : isBelowSafetyStock
                           ? "ss-violation"
                           : idx % 2 === 1
@@ -2680,12 +2677,14 @@ function InventoryDashboard({
                               </div>
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.hobson < 0 ? "text-red-400" : "text-amber-400"
+                              product.hobson < 0 ? "text-red-400 bg-red-500/10" :
+                              product.hobson < 10 ? "text-amber-400 bg-status-warning/20" : "text-amber-400"
                             }`}>
                               {formatNumber(product.hobson)}
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.selery < 0 ? "text-red-400" : "text-green-400"
+                              product.selery < 0 ? "text-red-400 bg-red-500/10" :
+                              product.selery < 10 ? "text-green-400 bg-status-warning/20" : "text-green-400"
                             }`}>
                               {formatNumber(product.selery)}
                             </td>
