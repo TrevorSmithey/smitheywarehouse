@@ -625,6 +625,240 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
 }
 
 // ============================================================================
+// SUBSCRIBER GROWTH CHART
+// ============================================================================
+
+interface SubscriberChartData {
+  month: string;
+  displayMonth: string;
+  active120Day: number | null;
+  engaged365Day: number | null;
+}
+
+function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }) {
+  const chartData: SubscriberChartData[] = useMemo(() => {
+    if (!monthly || monthly.length === 0) return [];
+
+    // Sort chronologically
+    const sorted = [...monthly].sort((a, b) =>
+      new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
+    );
+
+    // Filter to only months with subscriber data and take last 12
+    const withData = sorted.filter(m =>
+      m.subscribers_120day !== null || m.subscribers_365day !== null
+    ).slice(-12);
+
+    return withData.map(m => ({
+      month: m.month_start,
+      displayMonth: format(new Date(m.month_start), "MMM ''yy"),
+      active120Day: m.subscribers_120day,
+      engaged365Day: m.subscribers_365day,
+    }));
+  }, [monthly]);
+
+  // Need at least 1 data point to show anything useful
+  if (chartData.length < 1) {
+    return null;
+  }
+
+  // If only 1 data point, show a simple card instead of a chart
+  if (chartData.length === 1) {
+    const current = chartData[0];
+    return (
+      <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="w-4 h-4 text-text-tertiary" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+            SUBSCRIBER COUNTS
+          </h3>
+        </div>
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <div className="text-2xl font-semibold text-purple-400 tabular-nums">
+              {formatNumber(current.engaged365Day || 0)}
+            </div>
+            <div className="text-xs text-text-muted mt-1">365-day engaged</div>
+          </div>
+          <div>
+            <div className="text-2xl font-semibold text-accent-blue tabular-nums">
+              {formatNumber(current.active120Day || 0)}
+            </div>
+            <div className="text-xs text-text-muted mt-1">120-day active</div>
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-border/20 text-center">
+          <p className="text-[10px] text-text-muted">
+            Growth chart will appear as data accumulates monthly
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Full chart with 2+ data points
+  const latest = chartData[chartData.length - 1];
+  const previous = chartData.length > 1 ? chartData[chartData.length - 2] : null;
+
+  // Calculate growth
+  const growth365 = previous && previous.engaged365Day && latest.engaged365Day
+    ? ((latest.engaged365Day - previous.engaged365Day) / previous.engaged365Day) * 100
+    : undefined;
+  const growth120 = previous && previous.active120Day && latest.active120Day
+    ? ((latest.active120Day - previous.active120Day) / previous.active120Day) * 100
+    : undefined;
+
+  const CustomTooltip = ({ active, payload }: {
+    active?: boolean;
+    payload?: Array<{ payload: SubscriberChartData }>
+  }) => {
+    if (!active || !payload || !payload.length) return null;
+    const item = payload[0].payload;
+
+    return (
+      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[180px]">
+        <div className="text-sm font-semibold text-text-primary mb-3 pb-2 border-b border-border/30">
+          {format(new Date(item.month), "MMMM yyyy")}
+        </div>
+        <div className="space-y-2">
+          {item.engaged365Day !== null && (
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm bg-purple-400" />
+                <span className="text-xs text-text-secondary">365-day</span>
+              </div>
+              <span className="text-sm font-semibold text-text-primary tabular-nums">
+                {formatNumberFull(item.engaged365Day)}
+              </span>
+            </div>
+          )}
+          {item.active120Day !== null && (
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm bg-accent-blue" />
+                <span className="text-xs text-text-secondary">120-day</span>
+              </div>
+              <span className="text-sm font-semibold text-text-primary tabular-nums">
+                {formatNumberFull(item.active120Day)}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Users className="w-4 h-4 text-text-tertiary" />
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              SUBSCRIBER GROWTH
+            </h3>
+          </div>
+          <p className="text-xs text-text-muted">
+            List size over time
+          </p>
+        </div>
+
+        {/* Growth indicators */}
+        <div className="flex items-center gap-6">
+          {growth365 !== undefined && (
+            <div className="text-right">
+              <div className={`text-lg font-bold tabular-nums ${
+                growth365 >= 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {growth365 >= 0 ? "+" : ""}{growth365.toFixed(1)}%
+              </div>
+              <p className="text-[10px] text-text-muted">365-day growth</p>
+            </div>
+          )}
+          {growth120 !== undefined && (
+            <div className="text-right border-l border-border/30 pl-6">
+              <div className={`text-lg font-bold tabular-nums ${
+                growth120 >= 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {growth120 >= 0 ? "+" : ""}{growth120.toFixed(1)}%
+              </div>
+              <p className="text-[10px] text-text-muted">120-day growth</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
+            <defs>
+              <linearGradient id="engaged365Gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#A855F7" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#A855F7" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="active120Gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+
+            <XAxis
+              dataKey="displayMonth"
+              tick={{ fill: "#64748B", fontSize: 10, fontWeight: 500 }}
+              axisLine={{ stroke: "#1E293B" }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: "#64748B", fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              width={55}
+              tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.1)" }} />
+
+            <Area
+              type="monotone"
+              dataKey="engaged365Day"
+              stroke="#A855F7"
+              strokeWidth={2}
+              fill="url(#engaged365Gradient)"
+              dot={{ r: 3, fill: "#A855F7", strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: "#A855F7", stroke: "#0B0E1A", strokeWidth: 2 }}
+              connectNulls
+            />
+            <Area
+              type="monotone"
+              dataKey="active120Day"
+              stroke="#0EA5E9"
+              strokeWidth={2}
+              fill="url(#active120Gradient)"
+              dot={{ r: 3, fill: "#0EA5E9", strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: "#0EA5E9", stroke: "#0B0E1A", strokeWidth: 2 }}
+              connectNulls
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-4 border-t border-border/20">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm bg-purple-400" />
+          <span className="text-[10px] text-text-tertiary font-medium">365-day Engaged</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm bg-accent-blue" />
+          <span className="text-[10px] text-text-tertiary font-medium">120-day Active</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // UPCOMING CAMPAIGN CARD
 // ============================================================================
 
@@ -972,6 +1206,13 @@ export function KlaviyoDashboard({
           ================================================================ */}
       {data.monthly && data.monthly.length > 1 && (
         <MonthlyRevenueTrend monthly={data.monthly} />
+      )}
+
+      {/* ================================================================
+          SUBSCRIBER GROWTH CHART
+          ================================================================ */}
+      {data.monthly && (
+        <SubscriberGrowthChart monthly={data.monthly} />
       )}
 
       {/* ================================================================
