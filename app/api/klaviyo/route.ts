@@ -51,7 +51,10 @@ export async function GET(request: Request) {
         // Quarter to date
         const currentQuarter = Math.floor(now.getMonth() / 3);
         rangeStart = new Date(now.getFullYear(), currentQuarter * 3, 1);
-        prevRangeStart = new Date(now.getFullYear(), (currentQuarter - 1) * 3, 1);
+        // Handle year boundary: Q1 previous quarter is Q4 of prior year
+        const prevQuarter = currentQuarter === 0 ? 3 : currentQuarter - 1;
+        const prevQuarterYear = currentQuarter === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        prevRangeStart = new Date(prevQuarterYear, prevQuarter * 3, 1);
         prevRangeEnd = new Date(now.getFullYear(), currentQuarter * 3, 0, 23, 59, 59);
         break;
       case "ytd":
@@ -89,12 +92,12 @@ export async function GET(request: Request) {
       buildCampaignsQuery(supabase, rangeStart, rangeEnd, channel),
       // Previous period campaigns for comparison
       buildCampaignsQuery(supabase, prevRangeStart, prevRangeEnd, channel),
-      // Monthly stats for trend chart (last 12 months)
+      // Monthly stats for charts and YoY comparisons (need 24 months for YTD comparisons)
       supabase
         .from("klaviyo_monthly_stats")
         .select("*")
         .order("month_start", { ascending: false })
-        .limit(12),
+        .limit(24),
       // Upcoming scheduled campaigns (next 14 days)
       supabase
         .from("klaviyo_scheduled_campaigns")
@@ -234,9 +237,9 @@ export async function GET(request: Request) {
     // Revenue Per Recipient (RPR) - THE most important email marketing metric
     const campaignRPR = totalRecipients > 0 ? campaignRevenue / totalRecipients : 0;
 
-    // Flow RPR - use total recipients from months in period
-    const flowRecipientTotal = monthsInPeriod.reduce((sum, m) => sum + (m.email_recipients || 0), 0);
-    const flowRPR = flowRecipientTotal > 0 ? flowRevenue / (flowRecipientTotal * 0.1) : 0;
+    // Flow RPR - Klaviyo doesn't provide flow recipient counts in reports
+    // We can't calculate this accurately, so set to 0 (dashboard should hide if 0)
+    const flowRPR = 0;
 
     // Unsubscribe rate - healthy is <0.5%
     const unsubscribeRate = totalDelivered > 0 ? totalUnsubscribes / totalDelivered : 0;

@@ -341,14 +341,13 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: KlaviyoMonthlySumma
   const chartData: MonthlyChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
-    // Sort chronologically
+    // Sort chronologically - use string comparison to avoid timezone issues
     const sorted = [...monthly].sort((a, b) =>
-      new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
+      a.month_start.localeCompare(b.month_start)
     );
 
     // Filter based on period selection
-    const now = new Date();
-    const currentYear = now.getFullYear();
+    const currentYear = new Date().getFullYear();
     let filtered: KlaviyoMonthlySummary[];
 
     switch (period) {
@@ -614,9 +613,9 @@ function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySum
   const chartData: SubscriberChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
-    // Sort chronologically
+    // Sort chronologically - use string comparison to avoid timezone issues
     const sorted = [...monthly].sort((a, b) =>
-      new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
+      a.month_start.localeCompare(b.month_start)
     );
 
     // Filter based on period selection
