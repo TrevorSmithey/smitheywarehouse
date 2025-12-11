@@ -422,25 +422,31 @@ export class KlaviyoClient {
       engaged365: 0,
     };
 
+    // Get 120-day active segment
     try {
-      // Get both segments with rate limiting
       const active = await this.request<{
         data: { attributes: { profile_count?: number } };
-      }>(`/segments/${KLAVIYO_SEGMENTS.ACTIVE_120_DAY}?additional-fields[segment]=profile_count`);
+      }>(`/segments/${KLAVIYO_SEGMENTS.ACTIVE_120_DAY}?additional-fields%5Bsegment%5D=profile_count`);
       counts.active120Day = active.data?.attributes?.profile_count || 0;
-
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      const engaged = await this.request<{
-        data: { attributes: { profile_count?: number } };
-      }>(`/segments/${KLAVIYO_SEGMENTS.ENGAGED_365}?additional-fields[segment]=profile_count`);
-      counts.engaged365 = engaged.data?.attributes?.profile_count || 0;
-
-      console.log(`[KLAVIYO] Subscriber counts: 120-day=${counts.active120Day}, 365-day=${counts.engaged365}`);
+      console.log(`[KLAVIYO] 120-day count: ${counts.active120Day}`);
     } catch (error) {
-      console.error("[KLAVIYO] Failed to get subscriber counts:", error);
+      console.error("[KLAVIYO] Failed to get 120-day subscriber count:", error);
     }
 
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Get 365-day engaged segment
+    try {
+      const engaged = await this.request<{
+        data: { attributes: { profile_count?: number } };
+      }>(`/segments/${KLAVIYO_SEGMENTS.ENGAGED_365}?additional-fields%5Bsegment%5D=profile_count`);
+      counts.engaged365 = engaged.data?.attributes?.profile_count || 0;
+      console.log(`[KLAVIYO] 365-day count: ${counts.engaged365}`);
+    } catch (error) {
+      console.error("[KLAVIYO] Failed to get 365-day subscriber count:", error);
+    }
+
+    console.log(`[KLAVIYO] Final subscriber counts: 120-day=${counts.active120Day}, 365-day=${counts.engaged365}`);
     return counts;
   }
 

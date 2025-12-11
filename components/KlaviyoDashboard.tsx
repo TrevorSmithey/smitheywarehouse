@@ -571,9 +571,9 @@ export function KlaviyoDashboard({
         />
 
         <HeadlineMetric
-          label="Email % of Revenue"
-          value={formatPct(stats.email_pct_of_revenue || 0)}
-          subValue="of total web revenue"
+          label="Total Email Revenue"
+          value={formatCurrency(totalEmailRevenue)}
+          subValue={`${stats.campaigns_sent || 0} campaigns + flows`}
           icon={ArrowUpRight}
           accentColor="blue"
         />
