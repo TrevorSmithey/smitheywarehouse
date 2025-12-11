@@ -161,22 +161,21 @@ body {
   }
 }
 
-/* Safety stock violation - pulsing amber glow */
+/* Safety stock violation - subtle slow pulsing amber */
 .ss-violation {
-  animation: ss-pulse 2s ease-in-out infinite;
+  animation: ss-pulse 4s ease-in-out infinite;
 }
 
 @keyframes ss-pulse {
   0%, 100% {
-    background-color: rgba(251, 191, 36, 0.08);
+    background-color: rgba(251, 191, 36, 0.06);
   }
   50% {
-    background-color: rgba(251, 191, 36, 0.2);
+    background-color: rgba(251, 191, 36, 0.14);
   }
 }
 
 /* Ensure animation persists on hover */
 tr.ss-violation:hover {
-  animation: ss-pulse 2s ease-in-out infinite;
-  background-color: rgba(251, 191, 36, 0.2);
+  animation: ss-pulse 4s ease-in-out infinite;
 }
