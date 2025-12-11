@@ -7,10 +7,12 @@
  * - Channel filter is REQUIRED for /campaigns endpoint
  * - Filter syntax: filter=equals(field,"value") with double quotes
  * - Pagination uses page[cursor] not page[size]
+ * - Reports API requires timeframe and conversion_metric_id
  */
 
 const KLAVIYO_API_BASE = "https://a.klaviyo.com/api";
 const KLAVIYO_REVISION = "2024-10-15"; // Stable revision
+const PLACED_ORDER_METRIC_ID = "TQuQA4"; // Smithey's Placed Order metric
 
 // ============================================================
 // Types
@@ -74,31 +76,16 @@ export interface CampaignMetrics {
 export interface CampaignReportData {
   campaignId: string;
   statistics: {
-    bounced: number;
-    bounced_or_failed: number;
-    bounce_rate: number;
-    clicked: number;
-    click_rate: number;
-    click_to_open_rate: number;
-    delivered: number;
-    delivery_rate: number;
-    failed: number;
-    failed_rate: number;
-    opened: number;
+    opens: number;
     open_rate: number;
+    clicks: number;
+    click_rate: number;
+    bounced: number;
+    delivered: number;
     recipients: number;
-    revenue_per_recipient: number;
-    spam_complaints: number;
-    spam_complaint_rate: number;
-    total_revenue: number;
-    unique_clicks: number;
-    unique_click_rate: number;
-    unique_conversions: number;
-    unique_conversion_rate: number;
-    unique_opens: number;
-    unique_open_rate: number;
-    unsubscribed: number;
-    unsubscribe_rate: number;
+    conversions: number;
+    conversion_value: number;
+    unsubscribes: number;
   };
 }
 
@@ -233,34 +220,36 @@ export class KlaviyoClient {
   }
 
   /**
-   * Get campaign performance report using the Reporting API
+   * Get bulk campaign performance reports using the Reporting API
+   * Returns a map of campaignId -> statistics
+   *
+   * Note: The Klaviyo Reports API requires:
+   * - timeframe (key like 'last_90_days' or custom start/end)
+   * - conversion_metric_id (for revenue/conversion stats)
    */
-  async getCampaignReport(campaignId: string): Promise<CampaignReportData | null> {
+  async getAllCampaignReports(timeframeKey = "last_90_days"): Promise<Map<string, CampaignReportData["statistics"]>> {
+    const statsMap = new Map<string, CampaignReportData["statistics"]>();
+
     try {
       const body = {
         data: {
           type: "campaign-values-report",
           attributes: {
-            campaign_ids: [campaignId],
+            timeframe: {
+              key: timeframeKey,
+            },
+            conversion_metric_id: PLACED_ORDER_METRIC_ID,
             statistics: [
-              "bounced",
-              "bounce_rate",
-              "clicked",
-              "click_rate",
-              "delivered",
-              "delivery_rate",
-              "opened",
+              "opens",
               "open_rate",
+              "clicks",
+              "click_rate",
+              "bounced",
+              "delivered",
               "recipients",
-              "total_revenue",
-              "unique_clicks",
-              "unique_click_rate",
-              "unique_conversions",
-              "unique_conversion_rate",
-              "unique_opens",
-              "unique_open_rate",
-              "unsubscribed",
-              "unsubscribe_rate",
+              "conversions",
+              "conversion_value",
+              "unsubscribes",
             ],
           },
         },
@@ -271,7 +260,11 @@ export class KlaviyoClient {
           type: string;
           attributes: {
             results: Array<{
-              groupings: Record<string, string>;
+              groupings: {
+                send_channel: string;
+                campaign_id: string;
+                campaign_message_id: string;
+              };
               statistics: CampaignReportData["statistics"];
             }>;
           };
@@ -281,17 +274,37 @@ export class KlaviyoClient {
         body: JSON.stringify(body),
       });
 
-      const result = response.data?.attributes?.results?.[0];
-      if (!result) return null;
+      const results = response.data?.attributes?.results || [];
 
-      return {
-        campaignId,
-        statistics: result.statistics,
-      };
+      for (const result of results) {
+        const campaignId = result.groupings.campaign_id;
+        if (campaignId) {
+          statsMap.set(campaignId, result.statistics);
+        }
+      }
+
+      console.log(`[KLAVIYO] Got reports for ${statsMap.size} campaigns`);
     } catch (error) {
-      console.error(`[KLAVIYO] Failed to get report for campaign ${campaignId}:`, error);
-      return null;
+      console.error("[KLAVIYO] Failed to get campaign reports:", error);
     }
+
+    return statsMap;
+  }
+
+  /**
+   * Get campaign performance report for a single campaign (uses bulk API internally)
+   * @deprecated Use getAllCampaignReports for efficiency
+   */
+  async getCampaignReport(campaignId: string): Promise<CampaignReportData | null> {
+    const allReports = await this.getAllCampaignReports();
+    const stats = allReports.get(campaignId);
+
+    if (!stats) return null;
+
+    return {
+      campaignId,
+      statistics: stats,
+    };
   }
 
   /**
@@ -391,21 +404,23 @@ export function createKlaviyoClient(): KlaviyoClient {
  */
 export function reportToMetrics(report: CampaignReportData): CampaignMetrics {
   const stats = report.statistics;
+  const recipients = stats.recipients || 0;
+  const conversions = stats.conversions || 0;
 
   return {
-    recipients: stats.recipients || 0,
+    recipients,
     delivered: stats.delivered || 0,
-    opens: stats.opened || 0,
-    uniqueOpens: stats.unique_opens || 0,
-    clicks: stats.clicked || 0,
-    uniqueClicks: stats.unique_clicks || 0,
-    conversions: stats.unique_conversions || 0,
-    conversionValue: stats.total_revenue || 0,
+    opens: stats.opens || 0,
+    uniqueOpens: stats.opens || 0, // API returns opens, not unique_opens
+    clicks: stats.clicks || 0,
+    uniqueClicks: stats.clicks || 0, // API returns clicks, not unique_clicks
+    conversions,
+    conversionValue: stats.conversion_value || 0,
     bounces: stats.bounced || 0,
-    unsubscribes: stats.unsubscribed || 0,
-    openRate: stats.unique_open_rate || 0,
-    clickRate: stats.unique_click_rate || 0,
-    conversionRate: stats.unique_conversion_rate || 0,
+    unsubscribes: stats.unsubscribes || 0,
+    openRate: stats.open_rate || 0,
+    clickRate: stats.click_rate || 0,
+    conversionRate: recipients > 0 ? conversions / recipients : 0,
   };
 }
 

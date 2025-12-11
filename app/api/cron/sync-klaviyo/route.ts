@@ -94,15 +94,21 @@ export async function GET(request: Request) {
     const ninetyDaysAgo = daysAgo(90);
     const now = new Date();
 
-    const sentCampaigns = await klaviyo.getSentCampaigns(ninetyDaysAgo, now);
-    console.log(`[KLAVIYO SYNC] Found ${sentCampaigns.length} sent campaigns`);
+    // Get campaigns list and bulk reports in parallel
+    const [sentCampaigns, campaignReports] = await Promise.all([
+      klaviyo.getSentCampaigns(ninetyDaysAgo, now),
+      klaviyo.getAllCampaignReports("last_90_days"),
+    ]);
+
+    console.log(`[KLAVIYO SYNC] Found ${sentCampaigns.length} sent campaigns, ${campaignReports.size} with reports`);
 
     for (const campaign of sentCampaigns) {
       try {
-        // Get detailed metrics for this campaign
-        const report = await klaviyo.getCampaignReport(campaign.id);
+        // Get metrics from bulk report data
+        const reportStats = campaignReports.get(campaign.id);
 
-        if (report) {
+        if (reportStats) {
+          const report = { campaignId: campaign.id, statistics: reportStats };
           const metrics = reportToMetrics(report);
 
           // Upsert campaign with metrics
@@ -138,10 +144,9 @@ export async function GET(request: Request) {
           } else {
             stats.campaignsSynced++;
           }
+        } else {
+          console.log(`[KLAVIYO SYNC] No report data for campaign ${campaign.id} (${campaign.attributes.name})`);
         }
-
-        // Rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 100));
 
       } catch (err) {
         console.error(`[KLAVIYO SYNC] Error processing campaign ${campaign.id}:`, err);
