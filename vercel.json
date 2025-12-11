@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/sync-klaviyo",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/sync-shopify-stats",
+      "schedule": "30 5 * * *"
     }
   ]
 }
