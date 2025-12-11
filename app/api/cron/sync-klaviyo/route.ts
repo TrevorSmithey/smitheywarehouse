@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     const ninetyDaysAgo = daysAgo(90);
     const now = new Date();
 
-    const sentCampaigns = await klaviyo.getCampaignsByDateRange(ninetyDaysAgo, now);
+    const sentCampaigns = await klaviyo.getSentCampaigns(ninetyDaysAgo, now);
     console.log(`[KLAVIYO SYNC] Found ${sentCampaigns.length} sent campaigns`);
 
     for (const campaign of sentCampaigns) {
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
             {
               klaviyo_id: campaign.id,
               name: campaign.attributes.name,
-              channel: campaign.attributes.channel,
+              channel: "email", // We're filtering for email campaigns
               status: campaign.attributes.status,
               send_time: campaign.attributes.send_time,
               recipients: metrics.recipients,
@@ -237,7 +237,7 @@ export async function GET(request: Request) {
           {
             klaviyo_id: campaign.id,
             name: campaign.attributes.name,
-            channel: campaign.attributes.channel,
+            channel: "email", // We're filtering for email campaigns
             scheduled_time: campaign.attributes.scheduled_at || campaign.attributes.send_strategy.options_static?.datetime,
             audience_size: audienceSize > 0 ? audienceSize : null,
             predicted_opens: predictedOpens > 0 ? predictedOpens : null,
