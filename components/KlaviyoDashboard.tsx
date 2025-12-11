@@ -337,7 +337,7 @@ interface MonthlyChartData {
   yoyChange?: number;
 }
 
-function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) {
+function MonthlyRevenueTrend({ monthly, period }: { monthly: KlaviyoMonthlySummary[]; period: KlaviyoPeriod }) {
   const chartData: MonthlyChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
@@ -346,14 +346,34 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
       new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
     );
 
-    // Filter to current year only (Jan 2025 onwards)
-    const currentYear = new Date().getFullYear();
-    const thisYear = sorted.filter(m => {
-      const [year] = m.month_start.split('-').map(Number);
-      return year >= currentYear;
-    });
+    // Filter based on period selection
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    let filtered: KlaviyoMonthlySummary[];
 
-    return thisYear.map(m => {
+    switch (period) {
+      case "mtd":
+      case "last_month":
+      case "30d":
+        // Show last 6 months for short periods
+        filtered = sorted.slice(-6);
+        break;
+      case "qtd":
+      case "90d":
+        // Show last 6 months for quarter view
+        filtered = sorted.slice(-6);
+        break;
+      case "ytd":
+      default:
+        // Show current year for YTD
+        filtered = sorted.filter(m => {
+          const [year] = m.month_start.split('-').map(Number);
+          return year >= currentYear;
+        });
+        break;
+    }
+
+    return filtered.map(m => {
       // Parse date as local time to avoid timezone shift
       // month_start is "YYYY-MM-DD", split and create date with local timezone
       const [year, month, day] = m.month_start.split('-').map(Number);
@@ -385,7 +405,7 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
         yoyChange,
       };
     });
-  }, [monthly]);
+  }, [monthly, period]);
 
   if (chartData.length < 2) return null;
 
@@ -590,7 +610,7 @@ interface SubscriberChartData {
   engaged365Day: number | null;
 }
 
-function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }) {
+function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySummary[]; period: KlaviyoPeriod }) {
   const chartData: SubscriberChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
@@ -599,15 +619,38 @@ function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }
       new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
     );
 
-    // Filter to current year only (Jan 2025 onwards) with subscriber data
+    // Filter based on period selection
     const currentYear = new Date().getFullYear();
-    const thisYear = sorted.filter(m => {
-      const [year] = m.month_start.split('-').map(Number);
-      return year >= currentYear &&
-        (m.subscribers_120day !== null || m.subscribers_365day !== null);
-    });
+    let filtered: KlaviyoMonthlySummary[];
 
-    return thisYear.map(m => {
+    switch (period) {
+      case "mtd":
+      case "last_month":
+      case "30d":
+        // Show last 6 months for short periods
+        filtered = sorted.filter(m =>
+          m.subscribers_120day !== null || m.subscribers_365day !== null
+        ).slice(-6);
+        break;
+      case "qtd":
+      case "90d":
+        // Show last 6 months for quarter view
+        filtered = sorted.filter(m =>
+          m.subscribers_120day !== null || m.subscribers_365day !== null
+        ).slice(-6);
+        break;
+      case "ytd":
+      default:
+        // Show current year for YTD
+        filtered = sorted.filter(m => {
+          const [year] = m.month_start.split('-').map(Number);
+          return year >= currentYear &&
+            (m.subscribers_120day !== null || m.subscribers_365day !== null);
+        });
+        break;
+    }
+
+    return filtered.map(m => {
       // Parse date as local time to avoid timezone shift
       const [year, month, day] = m.month_start.split('-').map(Number);
       const date = new Date(year, month - 1, day);
@@ -618,7 +661,7 @@ function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }
         engaged365Day: m.subscribers_365day,
       };
     });
-  }, [monthly]);
+  }, [monthly, period]);
 
   // Need at least 1 data point to show anything useful
   if (chartData.length < 1) {
@@ -1161,14 +1204,14 @@ export function KlaviyoDashboard({
           MONTHLY TREND CHART
           ================================================================ */}
       {data.monthly && data.monthly.length > 1 && (
-        <MonthlyRevenueTrend monthly={data.monthly} />
+        <MonthlyRevenueTrend monthly={data.monthly} period={period} />
       )}
 
       {/* ================================================================
           SUBSCRIBER GROWTH CHART
           ================================================================ */}
       {data.monthly && (
-        <SubscriberGrowthChart monthly={data.monthly} />
+        <SubscriberGrowthChart monthly={data.monthly} period={period} />
       )}
 
       {/* ================================================================

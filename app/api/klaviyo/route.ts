@@ -187,25 +187,37 @@ export async function GET(request: Request) {
     const currentCampaigns = campaignsResult.data || [];
     const prevCampaigns = prevCampaignsResult.data || [];
 
-    // Campaign revenue
+    // Campaign revenue (filtered by period)
     const campaignRevenue = currentCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
     const campaignConversions = currentCampaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
 
-    // Get flow revenue and subscriber counts from current month's stats
-    const currentMonthStats = monthly.find(m => {
-      const monthDate = new Date(m.month_start);
-      return monthDate.getMonth() === now.getMonth() && monthDate.getFullYear() === now.getFullYear();
-    });
+    // Helper to check if a month falls within a date range
+    const isMonthInRange = (monthStart: string, start: Date, end: Date): boolean => {
+      const [year, month] = monthStart.split('-').map(Number);
+      const monthDate = new Date(year, month - 1, 1);
+      const monthEnd = new Date(year, month, 0, 23, 59, 59); // Last day of month
+      // Month overlaps with range if month start <= range end AND month end >= range start
+      return monthDate <= end && monthEnd >= start;
+    };
 
-    const flowRevenue = currentMonthStats?.flow_revenue || 0;
-    const flowConversions = currentMonthStats?.flow_conversions || 0;
-    const subscribers120day = currentMonthStats?.subscribers_120day || 0;
-    const subscribers365day = currentMonthStats?.subscribers_365day || 0;
+    // Get flow revenue by summing monthly stats within the period range
+    const monthsInPeriod = monthly.filter(m => isMonthInRange(m.month_start, rangeStart, rangeEnd));
+    const flowRevenue = monthsInPeriod.reduce((sum, m) => sum + (m.flow_revenue || 0), 0);
+    const flowConversions = monthsInPeriod.reduce((sum, m) => sum + (m.flow_conversions || 0), 0);
+
+    // Get subscriber counts from the most recent month in the period (or current month for MTD)
+    const latestMonthInPeriod = monthsInPeriod.length > 0
+      ? monthsInPeriod.reduce((latest, m) =>
+          new Date(m.month_start) > new Date(latest.month_start) ? m : latest
+        )
+      : monthly[0]; // Fallback to most recent month
+    const subscribers120day = latestMonthInPeriod?.subscribers_120day || 0;
+    const subscribers365day = latestMonthInPeriod?.subscribers_365day || 0;
 
     const totalEmailRevenue = campaignRevenue + flowRevenue;
     const totalConversions = campaignConversions + flowConversions;
 
-    // Calculate averages
+    // Calculate averages from campaigns in the period
     const campaignsWithMetrics = currentCampaigns.filter((c) => c.recipients > 0);
     const avgOpenRate = campaignsWithMetrics.length > 0
       ? campaignsWithMetrics.reduce((sum, c) => sum + (c.open_rate || 0), 0) / campaignsWithMetrics.length
@@ -214,27 +226,25 @@ export async function GET(request: Request) {
       ? campaignsWithMetrics.reduce((sum, c) => sum + (c.click_rate || 0), 0) / campaignsWithMetrics.length
       : 0;
 
-    // Calculate advanced KPIs
+    // Calculate advanced KPIs from campaigns in the period
     const totalRecipients = currentCampaigns.reduce((sum, c) => sum + (c.recipients || 0), 0);
     const totalDelivered = currentCampaigns.reduce((sum, c) => sum + (c.delivered || 0), 0);
     const totalUnsubscribes = currentCampaigns.reduce((sum, c) => sum + (c.unsubscribes || 0), 0);
 
     // Revenue Per Recipient (RPR) - THE most important email marketing metric
-    // Industry benchmarks: campaigns ~$0.10, flows ~$1.94-3.65
     const campaignRPR = totalRecipients > 0 ? campaignRevenue / totalRecipients : 0;
 
-    // Flow RPR - we need flow recipients from monthly stats
-    const flowRecipients = currentMonthStats?.email_recipients || 0; // Using monthly aggregate
-    const flowRPR = flowRecipients > 0 ? flowRevenue / (flowRecipients * 0.1) : 0; // Flows touch ~10% of list
+    // Flow RPR - use total recipients from months in period
+    const flowRecipientTotal = monthsInPeriod.reduce((sum, m) => sum + (m.email_recipients || 0), 0);
+    const flowRPR = flowRecipientTotal > 0 ? flowRevenue / (flowRecipientTotal * 0.1) : 0;
 
     // Unsubscribe rate - healthy is <0.5%
     const unsubscribeRate = totalDelivered > 0 ? totalUnsubscribes / totalDelivered : 0;
 
     // Placed Order Rate (conversion rate per delivery)
-    // Industry: campaigns 0.07-0.1%, flows 1-3%
     const placedOrderRate = totalDelivered > 0 ? campaignConversions / totalDelivered : 0;
 
-    // Get Shopify revenue for email % calculation
+    // Get Shopify revenue for email % calculation (already filtered by period)
     let shopifyRevenue = 0;
     try {
       const { data: shopifyStats } = await supabase
@@ -252,14 +262,13 @@ export async function GET(request: Request) {
 
     const emailPctOfRevenue = shopifyRevenue > 0 ? (totalEmailRevenue / shopifyRevenue) * 100 : 0;
 
-    // Previous period revenue for delta
+    // Previous period flow revenue - sum monthly stats in prev period range
+    const prevMonthsInPeriod = monthly.filter(m => isMonthInRange(m.month_start, prevRangeStart, prevRangeEnd));
+    const prevFlowRevenue = prevMonthsInPeriod.reduce((sum, m) => sum + (m.flow_revenue || 0), 0);
+
+    // Previous period campaign revenue (already have from query)
     const prevCampaignRevenue = prevCampaigns.reduce((sum, c) => sum + (parseFloat(c.conversion_value) || 0), 0);
-    const prevMonthStats = monthly.find(m => {
-      const monthDate = new Date(m.month_start);
-      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      return monthDate.getMonth() === prevMonth.getMonth() && monthDate.getFullYear() === prevMonth.getFullYear();
-    });
-    const prevFlowRevenue = prevMonthStats?.flow_revenue || 0;
+
     const prevTotalRevenue = prevCampaignRevenue + prevFlowRevenue;
     const revenueDelta = totalEmailRevenue - prevTotalRevenue;
     const revenueDeltaPct = prevTotalRevenue > 0 ? (revenueDelta / prevTotalRevenue) * 100 : 0;
