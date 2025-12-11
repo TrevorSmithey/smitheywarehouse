@@ -348,21 +348,24 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
 
     // Filter to current year only (Jan 2025 onwards)
     const currentYear = new Date().getFullYear();
-    const yearStart = new Date(currentYear, 0, 1); // Jan 1 of current year
-    const thisYear = sorted.filter(m => new Date(m.month_start) >= yearStart);
+    const thisYear = sorted.filter(m => {
+      const [year] = m.month_start.split('-').map(Number);
+      return year >= currentYear;
+    });
 
     return thisYear.map(m => {
-      const date = new Date(m.month_start);
+      // Parse date as local time to avoid timezone shift
+      // month_start is "YYYY-MM-DD", split and create date with local timezone
+      const [year, month, day] = m.month_start.split('-').map(Number);
+      const date = new Date(year, month - 1, day); // month is 0-indexed
+
       const campaignRev = m.email_revenue || 0;
       const flowRev = m.flow_revenue || 0;
 
       // Find same month last year for YoY comparison
-      const lastYear = new Date(date);
-      lastYear.setFullYear(lastYear.getFullYear() - 1);
       const yoyMonth = sorted.find(prev => {
-        const prevDate = new Date(prev.month_start);
-        return prevDate.getMonth() === lastYear.getMonth() &&
-               prevDate.getFullYear() === lastYear.getFullYear();
+        const [prevYear, prevMonth] = prev.month_start.split('-').map(Number);
+        return prevMonth === month && prevYear === year - 1;
       });
 
       const yoyRevenue = yoyMonth ? (yoyMonth.email_revenue || 0) + (yoyMonth.flow_revenue || 0) : undefined;
@@ -399,12 +402,15 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
   }) => {
     if (!active || !payload || !payload.length) return null;
     const item = payload[0].payload;
+    // Parse month as local date to avoid timezone shift
+    const [year, month] = item.month.split('-').map(Number);
+    const tooltipDate = new Date(year, month - 1, 1);
 
     return (
       <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[200px]">
         <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/30">
           <span className="text-sm font-semibold text-text-primary">
-            {format(new Date(item.month), "MMMM yyyy")}
+            {format(tooltipDate, "MMMM yyyy")}
           </span>
           {item.yoyChange !== undefined && (
             <span className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
@@ -595,19 +601,23 @@ function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }
 
     // Filter to current year only (Jan 2025 onwards) with subscriber data
     const currentYear = new Date().getFullYear();
-    const yearStart = new Date(currentYear, 0, 1);
     const thisYear = sorted.filter(m => {
-      const monthDate = new Date(m.month_start);
-      return monthDate >= yearStart &&
+      const [year] = m.month_start.split('-').map(Number);
+      return year >= currentYear &&
         (m.subscribers_120day !== null || m.subscribers_365day !== null);
     });
 
-    return thisYear.map(m => ({
-      month: m.month_start,
-      displayMonth: format(new Date(m.month_start), "MMM"), // Just month name for current year
-      active120Day: m.subscribers_120day,
-      engaged365Day: m.subscribers_365day,
-    }));
+    return thisYear.map(m => {
+      // Parse date as local time to avoid timezone shift
+      const [year, month, day] = m.month_start.split('-').map(Number);
+      const date = new Date(year, month - 1, day);
+      return {
+        month: m.month_start,
+        displayMonth: format(date, "MMM"),
+        active120Day: m.subscribers_120day,
+        engaged365Day: m.subscribers_365day,
+      };
+    });
   }, [monthly]);
 
   // Need at least 1 data point to show anything useful
@@ -667,11 +677,14 @@ function SubscriberGrowthChart({ monthly }: { monthly: KlaviyoMonthlySummary[] }
   }) => {
     if (!active || !payload || !payload.length) return null;
     const item = payload[0].payload;
+    // Parse month as local date to avoid timezone shift
+    const [year, month] = item.month.split('-').map(Number);
+    const tooltipDate = new Date(year, month - 1, 1);
 
     return (
       <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[180px]">
         <div className="text-sm font-semibold text-text-primary mb-3 pb-2 border-b border-border/30">
-          {format(new Date(item.month), "MMMM yyyy")}
+          {format(tooltipDate, "MMMM yyyy")}
         </div>
         <div className="space-y-2">
           {item.engaged365Day !== null && (
