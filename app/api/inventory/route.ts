@@ -368,7 +368,12 @@ export async function GET(request: Request) {
       lastSynced,
     };
 
-    return NextResponse.json(response);
+    // Add cache headers - inventory syncs every 15 min, cache for 60s
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    });
   } catch (error) {
     console.error("Error fetching inventory:", error);
     return NextResponse.json(

@@ -498,6 +498,29 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
+  // Prefetch other tabs in background after initial load
+  // This eliminates loading delay when switching tabs
+  useEffect(() => {
+    if (!loading && metrics) {
+      // Small delay to not compete with initial render
+      const prefetchTimer = setTimeout(() => {
+        // Prefetch inventory if not loaded
+        if (!inventory && !inventoryLoading) {
+          fetchInventory();
+        }
+        // Prefetch klaviyo marketing data if not loaded
+        if (!klaviyoData && !klaviyoLoading) {
+          fetchKlaviyo();
+        }
+        // Prefetch VOC tickets if not loaded
+        if (!ticketsData && !ticketsLoading) {
+          fetchTickets();
+        }
+      }, 500);
+      return () => clearTimeout(prefetchTimer);
+    }
+  }, [loading, metrics, inventory, inventoryLoading, fetchInventory, klaviyoData, klaviyoLoading, fetchKlaviyo, ticketsData, ticketsLoading, fetchTickets]);
+
   // Aggregate totals across warehouses
   const totals = metrics?.warehouses?.reduce(
     (acc, wh) => ({

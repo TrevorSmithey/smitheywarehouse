@@ -235,7 +235,12 @@ export async function GET(request: Request) {
       lastSynced: lastSyncedData?.synced_at || null,
     };
 
-    return NextResponse.json(response);
+    // Add cache headers - tickets sync hourly, cache for 60s
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    });
   } catch (error) {
     console.error("[TICKETS API] Error:", error);
     return NextResponse.json(
