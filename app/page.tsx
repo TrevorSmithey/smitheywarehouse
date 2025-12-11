@@ -2586,8 +2586,6 @@ function InventoryDashboard({
                     <span className="text-amber-400">{formatNumber(totals.hobson)}</span>
                     <span className="text-text-muted/50">/</span>
                     <span className="text-green-400">{formatNumber(totals.selery)}</span>
-                    <span className="text-text-muted/50">/</span>
-                    <span className="text-blue-400">{formatNumber(totals.pipefitter)}</span>
                     <span className="text-text-muted/50 mx-1">=</span>
                     <span className="text-text-primary font-bold">{formatNumber(totals.total)}</span>
                   </div>
@@ -2599,12 +2597,11 @@ function InventoryDashboard({
                 <div className="border-t border-border">
                   <table className="w-full text-sm table-fixed">
                     <colgroup>
-                      <col className="w-[35%] sm:w-[22%]" />
-                      <col className="w-[20%] sm:w-[13%]" />
-                      <col className="w-[20%] sm:w-[13%]" />
-                      <col className="hidden sm:table-column w-[13%]" />
-                      <col className="w-[25%] sm:w-[13%]" />
-                      {cat.showDoi && <col className="sm:w-[13%]" />}
+                      <col className="w-[35%] sm:w-[28%]" />
+                      <col className="w-[20%] sm:w-[15%]" />
+                      <col className="w-[20%] sm:w-[15%]" />
+                      <col className="w-[25%] sm:w-[15%]" />
+                      {cat.showDoi && <col className="sm:w-[14%]" />}
                       {cat.showVelocity && <col className="hidden sm:table-column w-[13%]" />}
                     </colgroup>
                     <thead>
@@ -2612,7 +2609,6 @@ function InventoryDashboard({
                         <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-amber-400">Hobson</th>
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-green-400">Selery</th>
-                        <th className="hidden sm:table-cell text-right py-2.5 px-4 font-medium text-blue-400">Pipefitter</th>
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium">Total</th>
                         {cat.showDoi && (
                           <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">DOI</th>
@@ -2628,6 +2624,7 @@ function InventoryDashboard({
                         const velocity = velocityBySku.get(product.sku.toLowerCase());
                         const isNegative = product.total < 0;
                         const hasWarehouseNegative = product.hobson < 0 || product.selery < 0;
+                        const hasLowStock = product.hobson < 10 || product.selery < 10;
                         // Build tooltip with budget % and velocity
                         const tooltipParts: string[] = [];
                         if (product.monthPct !== undefined) {
@@ -2642,11 +2639,11 @@ function InventoryDashboard({
                         }
                         const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
 
-                        // Row background: red if total negative, amber if Hobson/Selery negative
-                        const rowBg = isNegative
+                        // Row background: red if negative, orange if low stock (<10), else zebra stripe
+                        const rowBg = isNegative || hasWarehouseNegative
                           ? "bg-red-500/10"
-                          : hasWarehouseNegative
-                          ? "bg-amber-500/10"
+                          : hasLowStock
+                          ? "bg-status-warning/15"
                           : idx % 2 === 1
                           ? "bg-bg-tertiary/10"
                           : "";
@@ -2670,22 +2667,14 @@ function InventoryDashboard({
                               </div>
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.hobson < 0 ? "text-red-400 bg-red-500/10" :
-                              product.hobson < 10 ? "text-amber-400 bg-status-warning/15" : "text-amber-400"
+                              product.hobson < 0 ? "text-red-400" : "text-amber-400"
                             }`}>
                               {formatNumber(product.hobson)}
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.selery < 0 ? "text-red-400 bg-red-500/10" :
-                              product.selery < 10 ? "text-green-400 bg-status-warning/15" : "text-green-400"
+                              product.selery < 0 ? "text-red-400" : "text-green-400"
                             }`}>
                               {formatNumber(product.selery)}
-                            </td>
-                            <td className={`hidden sm:table-cell py-3 px-4 text-right tabular-nums text-[15px] font-semibold ${
-                              product.pipefitter < 0 ? "text-red-400 bg-red-500/10" :
-                              product.pipefitter < 10 ? "text-blue-400 bg-status-warning/15" : "text-blue-400"
-                            }`}>
-                              {formatNumber(product.pipefitter)}
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold ${
                               isNegative ? "text-red-400" : "text-text-primary"
@@ -2738,9 +2727,6 @@ function InventoryDashboard({
                         </td>
                         <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-green-400">
                           {formatNumber(totals.selery)}
-                        </td>
-                        <td className="hidden sm:table-cell py-3 px-4 text-right tabular-nums text-[15px] font-bold text-blue-400">
-                          {formatNumber(totals.pipefitter)}
                         </td>
                         <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">
                           {formatNumber(totals.total)}
