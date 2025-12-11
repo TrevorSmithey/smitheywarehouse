@@ -435,12 +435,7 @@ export default function Dashboard() {
   const fetchKlaviyo = useCallback(async () => {
     try {
       setKlaviyoLoading(true);
-      const params = new URLSearchParams();
-      params.set("period", klaviyoPeriod);
-      if (klaviyoChannelFilter !== "all") {
-        params.set("channel", klaviyoChannelFilter);
-      }
-      const res = await fetch(`/api/klaviyo?${params}`);
+      const res = await fetch(`/api/klaviyo?period=${klaviyoPeriod}`);
       if (!res.ok) throw new Error("Failed to fetch Klaviyo data");
       const data: KlaviyoResponse = await res.json();
       setKlaviyoData(data);
@@ -449,7 +444,7 @@ export default function Dashboard() {
     } finally {
       setKlaviyoLoading(false);
     }
-  }, [klaviyoPeriod, klaviyoChannelFilter]);
+  }, [klaviyoPeriod]);
 
   // Load Klaviyo data when switching to marketing tab
   useEffect(() => {
@@ -464,7 +459,7 @@ export default function Dashboard() {
       fetchKlaviyo();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [klaviyoPeriod, klaviyoChannelFilter]);
+  }, [klaviyoPeriod]);
 
   const fetchMetrics = useCallback(async () => {
     try {
