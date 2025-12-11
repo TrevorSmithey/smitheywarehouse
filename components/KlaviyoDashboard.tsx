@@ -19,6 +19,13 @@ import {
   UserMinus,
   Target,
   Scale,
+  Activity,
+  Clock,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  Send,
+  Heart,
 } from "lucide-react";
 import {
   AreaChart,
@@ -36,6 +43,8 @@ import type {
   KlaviyoResponse,
   KlaviyoCampaignSummary,
   KlaviyoMonthlySummary,
+  SendTimeAnalysis,
+  FlowBreakdown,
 } from "@/lib/types";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
@@ -867,6 +876,355 @@ function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySum
 }
 
 // ============================================================================
+// LIST HEALTH SCORE
+// ============================================================================
+
+function ListHealthScoreCard({ score }: { score: number }) {
+  // Determine health level
+  const getHealthLevel = (s: number): { label: string; color: string; bgColor: string; icon: React.ReactNode } => {
+    if (s >= 80) return {
+      label: "Excellent",
+      color: "text-status-good",
+      bgColor: "bg-status-good/10",
+      icon: <CheckCircle className="w-5 h-5 text-status-good" />
+    };
+    if (s >= 60) return {
+      label: "Good",
+      color: "text-accent-blue",
+      bgColor: "bg-accent-blue/10",
+      icon: <Heart className="w-5 h-5 text-accent-blue" />
+    };
+    if (s >= 40) return {
+      label: "Fair",
+      color: "text-status-warning",
+      bgColor: "bg-status-warning/10",
+      icon: <AlertTriangle className="w-5 h-5 text-status-warning" />
+    };
+    return {
+      label: "Needs Attention",
+      color: "text-status-bad",
+      bgColor: "bg-status-bad/10",
+      icon: <AlertTriangle className="w-5 h-5 text-status-bad" />
+    };
+  };
+
+  const health = getHealthLevel(score);
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">
+            List Health Score
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-3xl font-bold tabular-nums ${health.color}`}>
+              {score}
+            </span>
+            <span className="text-sm text-text-muted">/100</span>
+          </div>
+        </div>
+        <div className={`p-2.5 rounded-lg ${health.bgColor}`}>
+          {health.icon}
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden mb-3">
+        <div
+          className={`h-full transition-all duration-500 ${
+            score >= 80 ? "bg-status-good" :
+            score >= 60 ? "bg-accent-blue" :
+            score >= 40 ? "bg-status-warning" : "bg-status-bad"
+          }`}
+          style={{ width: `${score}%` }}
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className={`text-xs font-medium ${health.color}`}>{health.label}</span>
+        <span className="text-[10px] text-text-muted">
+          Based on delivery, bounce, unsub & engagement
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// DELIVERABILITY METRICS
+// ============================================================================
+
+function DeliverabilityMetrics({
+  deliveryRate,
+  bounceRate,
+  totalDelivered,
+  totalBounces,
+  revenuePerEmail,
+}: {
+  deliveryRate: number;
+  bounceRate: number;
+  totalDelivered: number;
+  totalBounces: number;
+  revenuePerEmail: number;
+}) {
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Send className="w-4 h-4 text-text-tertiary" />
+        <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+          Deliverability
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Delivery Rate */}
+        <div>
+          <div className={`text-xl font-bold tabular-nums ${
+            deliveryRate >= 0.95 ? "text-status-good" :
+            deliveryRate >= 0.90 ? "text-status-warning" : "text-status-bad"
+          }`}>
+            {(deliveryRate * 100).toFixed(1)}%
+          </div>
+          <div className="text-[10px] text-text-muted mt-0.5">Delivery Rate</div>
+          <div className="text-[10px] text-text-tertiary">
+            {formatNumber(totalDelivered)} delivered
+          </div>
+        </div>
+
+        {/* Bounce Rate */}
+        <div>
+          <div className={`text-xl font-bold tabular-nums ${
+            bounceRate <= 0.02 ? "text-status-good" :
+            bounceRate <= 0.05 ? "text-status-warning" : "text-status-bad"
+          }`}>
+            {(bounceRate * 100).toFixed(2)}%
+          </div>
+          <div className="text-[10px] text-text-muted mt-0.5">Bounce Rate</div>
+          <div className="text-[10px] text-text-tertiary">
+            {formatNumber(totalBounces)} bounced
+          </div>
+        </div>
+
+        {/* Revenue Per Email */}
+        <div>
+          <div className="text-xl font-bold tabular-nums text-status-good">
+            ${revenuePerEmail.toFixed(3)}
+          </div>
+          <div className="text-[10px] text-text-muted mt-0.5">Rev/Email Sent</div>
+          <div className="text-[10px] text-text-tertiary">
+            Campaigns + Flows
+          </div>
+        </div>
+
+        {/* Health indicators */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${
+              deliveryRate >= 0.95 ? "bg-status-good" : "bg-status-warning"
+            }`} />
+            <span className="text-[10px] text-text-secondary">
+              {deliveryRate >= 0.95 ? "Healthy delivery" : "Check list hygiene"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${
+              bounceRate <= 0.02 ? "bg-status-good" : "bg-status-warning"
+            }`} />
+            <span className="text-[10px] text-text-secondary">
+              {bounceRate <= 0.02 ? "Low bounces" : "Verify addresses"}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SEND TIME ANALYSIS
+// ============================================================================
+
+function SendTimeAnalysisCard({ analysis }: { analysis: SendTimeAnalysis }) {
+  // Filter to hours with campaigns for display
+  const activeHours = analysis.byHour.filter(h => h.campaigns > 0);
+  const activeDays = analysis.byDayOfWeek.filter(d => d.campaigns > 0);
+
+  // Find max values for scaling
+  const maxHourRevenue = Math.max(...activeHours.map(h => h.total_revenue), 1);
+  const maxDayRevenue = Math.max(...activeDays.map(d => d.total_revenue), 1);
+
+  // Format hour for display
+  const formatHour = (hour: number): string => {
+    if (hour === 0) return "12am";
+    if (hour === 12) return "12pm";
+    if (hour < 12) return `${hour}am`;
+    return `${hour - 12}pm`;
+  };
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-text-tertiary" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+            Best Send Times
+          </h3>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="text-sm font-semibold text-accent-blue">{formatHour(analysis.bestHour)}</div>
+            <div className="text-[10px] text-text-muted">Best Hour</div>
+          </div>
+          <div className="text-right border-l border-border/30 pl-4">
+            <div className="text-sm font-semibold text-accent-blue">{analysis.bestDay}</div>
+            <div className="text-[10px] text-text-muted">Best Day</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* By Day of Week */}
+        <div>
+          <div className="text-[10px] text-text-muted mb-3">Revenue by Day</div>
+          <div className="space-y-2">
+            {activeDays.map(day => (
+              <div key={day.day} className="flex items-center gap-3">
+                <div className="w-12 text-[10px] text-text-secondary font-medium">
+                  {day.dayName.slice(0, 3)}
+                </div>
+                <div className="flex-1 h-5 bg-bg-tertiary rounded overflow-hidden">
+                  <div
+                    className="h-full bg-accent-blue/60 flex items-center justify-end px-2"
+                    style={{ width: `${(day.total_revenue / maxDayRevenue) * 100}%` }}
+                  >
+                    {day.total_revenue > 100 && (
+                      <span className="text-[9px] text-white font-medium tabular-nums">
+                        {formatCurrency(day.total_revenue)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="w-8 text-[10px] text-text-muted tabular-nums text-right">
+                  {day.campaigns}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="text-[10px] text-text-muted mt-2 text-right">campaigns</div>
+        </div>
+
+        {/* By Hour - Show top performing hours */}
+        <div>
+          <div className="text-[10px] text-text-muted mb-3">Top Hours by Open Rate</div>
+          <div className="space-y-2">
+            {activeHours
+              .sort((a, b) => b.avg_open_rate - a.avg_open_rate)
+              .slice(0, 5)
+              .map(hour => (
+                <div key={hour.hour} className="flex items-center gap-3">
+                  <div className="w-12 text-[10px] text-text-secondary font-medium">
+                    {formatHour(hour.hour)}
+                  </div>
+                  <div className="flex-1 h-5 bg-bg-tertiary rounded overflow-hidden">
+                    <div
+                      className="h-full bg-status-good/60 flex items-center justify-end px-2"
+                      style={{ width: `${hour.avg_open_rate * 100 * 2}%` }}
+                    >
+                      {hour.avg_open_rate > 0.1 && (
+                        <span className="text-[9px] text-white font-medium tabular-nums">
+                          {(hour.avg_open_rate * 100).toFixed(0)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-8 text-[10px] text-text-muted tabular-nums text-right">
+                    {hour.campaigns}
+                  </div>
+                </div>
+              ))}
+          </div>
+          <div className="text-[10px] text-text-muted mt-2 text-right">campaigns</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// FLOW BREAKDOWN
+// ============================================================================
+
+function FlowBreakdownCard({ breakdown }: { breakdown: FlowBreakdown }) {
+  // Convert to array and sort by revenue
+  const flowCategories = [
+    { key: "welcome", label: "Welcome Series", ...breakdown.welcome },
+    { key: "abandoned_cart", label: "Abandoned Cart", ...breakdown.abandoned_cart },
+    { key: "abandoned_checkout", label: "Abandoned Checkout", ...breakdown.abandoned_checkout },
+    { key: "browse_abandonment", label: "Browse Abandonment", ...breakdown.browse_abandonment },
+    { key: "post_purchase", label: "Post Purchase", ...breakdown.post_purchase },
+    { key: "winback", label: "Win Back", ...breakdown.winback },
+    { key: "other", label: "Other Flows", ...breakdown.other },
+  ].filter(c => c.flowCount > 0).sort((a, b) => b.revenue - a.revenue);
+
+  const totalRevenue = flowCategories.reduce((sum, c) => sum + c.revenue, 0);
+  const maxRevenue = Math.max(...flowCategories.map(c => c.revenue), 1);
+
+  if (flowCategories.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Zap className="w-4 h-4 text-text-tertiary" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+            Flow Performance
+          </h3>
+        </div>
+        <div className="text-right">
+          <div className="text-lg font-semibold text-status-warning tabular-nums">
+            {formatCurrency(totalRevenue)}
+          </div>
+          <div className="text-[10px] text-text-muted">Total Flow Revenue</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {flowCategories.map(category => {
+          const pct = totalRevenue > 0 ? (category.revenue / totalRevenue) * 100 : 0;
+          return (
+            <div key={category.key} className="group">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-text-primary font-medium">{category.label}</span>
+                  <span className="text-[10px] text-text-muted">({category.flowCount} flow{category.flowCount !== 1 ? "s" : ""})</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-text-muted tabular-nums">{category.conversions} orders</span>
+                  <span className="text-sm font-semibold text-status-warning tabular-nums">{formatCurrency(category.revenue)}</span>
+                </div>
+              </div>
+              <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-status-warning/60 transition-all duration-300 group-hover:bg-status-warning"
+                  style={{ width: `${(category.revenue / maxRevenue) * 100}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-border/20 text-[10px] text-text-muted">
+        Lifetime revenue from active flows
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN DASHBOARD
 // ============================================================================
 
@@ -1198,6 +1556,39 @@ export function KlaviyoDashboard({
           icon={Users}
         />
       </div>
+
+      {/* ================================================================
+          LIST HEALTH & DELIVERABILITY ROW
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* List Health Score */}
+        <ListHealthScoreCard score={stats.list_health_score || 0} />
+
+        {/* Deliverability Metrics */}
+        <div className="lg:col-span-2">
+          <DeliverabilityMetrics
+            deliveryRate={stats.delivery_rate || 0}
+            bounceRate={stats.bounce_rate || 0}
+            totalDelivered={stats.total_delivered || 0}
+            totalBounces={stats.total_bounces || 0}
+            revenuePerEmail={stats.revenue_per_email || 0}
+          />
+        </div>
+      </div>
+
+      {/* ================================================================
+          SEND TIME ANALYSIS
+          ================================================================ */}
+      {data.sendTimeAnalysis && data.sendTimeAnalysis.byHour.some(h => h.campaigns > 0) && (
+        <SendTimeAnalysisCard analysis={data.sendTimeAnalysis} />
+      )}
+
+      {/* ================================================================
+          FLOW BREAKDOWN
+          ================================================================ */}
+      {data.flowBreakdown && (
+        <FlowBreakdownCard breakdown={data.flowBreakdown} />
+      )}
 
       {/* ================================================================
           MONTHLY TREND CHART

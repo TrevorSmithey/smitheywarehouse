@@ -12,6 +12,8 @@ import type {
   KlaviyoUpcomingCampaign,
   KlaviyoFlow,
   KlaviyoStats,
+  SendTimeAnalysis,
+  FlowBreakdown,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -233,6 +235,7 @@ export async function GET(request: Request) {
     const totalRecipients = currentCampaigns.reduce((sum, c) => sum + (c.recipients || 0), 0);
     const totalDelivered = currentCampaigns.reduce((sum, c) => sum + (c.delivered || 0), 0);
     const totalUnsubscribes = currentCampaigns.reduce((sum, c) => sum + (c.unsubscribes || 0), 0);
+    const totalBounces = currentCampaigns.reduce((sum, c) => sum + (c.bounces || 0), 0);
 
     // Revenue Per Recipient (RPR) - THE most important email marketing metric
     const campaignRPR = totalRecipients > 0 ? campaignRevenue / totalRecipients : 0;
@@ -246,6 +249,142 @@ export async function GET(request: Request) {
 
     // Placed Order Rate (conversion rate per delivery)
     const placedOrderRate = totalDelivered > 0 ? campaignConversions / totalDelivered : 0;
+
+    // Deliverability metrics
+    const bounceRate = totalRecipients > 0 ? totalBounces / totalRecipients : 0;
+    const deliveryRate = totalRecipients > 0 ? totalDelivered / totalRecipients : 0;
+
+    // Revenue per email sent (total revenue / total recipients)
+    const revenuePerEmail = totalRecipients > 0 ? totalEmailRevenue / totalRecipients : 0;
+
+    // List Health Score (0-100)
+    // Factors: delivery rate, unsubscribe rate, bounce rate, engagement (open rate)
+    // Higher delivery + open rate = good, higher unsub + bounce = bad
+    const calculateListHealthScore = (): number => {
+      if (totalRecipients === 0) return 0;
+
+      // Weight each factor (total = 100)
+      const deliveryScore = deliveryRate * 30; // 30 points max - delivery rate
+      const bounceScore = (1 - Math.min(bounceRate * 10, 1)) * 20; // 20 points max - low bounce
+      const unsubScore = (1 - Math.min(unsubscribeRate * 100, 1)) * 20; // 20 points max - low unsub
+      const engagementScore = Math.min(avgOpenRate * 100, 30); // 30 points max - open rate capped at 30%
+
+      return Math.round(deliveryScore + bounceScore + unsubScore + engagementScore);
+    };
+    const listHealthScore = calculateListHealthScore();
+
+    // Send Time Analysis - aggregate campaigns by hour and day of week
+    const calculateSendTimeAnalysis = (): SendTimeAnalysis => {
+      const byHourMap = new Map<number, { campaigns: number; openRateSum: number; clickRateSum: number; revenue: number }>();
+      const byDayMap = new Map<number, { campaigns: number; openRateSum: number; clickRateSum: number; revenue: number }>();
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+      // Initialize all hours and days
+      for (let h = 0; h < 24; h++) {
+        byHourMap.set(h, { campaigns: 0, openRateSum: 0, clickRateSum: 0, revenue: 0 });
+      }
+      for (let d = 0; d < 7; d++) {
+        byDayMap.set(d, { campaigns: 0, openRateSum: 0, clickRateSum: 0, revenue: 0 });
+      }
+
+      // Aggregate campaigns
+      for (const c of currentCampaigns) {
+        if (!c.send_time) continue;
+        const sendDate = new Date(c.send_time);
+        const hour = sendDate.getHours();
+        const day = sendDate.getDay();
+
+        const hourData = byHourMap.get(hour)!;
+        hourData.campaigns++;
+        hourData.openRateSum += c.open_rate || 0;
+        hourData.clickRateSum += c.click_rate || 0;
+        hourData.revenue += parseFloat(c.conversion_value) || 0;
+
+        const dayData = byDayMap.get(day)!;
+        dayData.campaigns++;
+        dayData.openRateSum += c.open_rate || 0;
+        dayData.clickRateSum += c.click_rate || 0;
+        dayData.revenue += parseFloat(c.conversion_value) || 0;
+      }
+
+      const byHour = Array.from(byHourMap.entries()).map(([hour, data]) => ({
+        hour,
+        campaigns: data.campaigns,
+        avg_open_rate: data.campaigns > 0 ? data.openRateSum / data.campaigns : 0,
+        avg_click_rate: data.campaigns > 0 ? data.clickRateSum / data.campaigns : 0,
+        total_revenue: data.revenue,
+      }));
+
+      const byDayOfWeek = Array.from(byDayMap.entries()).map(([day, data]) => ({
+        day,
+        dayName: dayNames[day],
+        campaigns: data.campaigns,
+        avg_open_rate: data.campaigns > 0 ? data.openRateSum / data.campaigns : 0,
+        avg_click_rate: data.campaigns > 0 ? data.clickRateSum / data.campaigns : 0,
+        total_revenue: data.revenue,
+      }));
+
+      // Find best hour and day by open rate (only consider times with campaigns)
+      const hoursWithCampaigns = byHour.filter(h => h.campaigns > 0);
+      const daysWithCampaigns = byDayOfWeek.filter(d => d.campaigns > 0);
+
+      const bestHourData = hoursWithCampaigns.length > 0
+        ? hoursWithCampaigns.reduce((best, h) => h.avg_open_rate > best.avg_open_rate ? h : best)
+        : { hour: 10 }; // Default to 10 AM
+      const bestDayData = daysWithCampaigns.length > 0
+        ? daysWithCampaigns.reduce((best, d) => d.avg_open_rate > best.avg_open_rate ? d : best)
+        : { dayName: "Tuesday" }; // Default
+
+      return {
+        byHour,
+        byDayOfWeek,
+        bestHour: bestHourData.hour,
+        bestDay: bestDayData.dayName,
+      };
+    };
+    const sendTimeAnalysis = calculateSendTimeAnalysis();
+
+    // Flow Performance Breakdown - categorize flows by type
+    const calculateFlowBreakdown = (): FlowBreakdown => {
+      const breakdown: FlowBreakdown = {
+        welcome: { revenue: 0, conversions: 0, flowCount: 0 },
+        abandoned_cart: { revenue: 0, conversions: 0, flowCount: 0 },
+        abandoned_checkout: { revenue: 0, conversions: 0, flowCount: 0 },
+        browse_abandonment: { revenue: 0, conversions: 0, flowCount: 0 },
+        post_purchase: { revenue: 0, conversions: 0, flowCount: 0 },
+        winback: { revenue: 0, conversions: 0, flowCount: 0 },
+        other: { revenue: 0, conversions: 0, flowCount: 0 },
+      };
+
+      // Categorize flows by name/trigger type
+      for (const flow of flows) {
+        const nameLower = flow.name.toLowerCase();
+        const triggerLower = (flow.trigger_type || "").toLowerCase();
+
+        let category: keyof FlowBreakdown = "other";
+
+        if (nameLower.includes("welcome") || triggerLower.includes("subscribed")) {
+          category = "welcome";
+        } else if (nameLower.includes("abandoned cart") || triggerLower.includes("added to cart")) {
+          category = "abandoned_cart";
+        } else if (nameLower.includes("checkout") || triggerLower.includes("started checkout")) {
+          category = "abandoned_checkout";
+        } else if (nameLower.includes("browse") || triggerLower.includes("viewed product")) {
+          category = "browse_abandonment";
+        } else if (nameLower.includes("post purchase") || nameLower.includes("thank you") || triggerLower.includes("placed order")) {
+          category = "post_purchase";
+        } else if (nameLower.includes("winback") || nameLower.includes("win back") || nameLower.includes("re-engage")) {
+          category = "winback";
+        }
+
+        breakdown[category].revenue += flow.total_revenue;
+        breakdown[category].conversions += flow.total_conversions;
+        breakdown[category].flowCount++;
+      }
+
+      return breakdown;
+    };
+    const flowBreakdown = calculateFlowBreakdown();
 
     // Get Shopify revenue for email % calculation (already filtered by period)
     let shopifyRevenue = 0;
@@ -295,6 +434,15 @@ export async function GET(request: Request) {
       total_recipients: totalRecipients,
       unsubscribe_rate: unsubscribeRate,
       placed_order_rate: placedOrderRate,
+      // Deliverability metrics
+      total_delivered: totalDelivered,
+      total_bounces: totalBounces,
+      bounce_rate: bounceRate,
+      delivery_rate: deliveryRate,
+      // List health score
+      list_health_score: listHealthScore,
+      // Revenue per email
+      revenue_per_email: revenuePerEmail,
     };
 
     // Build response
@@ -304,6 +452,8 @@ export async function GET(request: Request) {
       upcoming,
       flows,
       stats,
+      sendTimeAnalysis,
+      flowBreakdown,
       lastSynced: lastSyncedResult.data?.last_synced_at || null,
     };
 

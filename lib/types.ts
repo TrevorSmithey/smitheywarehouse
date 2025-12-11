@@ -761,6 +761,47 @@ export interface KlaviyoStats {
   total_recipients: number; // Total recipients in period
   unsubscribe_rate: number; // Unsubscribes / Delivered
   placed_order_rate: number; // Conversions / Delivered
+  // Deliverability metrics
+  total_delivered: number;
+  total_bounces: number;
+  bounce_rate: number; // Bounces / Recipients
+  delivery_rate: number; // Delivered / Recipients
+  // List health score (0-100)
+  list_health_score: number;
+  // Revenue per email sent
+  revenue_per_email: number;
+}
+
+// Send time analysis - which hours/days perform best
+export interface SendTimeAnalysis {
+  byHour: Array<{
+    hour: number; // 0-23
+    campaigns: number;
+    avg_open_rate: number;
+    avg_click_rate: number;
+    total_revenue: number;
+  }>;
+  byDayOfWeek: Array<{
+    day: number; // 0=Sunday, 6=Saturday
+    dayName: string;
+    campaigns: number;
+    avg_open_rate: number;
+    avg_click_rate: number;
+    total_revenue: number;
+  }>;
+  bestHour: number;
+  bestDay: string;
+}
+
+// Flow performance breakdown by category
+export interface FlowBreakdown {
+  welcome: { revenue: number; conversions: number; flowCount: number };
+  abandoned_cart: { revenue: number; conversions: number; flowCount: number };
+  abandoned_checkout: { revenue: number; conversions: number; flowCount: number };
+  browse_abandonment: { revenue: number; conversions: number; flowCount: number };
+  post_purchase: { revenue: number; conversions: number; flowCount: number };
+  winback: { revenue: number; conversions: number; flowCount: number };
+  other: { revenue: number; conversions: number; flowCount: number };
 }
 
 export interface KlaviyoResponse {
@@ -774,6 +815,10 @@ export interface KlaviyoResponse {
   flows: KlaviyoFlow[];
   // Period summary stats
   stats: KlaviyoStats;
+  // Send time analysis
+  sendTimeAnalysis: SendTimeAnalysis;
+  // Flow breakdown by category
+  flowBreakdown: FlowBreakdown;
   // Metadata
   lastSynced: string | null;
 }
