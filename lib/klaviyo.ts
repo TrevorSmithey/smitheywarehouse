@@ -414,6 +414,83 @@ export class KlaviyoClient {
   }
 
   /**
+   * Get historical monthly flow revenue using flow-series-reports
+   * Returns monthly revenue for the past 12 months
+   */
+  async getFlowRevenueHistory(): Promise<{ date: string; revenue: number; conversions: number }[]> {
+    try {
+      const body = {
+        data: {
+          type: "flow-series-report",
+          attributes: {
+            timeframe: { key: "last_365_days" },
+            interval: "monthly",
+            conversion_metric_id: PLACED_ORDER_METRIC_ID,
+            statistics: ["conversions", "conversion_value"],
+          },
+        },
+      };
+
+      const response = await this.request<{
+        data: {
+          attributes: {
+            results: Array<{
+              groupings: { flow_id: string };
+              statistics: {
+                conversions: number[];
+                conversion_value: number[];
+              };
+            }>;
+            date_times: string[];
+          };
+        };
+      }>("/flow-series-reports/", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      const dateTimes = response.data?.attributes?.date_times || [];
+      const results = response.data?.attributes?.results || [];
+
+      // Aggregate all flows by month
+      const monthlyTotals = new Map<number, { revenue: number; conversions: number }>();
+
+      for (let i = 0; i < dateTimes.length; i++) {
+        monthlyTotals.set(i, { revenue: 0, conversions: 0 });
+      }
+
+      for (const result of results) {
+        const revenues = result.statistics.conversion_value || [];
+        const conversions = result.statistics.conversions || [];
+
+        for (let i = 0; i < revenues.length; i++) {
+          const existing = monthlyTotals.get(i) || { revenue: 0, conversions: 0 };
+          existing.revenue += revenues[i] || 0;
+          existing.conversions += conversions[i] || 0;
+          monthlyTotals.set(i, existing);
+        }
+      }
+
+      // Build result array
+      const history: { date: string; revenue: number; conversions: number }[] = [];
+      for (let i = 0; i < dateTimes.length; i++) {
+        const totals = monthlyTotals.get(i) || { revenue: 0, conversions: 0 };
+        history.push({
+          date: dateTimes[i].split("T")[0],
+          revenue: Math.round(totals.revenue * 100) / 100,
+          conversions: Math.round(totals.conversions),
+        });
+      }
+
+      console.log(`[KLAVIYO] Got ${history.length} months of flow revenue history`);
+      return history;
+    } catch (error) {
+      console.error("[KLAVIYO] Failed to get flow revenue history:", error);
+      return [];
+    }
+  }
+
+  /**
    * Get subscriber counts from key segments
    */
   async getSubscriberCounts(): Promise<SubscriberCounts> {

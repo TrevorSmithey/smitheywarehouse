@@ -77,7 +77,7 @@ def make_ns_request(url, method='POST', body=None, retries=3):
             time.sleep(5)
     return None
 
-def supabase_request(endpoint, method='GET', data=None):
+def supabase_request(endpoint, method='GET', data=None, on_conflict=None):
     """Make request to Supabase REST API"""
     url = f"{SUPABASE_URL}/rest/v1/{endpoint}"
     headers = {
@@ -90,7 +90,12 @@ def supabase_request(endpoint, method='GET', data=None):
     if method == 'GET':
         response = requests.get(url, headers=headers)
     elif method == 'POST':
-        headers['Prefer'] = 'resolution=merge-duplicates,return=minimal'
+        if on_conflict:
+            # Use upsert with specific conflict column
+            url = f"{url}?on_conflict={on_conflict}"
+            headers['Prefer'] = 'resolution=merge-duplicates,return=minimal'
+        else:
+            headers['Prefer'] = 'resolution=merge-duplicates,return=minimal'
         response = requests.post(url, headers=headers, json=data)
     elif method == 'DELETE':
         response = requests.delete(url, headers=headers)
@@ -185,7 +190,7 @@ def sync_transactions_streaming():
                 'ns_customer_id': t['customer_id']
             })
 
-        sb_response = supabase_request('ns_wholesale_transactions', method='POST', data=records)
+        sb_response = supabase_request('ns_wholesale_transactions', method='POST', data=records, on_conflict='ns_transaction_id')
 
         if sb_response.status_code not in [200, 201, 204]:
             print(f"  Batch {batch_num}: ERROR - {sb_response.text[:100]}")
@@ -268,7 +273,7 @@ def sync_transactions_streaming():
                 'item_type': li.get('itemtype')
             })
 
-        sb_response = supabase_request('ns_wholesale_line_items', method='POST', data=records)
+        sb_response = supabase_request('ns_wholesale_line_items', method='POST', data=records, on_conflict='ns_transaction_id,ns_line_id')
 
         if sb_response.status_code not in [200, 201, 204]:
             print(f"  Batch {batch_num}: ERROR - {sb_response.text[:100]}")
