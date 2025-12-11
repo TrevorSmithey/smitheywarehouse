@@ -40,13 +40,108 @@ export async function GET(request: Request) {
     const estParts = estFormatter.formatToParts(now);
     const estYear = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
     const estMonth = parseInt(estParts.find(p => p.type === "month")?.value || "1"); // 1-indexed for DB
+    const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
 
-    // Query current month's budgets from Supabase (for monthly % display)
-    const { data: currentMonthBudgets } = await supabase
-      .from("budgets")
-      .select("sku, budget")
-      .eq("year", estYear)
-      .eq("month", estMonth);
+    // Month boundaries in EST, converted to UTC for database queries
+    const estMonth0 = estMonth - 1; // 0-indexed for Date constructor
+    const monthStart = new Date(Date.UTC(estYear, estMonth0, 1, 5, 0, 0)).toISOString();
+    const lastDayOfMonth = new Date(estYear, estMonth0 + 1, 0).getDate();
+    const monthEnd = new Date(Date.UTC(estYear, estMonth0, lastDayOfMonth, 28, 59, 59)).toISOString();
+
+    // Build EST date strings for velocity queries
+    const todayEST = `${estYear}-${String(estMonth).padStart(2, '0')}-${String(estDay).padStart(2, '0')}`;
+    const threeDaysAgo = new Date(estYear, estMonth - 1, estDay - 3);
+    const threeDayStartEST = `${threeDaysAgo.getFullYear()}-${String(threeDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(threeDaysAgo.getDate()).padStart(2, '0')}`;
+    const sixDaysAgo = new Date(estYear, estMonth - 1, estDay - 6);
+    const sixDayStartEST = `${sixDaysAgo.getFullYear()}-${String(sixDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sixDaysAgo.getDate()).padStart(2, '0')}`;
+
+    // Run ALL queries in parallel for performance
+    const [
+      currentMonthBudgetsResult,
+      allBudgetsResult,
+      inventoryResult,
+      productsResult,
+      monthlySalesResult,
+      monthlyB2BResult,
+      sales3DayResult,
+      salesPrior3DayResult,
+    ] = await Promise.all([
+      // 1. Current month budgets
+      supabase
+        .from("budgets")
+        .select("sku, budget")
+        .eq("year", estYear)
+        .eq("month", estMonth),
+
+      // 2. All budgets for DOI
+      supabase
+        .from("budgets")
+        .select("sku, year, month, budget"),
+
+      // 3. Inventory
+      supabase
+        .from("inventory")
+        .select("sku, warehouse_id, available, synced_at")
+        .order("sku"),
+
+      // 4. Products
+      supabase
+        .from("products")
+        .select("sku, display_name, category")
+        .eq("is_active", true),
+
+      // 5. Monthly retail sales
+      supabase
+        .from("line_items")
+        .select("sku, quantity, orders!inner(created_at, canceled)")
+        .gte("orders.created_at", monthStart)
+        .lte("orders.created_at", monthEnd)
+        .eq("orders.canceled", false)
+        .limit(2000000),
+
+      // 6. Monthly B2B
+      supabase
+        .from("b2b_fulfilled")
+        .select("sku, quantity")
+        .gte("fulfilled_at", monthStart)
+        .lte("fulfilled_at", monthEnd)
+        .limit(1000000),
+
+      // 7. 3-day sales
+      supabase
+        .from("line_items")
+        .select("sku, quantity, orders!inner(created_at, canceled)")
+        .gte("orders.created_at", threeDayStartEST)
+        .lt("orders.created_at", todayEST)
+        .eq("orders.canceled", false)
+        .limit(1000000),
+
+      // 8. Prior 3-day sales
+      supabase
+        .from("line_items")
+        .select("sku, quantity, orders!inner(created_at, canceled)")
+        .gte("orders.created_at", sixDayStartEST)
+        .lt("orders.created_at", threeDayStartEST)
+        .eq("orders.canceled", false)
+        .limit(1000000),
+    ]);
+
+    // Extract data and check for errors
+    const { data: currentMonthBudgets } = currentMonthBudgetsResult;
+    const { data: allBudgets } = allBudgetsResult;
+    const { data: inventoryData, error: inventoryError } = inventoryResult;
+    const { data: productsData, error: productsError } = productsResult;
+    const { data: monthlySalesData, error: monthlySalesError } = monthlySalesResult;
+    const { data: monthlyB2BData, error: monthlyB2BError } = monthlyB2BResult;
+    const { data: sales3DayData, error: sales3DayError } = sales3DayResult;
+    const { data: salesPrior3DayData, error: salesPrior3DayError } = salesPrior3DayResult;
+
+    if (inventoryError) throw new Error(`Failed to fetch inventory: ${inventoryError.message}`);
+    if (productsError) throw new Error(`Failed to fetch products: ${productsError.message}`);
+    if (monthlySalesError) throw new Error(`Failed to fetch monthly sales: ${monthlySalesError.message}`);
+    if (monthlyB2BError) throw new Error(`Failed to fetch monthly B2B data: ${monthlyB2BError.message}`);
+    if (sales3DayError) throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
+    if (salesPrior3DayError) throw new Error(`Failed to fetch prior 3-day sales: ${salesPrior3DayError.message}`);
 
     // Create current month budget lookup (for display)
     const budgetBySku = new Map<string, number>();
@@ -54,77 +149,8 @@ export async function GET(request: Request) {
       budgetBySku.set(b.sku.toLowerCase(), b.budget);
     }
 
-    // Query ALL budgets for DOI calculation (needs full year projection)
-    const { data: allBudgets } = await supabase
-      .from("budgets")
-      .select("sku, year, month, budget");
-
     // Build budget lookup for DOI calculation
     const budgetLookup = buildBudgetLookup(allBudgets || []);
-
-    // Fetch inventory with product details
-    // Using AVAILABLE (sellable inventory) not on_hand
-    const { data: inventoryData, error: inventoryError } = await supabase
-      .from("inventory")
-      .select(`
-        sku,
-        warehouse_id,
-        available,
-        synced_at
-      `)
-      .order("sku");
-
-    if (inventoryError) {
-      throw new Error(`Failed to fetch inventory: ${inventoryError.message}`);
-    }
-
-    // Fetch products for display names and categories
-    const { data: productsData, error: productsError } = await supabase
-      .from("products")
-      .select("sku, display_name, category")
-      .eq("is_active", true);
-
-    if (productsError) {
-      throw new Error(`Failed to fetch products: ${productsError.message}`);
-    }
-
-    // Month boundaries in EST, converted to UTC for database queries
-    const estMonth0 = estMonth - 1; // 0-indexed for Date constructor
-    // EST midnight = UTC 5am (or 4am during DST, but 5am is safe buffer)
-    const monthStart = new Date(Date.UTC(estYear, estMonth0, 1, 5, 0, 0)).toISOString();
-    const lastDayOfMonth = new Date(estYear, estMonth0 + 1, 0).getDate();
-    const monthEnd = new Date(Date.UTC(estYear, estMonth0, lastDayOfMonth, 28, 59, 59)).toISOString(); // 4:59:59 AM UTC next day = 11:59:59 PM EST
-
-    // Query monthly retail orders by SKU (quantity ordered this month by order date)
-    // High limit to prevent any future truncation issues
-    const { data: monthlySalesData, error: monthlySalesError } = await supabase
-      .from("line_items")
-      .select(`
-        sku,
-        quantity,
-        orders!inner(created_at, canceled)
-      `)
-      .gte("orders.created_at", monthStart)
-      .lte("orders.created_at", monthEnd)
-      .eq("orders.canceled", false)
-      .limit(2000000);
-
-    if (monthlySalesError) {
-      throw new Error(`Failed to fetch monthly sales: ${monthlySalesError.message}`);
-    }
-
-    // Query monthly B2B fulfilled by SKU (quantity fulfilled this month by fulfillment date)
-    // High limit to prevent any future truncation issues
-    const { data: monthlyB2BData, error: monthlyB2BError } = await supabase
-      .from("b2b_fulfilled")
-      .select("sku, quantity")
-      .gte("fulfilled_at", monthStart)
-      .lte("fulfilled_at", monthEnd)
-      .limit(1000000);
-
-    if (monthlyB2BError) {
-      throw new Error(`Failed to fetch monthly B2B data: ${monthlyB2BError.message}`);
-    }
 
     // Aggregate retail ordered quantity by SKU (case-insensitive)
     const retailSalesBySku = new Map<string, number>();
@@ -153,57 +179,6 @@ export async function GET(request: Request) {
       const retail = retailSalesBySku.get(skuLower) || 0;
       const b2b = b2bSalesBySku.get(skuLower) || 0;
       monthlySalesBySku.set(skuLower, retail + b2b);
-    }
-
-    // Query 3-day sales for sales velocity - EST complete days
-    // Uses 3 COMPLETE days: yesterday, day before, day before that
-    // Excludes today since it's incomplete
-    const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
-
-    // Build EST date strings directly (YYYY-MM-DD format)
-    // Today's date in EST
-    const todayEST = `${estYear}-${String(estMonth).padStart(2, '0')}-${String(estDay).padStart(2, '0')}`;
-
-    // 3 days ago in EST
-    const threeDaysAgo = new Date(estYear, estMonth - 1, estDay - 3);
-    const threeDayStartEST = `${threeDaysAgo.getFullYear()}-${String(threeDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(threeDaysAgo.getDate()).padStart(2, '0')}`;
-
-    // 6 days ago in EST
-    const sixDaysAgo = new Date(estYear, estMonth - 1, estDay - 6);
-    const sixDayStartEST = `${sixDaysAgo.getFullYear()}-${String(sixDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(sixDaysAgo.getDate()).padStart(2, '0')}`;
-
-    // Get orders from 3 complete EST days (excludes today)
-    const { data: sales3DayData, error: sales3DayError } = await supabase
-      .from("line_items")
-      .select(`
-        sku,
-        quantity,
-        orders!inner(created_at, canceled)
-      `)
-      .gte("orders.created_at", threeDayStartEST)
-      .lt("orders.created_at", todayEST)
-      .eq("orders.canceled", false)
-      .limit(1000000);
-
-    if (sales3DayError) {
-      throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
-    }
-
-    // Prior 3 days for comparison (days 4-6 ago)
-    const { data: salesPrior3DayData, error: salesPrior3DayError } = await supabase
-      .from("line_items")
-      .select(`
-        sku,
-        quantity,
-        orders!inner(created_at, canceled)
-      `)
-      .gte("orders.created_at", sixDayStartEST)
-      .lt("orders.created_at", threeDayStartEST)
-      .eq("orders.canceled", false)
-      .limit(1000000);
-
-    if (salesPrior3DayError) {
-      throw new Error(`Failed to fetch prior 3-day sales: ${salesPrior3DayError.message}`);
     }
 
     // Aggregate 3-day sales by SKU
