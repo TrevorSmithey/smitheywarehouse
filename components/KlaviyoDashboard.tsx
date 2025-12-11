@@ -4,8 +4,6 @@ import { useState, useMemo } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   RefreshCw,
-  TrendingUp,
-  TrendingDown,
   Mail,
   Zap,
   ChevronDown,
@@ -100,59 +98,6 @@ function getPeriodLabel(period: KlaviyoPeriod): string {
     case "30d": return "Last 30 Days";
     case "90d": return "Last 90 Days";
   }
-}
-
-// ============================================================================
-// HERO METRIC - THE BIG NUMBER
-// ============================================================================
-
-function HeroMetric({
-  label,
-  value,
-  subLabel,
-  delta,
-  deltaLabel,
-}: {
-  label: string;
-  value: string;
-  subLabel?: string;
-  delta?: number | null;
-  deltaLabel?: string;
-}) {
-  return (
-    <div className="text-center py-2">
-      <div className="text-[10px] uppercase tracking-[0.25em] text-text-muted mb-2">
-        {label}
-      </div>
-      <div className="text-5xl md:text-6xl font-light tracking-tight text-text-primary tabular-nums mb-2">
-        {value}
-      </div>
-      {subLabel && (
-        <div className="text-xs text-text-tertiary mb-1">
-          {subLabel}
-        </div>
-      )}
-      {delta !== undefined && delta !== null && delta !== 0 && (
-        <div className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1 rounded-full ${
-          delta > 0
-            ? "bg-status-good/10 text-status-good"
-            : "bg-status-bad/10 text-status-bad"
-        }`}>
-          {delta > 0 ? (
-            <TrendingUp className="w-3.5 h-3.5" />
-          ) : (
-            <TrendingDown className="w-3.5 h-3.5" />
-          )}
-          <span className="tabular-nums">
-            {delta > 0 ? "+" : ""}{delta.toFixed(1)}%
-          </span>
-          {deltaLabel && (
-            <span className="text-[10px] opacity-70">{deltaLabel}</span>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ============================================================================
@@ -1023,22 +968,17 @@ export function KlaviyoDashboard({
       </div>
 
       {/* ================================================================
-          HERO METRIC - TOTAL EMAIL REVENUE
+          KPI CARDS (5 columns)
           ================================================================ */}
-      <div className="bg-bg-secondary rounded-2xl border border-border/30 py-8 px-6">
-        <HeroMetric
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <BreakdownCard
           label="Total Email Revenue"
           value={formatCurrency(totalEmailRevenue)}
-          subLabel={`${stats.campaigns_sent || 0} campaigns • ${stats.total_conversions || 0} orders`}
-          delta={stats.revenue_delta_pct}
-          deltaLabel="vs prev"
+          subValue={`${stats.campaigns_sent || 0} campaigns`}
+          icon={Mail}
+          color="green"
         />
-      </div>
 
-      {/* ================================================================
-          BREAKDOWN CARDS (4 columns)
-          ================================================================ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <BreakdownCard
           label="Campaign Revenue"
           value={formatCurrency(stats.campaign_revenue || 0)}
