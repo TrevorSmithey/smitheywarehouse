@@ -17,6 +17,8 @@ import {
   ShoppingCart,
   ArrowUpRight,
   Minus,
+  BarChart3,
+  Sparkles,
 } from "lucide-react";
 import {
   AreaChart,
@@ -29,6 +31,8 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Cell,
+  ComposedChart,
+  Line,
 } from "recharts";
 import type {
   KlaviyoResponse,
@@ -55,7 +59,7 @@ interface KlaviyoDashboardProps {
 
 function formatCurrency(n: number): string {
   if (n >= 1000000) return `$${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(0)}K`;
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
 }
 
@@ -89,64 +93,55 @@ function formatRatePct(n: number | null): string {
 }
 
 // ============================================================================
-// HEADLINE METRIC CARD
+// PERIOD LABELS
 // ============================================================================
 
-function HeadlineMetric({
+function getPeriodLabel(period: KlaviyoPeriod): string {
+  switch (period) {
+    case "mtd": return "Month to Date";
+    case "last_month": return "Last Month";
+    case "qtd": return "Quarter to Date";
+    case "ytd": return "Year to Date";
+    case "30d": return "Last 30 Days";
+    case "90d": return "Last 90 Days";
+  }
+}
+
+// ============================================================================
+// HERO METRIC - THE BIG NUMBER
+// ============================================================================
+
+function HeroMetric({
   label,
   value,
-  subValue,
+  subLabel,
   delta,
   deltaLabel,
-  icon: Icon,
-  accentColor = "blue",
 }: {
   label: string;
   value: string;
-  subValue?: string;
+  subLabel?: string;
   delta?: number | null;
   deltaLabel?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accentColor?: "blue" | "green" | "amber" | "purple";
 }) {
-  const iconColors = {
-    blue: "text-accent-blue",
-    green: "text-status-good",
-    amber: "text-status-warning",
-    purple: "text-purple-400",
-  };
-
-  const bgColors = {
-    blue: "bg-accent-blue/10",
-    green: "bg-status-good/10",
-    amber: "bg-status-warning/10",
-    purple: "bg-purple-400/10",
-  };
-
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
-      <div className="flex items-start justify-between mb-3">
-        <span className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-          {label}
-        </span>
-        <div className={`p-2 rounded-lg ${bgColors[accentColor]}`}>
-          <Icon className={`w-4 h-4 ${iconColors[accentColor]}`} />
-        </div>
+    <div className="text-center py-2">
+      <div className="text-[10px] uppercase tracking-[0.25em] text-text-muted mb-2">
+        {label}
       </div>
-
-      <div className="text-3xl font-semibold tracking-tight text-text-primary tabular-nums mb-1">
+      <div className="text-5xl md:text-6xl font-light tracking-tight text-text-primary tabular-nums mb-2">
         {value}
       </div>
-
-      {subValue && (
-        <div className="text-xs text-text-tertiary mb-2">
-          {subValue}
+      {subLabel && (
+        <div className="text-xs text-text-tertiary mb-1">
+          {subLabel}
         </div>
       )}
-
       {delta !== undefined && delta !== null && delta !== 0 && (
-        <div className={`flex items-center gap-1.5 text-xs font-medium ${
-          delta > 0 ? "text-status-good" : "text-status-bad"
+        <div className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1 rounded-full ${
+          delta > 0
+            ? "bg-status-good/10 text-status-good"
+            : "bg-status-bad/10 text-status-bad"
         }`}>
           {delta > 0 ? (
             <TrendingUp className="w-3.5 h-3.5" />
@@ -154,18 +149,11 @@ function HeadlineMetric({
             <TrendingDown className="w-3.5 h-3.5" />
           )}
           <span className="tabular-nums">
-            {delta > 0 ? "+" : ""}{delta.toFixed(0)}%
+            {delta > 0 ? "+" : ""}{delta.toFixed(1)}%
           </span>
           {deltaLabel && (
-            <span className="text-text-muted font-normal">{deltaLabel}</span>
+            <span className="text-[10px] opacity-70">{deltaLabel}</span>
           )}
-        </div>
-      )}
-
-      {(delta === 0 || delta === null) && deltaLabel && (
-        <div className="flex items-center gap-1.5 text-xs text-text-muted">
-          <Minus className="w-3.5 h-3.5" />
-          <span>{deltaLabel}</span>
         </div>
       )}
     </div>
@@ -173,10 +161,71 @@ function HeadlineMetric({
 }
 
 // ============================================================================
-// SECONDARY STAT PILL
+// BREAKDOWN CARD
 // ============================================================================
 
-function StatPill({
+function BreakdownCard({
+  label,
+  value,
+  subValue,
+  icon: Icon,
+  color = "blue",
+  percentage,
+}: {
+  label: string;
+  value: string;
+  subValue?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color?: "blue" | "green" | "amber" | "purple";
+  percentage?: number;
+}) {
+  const colorMap = {
+    blue: { text: "text-accent-blue", bg: "bg-accent-blue", bgFaint: "bg-accent-blue/10" },
+    green: { text: "text-status-good", bg: "bg-status-good", bgFaint: "bg-status-good/10" },
+    amber: { text: "text-status-warning", bg: "bg-status-warning", bgFaint: "bg-status-warning/10" },
+    purple: { text: "text-purple-400", bg: "bg-purple-400", bgFaint: "bg-purple-400/10" },
+  };
+  const colors = colorMap[color];
+
+  return (
+    <div className="relative overflow-hidden bg-bg-secondary rounded-xl border border-border/30 p-5">
+      {/* Subtle percentage bar at bottom */}
+      {percentage !== undefined && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-border/20">
+          <div
+            className={`h-full ${colors.bg} transition-all duration-500`}
+            style={{ width: `${Math.min(percentage, 100)}%` }}
+          />
+        </div>
+      )}
+
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2">
+            {label}
+          </div>
+          <div className="text-2xl font-semibold tracking-tight text-text-primary tabular-nums">
+            {value}
+          </div>
+          {subValue && (
+            <div className="text-xs text-text-tertiary mt-1">
+              {subValue}
+            </div>
+          )}
+        </div>
+        <div className={`p-2.5 rounded-lg ${colors.bgFaint}`}>
+          <Icon className={`w-4 h-4 ${colors.text}`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// INLINE METRIC
+// ============================================================================
+
+function InlineMetric({
   label,
   value,
   icon: Icon,
@@ -186,11 +235,11 @@ function StatPill({
   icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-bg-tertiary/50 rounded-lg">
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-bg-tertiary/40 rounded-lg border border-border/10">
       <Icon className="w-4 h-4 text-text-tertiary" />
-      <div>
-        <div className="text-lg font-semibold text-text-primary tabular-nums">{value}</div>
-        <div className="text-[10px] uppercase tracking-wider text-text-muted">{label}</div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-base font-semibold text-text-primary tabular-nums">{value}</span>
+        <span className="text-[10px] uppercase tracking-wider text-text-muted">{label}</span>
       </div>
     </div>
   );
@@ -205,51 +254,61 @@ function CampaignRow({ campaign, rank }: { campaign: KlaviyoCampaignSummary; ran
     ? campaign.conversion_value / campaign.recipients
     : 0;
 
+  // Visual indicator for top performers
+  const isTopPerformer = rank <= 3;
+  const rankColors = {
+    1: "bg-status-good text-bg-primary",
+    2: "bg-status-good/60 text-bg-primary",
+    3: "bg-status-good/30 text-status-good",
+  };
+
   return (
-    <tr className="group border-b border-border/20 hover:bg-white/[0.02] transition-colors">
+    <tr className="group border-b border-border/10 hover:bg-white/[0.02] transition-colors">
       {/* Rank */}
-      <td className="py-3 pl-4 pr-2 w-10">
-        <span className={`text-xs font-medium tabular-nums ${
-          rank <= 3 ? "text-status-good" : "text-text-muted"
+      <td className="py-3.5 pl-4 pr-2 w-10">
+        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold tabular-nums ${
+          isTopPerformer
+            ? rankColors[rank as 1 | 2 | 3]
+            : "text-text-muted"
         }`}>
           {rank}
         </span>
       </td>
 
       {/* Campaign Name + Date */}
-      <td className="py-3 px-2">
-        <div className="max-w-[280px]">
-          <div className="text-sm text-text-primary truncate group-hover:text-accent-blue transition-colors">
+      <td className="py-3.5 px-3">
+        <div className="max-w-[300px]">
+          <div className="text-sm text-text-primary truncate group-hover:text-accent-blue transition-colors font-medium">
             {campaign.name}
           </div>
-          <div className="text-[10px] text-text-muted mt-0.5">
+          <div className="text-[10px] text-text-muted mt-0.5 tracking-wide">
             {format(new Date(campaign.send_time), "MMM d, yyyy • h:mm a")}
           </div>
         </div>
       </td>
 
       {/* Revenue */}
-      <td className="py-3 px-2 text-right">
+      <td className="py-3.5 px-3 text-right">
         <div className="text-sm font-semibold text-status-good tabular-nums">
           {formatCurrencyFull(campaign.conversion_value)}
         </div>
         <div className="text-[10px] text-text-muted tabular-nums">
-          ${revenuePerRecipient.toFixed(2)}/recipient
+          ${revenuePerRecipient.toFixed(2)}/rcpt
         </div>
       </td>
 
       {/* Recipients */}
-      <td className="py-3 px-2 text-right">
+      <td className="py-3.5 px-3 text-right">
         <div className="text-sm text-text-primary tabular-nums">
           {formatNumberFull(campaign.recipients)}
         </div>
       </td>
 
       {/* Open Rate */}
-      <td className="py-3 px-2 text-right">
-        <div className={`text-sm tabular-nums ${
+      <td className="py-3.5 px-3 text-right">
+        <div className={`text-sm tabular-nums font-medium ${
           (campaign.open_rate || 0) >= 0.5 ? "text-status-good" :
-          (campaign.open_rate || 0) >= 0.3 ? "text-text-primary" :
+          (campaign.open_rate || 0) >= 0.35 ? "text-text-primary" :
           "text-status-warning"
         }`}>
           {formatRate(campaign.open_rate)}
@@ -257,8 +316,8 @@ function CampaignRow({ campaign, rank }: { campaign: KlaviyoCampaignSummary; ran
       </td>
 
       {/* Click Rate */}
-      <td className="py-3 px-2 text-right">
-        <div className={`text-sm tabular-nums ${
+      <td className="py-3.5 px-3 text-right">
+        <div className={`text-sm tabular-nums font-medium ${
           (campaign.click_rate || 0) >= 0.02 ? "text-status-good" :
           (campaign.click_rate || 0) >= 0.01 ? "text-text-primary" :
           "text-status-warning"
@@ -268,8 +327,8 @@ function CampaignRow({ campaign, rank }: { campaign: KlaviyoCampaignSummary; ran
       </td>
 
       {/* Conversions */}
-      <td className="py-3 pl-2 pr-4 text-right">
-        <div className="text-sm text-text-primary tabular-nums font-medium">
+      <td className="py-3.5 pl-3 pr-4 text-right">
+        <div className="text-sm text-text-primary tabular-nums font-semibold">
           {campaign.conversions}
         </div>
       </td>
@@ -300,10 +359,10 @@ function SortableHeader({
 
   return (
     <th
-      className={`py-2 px-2 text-${align} cursor-pointer select-none group`}
+      className={`py-3 px-3 text-${align} cursor-pointer select-none group`}
       onClick={() => onSort(field)}
     >
-      <div className={`inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider ${
+      <div className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider ${
         isActive ? "text-accent-blue" : "text-text-muted group-hover:text-text-secondary"
       } transition-colors`}>
         {label}
@@ -326,6 +385,7 @@ function SortableHeader({
 interface MonthlyChartData {
   month: string;
   displayMonth: string;
+  shortMonth: string;
   campaignRevenue: number;
   flowRevenue: number;
   totalRevenue: number;
@@ -334,16 +394,13 @@ interface MonthlyChartData {
 }
 
 function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) {
-  // Process data for chart - sort chronologically and take last 12 months
   const chartData: MonthlyChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
-    // Sort by date ascending
     const sorted = [...monthly].sort((a, b) =>
       new Date(a.month_start).getTime() - new Date(b.month_start).getTime()
     );
 
-    // Take last 12 months
     const recent = sorted.slice(-12);
 
     return recent.map(m => {
@@ -351,7 +408,6 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
       const campaignRev = m.email_revenue || 0;
       const flowRev = m.flow_revenue || 0;
 
-      // Find YoY comparison (same month last year)
       const lastYear = new Date(date);
       lastYear.setFullYear(lastYear.getFullYear() - 1);
       const yoyMonth = sorted.find(prev => {
@@ -369,6 +425,7 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
       return {
         month: m.month_start,
         displayMonth: format(date, "MMM ''yy"),
+        shortMonth: format(date, "MMM"),
         campaignRevenue: campaignRev,
         flowRevenue: flowRev,
         totalRevenue: totalRev,
@@ -380,7 +437,13 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
 
   if (chartData.length < 2) return null;
 
-  // Custom tooltip
+  // Calculate stats
+  const avgRevenue = chartData.reduce((sum, d) => sum + d.totalRevenue, 0) / chartData.length;
+  const maxRevenue = Math.max(...chartData.map(d => d.totalRevenue));
+  const latestMonth = chartData[chartData.length - 1];
+  const latestYoY = latestMonth?.yoyChange;
+
+  // Custom tooltip with YoY prominently displayed
   const CustomTooltip = ({ active, payload }: {
     active?: boolean;
     payload?: Array<{ payload: MonthlyChartData }>
@@ -389,44 +452,55 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
     const item = payload[0].payload;
 
     return (
-      <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg min-w-[180px]">
-        <p className="text-xs font-medium text-text-primary mb-2">
-          {format(new Date(item.month), "MMMM yyyy")}
-        </p>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-status-good" />
-              <span className="text-[10px] text-text-secondary">Campaigns</span>
+      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[200px]">
+        <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/30">
+          <span className="text-sm font-semibold text-text-primary">
+            {format(new Date(item.month), "MMMM yyyy")}
+          </span>
+          {item.yoyChange !== undefined && (
+            <span className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
+              item.yoyChange >= 0
+                ? "bg-status-good/20 text-status-good"
+                : "bg-status-bad/20 text-status-bad"
+            }`}>
+              {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}% YoY
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm bg-status-good" />
+              <span className="text-xs text-text-secondary">Campaigns</span>
             </div>
-            <span className="text-xs font-medium text-text-primary tabular-nums">
+            <span className="text-sm font-semibold text-text-primary tabular-nums">
               {formatCurrency(item.campaignRevenue)}
             </span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-status-warning" />
-              <span className="text-[10px] text-text-secondary">Flows</span>
+
+          <div className="flex items-center justify-between gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm bg-status-warning" />
+              <span className="text-xs text-text-secondary">Flows</span>
             </div>
-            <span className="text-xs font-medium text-text-primary tabular-nums">
+            <span className="text-sm font-semibold text-text-primary tabular-nums">
               {formatCurrency(item.flowRevenue)}
             </span>
           </div>
-          <div className="border-t border-border/30 pt-1.5 mt-1.5">
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-[10px] text-text-secondary">Total</span>
-              <span className="text-xs font-semibold text-text-primary tabular-nums">
-                {formatCurrency(item.totalRevenue)}
-              </span>
-            </div>
+
+          <div className="flex items-center justify-between gap-6 pt-2 border-t border-border/20">
+            <span className="text-xs font-medium text-text-secondary">Total</span>
+            <span className="text-base font-bold text-text-primary tabular-nums">
+              {formatCurrency(item.totalRevenue)}
+            </span>
           </div>
-          {item.yoyChange !== undefined && (
-            <div className="flex items-center justify-between gap-4 pt-1">
-              <span className="text-[10px] text-text-muted">vs Last Year</span>
-              <span className={`text-[10px] font-medium tabular-nums ${
-                item.yoyChange >= 0 ? "text-status-good" : "text-status-bad"
-              }`}>
-                {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}%
+
+          {item.yoyRevenue !== undefined && (
+            <div className="flex items-center justify-between gap-6 text-text-muted">
+              <span className="text-[10px]">Same month last year</span>
+              <span className="text-[10px] tabular-nums">
+                {formatCurrency(item.yoyRevenue)}
               </span>
             </div>
           )}
@@ -435,34 +509,63 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
     );
   };
 
-  // Calculate average for reference line
-  const avgRevenue = chartData.reduce((sum, d) => sum + d.totalRevenue, 0) / chartData.length;
-
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+      {/* Header with current month's YoY prominently displayed */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
-          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">
-            MONTHLY EMAIL REVENUE TREND
-          </h3>
-          <p className="text-[10px] text-text-muted">
-            Campaign + Flow revenue by month
+          <div className="flex items-center gap-2 mb-1">
+            <BarChart3 className="w-4 h-4 text-text-tertiary" />
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              MONTHLY EMAIL REVENUE
+            </h3>
+          </div>
+          <p className="text-xs text-text-muted">
+            Campaign + Flow revenue trend
           </p>
         </div>
-        <div className="text-right">
-          <span className="text-lg font-semibold text-text-primary tabular-nums">
-            {formatCurrency(avgRevenue)}
-          </span>
-          <p className="text-[10px] text-text-muted">avg/month</p>
+
+        <div className="flex items-center gap-6">
+          {/* Current YoY Change - Make this prominent */}
+          {latestYoY !== undefined && (
+            <div className="text-right">
+              <div className={`text-2xl font-bold tabular-nums ${
+                latestYoY >= 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {latestYoY >= 0 ? "+" : ""}{latestYoY.toFixed(0)}%
+              </div>
+              <p className="text-[10px] text-text-muted uppercase tracking-wider">YoY Change</p>
+            </div>
+          )}
+
+          {/* Average */}
+          <div className="text-right border-l border-border/30 pl-6">
+            <div className="text-xl font-semibold text-text-primary tabular-nums">
+              {formatCurrency(avgRevenue)}
+            </div>
+            <p className="text-[10px] text-text-muted uppercase tracking-wider">Avg/Month</p>
+          </div>
         </div>
       </div>
 
-      <div className="h-56">
+      {/* Chart */}
+      <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
+            <defs>
+              <linearGradient id="campaignGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10B981" stopOpacity={0.8} />
+                <stop offset="100%" stopColor="#10B981" stopOpacity={0.3} />
+              </linearGradient>
+              <linearGradient id="flowGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.8} />
+                <stop offset="100%" stopColor="#F59E0B" stopOpacity={0.3} />
+              </linearGradient>
+            </defs>
+
             <XAxis
-              dataKey="displayMonth"
-              tick={{ fill: "#64748B", fontSize: 10 }}
+              dataKey="shortMonth"
+              tick={{ fill: "#64748B", fontSize: 10, fontWeight: 500 }}
               axisLine={{ stroke: "#1E293B" }}
               tickLine={false}
             />
@@ -470,35 +573,51 @@ function MonthlyRevenueTrend({ monthly }: { monthly: KlaviyoMonthlySummary[] }) 
               tick={{ fill: "#64748B", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
-              width={50}
+              width={55}
               tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.02)" }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
             <ReferenceLine
               y={avgRevenue}
               stroke="#64748B"
-              strokeDasharray="3 3"
-              strokeOpacity={0.5}
+              strokeDasharray="4 4"
+              strokeOpacity={0.4}
             />
-            <Bar dataKey="campaignRevenue" stackId="revenue" fill="#10B981" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="flowRevenue" stackId="revenue" fill="#F59E0B" radius={[4, 4, 0, 0]} />
-          </BarChart>
+
+            <Bar dataKey="campaignRevenue" stackId="revenue" fill="url(#campaignGradient)" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="flowRevenue" stackId="revenue" fill="url(#flowGradient)" radius={[3, 3, 0, 0]} />
+
+            {/* YoY comparison line (if available) */}
+            <Line
+              type="monotone"
+              dataKey="yoyRevenue"
+              stroke="#94A3B8"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              dot={false}
+              connectNulls
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-border/20">
+      <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-4 border-t border-border/20">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm bg-status-good" />
-          <span className="text-[10px] text-text-tertiary">Campaign Revenue</span>
+          <span className="text-[10px] text-text-tertiary font-medium">Campaigns</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm bg-status-warning" />
-          <span className="text-[10px] text-text-tertiary">Flow Revenue</span>
+          <span className="text-[10px] text-text-tertiary font-medium">Flows</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-0 border-t border-dashed border-text-tertiary" />
-          <span className="text-[10px] text-text-tertiary">Average</span>
+          <div className="w-4 h-0 border-t-2 border-dashed border-text-tertiary" />
+          <span className="text-[10px] text-text-tertiary font-medium">Last Year</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-0 border-t border-dashed border-text-tertiary opacity-50" />
+          <span className="text-[10px] text-text-tertiary font-medium">Average</span>
         </div>
       </div>
     </div>
@@ -517,65 +636,80 @@ function UpcomingCard({ campaign }: { campaign: KlaviyoUpcomingCampaign }) {
   const daysUntil = Math.ceil((scheduledDate.getTime() - now.getTime()) / 86400000);
 
   return (
-    <div className="flex items-center gap-4 p-3 bg-bg-tertiary/30 rounded-lg border border-border/20 hover:border-border/40 transition-all">
+    <div className={`flex items-center gap-4 p-3.5 rounded-lg border transition-all ${
+      isToday
+        ? "bg-status-warning/5 border-status-warning/30"
+        : isTomorrow
+          ? "bg-accent-blue/5 border-accent-blue/30"
+          : "bg-bg-tertiary/30 border-border/20 hover:border-border/40"
+    }`}>
       {/* Date badge */}
       <div className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg text-center ${
-        isToday ? "bg-status-warning/20 text-status-warning" :
-        isTomorrow ? "bg-accent-blue/20 text-accent-blue" :
-        "bg-bg-tertiary text-text-secondary"
+        isToday ? "bg-status-warning/20" :
+        isTomorrow ? "bg-accent-blue/20" :
+        "bg-bg-tertiary"
       }`}>
-        <span className="text-[9px] font-medium uppercase leading-tight">
+        <span className={`text-[9px] font-semibold uppercase leading-tight ${
+          isToday ? "text-status-warning" :
+          isTomorrow ? "text-accent-blue" :
+          "text-text-muted"
+        }`}>
           {format(scheduledDate, "MMM")}
         </span>
-        <span className="text-lg font-semibold leading-tight">
+        <span className={`text-lg font-bold leading-tight ${
+          isToday ? "text-status-warning" :
+          isTomorrow ? "text-accent-blue" :
+          "text-text-secondary"
+        }`}>
           {format(scheduledDate, "d")}
         </span>
       </div>
 
       {/* Campaign info */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-text-primary truncate">{campaign.name}</div>
-        <div className="flex items-center gap-2 mt-0.5">
+        <div className="text-sm text-text-primary font-medium truncate">{campaign.name}</div>
+        <div className="flex items-center gap-2 mt-1">
           <span className="text-[10px] text-text-muted">
             {format(scheduledDate, "h:mm a")}
           </span>
           {isToday && (
-            <span className="px-1.5 py-0.5 text-[9px] font-medium uppercase bg-status-warning/20 text-status-warning rounded">
+            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-status-warning text-bg-primary rounded">
               Today
             </span>
           )}
           {isTomorrow && (
-            <span className="px-1.5 py-0.5 text-[9px] font-medium uppercase bg-accent-blue/20 text-accent-blue rounded">
+            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-accent-blue text-white rounded">
               Tomorrow
             </span>
           )}
           {!isToday && !isTomorrow && daysUntil <= 7 && (
             <span className="text-[10px] text-text-tertiary">
-              in {daysUntil} days
+              in {daysUntil}d
             </span>
           )}
         </div>
       </div>
 
-      {/* Audience size */}
-      {campaign.audience_size && campaign.audience_size > 0 && (
-        <div className="text-right">
-          <div className="text-sm font-medium text-text-primary tabular-nums">
-            {formatNumber(campaign.audience_size)}
+      {/* Audience + Predicted */}
+      <div className="flex items-center gap-3">
+        {campaign.audience_size && campaign.audience_size > 0 && (
+          <div className="text-right">
+            <div className="text-sm font-semibold text-text-primary tabular-nums">
+              {formatNumber(campaign.audience_size)}
+            </div>
+            <div className="text-[9px] text-text-muted uppercase tracking-wide">Audience</div>
           </div>
-          <div className="text-[10px] text-text-muted">audience</div>
-        </div>
-      )}
+        )}
 
-      {/* Predicted revenue */}
-      {campaign.predicted_revenue && campaign.predicted_revenue > 0 && (
-        <div className="text-right border-l border-border/30 pl-3">
-          <div className="text-sm font-medium text-status-good tabular-nums">
-            {formatCurrency(campaign.predicted_revenue)}
+        {campaign.predicted_revenue && campaign.predicted_revenue > 0 && (
+          <div className="text-right pl-3 border-l border-border/30">
+            <div className="text-sm font-semibold text-status-good tabular-nums">
+              {formatCurrency(campaign.predicted_revenue)}
+            </div>
+            <div className="text-[9px] text-text-muted uppercase tracking-wide">Predicted</div>
           </div>
-          <div className="text-[10px] text-text-muted">predicted</div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -595,7 +729,6 @@ export function KlaviyoDashboard({
   const [sortField, setSortField] = useState<SortField>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  // Handle sort
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "desc" ? "asc" : "desc");
@@ -605,7 +738,6 @@ export function KlaviyoDashboard({
     }
   };
 
-  // Sort campaigns
   const sortedCampaigns = useMemo(() => {
     const campaigns = [...(data?.campaigns || [])];
 
@@ -641,7 +773,6 @@ export function KlaviyoDashboard({
 
   const displayedCampaigns = showAllCampaigns ? sortedCampaigns : sortedCampaigns.slice(0, 10);
 
-  // Period options
   const periodOptions = [
     { value: "mtd" as const, label: "MTD" },
     { value: "last_month" as const, label: "Last Month" },
@@ -654,9 +785,11 @@ export function KlaviyoDashboard({
   // Loading state
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center gap-3 text-text-tertiary">
-          <RefreshCw className="w-5 h-5 animate-spin" />
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4 text-text-tertiary">
+          <div className="relative">
+            <Sparkles className="w-8 h-8 animate-pulse" />
+          </div>
           <span className="text-sm">Loading email performance...</span>
         </div>
       </div>
@@ -666,18 +799,20 @@ export function KlaviyoDashboard({
   // No data state
   if (!data) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <Mail className="w-12 h-12 text-text-muted" />
+      <div className="flex flex-col items-center justify-center h-96 gap-6">
+        <div className="p-6 rounded-full bg-bg-tertiary/50">
+          <Mail className="w-12 h-12 text-text-muted" />
+        </div>
         <div className="text-center">
-          <p className="text-text-secondary mb-1">No email marketing data available</p>
+          <p className="text-lg text-text-secondary mb-2">No email marketing data</p>
           <p className="text-xs text-text-muted">Data syncs daily at 1 AM EST</p>
         </div>
         <button
           onClick={onRefresh}
-          className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white text-sm font-medium rounded-lg hover:bg-accent-blue/90 transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-accent-blue text-white text-sm font-medium rounded-lg hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
         >
           <RefreshCw className="w-4 h-4" />
-          Refresh Now
+          Sync Now
         </button>
       </div>
     );
@@ -695,32 +830,41 @@ export function KlaviyoDashboard({
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* ================================================================
-          HEADER
+          HEADER ROW
           ================================================================ */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">
-            EMAIL PERFORMANCE
-          </h2>
-          {data.lastSynced && (
-            <p className="text-[10px] text-text-muted">
-              Updated {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-            </p>
-          )}
+          <div className="flex items-center gap-2 mb-1">
+            <Mail className="w-4 h-4 text-accent-blue" />
+            <h2 className="text-[10px] uppercase tracking-[0.25em] text-text-muted font-semibold">
+              EMAIL MARKETING
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-text-tertiary">{getPeriodLabel(period)}</span>
+            {data.lastSynced && (
+              <>
+                <span className="text-text-muted">•</span>
+                <span className="text-[10px] text-text-muted">
+                  Updated {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Period Toggle */}
-          <div className="flex items-center gap-0.5 bg-bg-tertiary rounded-lg p-0.5">
+          <div className="flex items-center bg-bg-tertiary rounded-lg p-0.5 border border-border/20">
             {periodOptions.map((option) => (
               <button
                 key={option.value}
                 onClick={() => onPeriodChange(option.value)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
                   period === option.value
-                    ? "bg-accent-blue text-white"
+                    ? "bg-accent-blue text-white shadow-sm"
                     : "text-text-tertiary hover:text-text-secondary"
                 }`}
               >
@@ -732,7 +876,7 @@ export function KlaviyoDashboard({
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="p-2 text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50 rounded-lg hover:bg-white/5"
+            className="p-2.5 text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50 rounded-lg hover:bg-white/5 border border-transparent hover:border-border/20"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -740,67 +884,86 @@ export function KlaviyoDashboard({
       </div>
 
       {/* ================================================================
-          HEADLINE METRICS (4 Cards)
+          HERO METRIC - TOTAL EMAIL REVENUE
           ================================================================ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <HeadlineMetric
-          label="Email Subscribers"
-          value={formatNumber(stats.subscribers_365day || 0)}
-          subValue="365-day engaged"
-          icon={Users}
-          accentColor="purple"
-        />
-
-        <HeadlineMetric
-          label="Campaign Revenue"
-          value={formatCurrency(stats.campaign_revenue || 0)}
-          subValue={`${campaignPct.toFixed(0)}% of email revenue`}
+      <div className="bg-bg-secondary rounded-2xl border border-border/30 py-8 px-6">
+        <HeroMetric
+          label="Total Email Revenue"
+          value={formatCurrency(totalEmailRevenue)}
+          subLabel={`${stats.campaigns_sent || 0} campaigns • ${stats.total_conversions || 0} orders`}
           delta={stats.revenue_delta_pct}
-          deltaLabel="vs prev period"
-          icon={Mail}
-          accentColor="green"
-        />
-
-        <HeadlineMetric
-          label="Flow Revenue"
-          value={formatCurrency(stats.flow_revenue || 0)}
-          subValue={`${flowPct.toFixed(0)}% of email revenue`}
-          icon={Zap}
-          accentColor="amber"
-        />
-
-        <HeadlineMetric
-          label="Email % of Revenue"
-          value={(stats.email_pct_of_revenue || 0) > 0 ? formatPct(stats.email_pct_of_revenue) : formatCurrency(totalEmailRevenue)}
-          subValue={(stats.email_pct_of_revenue || 0) > 0 ? "of total web revenue" : "total email revenue"}
-          icon={ArrowUpRight}
-          accentColor="blue"
+          deltaLabel="vs prev"
         />
       </div>
 
       {/* ================================================================
-          SECONDARY STATS STRIP
+          BREAKDOWN CARDS (4 columns)
           ================================================================ */}
-      <div className="flex flex-wrap items-center gap-4">
-        <StatPill
-          label="Campaigns Sent"
-          value={stats.campaigns_sent?.toString() || "0"}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <BreakdownCard
+          label="Campaign Revenue"
+          value={formatCurrency(stats.campaign_revenue || 0)}
+          subValue={`${campaignPct.toFixed(0)}% of email`}
           icon={Mail}
+          color="green"
+          percentage={campaignPct}
         />
-        <StatPill
-          label="Total Orders"
-          value={formatNumber(stats.total_conversions || 0)}
-          icon={ShoppingCart}
+
+        <BreakdownCard
+          label="Flow Revenue"
+          value={formatCurrency(stats.flow_revenue || 0)}
+          subValue={`${flowPct.toFixed(0)}% of email`}
+          icon={Zap}
+          color="amber"
+          percentage={flowPct}
         />
-        <StatPill
+
+        <BreakdownCard
+          label="Email Subscribers"
+          value={formatNumber(stats.subscribers_365day || 0)}
+          subValue="365-day engaged"
+          icon={Users}
+          color="purple"
+        />
+
+        <BreakdownCard
+          label="Email % of Revenue"
+          value={(stats.email_pct_of_revenue || 0) > 0
+            ? formatPct(stats.email_pct_of_revenue)
+            : "—"
+          }
+          subValue={(stats.email_pct_of_revenue || 0) > 0
+            ? "of total D2C revenue"
+            : "Awaiting Shopify data"
+          }
+          icon={ArrowUpRight}
+          color="blue"
+        />
+      </div>
+
+      {/* ================================================================
+          INLINE METRICS ROW
+          ================================================================ */}
+      <div className="flex flex-wrap items-center gap-3">
+        <InlineMetric
           label="Avg Open Rate"
           value={formatRatePct(stats.avg_open_rate)}
           icon={Eye}
         />
-        <StatPill
+        <InlineMetric
           label="Avg Click Rate"
           value={formatRate(stats.avg_click_rate)}
           icon={MousePointerClick}
+        />
+        <InlineMetric
+          label="Total Orders"
+          value={formatNumber(stats.total_conversions || 0)}
+          icon={ShoppingCart}
+        />
+        <InlineMetric
+          label="120-Day Active"
+          value={formatNumber(stats.subscribers_120day || 0)}
+          icon={Users}
         />
       </div>
 
@@ -817,10 +980,13 @@ export function KlaviyoDashboard({
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         {/* Campaign Performance Table (3/4) */}
         <div className="xl:col-span-3 bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-          <div className="px-4 py-3 border-b border-border/20 flex items-center justify-between">
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-              CAMPAIGN PERFORMANCE
-            </h3>
+          <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-text-tertiary" />
+              <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
+                CAMPAIGN PERFORMANCE
+              </h3>
+            </div>
             <span className="text-[10px] text-text-muted">
               {sortedCampaigns.length} campaigns • sorted by {sortField.replace("_", " ")}
             </span>
@@ -829,10 +995,10 @@ export function KlaviyoDashboard({
           {displayedCampaigns.length > 0 ? (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px]">
+                <table className="w-full min-w-[750px]">
                   <thead>
                     <tr className="border-b border-border/20 bg-bg-tertiary/30">
-                      <th className="py-2 pl-4 pr-2 w-10 text-left text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                      <th className="py-3 pl-4 pr-2 w-10 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                         #
                       </th>
                       <SortableHeader
@@ -894,18 +1060,18 @@ export function KlaviyoDashboard({
 
               {/* Show more/less button */}
               {sortedCampaigns.length > 10 && (
-                <div className="px-4 py-2 border-t border-border/20">
+                <div className="px-4 py-3 border-t border-border/20 bg-bg-tertiary/20">
                   <button
                     onClick={() => setShowAllCampaigns(!showAllCampaigns)}
-                    className="w-full py-2 text-sm text-accent-blue hover:text-accent-blue/80 flex items-center justify-center gap-1 transition-colors"
+                    className="w-full py-2 text-sm text-accent-blue hover:text-accent-blue/80 flex items-center justify-center gap-1.5 transition-colors font-medium"
                   >
                     {showAllCampaigns ? (
                       <>
-                        Show top 10 <ChevronUp className="w-4 h-4" />
+                        Show Top 10 <ChevronUp className="w-4 h-4" />
                       </>
                     ) : (
                       <>
-                        Show all {sortedCampaigns.length} campaigns <ChevronDown className="w-4 h-4" />
+                        Show All {sortedCampaigns.length} Campaigns <ChevronDown className="w-4 h-4" />
                       </>
                     )}
                   </button>
@@ -913,33 +1079,43 @@ export function KlaviyoDashboard({
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center h-48 text-text-muted">
-              <Mail className="w-8 h-8 mb-2 opacity-50" />
-              <span className="text-sm">No campaigns found for this period</span>
+            <div className="flex flex-col items-center justify-center h-56 text-text-muted">
+              <Mail className="w-10 h-10 mb-3 opacity-40" />
+              <span className="text-sm font-medium">No campaigns found</span>
+              <span className="text-xs mt-1">Try a different time period</span>
             </div>
           )}
         </div>
 
         {/* Upcoming Campaigns (1/4) */}
-        <div className="bg-bg-secondary rounded-xl border border-border/30 p-4">
+        <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-              SCHEDULED
-            </h3>
-            <Calendar className="w-4 h-4 text-text-tertiary" />
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-text-tertiary" />
+              <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
+                SCHEDULED
+              </h3>
+            </div>
+            {upcoming && upcoming.length > 0 && (
+              <span className="text-[10px] text-text-muted tabular-nums">
+                {upcoming.length} upcoming
+              </span>
+            )}
           </div>
 
           {upcoming && upcoming.length > 0 ? (
-            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
               {upcoming.map((campaign) => (
                 <UpcomingCard key={campaign.klaviyo_id} campaign={campaign} />
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-48 text-text-muted">
-              <Calendar className="w-8 h-8 mb-2 opacity-50" />
-              <span className="text-sm">No campaigns scheduled</span>
-              <span className="text-[10px] mt-1">Schedule in Klaviyo to see here</span>
+            <div className="flex flex-col items-center justify-center h-56 text-text-muted">
+              <Calendar className="w-10 h-10 mb-3 opacity-40" />
+              <span className="text-sm font-medium">No campaigns scheduled</span>
+              <span className="text-xs mt-1 text-center">
+                Schedule in Klaviyo<br />to see here
+              </span>
             </div>
           )}
         </div>
