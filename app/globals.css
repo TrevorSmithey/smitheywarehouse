@@ -159,18 +159,19 @@ body {
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
+}
 
-  /* Safety stock violation - subtle pulsing amber */
-  .ss-violation {
-    animation: ss-pulse 3s ease-in-out infinite;
+/* Safety stock violation - subtle pulsing amber */
+/* Outside @layer so keyframes work correctly */
+.ss-violation {
+  animation: ss-pulse 3s ease-in-out infinite;
+}
+
+@keyframes ss-pulse {
+  0%, 100% {
+    background-color: rgba(245, 158, 11, 0.08);
   }
-
-  @keyframes ss-pulse {
-    0%, 100% {
-      background-color: rgba(245, 158, 11, 0.08);
-    }
-    50% {
-      background-color: rgba(245, 158, 11, 0.18);
-    }
+  50% {
+    background-color: rgba(245, 158, 11, 0.2);
   }
 }
