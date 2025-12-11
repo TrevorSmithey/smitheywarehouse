@@ -1064,7 +1064,12 @@ export async function GET(request: Request) {
       comparison,
     };
 
-    return NextResponse.json(response);
+    // Add cache headers - budget data changes with orders, cache for 60s
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    });
   } catch (error) {
     console.error("Budget API error:", error);
     return NextResponse.json(

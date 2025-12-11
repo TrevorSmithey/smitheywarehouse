@@ -498,28 +498,28 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
-  // Prefetch other tabs in background after initial load
-  // This eliminates loading delay when switching tabs
+  // Prefetch priority tabs in background after initial load
+  // Priority: inventory, assembly (production), budget - the most used tabs
   useEffect(() => {
     if (!loading && metrics) {
       // Small delay to not compete with initial render
       const prefetchTimer = setTimeout(() => {
-        // Prefetch inventory if not loaded
+        // Priority 1: Inventory (most important)
         if (!inventory && !inventoryLoading) {
           fetchInventory();
         }
-        // Prefetch klaviyo marketing data if not loaded
-        if (!klaviyoData && !klaviyoLoading) {
-          fetchKlaviyo();
+        // Priority 2: Assembly/Production
+        if (!assemblyData && !assemblyLoading) {
+          fetchAssembly();
         }
-        // Prefetch VOC tickets if not loaded
-        if (!ticketsData && !ticketsLoading) {
-          fetchTickets();
+        // Priority 3: Budget vs Actual
+        if (!budgetData && !budgetLoading) {
+          fetchBudget();
         }
-      }, 500);
+      }, 300);
       return () => clearTimeout(prefetchTimer);
     }
-  }, [loading, metrics, inventory, inventoryLoading, fetchInventory, klaviyoData, klaviyoLoading, fetchKlaviyo, ticketsData, ticketsLoading, fetchTickets]);
+  }, [loading, metrics, inventory, inventoryLoading, fetchInventory, assemblyData, assemblyLoading, fetchAssembly, budgetData, budgetLoading, fetchBudget]);
 
   // Aggregate totals across warehouses
   const totals = metrics?.warehouses?.reduce(
