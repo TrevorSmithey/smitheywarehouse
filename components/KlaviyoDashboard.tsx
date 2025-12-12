@@ -1383,13 +1383,6 @@ export function KlaviyoDashboard({
             ))}
           </div>
 
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="p-2.5 text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50 rounded-lg hover:bg-white/5 border border-transparent hover:border-border/20"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
         </div>
       </div>
 

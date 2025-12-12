@@ -569,13 +569,6 @@ export function VoiceOfCustomerDashboard({
               ))}
             </div>
 
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              className="p-2 text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-50 rounded-lg hover:bg-white/5"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            </button>
           </div>
         </div>
 
