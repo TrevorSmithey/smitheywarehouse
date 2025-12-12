@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
-  RefreshCw,
   Building2,
   TrendingUp,
   TrendingDown,
@@ -13,8 +12,6 @@ import {
   DollarSign,
   ShoppingCart,
   AlertTriangle,
-  Package,
-  ArrowUpRight,
   BarChart3,
   Sparkles,
   Target,
@@ -44,8 +41,6 @@ import type {
   WholesaleCustomer,
   WholesaleAtRiskCustomer,
   WholesaleNeverOrderedCustomer,
-  WholesaleTransaction,
-  WholesaleSkuStats,
   WholesaleMonthlyStats,
   WholesalePeriod,
   CustomerHealthStatus,
@@ -686,114 +681,6 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
   );
 }
 
-// ============================================================================
-// TOP SKUS TABLE
-// ============================================================================
-
-function TopSkusTable({ skus }: { skus: WholesaleSkuStats[] }) {
-  const displaySkus = skus.slice(0, 15);
-  const maxRevenue = Math.max(...displaySkus.map(s => s.total_revenue), 1);
-
-  return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Package className="w-4 h-4 text-text-tertiary" />
-          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
-            TOP WHOLESALE SKUS
-          </h3>
-        </div>
-        <span className="text-[10px] text-text-muted">
-          {skus.length} SKUs
-        </span>
-      </div>
-
-      <div className="max-h-[400px] overflow-y-auto">
-        {displaySkus.map((sku, idx) => (
-          <div
-            key={sku.sku}
-            className="flex items-center gap-4 px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
-          >
-            <span className={`w-5 text-[10px] font-bold tabular-nums ${
-              idx < 3 ? "text-status-good" : "text-text-muted"
-            }`}>
-              {idx + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-text-primary truncate font-medium">
-                {sku.sku}
-              </div>
-              <div className="text-[10px] text-text-muted">
-                {sku.order_count} orders • {formatNumber(sku.total_units)} units
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm font-semibold text-status-good tabular-nums">
-                {formatCurrency(sku.total_revenue)}
-              </div>
-              <div className="h-1 w-16 bg-bg-tertiary rounded-full mt-1">
-                <div
-                  className="h-full bg-status-good/60 rounded-full"
-                  style={{ width: `${(sku.total_revenue / maxRevenue) * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// RECENT TRANSACTIONS
-// ============================================================================
-
-function RecentTransactionsCard({ transactions }: { transactions: WholesaleTransaction[] }) {
-  const displayTxns = transactions.slice(0, 10);
-
-  return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShoppingCart className="w-4 h-4 text-text-tertiary" />
-          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
-            RECENT TRANSACTIONS
-          </h3>
-        </div>
-        <span className="text-[10px] text-text-muted">
-          {transactions.length} in period
-        </span>
-      </div>
-
-      <div className="max-h-[350px] overflow-y-auto">
-        {displayTxns.map((txn) => (
-          <div
-            key={txn.ns_transaction_id}
-            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-text-primary truncate font-medium">
-                {txn.company_name}
-              </div>
-              <div className="text-[10px] text-text-muted">
-                {txn.tran_id} • {format(new Date(txn.tran_date), "MMM d, yyyy")}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm font-semibold text-status-good tabular-nums">
-                {formatCurrencyFull(txn.foreign_total)}
-              </div>
-              <div className="text-[10px] text-text-muted">
-                {txn.transaction_type === "CustInvc" ? "Invoice" : "Cash Sale"}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ============================================================================
 // SORTABLE TABLE HEADER
@@ -1061,14 +948,6 @@ export function WholesaleDashboard({
       {data.monthly && data.monthly.length > 1 && (
         <MonthlyRevenueTrend monthly={data.monthly} period={period} />
       )}
-
-      {/* ================================================================
-          TOP SKUS + RECENT TRANSACTIONS
-          ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <TopSkusTable skus={data.topSkus || []} />
-        <RecentTransactionsCard transactions={data.recentTransactions || []} />
-      </div>
 
       {/* ================================================================
           NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES
