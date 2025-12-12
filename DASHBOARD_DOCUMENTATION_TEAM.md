@@ -14,6 +14,7 @@
 | **Holiday** | 2024 vs 2025 seasonal comparison | Daily |
 | **Budget vs Actual** | Sales against monthly targets | Real-time |
 | **Sales** | Wholesale customer health | Manual update |
+| **Marketing** | Email campaign performance | Daily (6am) |
 
 ---
 
@@ -85,16 +86,104 @@ These need investigation (lost in transit?)
 
 ---
 
-## Wholesale Customer Health
+## Sales (Wholesale) Tab
 
-| Status | What It Means |
+### Customer Health Status
+
+**What it means**: How engaged a wholesale customer is based on their ordering history
+
+| Status | Days Since Last Order | What It Means | What to Do |
+|--------|----------------------|---------------|------------|
+| **Thriving** | Recently ordered + growing | Active, revenue trending up | Maintain relationship |
+| **Stable** | Recently ordered | Regular customer, steady ordering | Regular check-ins |
+| **Declining** | Recently ordered but slowing | Revenue trending down 20%+ | Review account |
+| **At Risk** | 120-180 days | 4-6 months since last order | Schedule check-in call |
+| **Churning** | 180-365 days | 6-12 months since last order | Urgent outreach needed |
+| **Churned** | Over 365 days | Over a year since last order | Win-back campaign |
+| **One-Time** | Any (only 1 order ever) | Only ordered once | Follow-up for repeat |
+| **Never Ordered** | N/A (no orders) | Account exists but never ordered | Sales opportunity |
+| **New** | Data issue | Has orders but missing date | Check data |
+
+### Active vs Total Customers
+
+| Term | Definition |
+|------|------------|
+| **Active Customers** | Placed an order within selected period (MTD, YTD, etc.) |
+| **Total Customers** | All wholesale accounts in the system |
+
+### Customer Segments (by Lifetime Revenue)
+
+| Segment | Revenue Range | Description |
+|---------|--------------|-------------|
+| **Major** | $50,000+ | Key accounts, highest priority |
+| **Large** | $20,000 - $49,999 | Significant accounts |
+| **Mid** | $10,000 - $19,999 | Established accounts |
+| **Small** | $5,000 - $9,999 | Growing accounts |
+| **Starter** | $2,000 - $4,999 | New accounts with potential |
+| **Minimal** | Under $2,000 | Small or inactive accounts |
+
+### Risk Score (0-100)
+**What it means**: How likely a customer is to stop ordering
+
+- **0-30**: Low risk - healthy customer
+- **30-60**: Medium risk - watch closely
+- **60-100**: High risk - needs attention
+
+Higher is worse. Based on days since last order, revenue trends, and account size.
+
+---
+
+## Marketing (Klaviyo) Tab
+
+### Email Revenue Breakdown
+
+| Metric | What It Means |
 |--------|---------------|
-| **Thriving** | Active customer, ordered recently |
-| **Stable** | Regular customer, healthy relationship |
-| **Declining** | Order frequency dropping |
-| **At Risk** | 120-180 days since last order - reach out! |
-| **Churning** | 180-365 days since last order - urgent outreach |
-| **Churned** | Over a year since last order - may need win-back campaign |
+| **Campaign Revenue** | Sales from one-time email sends (newsletters, promos) |
+| **Flow Revenue** | Sales from automated email sequences (welcome, abandoned cart) |
+| **Total Email Revenue** | Campaign + Flow combined |
+
+**Target**: 40-60% split between campaigns and flows is healthy
+
+### Key Email Metrics
+
+| Metric | What It Measures | Healthy Benchmark |
+|--------|------------------|-------------------|
+| **Open Rate** | % who opened the email | 35%+ is good |
+| **Click Rate** | % who clicked a link | 1%+ is good |
+| **Revenue Per Recipient (RPR)** | $$$ earned per email sent | $0.10+ is good |
+| **Unsubscribe Rate** | % who unsubscribed | Under 0.5% is good |
+| **Placed Order Rate** | % who bought something | 0.1%+ is good |
+
+### List Health Score (0-100)
+**What it means**: Overall health of our email list
+
+| Score | Rating | Meaning |
+|-------|--------|---------|
+| **80-100** | Excellent | List is healthy, keep it up |
+| **60-79** | Good | Minor issues, monitor |
+| **40-59** | Fair | Needs attention |
+| **0-39** | Poor | Multiple issues to address |
+
+Based on: delivery rate, bounce rate, unsubscribe rate, and engagement.
+
+### Subscriber Segments
+
+| Segment | Definition |
+|---------|------------|
+| **120-Day Active** | Opened/clicked an email in last 120 days |
+| **365-Day Engaged** | Opened/clicked an email in last year |
+
+### Flow Types
+
+| Flow | What It Does |
+|------|--------------|
+| **Welcome Series** | Emails to new subscribers |
+| **Abandoned Cart** | Emails when someone leaves items in cart |
+| **Abandoned Checkout** | Emails when someone starts but doesn't finish checkout |
+| **Browse Abandonment** | Emails when someone views products but doesn't buy |
+| **Post Purchase** | Thank you and follow-up emails after buying |
+| **Win-back** | Emails to re-engage inactive customers |
 
 ---
 
@@ -139,6 +228,7 @@ Compares this holiday season (2025) to last year (2024) day-by-day:
 - **Inventory**: Every 15 minutes
 - **D2C Orders**: Hourly
 - **Support Tickets**: Every 5 minutes
+- **Marketing/Klaviyo**: Daily at 6am
 
 ### Daily Manual (Trevor)
 - **Assembly Data**: Run the "Update Assembly Tracking" script on Desktop
@@ -163,6 +253,9 @@ Any SKU showing BACKORDER needs immediate attention - customers are waiting.
 ### Pulsing Amber Rows
 These SKUs are below safety stock and may sell out soon.
 
+### High Risk Customers (Sales Tab)
+Customers with risk score 60+ or status "At Risk", "Churning", or "Churned" need outreach.
+
 ---
 
 ## Quick Glossary
@@ -171,12 +264,15 @@ These SKUs are below safety stock and may sell out soon.
 |------|------------|
 | **SKU** | Product code (e.g., Smith-CI-Skil12) |
 | **MTD** | Month-to-date (sales so far this month) |
+| **YTD** | Year-to-date (sales so far this year) |
 | **YoY** | Year-over-year comparison |
 | **DOI** | Days of Inventory remaining |
 | **Vel** | Sales velocity (units/day) |
 | **SS** | Safety Stock threshold |
 | **B2B** | Business-to-business (wholesale) |
 | **D2C** | Direct-to-consumer (retail website) |
+| **RPR** | Revenue Per Recipient (email metric) |
+| **AOV** | Average Order Value |
 
 ---
 
