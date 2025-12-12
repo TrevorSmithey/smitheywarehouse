@@ -411,13 +411,14 @@ function calculateDateRange(
   );
   const daysElapsed = daysInPeriod;
 
-  // Use UTC midnight boundaries to match Shopify's date filtering
+  // Start of period: UTC midnight on first day
   const startISO = new Date(
     Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0)
   ).toISOString();
-  const endISO = new Date(
-    Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59)
-  ).toISOString();
+
+  // End of period: use current time (now) for "to date" queries
+  // This ensures MTD/QTD/YTD include all orders up to this moment
+  const endISO = new Date().toISOString();
 
   return {
     start: startISO,
