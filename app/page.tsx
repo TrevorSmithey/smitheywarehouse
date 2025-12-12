@@ -47,7 +47,8 @@ import type {
   InventoryCategory,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
-import WholesaleDashboard from "@/components/WholesaleDashboard";
+import { WholesaleDashboard } from "@/components/WholesaleDashboard";
+import type { WholesaleResponse, WholesalePeriod } from "@/lib/types";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
 type PrimaryTab = "inventory" | "fulfillment" | "sales";
@@ -193,6 +194,11 @@ export default function Dashboard() {
   const [inventoryCategory, setInventoryCategory] = useState<InventoryCategoryTab>("cast_iron");
   const [inventoryFetchedAt, setInventoryFetchedAt] = useState<Date | null>(null);
 
+  // Wholesale/Sales tab state
+  const [wholesale, setWholesale] = useState<WholesaleResponse | null>(null);
+  const [wholesaleLoading, setWholesaleLoading] = useState(false);
+  const [wholesalePeriod, setWholesalePeriod] = useState<WholesalePeriod>("ytd");
+
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
     setInventoryLoading(true);
@@ -209,12 +215,40 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Fetch wholesale data
+  const fetchWholesale = useCallback(async (period: WholesalePeriod = wholesalePeriod) => {
+    setWholesaleLoading(true);
+    try {
+      const res = await fetch(`/api/wholesale?period=${period}&_t=${Date.now()}`);
+      if (!res.ok) throw new Error("Failed to fetch wholesale data");
+      const data: WholesaleResponse = await res.json();
+      setWholesale(data);
+    } catch (err) {
+      console.error("Wholesale fetch error:", err);
+    } finally {
+      setWholesaleLoading(false);
+    }
+  }, [wholesalePeriod]);
+
+  // Handle wholesale period change
+  const handleWholesalePeriodChange = useCallback((period: WholesalePeriod) => {
+    setWholesalePeriod(period);
+    fetchWholesale(period);
+  }, [fetchWholesale]);
+
   // Load inventory when switching to inventory tab
   useEffect(() => {
     if (primaryTab === "inventory" && !inventory && !inventoryLoading) {
       fetchInventory();
     }
   }, [primaryTab, inventory, inventoryLoading, fetchInventory]);
+
+  // Load wholesale when switching to sales tab
+  useEffect(() => {
+    if (primaryTab === "sales" && !wholesale && !wholesaleLoading) {
+      fetchWholesale();
+    }
+  }, [primaryTab, wholesale, wholesaleLoading, fetchWholesale]);
 
   const fetchMetrics = useCallback(async () => {
     try {
@@ -675,7 +709,15 @@ export default function Dashboard() {
       )}
 
       {/* SALES TAB */}
-      {primaryTab === "sales" && <WholesaleDashboard />}
+      {primaryTab === "sales" && (
+        <WholesaleDashboard
+          data={wholesale}
+          loading={wholesaleLoading}
+          period={wholesalePeriod}
+          onPeriodChange={handleWholesalePeriodChange}
+          onRefresh={() => fetchWholesale()}
+        />
+      )}
     </div>
   );
 }
