@@ -57,13 +57,13 @@ When inventory drops below safety stock, the row pulses amber as a warning.
 
 ---
 
-### Warehouse Abbreviations
+### Warehouses
 
-| Name | Location | Products |
-|------|----------|----------|
-| **Hobson** | Hobson, MT | Main cast iron/carbon steel |
-| **Selery** | Selery location | Cast iron/carbon steel |
-| **Pipefitter** | Pipefitter location | Various |
+| Name | ShipHero ID |
+|------|-------------|
+| **Hobson** | 77373 |
+| **Selery** | 93742 |
+| **Pipefitter** | 120758 |
 
 ---
 
@@ -94,17 +94,17 @@ These need investigation (lost in transit?)
 
 **What it means**: How engaged a wholesale customer is based on their ordering history
 
-| Status | Days Since Last Order | What It Means | What to Do |
-|--------|----------------------|---------------|------------|
-| **Thriving** | Recently ordered + growing | Active, revenue trending up | Maintain relationship |
-| **Stable** | Recently ordered | Regular customer, steady ordering | Regular check-ins |
-| **Declining** | Recently ordered but slowing | Revenue trending down 20%+ | Review account |
-| **At Risk** | 120-180 days | 4-6 months since last order | Schedule check-in call |
-| **Churning** | 180-365 days | 6-12 months since last order | Urgent outreach needed |
-| **Churned** | Over 365 days | Over a year since last order | Win-back campaign |
-| **One-Time** | Any (only 1 order ever) | Only ordered once | Follow-up for repeat |
-| **Never Ordered** | N/A (no orders) | Account exists but never ordered | Sales opportunity |
-| **New** | Data issue | Has orders but missing date | Check data |
+| Status | Criteria |
+|--------|----------|
+| **Thriving** | revenueTrend > 0.1 (revenue up 10%+) |
+| **Stable** | default (no other condition matches) |
+| **Declining** | revenueTrend < -0.2 (revenue down 20%+) |
+| **At Risk** | daysSinceLastOrder > 120 |
+| **Churning** | daysSinceLastOrder > 180 |
+| **Churned** | daysSinceLastOrder > 365 |
+| **One-Time** | orderCount = 1 |
+| **Never Ordered** | orderCount = 0 |
+| **New** | daysSinceLastOrder = null (data issue) |
 
 ### Active vs Total Customers
 
@@ -115,14 +115,14 @@ These need investigation (lost in transit?)
 
 ### Customer Segments (by Lifetime Revenue)
 
-| Segment | Revenue Range | Description |
-|---------|--------------|-------------|
-| **Major** | $50,000+ | Key accounts, highest priority |
-| **Large** | $20,000 - $49,999 | Significant accounts |
-| **Mid** | $10,000 - $19,999 | Established accounts |
-| **Small** | $5,000 - $9,999 | Growing accounts |
-| **Starter** | $2,000 - $4,999 | New accounts with potential |
-| **Minimal** | Under $2,000 | Small or inactive accounts |
+| Segment | Revenue Range |
+|---------|--------------|
+| **Major** | $50,000+ |
+| **Large** | $20,000 - $49,999 |
+| **Mid** | $10,000 - $19,999 |
+| **Small** | $5,000 - $9,999 |
+| **Starter** | $2,000 - $4,999 |
+| **Minimal** | Under $2,000 |
 
 ### Risk Score (0-100)
 **What it means**: How likely a customer is to stop ordering

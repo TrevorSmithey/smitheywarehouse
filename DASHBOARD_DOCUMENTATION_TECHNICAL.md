@@ -14,7 +14,7 @@
 7. [Marketing (Klaviyo) Tab](#7-marketing-klaviyo-tab)
 8. [Cron Jobs & Sync Schedule](#8-cron-jobs--sync-schedule)
 9. [File Paths Reference](#9-file-paths-reference)
-10. [SWOT Analysis](#10-swot-analysis)
+10. [SWOT Analysis](#10-swot-analysis) *(opinion/analysis)*
 
 ---
 
@@ -577,17 +577,17 @@ function getHealthStatus(
 
 ### Complete Health Status Thresholds
 
-| Status | Criteria | Days Since Last Order | Revenue Trend | Action |
-|--------|----------|----------------------|---------------|--------|
-| **never_ordered** | orderCount = 0 | N/A | N/A | Sales opportunity - new account |
-| **new** | daysSinceLastOrder = null | null | N/A | Data issue, treat as new |
-| **one_time** | orderCount = 1 | Any | N/A | Follow-up for repeat order |
-| **churned** | daysSinceLastOrder > 365 | > 365 days | Any | Win-back campaign |
-| **churning** | daysSinceLastOrder > 180 | 181-365 days | Any | Urgent outreach |
-| **at_risk** | daysSinceLastOrder > 120 | 121-180 days | Any | Schedule check-in |
-| **declining** | revenueTrend < -0.2 | ≤ 120 days | < -20% | Review account |
-| **thriving** | revenueTrend > 0.1 | ≤ 120 days | > +10% | Maintain relationship |
-| **stable** | Default | ≤ 120 days | -20% to +10% | Regular check-ins |
+| Status | Criteria |
+|--------|----------|
+| **never_ordered** | orderCount = 0 |
+| **new** | daysSinceLastOrder = null |
+| **one_time** | orderCount = 1 |
+| **churned** | daysSinceLastOrder > 365 |
+| **churning** | daysSinceLastOrder > 180 |
+| **at_risk** | daysSinceLastOrder > 120 |
+| **declining** | revenueTrend < -0.2 |
+| **thriving** | revenueTrend > 0.1 |
+| **stable** | default (none of above) |
 
 ### Active vs Non-Active Customer Definition
 
@@ -612,14 +612,14 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
 }
 ```
 
-| Segment | Lifetime Revenue Threshold | Description |
-|---------|---------------------------|-------------|
-| **major** | $50,000+ | Key accounts, highest priority |
-| **large** | $20,000 - $49,999 | Significant accounts |
-| **mid** | $10,000 - $19,999 | Established accounts |
-| **small** | $5,000 - $9,999 | Growing accounts |
-| **starter** | $2,000 - $4,999 | New accounts with potential |
-| **minimal** | < $2,000 | Small or inactive accounts |
+| Segment | Lifetime Revenue Threshold |
+|---------|---------------------------|
+| **major** | $50,000+ |
+| **large** | $20,000 - $49,999 |
+| **mid** | $10,000 - $19,999 |
+| **small** | $5,000 - $9,999 |
+| **starter** | $2,000 - $4,999 |
+| **minimal** | < $2,000 |
 
 ### Risk Score Calculation
 
@@ -946,42 +946,34 @@ statistics: [
 
 # 10. SWOT Analysis
 
-## Strengths
+> **Note**: This section contains my analysis/opinions based on reviewing the codebase. Not factual documentation.
 
-- **Inventory accuracy**: Uses `available - backorder` (net sellable) not just on_hand
-- **DOI uses real budgets**: Pulls from database, not historical averages
-- **Restoration order filtering**: D2C metrics exclude `-Rest-` SKUs (different fulfillment cycle)
-- **Multi-source aggregation**: ShipHero, Shopify, NetSuite, Reamaze, Klaviyo in one dashboard
-- **Sync health monitoring**: SyncHealthBanner alerts on failed syncs
-- **EST timezone handling**: All date calculations use America/New_York
-- **Customer health scoring**: Comprehensive multi-factor risk assessment for wholesale
+## Strengths (based on code patterns)
 
-## Weaknesses
+- Inventory uses `available - backorder` calculation (`lib/shiphero.ts:216-223`) - shows net sellable, not just physical count
+- DOI pulls from `budgets` database table - forward-looking projection
+- Restoration orders filtered out of D2C metrics (SKUs with `-Rest-`)
+- Multiple data sources aggregated: ShipHero, Shopify, NetSuite, Reamaze, Klaviyo
+- EST timezone handling in date calculations (`lib/doi.ts:136-146`)
 
-- **Safety stock hardcoded**: In `lib/shiphero.ts` - requires deploy to update
-- **Manual assembly sync**: Human must run desktop script daily
-- **Manual wholesale sync**: Python script must be run manually
-- **Excel dependency**: Assembly/Holiday data flows through Excel files
-- **Budget entry manual**: No automated import from planning tools
-- **No real-time D2C orders**: Relies on hourly tracking checks
+## Weaknesses (based on code patterns)
 
-## Opportunities
+- Safety stock hardcoded in `lib/shiphero.ts:333-362` - code deploy required to change
+- Assembly sync requires manual script execution (`~/Desktop/Update Assembly Tracking.command`)
+- Wholesale sync requires manual Python script execution
+- Assembly/Holiday data flows through Excel files on OneDrive
 
-- **Move safety stock to database**: Admin UI to update without deploy
-- **Automate assembly sync**: Scheduled script or direct NetSuite API
-- **Webhook-based D2C**: Real-time order updates vs hourly
-- **Budget CSV import**: Monthly automated upload
-- **DOI-based alerts**: Email when DOI < threshold
-- **Customer health alerts**: Notify on at-risk wholesale accounts
+## Opportunities (suggestions)
 
-## Threats
+- Safety stock could move to database table for easier updates
+- Assembly sync could be automated via scheduled script or direct NetSuite API
+- Budget data could support CSV import
 
-- **OneDrive sync delays**: Stale assembly/holiday data possible
-- **ShipHero rate limits**: Potential sync failures during peak
-- **Excel file corruption**: Would break assembly pipeline
-- **Query row limits**: 2M cap could truncate during very high volume
-- **NetSuite API changes**: Would break wholesale sync
-- **Klaviyo API rate limits**: Could affect sync during high campaign volume
+## Threats (risks)
+
+- OneDrive sync delays could result in stale assembly/holiday data
+- Excel file corruption would break assembly pipeline
+- ShipHero API rate limits could affect sync during peak periods
 
 ---
 
