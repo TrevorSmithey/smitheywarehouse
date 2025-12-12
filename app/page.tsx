@@ -265,6 +265,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch inventory");
       const data: InventoryResponse = await res.json();
       setInventory(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Inventory fetch error:", err);
     } finally {
@@ -287,6 +288,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch holiday data");
       const data: HolidayResponse = await res.json();
       setHolidayData(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Holiday fetch error:", err);
     } finally {
@@ -309,6 +311,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch assembly data");
       const data: AssemblyResponse = await res.json();
       setAssemblyData(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Assembly fetch error:", err);
     } finally {
@@ -339,6 +342,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch budget data");
       const data: BudgetResponse = await res.json();
       setBudgetData(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Budget fetch error:", err);
     } finally {
@@ -415,6 +419,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch tickets");
       const data: TicketsResponse = await res.json();
       setTicketsData(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Tickets fetch error:", err);
     } finally {
@@ -445,6 +450,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch Klaviyo data");
       const data: KlaviyoResponse = await res.json();
       setKlaviyoData(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Klaviyo fetch error:", err);
     } finally {
@@ -475,6 +481,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to fetch wholesale data");
       const data: WholesaleResponse = await res.json();
       setWholesaleData(data);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Wholesale fetch error:", err);
     } finally {
@@ -634,11 +641,31 @@ export default function Dashboard() {
                 default: fetchMetrics();
               }
             }}
-            disabled={loading || inventoryLoading || holidayLoading || assemblyLoading || budgetLoading || ticketsLoading || klaviyoLoading || wholesaleLoading}
+            disabled={
+              primaryTab === "fulfillment" ? loading :
+              primaryTab === "inventory" ? inventoryLoading :
+              primaryTab === "holiday" ? holidayLoading :
+              primaryTab === "assembly" ? assemblyLoading :
+              primaryTab === "budget" ? budgetLoading :
+              primaryTab === "voc" ? ticketsLoading :
+              primaryTab === "marketing" ? klaviyoLoading :
+              primaryTab === "sales" ? wholesaleLoading :
+              loading
+            }
             aria-label="Refresh data"
             className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded"
           >
-            <RefreshCw className={`w-4 h-4 ${(loading || inventoryLoading || holidayLoading || assemblyLoading || budgetLoading || ticketsLoading || klaviyoLoading || wholesaleLoading) ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${
+              (primaryTab === "fulfillment" ? loading :
+               primaryTab === "inventory" ? inventoryLoading :
+               primaryTab === "holiday" ? holidayLoading :
+               primaryTab === "assembly" ? assemblyLoading :
+               primaryTab === "budget" ? budgetLoading :
+               primaryTab === "voc" ? ticketsLoading :
+               primaryTab === "marketing" ? klaviyoLoading :
+               primaryTab === "sales" ? wholesaleLoading :
+               loading) ? "animate-spin" : ""
+            }`} />
           </button>
         </div>
 
