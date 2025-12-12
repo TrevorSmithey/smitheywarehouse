@@ -271,7 +271,7 @@ const rowBg =
 
 **API Endpoint**: `/api/tickets`
 **Sync Frequency**: Every 5 minutes (Vercel cron)
-**Source Files**: `lib/reamaze.ts`, `app/api/cron/sync-reamaze/route.ts`
+**Source Files**: `lib/reamaze.ts`, `app/api/cron/sync-reamaze/route.ts`, `app/api/tickets/route.ts`
 
 ### Data Flow
 
@@ -280,16 +280,133 @@ Reamaze API (REST)
   ↓
 /api/cron/sync-reamaze (every 5 min)
   ↓
-Supabase: reamaze_conversations table
+Supabase: support_tickets table
+  ↓
+/api/tickets (returns full analysis)
 ```
 
-### Key Metrics
+### API Response Structure
 
-| Metric | Definition |
-|--------|------------|
-| Open Tickets | Conversations with status = 'open' |
-| Pending | Conversations with status = 'pending' |
-| Resolved Today | Conversations resolved in last 24 hours |
+**Source**: `app/api/tickets/route.ts:219-236`
+
+```typescript
+interface TicketsResponse {
+  tickets: SupportTicket[];           // Paginated ticket list
+  totalCount: number;                 // Current period ticket count
+  previousTotalCount: number;         // Prior period for comparison
+  orderCount: number;                 // Orders in period (for TOR)
+  previousOrderCount: number;
+  ticketToOrderRatio: number;         // TOR percentage
+  previousTOR: number;
+  categoryCounts: TicketCategoryCount[];
+  sentimentBreakdown: TicketSentimentBreakdown;
+  alertCounts: TicketAlertCounts;
+  wordCloud: WordCloudItem[];
+  topicThemes: TopicTheme[];
+  insights: VOCInsight[];
+  torTrend: { date, tickets, orders, tor }[];
+  purchaseTiming: PurchaseTimingBreakdown;
+  lastSynced: string | null;
+}
+```
+
+### TOR (Ticket-to-Order Ratio)
+
+**Source**: `app/api/tickets/route.ts:170-178`
+
+```typescript
+// TOR = (tickets / orders) × 100
+const ticketToOrderRatio =
+  currentOrderCount > 0
+    ? Math.round((currentTicketCount / currentOrderCount) * 1000) / 10
+    : 0;
+```
+
+**Interpretation**: If TOR = 5.2%, that means 5.2 support tickets per 100 orders.
+
+### Sentiment Breakdown
+
+**Source**: `app/api/tickets/route.ts:302-331`
+
+| Sentiment | Description |
+|-----------|-------------|
+| positive | Customer happy, praise, thank you |
+| neutral | Informational inquiry, status check |
+| negative | Complaint, frustration, problem |
+| mixed | Contains both positive and negative elements |
+
+Returns counts and percentages for each sentiment type.
+
+### Alert Counts
+
+**Source**: `app/api/tickets/route.ts:334-373`
+
+```typescript
+interface TicketAlertCounts {
+  qualityNegative: number;   // Quality issues with negative sentiment
+  deliveryProblems: number;  // All delivery-related tickets
+  returnRequests: number;    // All return/exchange requests
+  allNegative: number;       // Total negative sentiment tickets
+}
+```
+
+### Word Cloud Generation
+
+**Source**: `app/api/tickets/route.ts:429-490`
+
+- Extracts words from ticket summaries
+- Filters stop words (common English + AI boilerplate)
+- Boosts Smithey-relevant keywords (seasoning, engraving, etc.)
+- Assigns sentiment score per word based on tickets containing it
+- Returns top 40 words with count, sentiment, and score
+
+### Topic Themes
+
+**Source**: `app/api/tickets/route.ts:492-614`
+
+Groups categories into themes:
+
+| Theme | Categories Included |
+|-------|---------------------|
+| Product Issues | Quality Issue, Seasoning Issue, Dutch Oven Issue, Glass Lid Issue |
+| Order Management | Order Status, Order Cancellation or Edit, Ordering Inquiry |
+| Shipping & Delivery | Shipping Status, Shipping Setup Issue, Delivery Delay or Problem |
+| Returns & Exchanges | Return or Exchange |
+| Product Questions | Product Inquiry, Product Recommendation, Cooking Advice, Engraving Question |
+| Sales & Promotions | Promotion or Sale Inquiry, Factory Seconds Question, Wholesale Request |
+| Positive Feedback | Positive Feedback |
+
+### AI Insights Generation
+
+**Source**: `app/api/tickets/route.ts:616-749`
+
+Auto-generates up to 4 insights based on:
+- TOR trend (rising/falling)
+- Quality issues count
+- Delivery problems trending
+- Top growing categories
+- Sentiment distribution
+
+Insight types:
+- `alert`: Requires attention
+- `trend`: Notable pattern
+- `positive`: Good news
+
+### Purchase Timing Breakdown
+
+**Source**: `app/api/tickets/route.ts:797-863`
+
+```typescript
+interface PurchaseTimingBreakdown {
+  prePurchase: number;       // Tickets from customers with 0 orders
+  postPurchase: number;      // Tickets from customers with 1+ orders
+  unknown: number;           // No customer email match
+  prePurchasePct: number;
+  postPurchasePct: number;
+  topPrePurchaseCategories: { category, count, pct }[];
+  topPostPurchaseCategories: { category, count, pct }[];
+}
+```
 
 ---
 

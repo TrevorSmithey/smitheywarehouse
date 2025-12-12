@@ -70,11 +70,47 @@ When inventory drops below safety stock, the row pulses amber as a warning.
 
 ## VOC (Support) Tab
 
-| Metric | What It Means |
-|--------|---------------|
-| **Open Tickets** | Conversations waiting for response |
-| **Pending** | Conversations waiting on customer |
-| **Resolved Today** | Tickets closed in last 24 hours |
+### TOR (Ticket-to-Order Ratio)
+**What it means**: Number of support tickets per 100 orders
+
+Example: TOR of 5.2% means 5.2 tickets for every 100 orders placed
+
+| TOR | Status |
+|-----|--------|
+| **< 3%** | Excellent - low support burden |
+| **3-5%** | Normal range |
+| **> 5%** | Worth investigating - may indicate issues |
+
+### Sentiment
+**What it means**: How customers feel based on ticket content
+
+| Sentiment | Description |
+|-----------|-------------|
+| **Positive** | Happy customer, praise, thank you |
+| **Neutral** | Information request, status check |
+| **Negative** | Complaint, frustration, problem |
+| **Mixed** | Contains both positive and negative |
+
+### Alert Counts
+Highlights that need attention:
+- **Quality Issues (Negative)**: Product problems with unhappy customers
+- **Delivery Problems**: All shipping/delivery related tickets
+- **Return Requests**: All return or exchange requests
+
+### Topic Themes
+Groups tickets into categories:
+- **Product Issues**: Quality, seasoning, specific product problems
+- **Order Management**: Status, cancellations, changes
+- **Shipping & Delivery**: Tracking, delays, problems
+- **Returns & Exchanges**: Return and exchange requests
+- **Product Questions**: Inquiries, recommendations, cooking advice
+- **Sales & Promotions**: Discount inquiries, wholesale, factory seconds
+- **Positive Feedback**: Compliments and praise
+
+### Pre/Post Purchase Timing
+Shows whether tickets come from:
+- **Pre-Purchase**: Customers who haven't bought yet (questions before buying)
+- **Post-Purchase**: Customers who already bought (support after purchase)
 
 ---
 
