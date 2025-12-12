@@ -47,9 +47,10 @@ import type {
   InventoryCategory,
 } from "@/lib/types";
 import { USTransitMap } from "@/components/USTransitMap";
+import WholesaleDashboard from "@/components/WholesaleDashboard";
 
 type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
-type PrimaryTab = "inventory" | "fulfillment";
+type PrimaryTab = "inventory" | "fulfillment" | "sales";
 type FulfillmentSubTab = "dashboard" | "tracking";
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -190,15 +191,17 @@ export default function Dashboard() {
   const [inventory, setInventory] = useState<InventoryResponse | null>(null);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryCategory, setInventoryCategory] = useState<InventoryCategoryTab>("cast_iron");
+  const [inventoryFetchedAt, setInventoryFetchedAt] = useState<Date | null>(null);
 
   // Fetch inventory when tab becomes active
   const fetchInventory = useCallback(async () => {
+    setInventoryLoading(true);
     try {
-      setInventoryLoading(true);
-      const res = await fetch("/api/inventory");
+      const res = await fetch(`/api/inventory?_t=${Date.now()}`);
       if (!res.ok) throw new Error("Failed to fetch inventory");
       const data: InventoryResponse = await res.json();
       setInventory(data);
+      setInventoryFetchedAt(new Date());
     } catch (err) {
       console.error("Inventory fetch error:", err);
     } finally {
@@ -321,8 +324,8 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Date Range Selector - hide on Inventory tab */}
-        {primaryTab !== "inventory" && (
+        {/* Date Range Selector - hide on Inventory and Sales tabs */}
+        {primaryTab === "fulfillment" && (
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex gap-2">
               {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
@@ -395,6 +398,17 @@ export default function Dashboard() {
           >
             <Package className="w-4 h-4 inline-block mr-2 -mt-0.5" />
             FULFILLMENT
+          </button>
+          <button
+            onClick={() => setPrimaryTab("sales")}
+            className={`px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px ${
+              primaryTab === "sales"
+                ? "text-accent-blue border-accent-blue"
+                : "text-text-tertiary border-transparent hover:text-text-secondary"
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 inline-block mr-2 -mt-0.5" />
+            SALES
           </button>
         </div>
 
@@ -656,8 +670,12 @@ export default function Dashboard() {
           category={inventoryCategory}
           setCategory={setInventoryCategory}
           onRefresh={fetchInventory}
+          fetchedAt={inventoryFetchedAt}
         />
       )}
+
+      {/* SALES TAB */}
+      {primaryTab === "sales" && <WholesaleDashboard />}
     </div>
   );
 }
@@ -1696,12 +1714,14 @@ function InventoryDashboard({
   category,
   setCategory,
   onRefresh,
+  fetchedAt,
 }: {
   inventory: InventoryResponse | null;
   loading: boolean;
   category: InventoryCategoryTab;
   setCategory: (cat: InventoryCategoryTab) => void;
   onRefresh: () => void;
+  fetchedAt: Date | null;
 }) {
   const [sortBy, setSortBy] = useState<"total" | "pipefitter" | "hobson" | "selery" | "doi">("doi");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc"); // For DOI, "desc" = low-to-high (most urgent first)
@@ -2126,12 +2146,19 @@ function InventoryDashboard({
         </div>
       </div>
 
-      {/* Last synced */}
-      {inventory?.lastSynced && (
-        <div className="mt-3 text-xs text-text-muted text-right">
-          Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
-        </div>
-      )}
+      {/* Last synced / fetched */}
+      <div className="mt-3 text-xs text-text-muted text-right flex items-center justify-end gap-3">
+        {fetchedAt && (
+          <span>
+            Fetched {formatDistanceToNow(fetchedAt, { addSuffix: true })}
+          </span>
+        )}
+        {inventory?.lastSynced && (
+          <span className="opacity-60">
+            ShipHero sync {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
