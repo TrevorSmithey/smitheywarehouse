@@ -2929,12 +2929,6 @@ function InventoryDashboard({
         </div>
       </div>
 
-      {/* Last synced */}
-      {inventory?.lastSynced && (
-        <div className="mt-2 text-xs text-text-muted text-right">
-          Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
-        </div>
-      )}
     </div>
   );
 }
@@ -3516,12 +3510,6 @@ function HolidayDashboard({
         </div>
       </div>
 
-      {/* Footer */}
-      {data.lastSynced && (
-        <div className="text-xs text-text-muted text-center pt-4 border-t border-border/30">
-          Data synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-        </div>
-      )}
     </div>
   );
 }
@@ -4181,12 +4169,6 @@ function AssemblyDashboard({
         })()}
       </div>
 
-      {/* Footer */}
-      {data.lastSynced && (
-        <div className="text-[10px] text-text-muted text-center pt-4 tracking-wide">
-          Last synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-        </div>
-      )}
     </div>
   );
 }
