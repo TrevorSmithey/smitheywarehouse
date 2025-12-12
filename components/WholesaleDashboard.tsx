@@ -378,8 +378,6 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
   if (chartData.length < 2) return null;
 
   const avgRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0) / chartData.length;
-  const latestMonth = chartData[chartData.length - 1];
-  const latestYoY = latestMonth?.yoyChange;
 
   interface ChartDataItem {
     month: string;
@@ -462,24 +460,11 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
           </p>
         </div>
 
-        <div className="flex items-center gap-6">
-          {latestYoY !== null && latestYoY !== undefined && (
-            <div className="text-right">
-              <div className={`text-2xl font-bold tabular-nums ${
-                latestYoY >= 0 ? "text-status-good" : "text-status-bad"
-              }`}>
-                {latestYoY >= 0 ? "+" : ""}{latestYoY.toFixed(0)}%
-              </div>
-              <p className="text-[10px] text-text-muted uppercase tracking-wider">YoY Change</p>
-            </div>
-          )}
-
-          <div className="text-right border-l border-border/30 pl-6">
-            <div className="text-xl font-semibold text-text-primary tabular-nums">
-              {formatCurrency(avgRevenue)}
-            </div>
-            <p className="text-[10px] text-text-muted uppercase tracking-wider">Avg/Month</p>
+        <div className="text-right">
+          <div className="text-xl font-semibold text-text-primary tabular-nums">
+            {formatCurrency(avgRevenue)}
           </div>
+          <p className="text-[10px] text-text-muted uppercase tracking-wider">Avg/Month</p>
         </div>
       </div>
 
