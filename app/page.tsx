@@ -653,7 +653,7 @@ export default function Dashboard() {
               loading
             }
             aria-label="Refresh data"
-            className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-accent-blue hover:bg-bg-secondary active:scale-95 transition-all disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue rounded-lg"
           >
             <RefreshCw className={`w-4 h-4 ${
               (primaryTab === "fulfillment" ? loading :
@@ -666,6 +666,17 @@ export default function Dashboard() {
                primaryTab === "sales" ? wholesaleLoading :
                loading) ? "animate-spin" : ""
             }`} />
+            <span className="hidden sm:inline">
+              {(primaryTab === "fulfillment" ? loading :
+                primaryTab === "inventory" ? inventoryLoading :
+                primaryTab === "holiday" ? holidayLoading :
+                primaryTab === "assembly" ? assemblyLoading :
+                primaryTab === "budget" ? budgetLoading :
+                primaryTab === "voc" ? ticketsLoading :
+                primaryTab === "marketing" ? klaviyoLoading :
+                primaryTab === "sales" ? wholesaleLoading :
+                loading) ? "Refreshing..." : "Refresh"}
+            </span>
           </button>
         </div>
 
