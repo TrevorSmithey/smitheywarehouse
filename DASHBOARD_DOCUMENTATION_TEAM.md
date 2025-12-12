@@ -23,7 +23,9 @@
 ### Inventory Terms
 
 #### DOI (Days of Inventory)
-**What it means**: How many days until we run out of stock at current sales pace
+**What it means**: How many days until we run out of stock based on our **monthly budget targets**
+
+**Important**: DOI uses our planned sales budgets (from the budgets spreadsheet), NOT actual recent sales velocity. This tells you how long inventory will last if we hit our sales targets.
 
 | DOI | Status | What to Do |
 |-----|--------|------------|

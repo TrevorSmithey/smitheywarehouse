@@ -84,6 +84,17 @@ const getNetAvailable = (warehouseId: string): number => {
 
 **Source**: `lib/doi.ts:128-217`
 
+### IMPORTANT: DOI Uses BUDGETS, Not Velocity
+
+**DOI is NOT based on historical sales velocity.** It uses **monthly budget targets** from the `budgets` database table - the planned units we expect to sell each month.
+
+| Metric | Source | Purpose |
+|--------|--------|---------|
+| **Velocity** | ShipHero orders (3-day rolling avg) | Shows recent actual sales rate |
+| **DOI** | `budgets` table (monthly targets) | Projects stockout based on planned demand |
+
+This means DOI reflects our sales plan, not past performance. If we budget 600 units/month but only sell 300, DOI will still project based on the 600.
+
 ### Algorithm Step-by-Step
 
 ```
@@ -94,7 +105,7 @@ INPUT:
 
 ALGORITHM:
   1. Get today's date in EST timezone
-  2. Look up this month's budget for this SKU from database
+  2. Look up this month's BUDGET for this SKU from database
   3. daily_demand = monthly_budget / days_in_month
   4. remaining_demand_this_month = daily_demand × days_left_in_month
 
