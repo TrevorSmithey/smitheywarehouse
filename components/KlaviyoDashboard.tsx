@@ -346,6 +346,73 @@ interface MonthlyChartData {
   yoyChange?: number;
 }
 
+function MonthlyRevenueTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload: MonthlyChartData }>
+}) {
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0].payload;
+  const [year, month] = item.month.split('-').map(Number);
+  const tooltipDate = new Date(year, month - 1, 1);
+
+  return (
+    <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[200px]">
+      <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/30">
+        <span className="text-sm font-semibold text-text-primary">
+          {format(tooltipDate, "MMMM yyyy")}
+        </span>
+        {item.yoyChange !== undefined && (
+          <span className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
+            item.yoyChange >= 0
+              ? "bg-status-good/20 text-status-good"
+              : "bg-status-bad/20 text-status-bad"
+          }`}>
+            {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}% YoY
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-sm bg-status-good" />
+            <span className="text-xs text-text-secondary">Campaigns</span>
+          </div>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">
+            {formatCurrency(item.campaignRevenue)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-sm bg-status-warning" />
+            <span className="text-xs text-text-secondary">Flows</span>
+          </div>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">
+            {formatCurrency(item.flowRevenue)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-6 pt-2 border-t border-border/20">
+          <span className="text-xs font-medium text-text-secondary">Total</span>
+          <span className="text-base font-bold text-text-primary tabular-nums">
+            {formatCurrency(item.totalRevenue)}
+          </span>
+        </div>
+
+        {item.yoyRevenue !== undefined && (
+          <div className="flex items-center justify-between gap-6 text-text-muted">
+            <span className="text-[10px]">Same month last year</span>
+            <span className="text-[10px] tabular-nums">
+              {formatCurrency(item.yoyRevenue)}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MonthlyRevenueTrend({ monthly, period }: { monthly: KlaviyoMonthlySummary[]; period: KlaviyoPeriod }) {
   const chartData: MonthlyChartData[] = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
@@ -423,75 +490,6 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: KlaviyoMonthlySumma
   const latestMonth = chartData[chartData.length - 1];
   const latestYoY = latestMonth?.yoyChange;
 
-  // Custom tooltip with YoY prominently displayed
-  const CustomTooltip = ({ active, payload }: {
-    active?: boolean;
-    payload?: Array<{ payload: MonthlyChartData }>
-  }) => {
-    if (!active || !payload || !payload.length) return null;
-    const item = payload[0].payload;
-    // Parse month as local date to avoid timezone shift
-    const [year, month] = item.month.split('-').map(Number);
-    const tooltipDate = new Date(year, month - 1, 1);
-
-    return (
-      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[200px]">
-        <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/30">
-          <span className="text-sm font-semibold text-text-primary">
-            {format(tooltipDate, "MMMM yyyy")}
-          </span>
-          {item.yoyChange !== undefined && (
-            <span className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
-              item.yoyChange >= 0
-                ? "bg-status-good/20 text-status-good"
-                : "bg-status-bad/20 text-status-bad"
-            }`}>
-              {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}% YoY
-            </span>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-status-good" />
-              <span className="text-xs text-text-secondary">Campaigns</span>
-            </div>
-            <span className="text-sm font-semibold text-text-primary tabular-nums">
-              {formatCurrency(item.campaignRevenue)}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm bg-status-warning" />
-              <span className="text-xs text-text-secondary">Flows</span>
-            </div>
-            <span className="text-sm font-semibold text-text-primary tabular-nums">
-              {formatCurrency(item.flowRevenue)}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between gap-6 pt-2 border-t border-border/20">
-            <span className="text-xs font-medium text-text-secondary">Total</span>
-            <span className="text-base font-bold text-text-primary tabular-nums">
-              {formatCurrency(item.totalRevenue)}
-            </span>
-          </div>
-
-          {item.yoyRevenue !== undefined && (
-            <div className="flex items-center justify-between gap-6 text-text-muted">
-              <span className="text-[10px]">Same month last year</span>
-              <span className="text-[10px] tabular-nums">
-                {formatCurrency(item.yoyRevenue)}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
       {/* Header with current month's YoY prominently displayed */}
@@ -559,7 +557,7 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: KlaviyoMonthlySumma
               width={55}
               tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+            <Tooltip content={<MonthlyRevenueTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
             <ReferenceLine
               y={avgRevenue}
               stroke="#64748B"
@@ -616,6 +614,48 @@ interface SubscriberChartData {
   displayMonth: string;
   active120Day: number | null;
   engaged365Day: number | null;
+}
+
+function SubscriberGrowthTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload: SubscriberChartData }>
+}) {
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0].payload;
+  const [year, month] = item.month.split('-').map(Number);
+  const tooltipDate = new Date(year, month - 1, 1);
+
+  return (
+    <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[180px]">
+      <div className="text-sm font-semibold text-text-primary mb-3 pb-2 border-b border-border/30">
+        {format(tooltipDate, "MMMM yyyy")}
+      </div>
+      <div className="space-y-2">
+        {item.engaged365Day !== null && (
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm bg-purple-400" />
+              <span className="text-xs text-text-secondary">365-day</span>
+            </div>
+            <span className="text-sm font-semibold text-text-primary tabular-nums">
+              {formatNumberFull(item.engaged365Day)}
+            </span>
+          </div>
+        )}
+        {item.active120Day !== null && (
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm bg-accent-blue" />
+              <span className="text-xs text-text-secondary">120-day</span>
+            </div>
+            <span className="text-sm font-semibold text-text-primary tabular-nums">
+              {formatNumberFull(item.active120Day)}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySummary[]; period: KlaviyoPeriod }) {
@@ -722,49 +762,6 @@ function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySum
     ? ((latest.active120Day - previous.active120Day) / previous.active120Day) * 100
     : undefined;
 
-  const CustomTooltip = ({ active, payload }: {
-    active?: boolean;
-    payload?: Array<{ payload: SubscriberChartData }>
-  }) => {
-    if (!active || !payload || !payload.length) return null;
-    const item = payload[0].payload;
-    // Parse month as local date to avoid timezone shift
-    const [year, month] = item.month.split('-').map(Number);
-    const tooltipDate = new Date(year, month - 1, 1);
-
-    return (
-      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[180px]">
-        <div className="text-sm font-semibold text-text-primary mb-3 pb-2 border-b border-border/30">
-          {format(tooltipDate, "MMMM yyyy")}
-        </div>
-        <div className="space-y-2">
-          {item.engaged365Day !== null && (
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm bg-purple-400" />
-                <span className="text-xs text-text-secondary">365-day</span>
-              </div>
-              <span className="text-sm font-semibold text-text-primary tabular-nums">
-                {formatNumberFull(item.engaged365Day)}
-              </span>
-            </div>
-          )}
-          {item.active120Day !== null && (
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm bg-accent-blue" />
-                <span className="text-xs text-text-secondary">120-day</span>
-              </div>
-              <span className="text-sm font-semibold text-text-primary tabular-nums">
-                {formatNumberFull(item.active120Day)}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
       {/* Header */}
@@ -834,7 +831,7 @@ function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySum
               width={55}
               tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.1)" }} />
+            <Tooltip content={<SubscriberGrowthTooltip />} cursor={{ stroke: "rgba(255,255,255,0.1)" }} />
 
             <Area
               type="monotone"

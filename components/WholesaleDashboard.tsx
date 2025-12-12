@@ -332,6 +332,74 @@ function AtRiskCustomerCard({ customer }: { customer: WholesaleAtRiskCustomer })
 // MONTHLY REVENUE TREND CHART
 // ============================================================================
 
+// Chart data item type for revenue trend tooltip
+interface RevenueChartDataItem {
+  month: string;
+  displayMonth: string;
+  revenue: number;
+  customers: number;
+  orders: number;
+  avgOrderValue: number;
+  yoyChange: number | null;
+}
+
+// Revenue trend tooltip - extracted to module level to avoid re-creation on render
+function RevenueChartTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload: RevenueChartDataItem }>
+}) {
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0].payload;
+  const [year, month] = item.month.split("-").map(Number);
+  const tooltipDate = new Date(year, month - 1, 1);
+
+  return (
+    <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[200px]">
+      <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/30">
+        <span className="text-sm font-semibold text-text-primary">
+          {format(tooltipDate, "MMMM yyyy")}
+        </span>
+        {item.yoyChange !== null && (
+          <span className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
+            item.yoyChange >= 0
+              ? "bg-status-good/20 text-status-good"
+              : "bg-status-bad/20 text-status-bad"
+          }`}>
+            {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}% YoY
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-xs text-text-secondary">Revenue</span>
+          <span className="text-sm font-semibold text-status-good tabular-nums">
+            {formatCurrency(item.revenue)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-xs text-text-secondary">Orders</span>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">
+            {item.orders}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-xs text-text-secondary">Customers</span>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">
+            {item.customers}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6 pt-2 border-t border-border/20">
+          <span className="text-xs text-text-muted">AOV</span>
+          <span className="text-sm font-medium text-text-secondary tabular-nums">
+            {formatCurrency(item.avgOrderValue)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlyStats[]; period: WholesalePeriod }) {
   const chartData = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
@@ -380,72 +448,6 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
 
   const avgRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0) / chartData.length;
 
-  interface ChartDataItem {
-    month: string;
-    displayMonth: string;
-    revenue: number;
-    customers: number;
-    orders: number;
-    avgOrderValue: number;
-    yoyChange: number | null;
-  }
-
-  const CustomTooltip = ({ active, payload }: {
-    active?: boolean;
-    payload?: Array<{ payload: ChartDataItem }>
-  }) => {
-    if (!active || !payload || !payload.length) return null;
-    const item = payload[0].payload;
-    const [year, month] = item.month.split("-").map(Number);
-    const tooltipDate = new Date(year, month - 1, 1);
-
-    return (
-      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-xl p-4 shadow-xl min-w-[200px]">
-        <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-border/30">
-          <span className="text-sm font-semibold text-text-primary">
-            {format(tooltipDate, "MMMM yyyy")}
-          </span>
-          {item.yoyChange !== null && (
-            <span className={`text-sm font-bold tabular-nums px-2 py-0.5 rounded ${
-              item.yoyChange >= 0
-                ? "bg-status-good/20 text-status-good"
-                : "bg-status-bad/20 text-status-bad"
-            }`}>
-              {item.yoyChange >= 0 ? "+" : ""}{item.yoyChange.toFixed(0)}% YoY
-            </span>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-xs text-text-secondary">Revenue</span>
-            <span className="text-sm font-semibold text-status-good tabular-nums">
-              {formatCurrency(item.revenue)}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-xs text-text-secondary">Orders</span>
-            <span className="text-sm font-semibold text-text-primary tabular-nums">
-              {item.orders}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-xs text-text-secondary">Customers</span>
-            <span className="text-sm font-semibold text-text-primary tabular-nums">
-              {item.customers}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-6 pt-2 border-t border-border/20">
-            <span className="text-xs text-text-muted">AOV</span>
-            <span className="text-sm font-medium text-text-secondary tabular-nums">
-              {formatCurrency(item.avgOrderValue)}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
@@ -492,7 +494,7 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
               width={55}
               tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+            <Tooltip content={<RevenueChartTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
             <ReferenceLine
               y={avgRevenue}
               stroke="#64748B"

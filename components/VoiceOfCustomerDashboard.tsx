@@ -343,6 +343,34 @@ function WordCloud({ words, onWordClick }: { words: WordCloudItem[]; onWordClick
   );
 }
 
+// TOR Trend Tooltip - extracted to module level to avoid re-creation on render
+function TORTrendTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload: TORTrendPoint & { displayDate: string } }>
+}) {
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg">
+      <p className="text-xs text-text-muted mb-2">{format(new Date(item.date), "EEEE, MMM d, yyyy")}</p>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-text-secondary">TOR</span>
+          <span className="text-xs font-medium text-accent-blue tabular-nums">{item.tor.toFixed(1)}%</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-text-secondary">Tickets</span>
+          <span className="text-xs font-medium text-text-primary tabular-nums">{item.tickets}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-text-secondary">Orders</span>
+          <span className="text-xs font-medium text-text-primary tabular-nums">{item.orders}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // TOR Trend Chart Component
 function TORTrendChart({ data, avgTOR }: { data: TORTrendPoint[]; avgTOR: number }) {
   if (!data || data.length === 0) return null;
@@ -352,31 +380,6 @@ function TORTrendChart({ data, avgTOR }: { data: TORTrendPoint[]; avgTOR: number
     ...point,
     displayDate: format(new Date(point.date), "MMM d"),
   }));
-
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: TORTrendPoint & { displayDate: string } }> }) => {
-    if (!active || !payload || !payload.length) return null;
-    const item = payload[0].payload;
-    return (
-      <div className="bg-bg-primary border border-border rounded-lg p-3 shadow-lg">
-        <p className="text-xs text-text-muted mb-2">{format(new Date(item.date), "EEEE, MMM d, yyyy")}</p>
-        <div className="space-y-1">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-xs text-text-secondary">TOR</span>
-            <span className="text-xs font-medium text-accent-blue tabular-nums">{item.tor.toFixed(1)}%</span>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-xs text-text-secondary">Tickets</span>
-            <span className="text-xs font-medium text-text-primary tabular-nums">{item.tickets}</span>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-xs text-text-secondary">Orders</span>
-            <span className="text-xs font-medium text-text-primary tabular-nums">{item.orders}</span>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
@@ -418,7 +421,7 @@ function TORTrendChart({ data, avgTOR }: { data: TORTrendPoint[]; avgTOR: number
               width={35}
               tickFormatter={(value) => `${value}%`}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<TORTrendTooltip />} />
             <ReferenceLine
               y={avgTOR}
               stroke="#64748B"

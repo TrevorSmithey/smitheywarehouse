@@ -1757,18 +1757,8 @@ function WarehousePanel({
   );
 }
 
-function TopSkusPanel({
-  skus,
-  loading,
-}: {
-  skus: SkuInQueue[];
-  loading: boolean;
-}) {
-  // Split by warehouse - no limit, we'll scroll
-  const smitheySkus = skus.filter((s) => s.warehouse === "smithey");
-  const selerySkus = skus.filter((s) => s.warehouse === "selery");
-
-  const SkuTable = ({ items, warehouse }: { items: SkuInQueue[]; warehouse: string }) => (
+function SkuTable({ items, warehouse }: { items: SkuInQueue[]; warehouse: string }) {
+  return (
     <div>
       <div className={`text-label font-medium mb-3 ${
         warehouse === "smithey" ? "text-accent-blue" : "text-text-tertiary"
@@ -1812,6 +1802,17 @@ function TopSkusPanel({
       )}
     </div>
   );
+}
+
+function TopSkusPanel({
+  skus,
+  loading,
+}: {
+  skus: SkuInQueue[];
+  loading: boolean;
+}) {
+  const smitheySkus = skus.filter((s) => s.warehouse === "smithey");
+  const selerySkus = skus.filter((s) => s.warehouse === "selery");
 
   return (
     <div className="bg-bg-secondary rounded border border-border p-6 mt-6 transition-all hover:border-border-hover">
@@ -2978,6 +2979,69 @@ function InventoryDashboard({
   );
 }
 
+// Holiday Dashboard Constants
+const holidayColors = {
+  current: "#10B981",    // Emerald - 2025, the year we're tracking
+  baseline: "#F59E0B",   // Amber - 2024, warm baseline comparison
+};
+
+const holidayFmt = {
+  currency: (n: number) => {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+    if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+    return `$${Math.round(n)}`;
+  },
+  currencyFull: (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  number: (n: number) => n.toLocaleString(),
+  delta: (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`,
+};
+
+function HolidayChartTooltip({ active, payload, label, prefix = "" }: {
+  active?: boolean;
+  payload?: Array<{ value: number; dataKey: string; stroke: string }>;
+  label?: number;
+  prefix?: string;
+}) {
+  if (!active || !payload?.length) return null;
+
+  const val2025 = payload.find(p => p.dataKey.includes("2025"))?.value || 0;
+  const val2024 = payload.find(p => p.dataKey.includes("2024"))?.value || 0;
+  const delta = val2024 > 0 ? ((val2025 - val2024) / val2024) * 100 : 0;
+
+  return (
+    <div className="bg-bg-primary/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-4 min-w-[180px]">
+      <div className="text-xs text-text-tertiary uppercase tracking-wider mb-3">Day {label}</div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: holidayColors.current }} />
+            <span className="text-text-secondary text-sm">2025</span>
+          </div>
+          <span className="font-semibold text-text-primary tabular-nums">
+            {prefix}{holidayFmt.number(Math.round(val2025))}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: holidayColors.baseline }} />
+            <span className="text-text-secondary text-sm">2024</span>
+          </div>
+          <span className="font-medium text-text-tertiary tabular-nums">
+            {prefix}{holidayFmt.number(Math.round(val2024))}
+          </span>
+        </div>
+        {val2024 > 0 && val2025 > 0 && (
+          <div className="pt-2 mt-2 border-t border-border/50">
+            <div className={`text-sm font-semibold text-right ${delta >= 0 ? "text-status-good" : "text-status-bad"}`}>
+              {holidayFmt.delta(delta)} YoY
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Holiday Dashboard - Q4 YoY Comparison
 // Design: "The Craftsman's Ledger" - refined data presentation for a premium brand
 function HolidayDashboard({
@@ -3016,12 +3080,6 @@ function HolidayDashboard({
   }
 
   const { summary } = data;
-
-  // Semantic colors: Emerald for 2025 (growth/current), Warm amber for 2024 (baseline)
-  const colors = {
-    current: "#10B981",    // Emerald - 2025, the year we're tracking
-    baseline: "#F59E0B",   // Amber - 2024, warm baseline comparison
-  };
 
   // Transform ALL data for charts (show full 92-day period)
   const chartData = data.data.map((d) => ({
@@ -3086,64 +3144,9 @@ function HolidayDashboard({
       ? ((monthMetrics.aov2025 - monthMetrics.aov2024) / monthMetrics.aov2024) * 100 : 0,
   };
 
-  // Formatting helpers
-  const fmt = {
-    currency: (n: number) => {
-      if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-      if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-      return `$${Math.round(n)}`;
-    },
-    currencyFull: (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-    number: (n: number) => n.toLocaleString(),
-    delta: (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`,
-  };
-
-  // Custom tooltip component
-  const ChartTooltip = ({ active, payload, label, prefix = "" }: {
-    active?: boolean;
-    payload?: Array<{ value: number; dataKey: string; stroke: string }>;
-    label?: number;
-    prefix?: string;
-  }) => {
-    if (!active || !payload?.length) return null;
-
-    const val2025 = payload.find(p => p.dataKey.includes("2025"))?.value || 0;
-    const val2024 = payload.find(p => p.dataKey.includes("2024"))?.value || 0;
-    const delta = val2024 > 0 ? ((val2025 - val2024) / val2024) * 100 : 0;
-
-    return (
-      <div className="bg-bg-primary/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-4 min-w-[180px]">
-        <div className="text-xs text-text-tertiary uppercase tracking-wider mb-3">Day {label}</div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.current }} />
-              <span className="text-text-secondary text-sm">2025</span>
-            </div>
-            <span className="font-semibold text-text-primary tabular-nums">
-              {prefix}{fmt.number(Math.round(val2025))}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.baseline }} />
-              <span className="text-text-secondary text-sm">2024</span>
-            </div>
-            <span className="font-medium text-text-tertiary tabular-nums">
-              {prefix}{fmt.number(Math.round(val2024))}
-            </span>
-          </div>
-          {val2024 > 0 && val2025 > 0 && (
-            <div className="pt-2 mt-2 border-t border-border/50">
-              <div className={`text-sm font-semibold text-right ${delta >= 0 ? "text-status-good" : "text-status-bad"}`}>
-                {fmt.delta(delta)} YoY
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
+  // Use module-level formatting helpers and colors
+  const fmt = holidayFmt;
+  const colors = holidayColors;
 
   return (
     <div className="space-y-8">
@@ -3307,7 +3310,7 @@ function HolidayDashboard({
                   tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
                   width={35}
                 />
-                <Tooltip content={<ChartTooltip />} />
+                <Tooltip content={<HolidayChartTooltip />} />
                 <ReferenceLine x={currentDay} stroke="#475569" strokeDasharray="3 3" />
                 <Area
                   type="monotone"
@@ -3376,7 +3379,7 @@ function HolidayDashboard({
                   tickFormatter={(v) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : `$${(v/1000).toFixed(0)}K`}
                   width={45}
                 />
-                <Tooltip content={<ChartTooltip prefix="$" />} />
+                <Tooltip content={<HolidayChartTooltip prefix="$" />} />
                 <ReferenceLine x={currentDay} stroke="#475569" strokeDasharray="3 3" />
                 <Area
                   type="monotone"
@@ -3449,7 +3452,7 @@ function HolidayDashboard({
                   tickFormatter={(v) => `${(v/1000).toFixed(0)}K`}
                   width={35}
                 />
-                <Tooltip content={<ChartTooltip />} />
+                <Tooltip content={<HolidayChartTooltip />} />
                 <ReferenceLine x={currentDay} stroke="#475569" strokeDasharray="3 3" />
                 <Area
                   type="monotone"
@@ -3522,7 +3525,7 @@ function HolidayDashboard({
                   tickFormatter={(v) => `$${(v/1000000).toFixed(1)}M`}
                   width={45}
                 />
-                <Tooltip content={<ChartTooltip prefix="$" />} />
+                <Tooltip content={<HolidayChartTooltip prefix="$" />} />
                 <ReferenceLine x={currentDay} stroke="#475569" strokeDasharray="3 3" />
                 <Area
                   type="monotone"

@@ -74,6 +74,37 @@ function generateGradientCSS(): string {
   return `linear-gradient(to right, ${stops.join(', ')})`;
 }
 
+// Gradient legend bar - extracted to module level to avoid re-creation on render
+function GradientLegend() {
+  return (
+    <div className="flex flex-col items-center gap-2 mt-6 pt-6 border-t border-border/50">
+      <div className="text-xs text-text-muted font-medium tracking-wider uppercase">
+        Transit Time (Days)
+      </div>
+      <div className="flex items-center gap-3 w-full max-w-md">
+        <span className="text-xs font-semibold text-emerald-400">Fast</span>
+        <div
+          className="flex-1 h-3 rounded-full"
+          style={{
+            background: generateGradientCSS(),
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'
+          }}
+        />
+        <span className="text-xs font-semibold text-red-400">Slow</span>
+      </div>
+      <div className="flex justify-between w-full max-w-md text-xs text-text-muted px-8">
+        <span>1d</span>
+        <span>2d</span>
+        <span>3d</span>
+        <span>4d</span>
+        <span>5d</span>
+        <span>6d</span>
+        <span>7d+</span>
+      </div>
+    </div>
+  );
+}
+
 export function USTransitMap({ analytics, loading }: USTransitMapProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("combined");
   const [hoveredState, setHoveredState] = useState<{
@@ -272,35 +303,6 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
       </div>
     );
   };
-
-  // Gradient legend bar
-  const GradientLegend = () => (
-    <div className="flex flex-col items-center gap-2 mt-6 pt-6 border-t border-border/50">
-      <div className="text-xs text-text-muted font-medium tracking-wider uppercase">
-        Transit Time (Days)
-      </div>
-      <div className="flex items-center gap-3 w-full max-w-md">
-        <span className="text-xs font-semibold text-emerald-400">Fast</span>
-        <div
-          className="flex-1 h-3 rounded-full"
-          style={{
-            background: generateGradientCSS(),
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'
-          }}
-        />
-        <span className="text-xs font-semibold text-red-400">Slow</span>
-      </div>
-      <div className="flex justify-between w-full max-w-md text-xs text-text-muted px-8">
-        <span>1d</span>
-        <span>2d</span>
-        <span>3d</span>
-        <span>4d</span>
-        <span>5d</span>
-        <span>6d</span>
-        <span>7d+</span>
-      </div>
-    </div>
-  );
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-border p-6 transition-all hover:border-border-hover">
