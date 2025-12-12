@@ -35,6 +35,7 @@ export function SyncHealthBanner() {
   const [health, setHealth] = useState<SyncHealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -43,8 +44,10 @@ export function SyncHealthBanner() {
       const data = await res.json();
       setHealth(data);
       setError(null);
+      setHasLoadedOnce(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to check sync health");
+      setHasLoadedOnce(true);
     }
   }, []);
 
@@ -55,11 +58,11 @@ export function SyncHealthBanner() {
     return () => clearInterval(interval);
   }, [fetchHealth]);
 
-  // No data yet - show nothing
-  if (!health && !error) return null;
+  // Still loading initial data - show nothing (prevents flash of error during page load)
+  if (!hasLoadedOnce) return null;
 
-  // Error fetching health - show subtle warning
-  if (error) {
+  // Error fetching health - show subtle warning (only after initial load attempt)
+  if (error && !health) {
     return (
       <div className="mt-6 px-4 py-2 bg-status-warning/10 border border-status-warning/30 rounded-lg flex items-center gap-2 text-sm">
         <AlertTriangle className="w-4 h-4 text-status-warning flex-shrink-0" />
