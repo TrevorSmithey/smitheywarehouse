@@ -12,6 +12,7 @@
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { sendSyncFailureAlert } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 1 minute max
@@ -184,10 +185,38 @@ export async function GET(request: Request) {
 
   } catch (error) {
     console.error("[SHOPIFY STATS] Fatal error:", error);
+
+    const errorMessage = error instanceof Error ? error.message : "Sync failed";
+    const elapsed = Date.now() - startTime;
+
+    // Send email alert
+    await sendSyncFailureAlert({
+      syncType: "Shopify Daily Stats",
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Log to sync_logs
+    const supabase = createServiceClient();
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "shopify_stats",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 0,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      console.error("[SHOPIFY STATS] Failed to log sync failure:", logError);
+    }
+
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Sync failed",
-        duration: Date.now() - startTime,
+        error: errorMessage,
+        duration: elapsed,
       },
       { status: 500 }
     );

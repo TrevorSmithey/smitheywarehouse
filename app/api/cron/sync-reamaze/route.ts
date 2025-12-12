@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ReamazeClient, cleanMessageBody } from "@/lib/reamaze";
 import { classifyTicket } from "@/lib/ticket-classifier";
+import { sendSyncFailureAlert } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes max for cron
@@ -88,6 +89,7 @@ export async function GET(request: Request) {
     let processed = 0;
     let skipped = 0;
     let errors = 0;
+    const failedTicketIds: string[] = [];
 
     for (const conv of conversations) {
       try {
@@ -131,6 +133,7 @@ export async function GET(request: Request) {
         if (insertError) {
           console.error(`[REAMAZE SYNC] Insert error for ${conv.slug}:`, insertError);
           errors++;
+          failedTicketIds.push(conv.slug);
         } else {
           processed++;
         }
@@ -143,11 +146,17 @@ export async function GET(request: Request) {
       } catch (err) {
         console.error(`[REAMAZE SYNC] Error processing ${conv.slug}:`, err);
         errors++;
+        failedTicketIds.push(conv.slug);
       }
     }
 
     const duration = Date.now() - startTime;
     console.log(`[REAMAZE SYNC] Complete: ${processed} processed, ${skipped} skipped, ${errors} errors in ${duration}ms`);
+
+    // Log failed ticket IDs for debugging
+    if (failedTicketIds.length > 0) {
+      console.error(`[REAMAZE SYNC] Failed ticket IDs: ${failedTicketIds.join(", ")}`);
+    }
 
     return NextResponse.json({
       success: true,
@@ -156,14 +165,43 @@ export async function GET(request: Request) {
       errors,
       total: conversations.length,
       duration,
+      ...(failedTicketIds.length > 0 && { failedTicketIds }),
     });
 
   } catch (error) {
     console.error("[REAMAZE SYNC] Fatal error:", error);
+
+    const errorMessage = error instanceof Error ? error.message : "Sync failed";
+    const elapsed = Date.now() - startTime;
+
+    // Send email alert
+    await sendSyncFailureAlert({
+      syncType: "Re:amaze Support Tickets",
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Log to sync_logs
+    const supabase = createServiceClient();
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "reamaze",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 0,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      console.error("[REAMAZE SYNC] Failed to log sync failure:", logError);
+    }
+
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Sync failed",
-        duration: Date.now() - startTime,
+        error: errorMessage,
+        duration: elapsed,
       },
       { status: 500 }
     );

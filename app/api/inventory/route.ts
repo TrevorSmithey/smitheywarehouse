@@ -143,6 +143,22 @@ export async function GET(request: Request) {
     if (sales3DayError) throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
     if (salesPrior3DayError) throw new Error(`Failed to fetch prior 3-day sales: ${salesPrior3DayError.message}`);
 
+    // Data truncation warnings - log if we hit limit boundaries
+    const MONTHLY_LIMIT = 2000000;
+    const OTHER_LIMIT = 1000000;
+    if (monthlySalesData && monthlySalesData.length >= MONTHLY_LIMIT) {
+      console.error(`[INVENTORY API] WARNING: Monthly sales data truncated at ${MONTHLY_LIMIT} rows. Data may be incomplete.`);
+    }
+    if (monthlyB2BData && monthlyB2BData.length >= OTHER_LIMIT) {
+      console.error(`[INVENTORY API] WARNING: Monthly B2B data truncated at ${OTHER_LIMIT} rows. Data may be incomplete.`);
+    }
+    if (sales3DayData && sales3DayData.length >= OTHER_LIMIT) {
+      console.error(`[INVENTORY API] WARNING: 3-day sales data truncated at ${OTHER_LIMIT} rows. Data may be incomplete.`);
+    }
+    if (salesPrior3DayData && salesPrior3DayData.length >= OTHER_LIMIT) {
+      console.error(`[INVENTORY API] WARNING: Prior 3-day sales data truncated at ${OTHER_LIMIT} rows. Data may be incomplete.`);
+    }
+
     // Create current month budget lookup (for display)
     const budgetBySku = new Map<string, number>();
     for (const b of currentMonthBudgets || []) {

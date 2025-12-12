@@ -20,9 +20,13 @@ import {
   predictCampaignRevenue,
   type KlaviyoCampaign,
 } from "@/lib/klaviyo";
+import { sendSyncFailureAlert } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes max for cron
+
+// Timeout threshold - alert if we exceed 80% of maxDuration
+const TIMEOUT_WARNING_THRESHOLD = maxDuration * 0.8 * 1000; // 240 seconds in ms
 
 // Verify cron secret for security
 function verifyCronSecret(request: Request): boolean {
@@ -68,6 +72,11 @@ export async function GET(request: Request) {
     flowsSynced: 0,
     monthlyStatsUpdated: 0,
     errors: 0,
+  };
+  const failedIds: { campaigns: string[]; scheduled: string[]; flows: string[] } = {
+    campaigns: [],
+    scheduled: [],
+    flows: [],
   };
 
   try {
@@ -148,6 +157,7 @@ export async function GET(request: Request) {
           if (error) {
             console.error(`[KLAVIYO SYNC] Error upserting campaign ${campaign.id}:`, error);
             stats.errors++;
+            failedIds.campaigns.push(campaign.id);
           } else {
             stats.campaignsSynced++;
           }
@@ -158,6 +168,7 @@ export async function GET(request: Request) {
       } catch (err) {
         console.error(`[KLAVIYO SYNC] Error processing campaign ${campaign.id}:`, err);
         stats.errors++;
+        failedIds.campaigns.push(campaign.id);
       }
     }
 
@@ -263,6 +274,7 @@ export async function GET(request: Request) {
         if (error) {
           console.error(`[KLAVIYO SYNC] Error upserting scheduled campaign ${campaign.id}:`, error);
           stats.errors++;
+          failedIds.scheduled.push(campaign.id);
         } else {
           stats.scheduledSynced++;
         }
@@ -273,6 +285,7 @@ export async function GET(request: Request) {
       } catch (err) {
         console.error(`[KLAVIYO SYNC] Error processing scheduled campaign ${campaign.id}:`, err);
         stats.errors++;
+        failedIds.scheduled.push(campaign.id);
       }
     }
 
@@ -303,12 +316,14 @@ export async function GET(request: Request) {
         if (error) {
           console.error(`[KLAVIYO SYNC] Error upserting flow ${flow.id}:`, error);
           stats.errors++;
+          failedIds.flows.push(flow.id);
         } else {
           stats.flowsSynced++;
         }
       } catch (err) {
         console.error(`[KLAVIYO SYNC] Error processing flow ${flow.id}:`, err);
         stats.errors++;
+        failedIds.flows.push(flow.id);
       }
     }
 
@@ -548,18 +563,66 @@ export async function GET(request: Request) {
     const duration = Date.now() - startTime;
     console.log(`[KLAVIYO SYNC] Complete in ${duration}ms:`, stats);
 
+    // Log failed IDs for debugging
+    const totalFailed = failedIds.campaigns.length + failedIds.scheduled.length + failedIds.flows.length;
+    if (totalFailed > 0) {
+      console.error(`[KLAVIYO SYNC] Failed IDs:`, JSON.stringify(failedIds));
+    }
+
+    // Check for timeout warning
+    const approachedTimeout = duration > TIMEOUT_WARNING_THRESHOLD;
+    if (approachedTimeout) {
+      console.warn(`[KLAVIYO SYNC] WARNING: Sync took ${(duration / 1000).toFixed(1)}s - approaching timeout limit of ${maxDuration}s`);
+      // Send alert about potential timeout risk
+      await sendSyncFailureAlert({
+        syncType: "Klaviyo Email Campaigns",
+        error: `WARNING: Sync completed but took ${(duration / 1000).toFixed(1)}s (${((duration / (maxDuration * 1000)) * 100).toFixed(0)}% of max). Consider splitting into smaller jobs.`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return NextResponse.json({
       success: true,
       ...stats,
       duration,
+      ...(totalFailed > 0 && { failedIds }),
+      ...(approachedTimeout && { warning: "Approaching timeout threshold - consider splitting sync" }),
     });
 
   } catch (error) {
     console.error("[KLAVIYO SYNC] Fatal error:", error);
+
+    const errorMessage = error instanceof Error ? error.message : "Sync failed";
+    const elapsed = Date.now() - startTime;
+
+    // Send email alert
+    await sendSyncFailureAlert({
+      syncType: "Klaviyo Email Campaigns",
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Log to sync_logs
+    const supabase = createServiceClient();
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "klaviyo",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "failed",
+        records_expected: 0,
+        records_synced: 0,
+        error_message: errorMessage,
+        duration_ms: elapsed,
+      });
+    } catch (logError) {
+      console.error("[KLAVIYO SYNC] Failed to log sync failure:", logError);
+    }
+
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Sync failed",
-        duration: Date.now() - startTime,
+        error: errorMessage,
+        duration: elapsed,
       },
       { status: 500 }
     );

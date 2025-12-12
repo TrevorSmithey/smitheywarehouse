@@ -7,9 +7,18 @@ export const dynamic = "force-dynamic";
  * Test endpoint to verify email alerts are working
  * GET /api/test-alert
  *
+ * Requires CRON_SECRET for authentication
  * Only works when RESEND_API_KEY is configured
  */
-export async function GET() {
+export async function GET(request: Request) {
+  // Require authentication
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const hasResendKey = !!process.env.RESEND_API_KEY;
 
   if (!hasResendKey) {

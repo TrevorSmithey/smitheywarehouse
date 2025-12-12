@@ -217,24 +217,28 @@ export async function GET(request: Request) {
     });
 
     // Return appropriate status based on sync result
-    if (syncStatus === "failed") {
-      // Send email alert
+    if (syncStatus === "failed" || syncStatus === "partial") {
+      // Send email alert for failed OR partial syncs
       await sendSyncFailureAlert({
         syncType: "Inventory",
-        error: batchErrors.join("; "),
+        error: syncStatus === "partial"
+          ? `Partial sync: ${upserted}/${recordsExpected} records. Errors: ${batchErrors.join("; ")}`
+          : batchErrors.join("; "),
         recordsExpected: recordsExpected,
-        recordsSynced: 0,
+        recordsSynced: upserted,
         timestamp: new Date().toISOString(),
       });
 
-      return NextResponse.json({
-        success: false,
-        status: "failed",
-        elapsed: `${elapsedSec}s`,
-        recordsExpected: recordsExpected,
-        recordsUpserted: 0,
-        error: batchErrors.join("; "),
-      }, { status: 500 });
+      if (syncStatus === "failed") {
+        return NextResponse.json({
+          success: false,
+          status: "failed",
+          elapsed: `${elapsedSec}s`,
+          recordsExpected: recordsExpected,
+          recordsUpserted: 0,
+          error: batchErrors.join("; "),
+        }, { status: 500 });
+      }
     }
 
     return NextResponse.json({

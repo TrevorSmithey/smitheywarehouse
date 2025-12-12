@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
   BudgetResponse,
   BudgetDateRange,
@@ -12,11 +12,19 @@ import {
   BudgetSkuComparison,
 } from "@/lib/types";
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
+// Validate env vars and create client
+function getSupabaseClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url || !key) {
+    throw new Error("Missing Supabase credentials (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY)");
+  }
+
+  return createClient(url, key);
+}
+
+const supabase = getSupabaseClient();
 
 // B2B Shopify credentials
 const SHOPIFY_B2B_URL = process.env.SHOPIFY_B2B_STORE_URL || "";
@@ -671,9 +679,13 @@ export async function GET(request: Request) {
     const budgetSkus = new Set(budgetsBySku.keys());
 
     // Query products for display names and categories
-    const { data: productsData } = await supabase
+    const { data: productsData, error: productsError } = await supabase
       .from("products")
       .select("sku, display_name, category");
+
+    if (productsError) {
+      throw new Error(`Failed to fetch products: ${productsError.message}`);
+    }
 
     // Build product lookup (case-insensitive)
     const productMap = new Map<string, { displayName: string; category: string }>();

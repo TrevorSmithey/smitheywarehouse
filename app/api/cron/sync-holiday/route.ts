@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
+import { sendSyncFailureAlert } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -129,6 +130,14 @@ export async function GET(request: Request) {
     // Log failed sync for health tracking
     const elapsed = Date.now() - startTime;
     const errorMessage = error instanceof Error ? error.message : "Sync failed";
+
+    // Send email alert
+    await sendSyncFailureAlert({
+      syncType: "Holiday Tracking",
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+    });
+
     try {
       await supabase.from("sync_logs").insert({
         sync_type: "holiday",
