@@ -22,6 +22,12 @@ import type {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Customer IDs to exclude from wholesale analytics
+// These are D2C/retail aggregates that pollute B2B data
+const EXCLUDED_CUSTOMER_IDS = [
+  2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
+];
+
 // Helper to determine customer segment based on revenue
 function getCustomerSegment(totalRevenue: number): CustomerSegment {
   if (totalRevenue >= 50000) return "major";
@@ -126,15 +132,17 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       // Monthly aggregated stats (last 24 months for YoY)
       supabase.rpc("get_wholesale_monthly_stats"),
-      // All customers with their transaction stats
+      // All customers with their transaction stats (excluding D2C aggregates)
       supabase
         .from("ns_wholesale_customers")
         .select("*")
+        .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .order("lifetime_revenue", { ascending: false }),
-      // Transactions in current period with customer name join
+      // Transactions in current period with customer name join (excluding D2C)
       supabase
         .from("ns_wholesale_transactions")
         .select("*, ns_wholesale_customers(company_name)")
+        .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .gte("tran_date", formatDate(rangeStart))
         .lte("tran_date", formatDate(rangeEnd))
         .order("tran_date", { ascending: false }),
@@ -144,10 +152,11 @@ export async function GET(request: Request) {
         .select("*, ns_wholesale_transactions!inner(tran_date)")
         .gte("ns_wholesale_transactions.tran_date", formatDate(rangeStart))
         .lte("ns_wholesale_transactions.tran_date", formatDate(rangeEnd)),
-      // Previous period transactions for comparison
+      // Previous period transactions for comparison (excluding D2C)
       supabase
         .from("ns_wholesale_transactions")
         .select("ns_customer_id, foreign_total")
+        .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .gte("tran_date", formatDate(prevRangeStart))
         .lte("tran_date", formatDate(prevRangeEnd)),
       // Top SKUs from view
