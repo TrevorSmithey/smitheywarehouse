@@ -620,12 +620,25 @@ export default function Dashboard() {
             </div>
           </div>
           <button
-            onClick={fetchMetrics}
-            disabled={loading}
+            onClick={() => {
+              // Context-aware refresh: refresh the current tab's data
+              switch (primaryTab) {
+                case "fulfillment": fetchMetrics(); break;
+                case "inventory": fetchInventory(); break;
+                case "holiday": fetchHoliday(); break;
+                case "assembly": fetchAssembly(); break;
+                case "budget": fetchBudget(budgetDateRange, budgetCustomStart, budgetCustomEnd); break;
+                case "voc": fetchTickets(); break;
+                case "marketing": fetchKlaviyo(); break;
+                case "sales": fetchWholesale(); break;
+                default: fetchMetrics();
+              }
+            }}
+            disabled={loading || inventoryLoading || holidayLoading || assemblyLoading || budgetLoading || ticketsLoading || klaviyoLoading || wholesaleLoading}
             aria-label="Refresh data"
             className="p-2 text-text-tertiary hover:text-accent-blue transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary rounded"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${(loading || inventoryLoading || holidayLoading || assemblyLoading || budgetLoading || ticketsLoading || klaviyoLoading || wholesaleLoading) ? "animate-spin" : ""}`} />
           </button>
         </div>
 
@@ -2679,14 +2692,6 @@ function InventoryDashboard({
         {/* Actions */}
         <div className="flex items-center gap-2">
           <button
-            onClick={onRefresh}
-            disabled={loading}
-            aria-label="Refresh inventory"
-            className={`p-2 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${loading ? "opacity-50 cursor-not-allowed" : "hover:bg-white/5"}`}
-          >
-            <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
-          </button>
-          <button
             onClick={downloadCSV}
             aria-label="Download inventory CSV"
             className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
@@ -3126,13 +3131,6 @@ function HolidayDashboard({
           <span className="text-xs font-semibold text-text-secondary tabular-nums">
             {92 - currentDay} DAYS LEFT
           </span>
-          <button
-            onClick={onRefresh}
-            className="p-2 hover:bg-bg-secondary rounded-lg transition-all"
-            title="Refresh data"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-text-tertiary" />
-          </button>
         </div>
       </div>
 
@@ -3658,17 +3656,6 @@ function AssemblyDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Refresh Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={onRefresh}
-          aria-label="Refresh data"
-          className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forge-copper focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary"
-        >
-          <RefreshCw className="w-4 h-4 text-text-tertiary" />
-        </button>
-      </div>
-
       {/* Production Stats Row */}
       {(() => {
         // Calculate MTD production (current month)
@@ -4421,14 +4408,6 @@ function BudgetDashboard({
             title="Export to CSV"
           >
             <Download className="w-4 h-4" />
-          </button>
-          {/* Refresh Button */}
-          <button
-            onClick={onRefresh}
-            className="p-2 rounded-lg transition-all hover:bg-white/5"
-            aria-label="Refresh data"
-          >
-            <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
