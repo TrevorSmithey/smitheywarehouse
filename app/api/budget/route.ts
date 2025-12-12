@@ -1078,10 +1078,10 @@ export async function GET(request: Request) {
       comparison,
     };
 
-    // Add cache headers - budget data changes with orders, cache for 60s
+    // No caching - budget data needs to be fresh on each request
     return NextResponse.json(response, {
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
     });
   } catch (error) {

@@ -338,7 +338,7 @@ export default function Dashboard() {
       if (range === "custom" && customStart && customEnd) {
         url += `&start=${customStart}&end=${customEnd}`;
       }
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error("Failed to fetch budget data");
       const data: BudgetResponse = await res.json();
       setBudgetData(data);
