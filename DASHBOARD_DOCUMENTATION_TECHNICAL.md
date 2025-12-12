@@ -948,32 +948,84 @@ statistics: [
 
 > **Note**: This section contains my analysis/opinions based on reviewing the codebase. Not factual documentation.
 
-## Strengths (based on code patterns)
+## Inventory Tab
 
-- Inventory uses `available - backorder` calculation (`lib/shiphero.ts:216-223`) - shows net sellable, not just physical count
+**Strengths**
+- Uses `available - backorder` calculation (`lib/shiphero.ts:216-223`) - shows net sellable, not just physical count
 - DOI pulls from `budgets` database table - forward-looking projection
-- Restoration orders filtered out of D2C metrics (SKUs with `-Rest-`)
-- Multiple data sources aggregated: ShipHero, Shopify, NetSuite, Reamaze, Klaviyo
 - EST timezone handling in date calculations (`lib/doi.ts:136-146`)
 
-## Weaknesses (based on code patterns)
-
+**Weaknesses**
 - Safety stock hardcoded in `lib/shiphero.ts:333-362` - code deploy required to change
-- Assembly sync requires manual script execution (`~/Desktop/Update Assembly Tracking.command`)
-- Wholesale sync requires manual Python script execution
-- Assembly/Holiday data flows through Excel files on OneDrive
 
-## Opportunities (suggestions)
-
+**Opportunities**
 - Safety stock could move to database table for easier updates
-- Assembly sync could be automated via scheduled script or direct NetSuite API
+
+**Threats**
+- ShipHero API rate limits could affect sync during peak periods
+
+## D2C / Fulfillment Tab
+
+**Strengths**
+- Restoration orders filtered out of D2C metrics (SKUs with `-Rest-`)
+- Multiple aging buckets (1d, 3d, 7d) for queue health visibility
+
+**Weaknesses**
+- Tracking data relies on hourly cron, not real-time webhooks
+
+## Assembly Tab
+
+**Strengths**
+- Daily production tracking by SKU
+- Progress percentage against revised plan
+
+**Weaknesses**
+- Requires manual script execution (`~/Desktop/Update Assembly Tracking.command`)
+- Data flows through Excel files on OneDrive
+
+**Opportunities**
+- Could be automated via scheduled script or direct NetSuite API
+
+**Threats**
+- OneDrive sync delays could result in stale data
+- Excel file corruption would break pipeline
+
+## Holiday Tab
+
+**Strengths**
+- Day-by-day YoY comparison
+
+**Weaknesses**
+- Depends on Excel file on OneDrive
+
+## Budget vs Actual Tab
+
+**Strengths**
+- Combines D2C (line_items) and B2B (b2b_fulfilled) for total picture
+
+**Weaknesses**
+- Budget data entered manually
+
+**Opportunities**
 - Budget data could support CSV import
 
-## Threats (risks)
+## Sales (Wholesale) Tab
 
-- OneDrive sync delays could result in stale assembly/holiday data
-- Excel file corruption would break assembly pipeline
-- ShipHero API rate limits could affect sync during peak periods
+**Strengths**
+- Multi-factor customer health scoring (days since order, revenue trend, order trend)
+- Recommended actions generated from code (`app/api/wholesale/route.ts:499-514`)
+
+**Weaknesses**
+- Requires manual Python script execution to sync
+
+## Marketing (Klaviyo) Tab
+
+**Strengths**
+- List health score combines delivery, bounce, unsub, and engagement metrics
+- Send time analysis by hour and day of week
+
+**Weaknesses**
+- Daily sync only (6am UTC)
 
 ---
 
