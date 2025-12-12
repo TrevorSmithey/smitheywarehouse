@@ -4,7 +4,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Validate env vars and create client
+// Validate env vars and create client (lazy initialization to avoid build-time errors)
 function getSupabaseClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -15,8 +15,6 @@ function getSupabaseClient(): SupabaseClient {
 
   return createClient(url, key);
 }
-
-const supabase = getSupabaseClient();
 
 export interface DailyAssembly {
   date: string;
@@ -100,6 +98,8 @@ export interface AssemblyResponse {
 
 export async function GET() {
   try {
+    const supabase = getSupabaseClient();
+
     // Fetch daily data
     const { data: dailyData, error: dailyError } = await supabase
       .from("assembly_daily")

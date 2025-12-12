@@ -12,7 +12,7 @@ import {
   BudgetSkuComparison,
 } from "@/lib/types";
 
-// Validate env vars and create client
+// Validate env vars and create client (lazy initialization to avoid build-time errors)
 function getSupabaseClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -23,8 +23,6 @@ function getSupabaseClient(): SupabaseClient {
 
   return createClient(url, key);
 }
-
-const supabase = getSupabaseClient();
 
 // B2B Shopify credentials
 const SHOPIFY_B2B_URL = process.env.SHOPIFY_B2B_STORE_URL || "";
@@ -509,6 +507,7 @@ function calculateComparisonPeriod(
  * - B2B: All orders from Shopify API (including unfulfilled)
  */
 async function fetchSalesData(
+  supabase: SupabaseClient,
   start: string,
   end: string
 ): Promise<Map<string, number>> {
@@ -605,6 +604,8 @@ async function fetchSalesData(
 
 export async function GET(request: Request) {
   try {
+    const supabase = getSupabaseClient();
+
     const { searchParams } = new URL(request.url);
     const range = (searchParams.get("range") || "mtd") as BudgetDateRange;
     const customStart = searchParams.get("start") || undefined;
@@ -981,6 +982,7 @@ export async function GET(request: Request) {
 
       // Fetch comparison period sales data
       const comparisonSalesBySku = await fetchSalesData(
+        supabase,
         comparisonPeriod.start,
         comparisonPeriod.end
       );

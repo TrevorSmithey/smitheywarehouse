@@ -3,7 +3,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-// Validate env vars and create client
+// Validate env vars and create client (lazy initialization)
 function getSupabaseClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -14,8 +14,6 @@ function getSupabaseClient(): SupabaseClient {
 
   return createClient(url, key);
 }
-
-const supabase = getSupabaseClient();
 
 interface SyncHealthRow {
   sync_type: string;
@@ -44,6 +42,8 @@ const STALE_THRESHOLDS: Record<string, number> = {
 
 export async function GET() {
   try {
+    const supabase = getSupabaseClient();
+
     // Get latest sync status for each type
     const { data: health, error } = await supabase
       .from("sync_health")
