@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
-  RefreshCw,
   ExternalLink,
   ChevronRight,
   TrendingUp,
@@ -55,7 +54,6 @@ interface VoiceOfCustomerDashboardProps {
   onSearchChange: (search: string) => void;
   page: number;
   onPageChange: (page: number) => void;
-  onRefresh: () => void;
 }
 
 // Format number with commas
@@ -468,7 +466,6 @@ export function VoiceOfCustomerDashboard({
   onSearchChange,
   page,
   onPageChange,
-  onRefresh,
 }: VoiceOfCustomerDashboardProps) {
   const dateRangeOptions = [
     { value: "today" as const, label: "Today" },

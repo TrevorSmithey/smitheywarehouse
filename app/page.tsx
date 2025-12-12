@@ -1313,7 +1313,6 @@ export default function Dashboard() {
           onSearchChange={setTicketsSearch}
           page={ticketsPage}
           onPageChange={setTicketsPage}
-          onRefresh={fetchTickets}
         />
       )}
 
