@@ -4650,6 +4650,8 @@ function BudgetDashboard({
                           ? Math.round((sku.actual / sku.budget) * 100)
                           : 0;
                         const skuColor = getPaceColor(sku.pace);
+                        // Pulse the dot for standout performers (>100%) or items way behind (<80%)
+                        const shouldPulse = sku.pace >= 100 || sku.pace < 80;
 
                         return (
                           <tr
@@ -4661,8 +4663,8 @@ function BudgetDashboard({
                             <td className="py-1.5 px-3">
                               <div className="flex items-center gap-2">
                                 <div
-                                  className="w-2 h-2 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: skuColor }}
+                                  className={`w-2 h-2 rounded-full flex-shrink-0 ${shouldPulse ? "animate-soft-pulse" : ""}`}
+                                  style={{ backgroundColor: skuColor, color: skuColor }}
                                 />
                                 <div>
                                   <div className="text-text-primary text-xs font-medium">{sku.displayName}</div>
