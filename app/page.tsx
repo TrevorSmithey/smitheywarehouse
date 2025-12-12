@@ -2695,34 +2695,42 @@ function InventoryDashboard({
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header with Health Status + Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        {/* Health Summary */}
-        <div className="flex items-center gap-2 bg-bg-secondary rounded-xl px-3 py-2 border border-border/30">
-          {doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
-            <>
-              {doiHealth.backorder > 0 && (
-                <div className="flex items-center gap-1.5 px-2 py-1">
-                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
-                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">BACKORDER</span>
-                </div>
-              )}
-              {doiHealth.urgent > 0 && (
-                <div className="flex items-center gap-1.5 px-2 py-1">
-                  <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
-                  <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">URGENT</span>
-                </div>
-              )}
-              {doiHealth.critical > 0 && (
-                <div className="flex items-center gap-1.5 px-2 py-1">
-                  <span className="text-sm font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
-                  <span className="text-[10px] text-amber-400/80 font-semibold tracking-wide">WATCH</span>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-2 px-2 py-1">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs text-emerald-400 font-semibold">All Healthy</span>
-            </div>
+        {/* Health Summary + Last Synced */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 bg-bg-secondary rounded-xl px-3 py-2 border border-border/30">
+            {doiHealth.backorder > 0 || doiHealth.urgent > 0 || doiHealth.critical > 0 ? (
+              <>
+                {doiHealth.backorder > 0 && (
+                  <div className="flex items-center gap-1.5 px-2 py-1">
+                    <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.backorder}</span>
+                    <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">BACKORDER</span>
+                  </div>
+                )}
+                {doiHealth.urgent > 0 && (
+                  <div className="flex items-center gap-1.5 px-2 py-1">
+                    <span className="text-sm font-bold text-red-400 tabular-nums">{doiHealth.urgent}</span>
+                    <span className="text-[10px] text-red-400/80 font-semibold tracking-wide">URGENT</span>
+                  </div>
+                )}
+                {doiHealth.critical > 0 && (
+                  <div className="flex items-center gap-1.5 px-2 py-1">
+                    <span className="text-sm font-bold text-amber-400 tabular-nums">{doiHealth.critical}</span>
+                    <span className="text-[10px] text-amber-400/80 font-semibold tracking-wide">WATCH</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-2 px-2 py-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs text-emerald-400 font-semibold">All Healthy</span>
+              </div>
+            )}
+          </div>
+          {/* Last Synced Timestamp */}
+          {inventory?.lastSynced && (
+            <span className="text-[10px] text-text-muted">
+              Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
+            </span>
           )}
         </div>
 
