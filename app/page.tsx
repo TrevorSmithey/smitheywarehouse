@@ -4650,8 +4650,8 @@ function BudgetDashboard({
                           ? Math.round((sku.actual / sku.budget) * 100)
                           : 0;
                         const skuColor = getPaceColor(sku.pace);
-                        // Pulse the dot for standout performers (>100%) or items way behind (<80%)
-                        const shouldPulse = sku.pace >= 100 || sku.pace < 80;
+                        // Pulse green only when actual exceeds budget (hit the goal early)
+                        const shouldPulse = sku.actual > sku.budget;
 
                         return (
                           <tr
