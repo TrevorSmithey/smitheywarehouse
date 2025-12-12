@@ -9,12 +9,13 @@
 | Tab | What It Shows | Updates |
 |-----|---------------|---------|
 | **Inventory** | Stock levels across all warehouses | Every 15 minutes |
-| **D2C / Fulfillment** | Direct-to-consumer orders and shipping | Hourly |
-| **Assembly** | Manufacturing production vs targets | Daily (manual) |
-| **Holiday** | 2024 vs 2025 seasonal comparison | Daily |
+| **VOC** | Support tickets from Reamaze | Every 5 minutes |
 | **Budget vs Actual** | Sales against monthly targets | Real-time |
-| **Sales** | Wholesale customer health | Manual update |
+| **Assembly** | Manufacturing production vs targets | Daily (manual) |
+| **D2C / Fulfillment** | Direct-to-consumer orders and shipping | Hourly |
+| **Holiday** | 2024 vs 2025 seasonal comparison | Daily |
 | **Marketing** | Email campaign performance | Daily (6am) |
+| **Sales** | Wholesale customer health | Manual update |
 
 ---
 
@@ -67,6 +68,42 @@ When inventory drops below safety stock, the row pulses amber as a warning.
 
 ---
 
+## VOC (Support) Tab
+
+| Metric | What It Means |
+|--------|---------------|
+| **Open Tickets** | Conversations waiting for response |
+| **Pending** | Conversations waiting on customer |
+| **Resolved Today** | Tickets closed in last 24 hours |
+
+---
+
+## Budget vs Actual Terms
+
+#### Pace
+**What it means**: How close we are to hitting our monthly budget target
+
+| Pace | Status |
+|------|--------|
+| **90%+** | On track (green) |
+| **80-89%** | Slight risk (amber) |
+| **< 80%** | Behind target (red) |
+
+#### Green Pulse
+**What it means**: SKU is **exceeding** its monthly budget - celebrating the win!
+
+---
+
+## Assembly Tab
+
+#### Deficit
+**What it means**: How many more units we need to produce to hit our target
+
+#### Progress Bar
+Shows how much of the revised manufacturing plan we've completed
+
+---
+
 ## D2C / Fulfillment Terms
 
 #### Lead Time
@@ -88,50 +125,12 @@ These need investigation (lost in transit?)
 
 ---
 
-## Sales (Wholesale) Tab
+## Holiday Tab
 
-### Customer Health Status
-
-**What it means**: How engaged a wholesale customer is based on their ordering history
-
-| Status | Criteria |
-|--------|----------|
-| **Thriving** | revenueTrend > 0.1 (revenue up 10%+) |
-| **Stable** | default (no other condition matches) |
-| **Declining** | revenueTrend < -0.2 (revenue down 20%+) |
-| **At Risk** | daysSinceLastOrder > 120 |
-| **Churning** | daysSinceLastOrder > 180 |
-| **Churned** | daysSinceLastOrder > 365 |
-| **One-Time** | orderCount = 1 |
-| **Never Ordered** | orderCount = 0 |
-| **New** | daysSinceLastOrder = null (data issue) |
-
-### Active vs Total Customers
-
-| Term | Definition |
-|------|------------|
-| **Active Customers** | Placed an order within selected period (MTD, YTD, etc.) |
-| **Total Customers** | All wholesale accounts in the system |
-
-### Customer Segments (by Lifetime Revenue)
-
-| Segment | Revenue Range |
-|---------|--------------|
-| **Major** | $50,000+ |
-| **Large** | $20,000 - $49,999 |
-| **Mid** | $10,000 - $19,999 |
-| **Small** | $5,000 - $9,999 |
-| **Starter** | $2,000 - $4,999 |
-| **Minimal** | Under $2,000 |
-
-### Risk Score (0-100)
-**What it means**: How likely a customer is to stop ordering
-
-- **0-30**: Low risk - healthy customer
-- **30-60**: Medium risk - watch closely
-- **60-100**: High risk - needs attention
-
-Higher is worse. Based on days since last order, revenue trends, and account size.
+Compares this holiday season (2025) to last year (2024) day-by-day:
+- **Orders**: Number of orders
+- **Revenue**: Dollar sales
+- **YoY Delta**: Percentage change vs last year
 
 ---
 
@@ -189,38 +188,50 @@ Based on: delivery rate, bounce rate, unsubscribe rate, and engagement.
 
 ---
 
-## Budget vs Actual Terms
+## Sales (Wholesale) Tab
 
-#### Pace
-**What it means**: How close we are to hitting our monthly budget target
+### Customer Health Status
 
-| Pace | Status |
-|------|--------|
-| **90%+** | On track (green) |
-| **80-89%** | Slight risk (amber) |
-| **< 80%** | Behind target (red) |
+**What it means**: How engaged a wholesale customer is based on their ordering history
 
-#### Green Pulse
-**What it means**: SKU is **exceeding** its monthly budget - celebrating the win!
+| Status | Criteria |
+|--------|----------|
+| **Thriving** | revenueTrend > 0.1 (revenue up 10%+) |
+| **Stable** | default (no other condition matches) |
+| **Declining** | revenueTrend < -0.2 (revenue down 20%+) |
+| **At Risk** | daysSinceLastOrder > 120 |
+| **Churning** | daysSinceLastOrder > 180 |
+| **Churned** | daysSinceLastOrder > 365 |
+| **One-Time** | orderCount = 1 |
+| **Never Ordered** | orderCount = 0 |
+| **New** | daysSinceLastOrder = null (data issue) |
 
----
+### Active vs Total Customers
 
-## Assembly Tab
+| Term | Definition |
+|------|------------|
+| **Active Customers** | Placed an order within selected period (MTD, YTD, etc.) |
+| **Total Customers** | All wholesale accounts in the system |
 
-#### Deficit
-**What it means**: How many more units we need to produce to hit our target
+### Customer Segments (by Lifetime Revenue)
 
-#### Progress Bar
-Shows how much of the revised manufacturing plan we've completed
+| Segment | Revenue Range |
+|---------|--------------|
+| **Major** | $50,000+ |
+| **Large** | $20,000 - $49,999 |
+| **Mid** | $10,000 - $19,999 |
+| **Small** | $5,000 - $9,999 |
+| **Starter** | $2,000 - $4,999 |
+| **Minimal** | Under $2,000 |
 
----
+### Risk Score (0-100)
+**What it means**: How likely a customer is to stop ordering
 
-## Holiday Tab
+- **0-30**: Low risk - healthy customer
+- **30-60**: Medium risk - watch closely
+- **60-100**: High risk - needs attention
 
-Compares this holiday season (2025) to last year (2024) day-by-day:
-- **Orders**: Number of orders
-- **Revenue**: Dollar sales
-- **YoY Delta**: Percentage change vs last year
+Higher is worse. Based on days since last order, revenue trends, and account size.
 
 ---
 

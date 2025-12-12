@@ -6,15 +6,16 @@
 
 ## Table of Contents
 1. [Inventory Tab](#1-inventory-tab)
-2. [D2C / Fulfillment Tab](#2-d2c--fulfillment-tab)
-3. [Assembly Tab](#3-assembly-tab)
-4. [Holiday Tab](#4-holiday-tab)
-5. [Budget vs Actual Tab](#5-budget-vs-actual-tab)
-6. [Sales (Wholesale) Tab](#6-sales-wholesale-tab)
+2. [VOC (Support) Tab](#2-voc-support-tab)
+3. [Budget vs Actual Tab](#3-budget-vs-actual-tab)
+4. [Assembly Tab](#4-assembly-tab)
+5. [D2C / Fulfillment Tab](#5-d2c--fulfillment-tab)
+6. [Holiday Tab](#6-holiday-tab)
 7. [Marketing (Klaviyo) Tab](#7-marketing-klaviyo-tab)
-8. [Cron Jobs & Sync Schedule](#8-cron-jobs--sync-schedule)
-9. [File Paths Reference](#9-file-paths-reference)
-10. [SWOT Analysis](#10-swot-analysis) *(opinion/analysis)*
+8. [Sales (Wholesale) Tab](#8-sales-wholesale-tab)
+9. [Cron Jobs & Sync Schedule](#9-cron-jobs--sync-schedule)
+10. [File Paths Reference](#10-file-paths-reference)
+11. [SWOT Analysis](#11-swot-analysis) *(opinion/analysis)*
 
 ---
 
@@ -264,85 +265,86 @@ const rowBg =
 
 ---
 
-# 2. D2C / Fulfillment Tab
+# 2. VOC (Support) Tab
 
-## Data Source
+## Data Source: Reamaze → Supabase
 
-**API Endpoint**: `/api/metrics`
-**Source File**: `app/api/metrics/route.ts`
-**Data Tables**: `orders`, `line_items`, `shipments`, `tracking`
+**API Endpoint**: `/api/tickets`
+**Sync Frequency**: Every 5 minutes (Vercel cron)
+**Source Files**: `lib/reamaze.ts`, `app/api/cron/sync-reamaze/route.ts`
 
-### Key Metrics Explained
+### Data Flow
 
-#### Unfulfilled Count
-
-```typescript
-// Query: orders WHERE fulfillment_status IS NULL AND canceled = false
-// Per warehouse (smithey, selery)
-// MINUS restoration orders (SKUs containing "-Rest-")
+```
+Reamaze API (REST)
+  ↓
+/api/cron/sync-reamaze (every 5 min)
+  ↓
+Supabase: reamaze_conversations table
 ```
 
-**Restoration Exclusion**: Orders with `-Rest-` SKUs are excluded because they follow a different cycle (customer ships item back first).
-
-#### Queue Health (Aging Buckets)
-
-**Source**: `app/api/metrics/route.ts:559-576`
-
-```typescript
-for (const order of filteredAgingData) {
-  const ageMs = now - new Date(order.created_at).getTime();
-
-  if (ageMs > 1 * 24 * 60 * 60 * 1000) waiting1d++;
-  if (ageMs > 3 * 24 * 60 * 60 * 1000) waiting3d++;
-  if (ageMs > 7 * 24 * 60 * 60 * 1000) waiting7d++;
-}
-```
+### Key Metrics
 
 | Metric | Definition |
 |--------|------------|
-| waiting_1_day | Orders unfulfilled > 24 hours |
-| waiting_3_days | Orders unfulfilled > 72 hours |
-| waiting_7_days | Orders unfulfilled > 168 hours |
+| Open Tickets | Conversations with status = 'open' |
+| Pending | Conversations with status = 'pending' |
+| Resolved Today | Conversations resolved in last 24 hours |
 
-#### Fulfillment Lead Time
+---
 
-**Source**: `app/api/metrics/route.ts:431-440`
+# 3. Budget vs Actual Tab
+
+## Data Source
+
+**Uses**: `/api/inventory` (same as Inventory tab)
+**Tables**: `budgets`, `line_items`, `orders`, `b2b_fulfilled`
+
+### Budget Data
+
+**Table**: `budgets`
+```sql
+sku    VARCHAR
+year   INTEGER
+month  INTEGER (1-12)
+budget INTEGER (units)
+```
+
+### Actual Sold Calculation
+
+**Source**: `app/api/inventory/route.ts:171-198`
 
 ```typescript
-// lead_time_hours = fulfilled_at - created_at
-// Query orders with fulfilled_at in selected date range
+// D2C: line_items from non-canceled orders this month
+const retailSales = sum(line_items.quantity WHERE order.created_at in month AND !canceled)
+
+// B2B: b2b_fulfilled records this month
+const b2bSales = sum(b2b_fulfilled.quantity WHERE fulfilled_at in month)
+
+// Total
+const monthSold = retailSales + b2bSales
 ```
 
-#### Daily Fulfillments vs Daily Orders
-
-```
-Daily Fulfillments: COUNT(orders) WHERE fulfilled_at is on that date
-Daily Orders: COUNT(orders) WHERE created_at is on that date
-Backlog: Running total of (orders - fulfillments)
-```
-
-#### Stuck Shipments
-
-**Source**: `app/api/metrics/route.ts:394-409`
+### Pace Percentage
 
 ```typescript
-// Query shipments WHERE status = 'in_transit' AND days_without_scan >= 1
-// Threshold for "stuck": 3+ days without tracking update
+const monthPct = monthBudget > 0
+  ? Math.round((monthSold / monthBudget) * 100)
+  : undefined;
 ```
 
-#### Engraving Queue
+### Green Pulse Animation
 
-**Source**: `app/api/metrics/route.ts:442-457`
+**Source**: `app/page.tsx` (Budget vs Actual section)
 
 ```typescript
-// Query line_items WHERE sku IN ('Smith-Eng', 'Smith-Eng2')
-// Filter: order not canceled AND order not fulfilled
-// Count: sum of (quantity - fulfilled_quantity)
+// Pulse green if actual EXCEEDS budget before month end
+const shouldPulse = sku.actual > sku.budget;
 ```
 
 ---
 
-# 3. Assembly Tab
+# 4. Assembly Tab
 
 ## Data Source
 
@@ -430,7 +432,85 @@ const progressPct = totalRevisedPlan > 0
 
 ---
 
-# 4. Holiday Tab
+# 5. D2C / Fulfillment Tab
+
+## Data Source
+
+**API Endpoint**: `/api/metrics`
+**Source File**: `app/api/metrics/route.ts`
+**Data Tables**: `orders`, `line_items`, `shipments`, `tracking`
+
+### Key Metrics Explained
+
+#### Unfulfilled Count
+
+```typescript
+// Query: orders WHERE fulfillment_status IS NULL AND canceled = false
+// Per warehouse (smithey, selery)
+// MINUS restoration orders (SKUs containing "-Rest-")
+```
+
+**Restoration Exclusion**: Orders with `-Rest-` SKUs are excluded because they follow a different cycle (customer ships item back first).
+
+#### Queue Health (Aging Buckets)
+
+**Source**: `app/api/metrics/route.ts:559-576`
+
+```typescript
+for (const order of filteredAgingData) {
+  const ageMs = now - new Date(order.created_at).getTime();
+
+  if (ageMs > 1 * 24 * 60 * 60 * 1000) waiting1d++;
+  if (ageMs > 3 * 24 * 60 * 60 * 1000) waiting3d++;
+  if (ageMs > 7 * 24 * 60 * 60 * 1000) waiting7d++;
+}
+```
+
+| Metric | Definition |
+|--------|------------|
+| waiting_1_day | Orders unfulfilled > 24 hours |
+| waiting_3_days | Orders unfulfilled > 72 hours |
+| waiting_7_days | Orders unfulfilled > 168 hours |
+
+#### Fulfillment Lead Time
+
+**Source**: `app/api/metrics/route.ts:431-440`
+
+```typescript
+// lead_time_hours = fulfilled_at - created_at
+// Query orders with fulfilled_at in selected date range
+```
+
+#### Daily Fulfillments vs Daily Orders
+
+```
+Daily Fulfillments: COUNT(orders) WHERE fulfilled_at is on that date
+Daily Orders: COUNT(orders) WHERE created_at is on that date
+Backlog: Running total of (orders - fulfillments)
+```
+
+#### Stuck Shipments
+
+**Source**: `app/api/metrics/route.ts:394-409`
+
+```typescript
+// Query shipments WHERE status = 'in_transit' AND days_without_scan >= 1
+// Threshold for "stuck": 3+ days without tracking update
+```
+
+#### Engraving Queue
+
+**Source**: `app/api/metrics/route.ts:442-457`
+
+```typescript
+// Query line_items WHERE sku IN ('Smith-Eng', 'Smith-Eng2')
+// Filter: order not canceled AND order not fulfilled
+// Count: sum of (quantity - fulfilled_quantity)
+```
+
+---
+
+# 6. Holiday Tab
 
 ## Data Source
 
@@ -475,221 +555,6 @@ revenueGrowth: latestRow.cumulative_sales_delta * 100
 
 // AOV
 avgOrderValue2025 = cumulative_sales_2025 / cumulative_orders_2025
-```
-
----
-
-# 5. Budget vs Actual Tab
-
-## Data Source
-
-**Uses**: `/api/inventory` (same as Inventory tab)
-**Tables**: `budgets`, `line_items`, `orders`, `b2b_fulfilled`
-
-### Budget Data
-
-**Table**: `budgets`
-```sql
-sku    VARCHAR
-year   INTEGER
-month  INTEGER (1-12)
-budget INTEGER (units)
-```
-
-### Actual Sold Calculation
-
-**Source**: `app/api/inventory/route.ts:171-198`
-
-```typescript
-// D2C: line_items from non-canceled orders this month
-const retailSales = sum(line_items.quantity WHERE order.created_at in month AND !canceled)
-
-// B2B: b2b_fulfilled records this month
-const b2bSales = sum(b2b_fulfilled.quantity WHERE fulfilled_at in month)
-
-// Total
-const monthSold = retailSales + b2bSales
-```
-
-### Pace Percentage
-
-```typescript
-const monthPct = monthBudget > 0
-  ? Math.round((monthSold / monthBudget) * 100)
-  : undefined;
-```
-
-### Green Pulse Animation
-
-**Source**: `app/page.tsx` (Budget vs Actual section)
-
-```typescript
-// Pulse green if actual EXCEEDS budget before month end
-const shouldPulse = sku.actual > sku.budget;
-```
-
----
-
-# 6. Sales (Wholesale) Tab
-
-## Data Source
-
-**API Endpoint**: `/api/wholesale`
-**Source File**: `app/api/wholesale/route.ts`
-**Sync**: Manual (Python script)
-
-### Data Flow
-
-```
-python3 scripts/sync-netsuite-wholesale.py
-  ↓
-NetSuite REST API (OAuth 1.0)
-  ↓
-Supabase tables:
-  - ns_wholesale_customers (~1,018 records)
-  - ns_wholesale_transactions (~7,282 records)
-  - ns_wholesale_line_items (~333,195 records)
-```
-
-### Customer Health Status Definitions
-
-**Source**: `app/api/wholesale/route.ts:42-58`
-
-```typescript
-function getHealthStatus(
-  daysSinceLastOrder: number | null,
-  orderCount: number,
-  revenueTrend: number
-): CustomerHealthStatus {
-  // Never placed an order - sales opportunity
-  if (orderCount === 0) return "never_ordered";
-  // Has orders but no last_sale_date is a data issue, treat as new
-  if (daysSinceLastOrder === null) return "new";
-  if (orderCount === 1) return "one_time";
-  if (daysSinceLastOrder > 365) return "churned";
-  if (daysSinceLastOrder > 180) return "churning";
-  if (daysSinceLastOrder > 120) return "at_risk";
-  if (revenueTrend < -0.2) return "declining";
-  if (revenueTrend > 0.1) return "thriving";
-  return "stable";
-}
-```
-
-### Complete Health Status Thresholds
-
-| Status | Criteria |
-|--------|----------|
-| **never_ordered** | orderCount = 0 |
-| **new** | daysSinceLastOrder = null |
-| **one_time** | orderCount = 1 |
-| **churned** | daysSinceLastOrder > 365 |
-| **churning** | daysSinceLastOrder > 180 |
-| **at_risk** | daysSinceLastOrder > 120 |
-| **declining** | revenueTrend < -0.2 |
-| **thriving** | revenueTrend > 0.1 |
-| **stable** | default (none of above) |
-
-### Active vs Non-Active Customer Definition
-
-**Active Customer**: Placed an order within the selected period (MTD, YTD, etc.)
-- Calculated as: `new Set(transactionsInPeriod.map(t => t.ns_customer_id)).size`
-
-**Total Customers**: All customers in database regardless of order history
-- Calculated as: `customers.length`
-
-### Customer Segment Definitions
-
-**Source**: `app/api/wholesale/route.ts:32-39`
-
-```typescript
-function getCustomerSegment(totalRevenue: number): CustomerSegment {
-  if (totalRevenue >= 50000) return "major";
-  if (totalRevenue >= 20000) return "large";
-  if (totalRevenue >= 10000) return "mid";
-  if (totalRevenue >= 5000) return "small";
-  if (totalRevenue >= 2000) return "starter";
-  return "minimal";
-}
-```
-
-| Segment | Lifetime Revenue Threshold |
-|---------|---------------------------|
-| **major** | $50,000+ |
-| **large** | $20,000 - $49,999 |
-| **mid** | $10,000 - $19,999 |
-| **small** | $5,000 - $9,999 |
-| **starter** | $2,000 - $4,999 |
-| **minimal** | < $2,000 |
-
-### Risk Score Calculation
-
-**Source**: `app/api/wholesale/route.ts:296`
-
-```typescript
-risk_score = Math.min(100, Math.round(days_since_last_order / 3.65))
-
-// Examples:
-// 0 days → 0 risk
-// 100 days → 27 risk
-// 180 days → 49 risk
-// 365 days → 100 risk (capped)
-```
-
-### Risk Score Components (Full)
-
-**Source**: `app/api/wholesale/route.ts:469-497`
-
-```typescript
-function calculateRiskScore(customer: WholesaleCustomer): number {
-  let score = 0;
-
-  // Days since last order (max 40 points)
-  if (customer.days_since_last_order !== null) {
-    if (customer.days_since_last_order > 365) score += 40;
-    else if (customer.days_since_last_order > 180) score += 30;
-    else if (customer.days_since_last_order > 120) score += 20;
-    else if (customer.days_since_last_order > 90) score += 10;
-  }
-
-  // Revenue trend (max 30 points)
-  if (customer.revenue_trend < -0.5) score += 30;
-  else if (customer.revenue_trend < -0.3) score += 20;
-  else if (customer.revenue_trend < -0.1) score += 10;
-
-  // Order trend (max 20 points)
-  if (customer.order_trend < -0.5) score += 20;
-  else if (customer.order_trend < -0.3) score += 15;
-  else if (customer.order_trend < -0.1) score += 10;
-
-  // Value at risk based on segment (max 10 points)
-  if (customer.segment === "major") score += 10;
-  else if (customer.segment === "large") score += 8;
-  else if (customer.segment === "mid") score += 6;
-
-  return Math.min(100, score);
-}
-```
-
-### Recommended Actions
-
-**Source**: `app/api/wholesale/route.ts:500-514`
-
-| Condition | Recommended Action |
-|-----------|-------------------|
-| days_since_last_order > 365 | "Win-back campaign - offer special pricing" |
-| days_since_last_order > 180 | "Direct outreach from sales rep" |
-| revenue_trend < -0.3 | "Review account - check for competitor activity" |
-| order_trend < -0.3 | "Schedule check-in call to understand needs" |
-| Default | "Monitor closely for next order" |
-
-### Excluded Customers
-
-**Source**: `app/api/wholesale/route.ts:26-29`
-
-```typescript
-const EXCLUDED_CUSTOMER_IDS = [
-  2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
-];
 ```
 
 ---
@@ -886,7 +751,171 @@ statistics: [
 
 ---
 
-# 8. Cron Jobs & Sync Schedule
+# 8. Sales (Wholesale) Tab
+
+## Data Source
+
+**API Endpoint**: `/api/wholesale`
+**Source File**: `app/api/wholesale/route.ts`
+**Sync**: Manual (Python script)
+
+### Data Flow
+
+```
+python3 scripts/sync-netsuite-wholesale.py
+  ↓
+NetSuite REST API (OAuth 1.0)
+  ↓
+Supabase tables:
+  - ns_wholesale_customers (~1,018 records)
+  - ns_wholesale_transactions (~7,282 records)
+  - ns_wholesale_line_items (~333,195 records)
+```
+
+### Customer Health Status Definitions
+
+**Source**: `app/api/wholesale/route.ts:42-58`
+
+```typescript
+function getHealthStatus(
+  daysSinceLastOrder: number | null,
+  orderCount: number,
+  revenueTrend: number
+): CustomerHealthStatus {
+  // Never placed an order - sales opportunity
+  if (orderCount === 0) return "never_ordered";
+  // Has orders but no last_sale_date is a data issue, treat as new
+  if (daysSinceLastOrder === null) return "new";
+  if (orderCount === 1) return "one_time";
+  if (daysSinceLastOrder > 365) return "churned";
+  if (daysSinceLastOrder > 180) return "churning";
+  if (daysSinceLastOrder > 120) return "at_risk";
+  if (revenueTrend < -0.2) return "declining";
+  if (revenueTrend > 0.1) return "thriving";
+  return "stable";
+}
+```
+
+### Complete Health Status Thresholds
+
+| Status | Criteria |
+|--------|----------|
+| **never_ordered** | orderCount = 0 |
+| **new** | daysSinceLastOrder = null |
+| **one_time** | orderCount = 1 |
+| **churned** | daysSinceLastOrder > 365 |
+| **churning** | daysSinceLastOrder > 180 |
+| **at_risk** | daysSinceLastOrder > 120 |
+| **declining** | revenueTrend < -0.2 |
+| **thriving** | revenueTrend > 0.1 |
+| **stable** | default (none of above) |
+
+### Active vs Non-Active Customer Definition
+
+**Active Customer**: Placed an order within the selected period (MTD, YTD, etc.)
+- Calculated as: `new Set(transactionsInPeriod.map(t => t.ns_customer_id)).size`
+
+**Total Customers**: All customers in database regardless of order history
+- Calculated as: `customers.length`
+
+### Customer Segment Definitions
+
+**Source**: `app/api/wholesale/route.ts:32-39`
+
+```typescript
+function getCustomerSegment(totalRevenue: number): CustomerSegment {
+  if (totalRevenue >= 50000) return "major";
+  if (totalRevenue >= 20000) return "large";
+  if (totalRevenue >= 10000) return "mid";
+  if (totalRevenue >= 5000) return "small";
+  if (totalRevenue >= 2000) return "starter";
+  return "minimal";
+}
+```
+
+| Segment | Lifetime Revenue Threshold |
+|---------|---------------------------|
+| **major** | $50,000+ |
+| **large** | $20,000 - $49,999 |
+| **mid** | $10,000 - $19,999 |
+| **small** | $5,000 - $9,999 |
+| **starter** | $2,000 - $4,999 |
+| **minimal** | < $2,000 |
+
+### Risk Score Calculation
+
+**Source**: `app/api/wholesale/route.ts:296`
+
+```typescript
+risk_score = Math.min(100, Math.round(days_since_last_order / 3.65))
+
+// Examples:
+// 0 days → 0 risk
+// 100 days → 27 risk
+// 180 days → 49 risk
+// 365 days → 100 risk (capped)
+```
+
+### Risk Score Components (Full)
+
+**Source**: `app/api/wholesale/route.ts:469-497`
+
+```typescript
+function calculateRiskScore(customer: WholesaleCustomer): number {
+  let score = 0;
+
+  // Days since last order (max 40 points)
+  if (customer.days_since_last_order !== null) {
+    if (customer.days_since_last_order > 365) score += 40;
+    else if (customer.days_since_last_order > 180) score += 30;
+    else if (customer.days_since_last_order > 120) score += 20;
+    else if (customer.days_since_last_order > 90) score += 10;
+  }
+
+  // Revenue trend (max 30 points)
+  if (customer.revenue_trend < -0.5) score += 30;
+  else if (customer.revenue_trend < -0.3) score += 20;
+  else if (customer.revenue_trend < -0.1) score += 10;
+
+  // Order trend (max 20 points)
+  if (customer.order_trend < -0.5) score += 20;
+  else if (customer.order_trend < -0.3) score += 15;
+  else if (customer.order_trend < -0.1) score += 10;
+
+  // Value at risk based on segment (max 10 points)
+  if (customer.segment === "major") score += 10;
+  else if (customer.segment === "large") score += 8;
+  else if (customer.segment === "mid") score += 6;
+
+  return Math.min(100, score);
+}
+```
+
+### Recommended Actions
+
+**Source**: `app/api/wholesale/route.ts:500-514`
+
+| Condition | Recommended Action |
+|-----------|-------------------|
+| days_since_last_order > 365 | "Win-back campaign - offer special pricing" |
+| days_since_last_order > 180 | "Direct outreach from sales rep" |
+| revenue_trend < -0.3 | "Review account - check for competitor activity" |
+| order_trend < -0.3 | "Schedule check-in call to understand needs" |
+| Default | "Monitor closely for next order" |
+
+### Excluded Customers
+
+**Source**: `app/api/wholesale/route.ts:26-29`
+
+```typescript
+const EXCLUDED_CUSTOMER_IDS = [
+  2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
+];
+```
+
+---
+
+# 9. Cron Jobs & Sync Schedule
 
 ## Vercel Automated Crons
 
@@ -911,7 +940,7 @@ statistics: [
 
 ---
 
-# 9. File Paths Reference
+# 10. File Paths Reference
 
 ## Local Machine (Trevor's)
 
@@ -944,7 +973,7 @@ statistics: [
 
 ---
 
-# 10. SWOT Analysis
+# 11. SWOT Analysis
 
 > **Note**: This section contains my analysis/opinions based on reviewing the codebase. Not factual documentation.
 
@@ -964,14 +993,24 @@ statistics: [
 **Threats**
 - ShipHero API rate limits could affect sync during peak periods
 
-## D2C / Fulfillment Tab
+## VOC (Support) Tab
 
 **Strengths**
-- Restoration orders filtered out of D2C metrics (SKUs with `-Rest-`)
-- Multiple aging buckets (1d, 3d, 7d) for queue health visibility
+- 5-minute sync frequency keeps data fresh
 
 **Weaknesses**
-- Tracking data relies on hourly cron, not real-time webhooks
+- Limited metrics currently exposed
+
+## Budget vs Actual Tab
+
+**Strengths**
+- Combines D2C (line_items) and B2B (b2b_fulfilled) for total picture
+
+**Weaknesses**
+- Budget data entered manually
+
+**Opportunities**
+- Budget data could support CSV import
 
 ## Assembly Tab
 
@@ -990,6 +1029,15 @@ statistics: [
 - OneDrive sync delays could result in stale data
 - Excel file corruption would break pipeline
 
+## D2C / Fulfillment Tab
+
+**Strengths**
+- Restoration orders filtered out of D2C metrics (SKUs with `-Rest-`)
+- Multiple aging buckets (1d, 3d, 7d) for queue health visibility
+
+**Weaknesses**
+- Tracking data relies on hourly cron, not real-time webhooks
+
 ## Holiday Tab
 
 **Strengths**
@@ -997,26 +1045,6 @@ statistics: [
 
 **Weaknesses**
 - Depends on Excel file on OneDrive
-
-## Budget vs Actual Tab
-
-**Strengths**
-- Combines D2C (line_items) and B2B (b2b_fulfilled) for total picture
-
-**Weaknesses**
-- Budget data entered manually
-
-**Opportunities**
-- Budget data could support CSV import
-
-## Sales (Wholesale) Tab
-
-**Strengths**
-- Multi-factor customer health scoring (days since order, revenue trend, order trend)
-- Recommended actions generated from code (`app/api/wholesale/route.ts:499-514`)
-
-**Weaknesses**
-- Requires manual Python script execution to sync
 
 ## Marketing (Klaviyo) Tab
 
@@ -1026,6 +1054,15 @@ statistics: [
 
 **Weaknesses**
 - Daily sync only (6am UTC)
+
+## Sales (Wholesale) Tab
+
+**Strengths**
+- Multi-factor customer health scoring (days since order, revenue trend, order trend)
+- Recommended actions generated from code (`app/api/wholesale/route.ts:499-514`)
+
+**Weaknesses**
+- Requires manual Python script execution to sync
 
 ---
 
