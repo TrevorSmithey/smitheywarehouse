@@ -2643,6 +2643,14 @@ function InventoryDashboard({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Refresh indicator when loading with existing data */}
+      {loading && inventory && (
+        <div className="flex items-center justify-center gap-2 py-2 bg-accent-blue/10 border border-accent-blue/20 rounded-lg">
+          <RefreshCw className="w-4 h-4 text-accent-blue animate-spin" />
+          <span className="text-sm text-accent-blue font-medium">Refreshing inventory...</span>
+        </div>
+      )}
+
       {/* Header with Health Status + Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         {/* Health Summary */}
@@ -2680,8 +2688,9 @@ function InventoryDashboard({
         <div className="flex items-center gap-2">
           <button
             onClick={onRefresh}
+            disabled={loading}
             aria-label="Refresh inventory"
-            className="p-2 rounded-lg transition-all hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+            className={`p-2 rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${loading ? "opacity-50 cursor-not-allowed" : "hover:bg-white/5"}`}
           >
             <RefreshCw className={`w-4 h-4 text-text-tertiary ${loading ? "animate-spin" : ""}`} />
           </button>
