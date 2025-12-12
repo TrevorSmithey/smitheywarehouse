@@ -2643,14 +2643,6 @@ function InventoryDashboard({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Refresh indicator when loading with existing data */}
-      {loading && inventory && (
-        <div className="flex items-center justify-center gap-2 py-2 bg-accent-blue/10 border border-accent-blue/20 rounded-lg">
-          <RefreshCw className="w-4 h-4 text-accent-blue animate-spin" />
-          <span className="text-sm text-accent-blue font-medium">Refreshing inventory...</span>
-        </div>
-      )}
-
       {/* Header with Health Status + Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         {/* Health Summary */}
