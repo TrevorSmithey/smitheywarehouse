@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/sync-shopify-stats",
       "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/cron/sync-netsuite",
+      "schedule": "0 7 * * *"
     }
   ]
 }
