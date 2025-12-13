@@ -415,6 +415,8 @@ export type BudgetDateRange = "mtd" | "last_month" | "qtd" | "ytd" | "6months" |
 
 export type BudgetCategory = "accessories" | "carbon_steel" | "cast_iron" | "glass_lid";
 
+export type BudgetChannel = "retail" | "wholesale" | "combined";
+
 // Comparison period types
 export type CompareType = "previous_period" | "same_period_last_year" | "custom";
 
@@ -462,14 +464,51 @@ export interface BudgetCategoryData {
   };
 }
 
+// Channel-specific actuals (retail/wholesale breakdown)
+export interface ChannelActuals {
+  retail: number;
+  wholesale: number;
+  total: number;
+}
+
+// Channel-specific pace (for red/green dot indicators)
+export interface ChannelPace {
+  retail: number;
+  wholesale: number;
+  total: number;
+}
+
+// Channel-specific budgets (retail/wholesale breakdown)
+export interface ChannelBudgets {
+  retail: number;
+  wholesale: number;
+  total: number;
+}
+
+export interface BudgetSkuRowWithChannels extends BudgetSkuRow {
+  channelActuals: ChannelActuals;
+  channelBudgets: ChannelBudgets;
+  channelPace: ChannelPace;
+}
+
+export interface BudgetCategoryDataWithChannels extends Omit<BudgetCategoryData, 'skus'> {
+  skus: BudgetSkuRowWithChannels[];
+  channelActuals: ChannelActuals;
+  channelBudgets: ChannelBudgets;
+  channelPace: ChannelPace;
+}
+
 export interface BudgetResponse {
-  categories: BudgetCategoryData[];
+  categories: BudgetCategoryDataWithChannels[];
   cookwareTotal: {
     budget: number;
     actual: number;
     variance: number;
     variancePct: number;
     pace: number;
+    channelActuals: ChannelActuals;
+    channelBudgets: ChannelBudgets;
+    channelPace: ChannelPace;
   };
   grandTotal: {
     budget: number;
@@ -477,6 +516,9 @@ export interface BudgetResponse {
     variance: number;
     variancePct: number;
     pace: number;
+    channelActuals: ChannelActuals;
+    channelBudgets: ChannelBudgets;
+    channelPace: ChannelPace;
   };
   dateRange: BudgetDateRange;
   periodLabel: string;

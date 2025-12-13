@@ -64,6 +64,7 @@ import type {
   DailyAssembly,
   BudgetResponse,
   BudgetDateRange,
+  BudgetChannel,
   BudgetCategoryData,
   CompareType,
   TicketsResponse,
@@ -232,6 +233,7 @@ export default function Dashboard() {
   const [budgetData, setBudgetData] = useState<BudgetResponse | null>(null);
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetDateRange, setBudgetDateRange] = useState<BudgetDateRange>("mtd");
+  const [budgetChannel, setBudgetChannel] = useState<BudgetChannel>("combined");
   const [budgetCustomStart, setBudgetCustomStart] = useState<string>("");
   const [budgetCustomEnd, setBudgetCustomEnd] = useState<string>("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(["cast_iron", "carbon_steel", "glass_lid", "accessories"]));
@@ -326,7 +328,7 @@ export default function Dashboard() {
     }
   }, [primaryTab, assemblyData, assemblyLoading, fetchAssembly]);
 
-  // Fetch budget data
+  // Fetch budget data (channel filtering is done client-side for instant switching)
   const fetchBudget = useCallback(async (
     range: BudgetDateRange = budgetDateRange,
     customStart?: string,
@@ -358,10 +360,7 @@ export default function Dashboard() {
   }, [primaryTab, budgetData, budgetLoading, fetchBudget]);
 
   // Refetch budget when date range or custom dates change
-  // Note: primaryTab and budgetData are intentionally excluded from dependencies
-  // - primaryTab: we don't want to refetch when switching tabs (handled by separate useEffect above)
-  // - budgetData: we check it as a guard, not as a trigger (prevents infinite loop)
-  // - fetchBudget: stable callback, but including it would cause unnecessary refetches
+  // Note: Channel changes are handled client-side (no refetch needed)
   useEffect(() => {
     if (primaryTab === "budget" && budgetData) {
       if (budgetDateRange === "custom") {
@@ -1312,6 +1311,8 @@ export default function Dashboard() {
           loading={budgetLoading}
           dateRange={budgetDateRange}
           onDateRangeChange={(range) => setBudgetDateRange(range)}
+          channel={budgetChannel}
+          onChannelChange={(ch) => setBudgetChannel(ch)}
           customStart={budgetCustomStart}
           customEnd={budgetCustomEnd}
           onCustomStartChange={setBudgetCustomStart}
@@ -4227,6 +4228,8 @@ function BudgetDashboard({
   loading,
   dateRange,
   onDateRangeChange,
+  channel,
+  onChannelChange,
   customStart,
   customEnd,
   onCustomStartChange,
@@ -4239,6 +4242,8 @@ function BudgetDashboard({
   loading: boolean;
   dateRange: BudgetDateRange;
   onDateRangeChange: (range: BudgetDateRange) => void;
+  channel: BudgetChannel;
+  onChannelChange: (channel: BudgetChannel) => void;
   customStart: string;
   customEnd: string;
   onCustomStartChange: (date: string) => void;
@@ -4267,6 +4272,13 @@ function BudgetDashboard({
     { value: "ytd", label: "Year to Date", short: "YTD" },
     { value: "6months", label: "6 Months", short: "6Mo" },
     { value: "custom", label: "Custom", short: "Custom" },
+  ];
+
+  // Channel options
+  const channelOptions: { value: BudgetChannel; label: string }[] = [
+    { value: "combined", label: "Total" },
+    { value: "retail", label: "Retail" },
+    { value: "wholesale", label: "Wholesale" },
   ];
 
 
@@ -4393,9 +4405,38 @@ function BudgetDashboard({
     <div className="space-y-6">
       {/* Header Row with Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="text-sm text-text-muted">
-          {data.periodLabel}
+        {/* Left side: Channel Toggle + Period Label */}
+        <div className="flex items-center gap-6">
+          {/* Channel Toggle - Refined pill design */}
+          <div className="flex items-center gap-1 bg-bg-tertiary/50 rounded-full p-0.5 border border-border/40">
+            {channelOptions.map((opt) => {
+              const isActive = channel === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => onChannelChange(opt.value)}
+                  className={`relative px-4 py-1.5 text-[10px] font-semibold tracking-[0.12em] uppercase rounded-full transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                    isActive
+                      ? "bg-gradient-to-b from-forge-copper/90 to-forge-ember/80 text-white shadow-[0_2px_8px_-2px] shadow-forge-copper/60"
+                      : "text-text-tertiary hover:text-text-secondary"
+                  }`}
+                >
+                  <span className={`relative z-10 transition-transform duration-300 ${isActive ? "scale-[1.02]" : "scale-100"}`}>
+                    {opt.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Period Label - Understated */}
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-1 rounded-full bg-forge-copper/60" />
+            <span className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-medium">
+              {data.periodLabel}
+            </span>
+          </div>
         </div>
+        {/* Right side: Date Range + Export */}
         <div className="flex items-center gap-2">
           {/* Date Range Buttons */}
           <div className="flex bg-bg-tertiary rounded-lg p-1">
@@ -4443,132 +4484,230 @@ function BudgetDashboard({
       </div>
 
       {/* Summary Cards - Cookware Total and Grand Total */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Cookware Total */}
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">COOKWARE TOTAL</span>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-3 mb-1">
-            <span
-              className={`text-3xl sm:text-4xl font-bold tabular-nums`}
-              style={{ color: getPaceColor(data.cookwareTotal.pace) }}
-            >
-              {Math.round((data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%
-            </span>
-            <span className="text-xs text-text-muted">of budget</span>
-          </div>
-          <div className="text-sm text-text-muted mb-2">
-            {formatNumber(data.cookwareTotal.actual)} / {formatNumber(data.cookwareTotal.budget)}
-          </div>
-          {/* Delta indicator when comparison is active */}
-          {data.comparison && (
-            <div className="flex items-center gap-2 mb-3">
-              <span
-                className="text-sm font-medium tabular-nums"
-                style={{ color: getDeltaColor(data.comparison.cookwareTotal.delta) }}
-              >
-                {formatDelta(data.comparison.cookwareTotal.deltaPct, true)}
-              </span>
-              <span className="text-xs text-text-tertiary">
-                vs {data.comparison.periodLabel.split("(")[0].trim()}
-              </span>
-            </div>
-          )}
-          {/* Progress Bar */}
-          <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.min(100, (data.cookwareTotal.actual / data.cookwareTotal.budget) * 100)}%`,
-                background: `linear-gradient(90deg, ${getPaceColor(data.cookwareTotal.pace)}, ${getPaceColorDark(data.cookwareTotal.pace)})`,
-              }}
-            />
-            {dateRange === "mtd" && (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-white/50"
-                style={{ left: `${pctThroughPeriod}%` }}
-                title={`${pctThroughPeriod}% through period`}
-              />
-            )}
-          </div>
-          <div className="text-xs text-text-tertiary mt-2">
-            Cast Iron + Carbon Steel{dateRange === "mtd" && data.cookwareTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.cookwareTotal.pace) }}>{data.cookwareTotal.pace}%</span></>}
-          </div>
-        </div>
+      {(() => {
+        // Get channel-specific actuals
+        const cookwareActual = channel === "combined"
+          ? data.cookwareTotal.actual
+          : channel === "retail"
+            ? data.cookwareTotal.channelActuals?.retail || 0
+            : data.cookwareTotal.channelActuals?.wholesale || 0;
+        const grandActual = channel === "combined"
+          ? data.grandTotal.actual
+          : channel === "retail"
+            ? data.grandTotal.channelActuals?.retail || 0
+            : data.grandTotal.channelActuals?.wholesale || 0;
 
-        {/* Grand Total */}
-        <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">GRAND TOTAL</span>
+        // Get channel-specific budgets
+        const cookwareBudget = channel === "combined"
+          ? data.cookwareTotal.budget
+          : channel === "retail"
+            ? data.cookwareTotal.channelBudgets?.retail || 0
+            : data.cookwareTotal.channelBudgets?.wholesale || 0;
+        const grandBudget = channel === "combined"
+          ? data.grandTotal.budget
+          : channel === "retail"
+            ? data.grandTotal.channelBudgets?.retail || 0
+            : data.grandTotal.channelBudgets?.wholesale || 0;
+
+        // Calculate % using channel-specific budget for channel views
+        const cookwarePct = cookwareBudget > 0
+          ? Math.round((cookwareActual / cookwareBudget) * 100)
+          : 0;
+        const grandPct = grandBudget > 0
+          ? Math.round((grandActual / grandBudget) * 100)
+          : 0;
+
+        // Get channel-specific pace values (now available for all channels)
+        const cookwarePace = channel === "combined"
+          ? data.cookwareTotal.pace
+          : channel === "retail"
+            ? data.cookwareTotal.channelPace?.retail || 0
+            : data.cookwareTotal.channelPace?.wholesale || 0;
+        const grandPace = channel === "combined"
+          ? data.grandTotal.pace
+          : channel === "retail"
+            ? data.grandTotal.channelPace?.retail || 0
+            : data.grandTotal.channelPace?.wholesale || 0;
+        const showPace = dateRange === "mtd"; // Pace is meaningful for MTD in all channel views
+        const channelLabel = channel === "retail" ? "Retail" : channel === "wholesale" ? "Wholesale" : "";
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cookware Total */}
+            <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                  COOKWARE{channelLabel ? ` · ${channelLabel}` : ""}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-3 mb-1">
+                <span
+                  className="text-3xl sm:text-4xl font-bold tabular-nums transition-colors duration-500"
+                  style={{ color: showPace ? getPaceColor(cookwarePace) : colors.accent }}
+                >
+                  {cookwarePct}%
+                </span>
+                <span className="text-xs text-text-muted">of budget</span>
+              </div>
+              <div className="text-sm text-text-muted mb-2 tabular-nums">
+                {formatNumber(cookwareActual)}
+                <span className="text-text-tertiary"> / {formatNumber(cookwareBudget)}</span>
+              </div>
+              {/* Channel breakdown when viewing Total */}
+              {channel === "combined" && data.cookwareTotal.channelActuals && (
+                <div className="text-xs text-text-tertiary mb-2">
+                  <span className="text-text-muted">Retail:</span> {formatNumber(data.cookwareTotal.channelActuals.retail)}
+                  <span className="mx-2">·</span>
+                  <span className="text-text-muted">Wholesale:</span> {formatNumber(data.cookwareTotal.channelActuals.wholesale)}
+                </div>
+              )}
+              {/* Delta indicator when comparison is active */}
+              {data.comparison && channel === "combined" && (
+                <div className="flex items-center gap-2 mb-3">
+                  <span
+                    className="text-sm font-medium tabular-nums"
+                    style={{ color: getDeltaColor(data.comparison.cookwareTotal.delta) }}
+                  >
+                    {formatDelta(data.comparison.cookwareTotal.deltaPct, true)}
+                  </span>
+                  <span className="text-xs text-text-tertiary">
+                    vs {data.comparison.periodLabel.split("(")[0].trim()}
+                  </span>
+                </div>
+              )}
+              {/* Progress Bar */}
+              <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, cookwarePct)}%`,
+                    background: showPace
+                      ? `linear-gradient(90deg, ${getPaceColor(cookwarePace)}, ${getPaceColorDark(cookwarePace)})`
+                      : `linear-gradient(90deg, ${colors.accent}, ${colors.accent})`,
+                  }}
+                />
+                {dateRange === "mtd" && showPace && (
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+                    style={{ left: `${pctThroughPeriod}%` }}
+                    title={`${pctThroughPeriod}% through period`}
+                  />
+                )}
+              </div>
+              <div className="text-xs text-text-tertiary mt-2">
+                Cast Iron + Carbon Steel
+                {showPace && cookwarePace < 100 && (
+                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(cookwarePace) }}>{cookwarePace}%</span></>
+                )}
+              </div>
+            </div>
+
+            {/* Grand Total */}
+            <div className="bg-bg-secondary rounded-xl p-5 border border-border/30">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                  GRAND TOTAL{channelLabel ? ` · ${channelLabel}` : ""}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-3 mb-1">
+                <span
+                  className="text-3xl sm:text-4xl font-bold tabular-nums transition-colors duration-500"
+                  style={{ color: showPace ? getPaceColor(grandPace) : colors.accent }}
+                >
+                  {grandPct}%
+                </span>
+                <span className="text-xs text-text-muted">of budget</span>
+              </div>
+              <div className="text-sm text-text-muted mb-2 tabular-nums">
+                {formatNumber(grandActual)}
+                <span className="text-text-tertiary"> / {formatNumber(grandBudget)}</span>
+              </div>
+              {/* Channel breakdown when viewing Total */}
+              {channel === "combined" && data.grandTotal.channelActuals && (
+                <div className="text-xs text-text-tertiary mb-2">
+                  <span className="text-text-muted">Retail:</span> {formatNumber(data.grandTotal.channelActuals.retail)}
+                  <span className="mx-2">·</span>
+                  <span className="text-text-muted">Wholesale:</span> {formatNumber(data.grandTotal.channelActuals.wholesale)}
+                </div>
+              )}
+              {/* Delta indicator when comparison is active */}
+              {data.comparison && channel === "combined" && (
+                <div className="flex items-center gap-2 mb-3">
+                  <span
+                    className="text-sm font-medium tabular-nums"
+                    style={{ color: getDeltaColor(data.comparison.grandTotal.delta) }}
+                  >
+                    {formatDelta(data.comparison.grandTotal.deltaPct, true)}
+                  </span>
+                  <span className="text-xs text-text-tertiary">
+                    vs {data.comparison.periodLabel.split("(")[0].trim()}
+                  </span>
+                </div>
+              )}
+              {/* Progress Bar */}
+              <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, grandPct)}%`,
+                    background: showPace
+                      ? `linear-gradient(90deg, ${getPaceColor(grandPace)}, ${getPaceColorDark(grandPace)})`
+                      : `linear-gradient(90deg, ${colors.accent}, ${colors.accent})`,
+                  }}
+                />
+                {dateRange === "mtd" && showPace && (
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-white/50"
+                    style={{ left: `${pctThroughPeriod}%` }}
+                    title={`${pctThroughPeriod}% through period`}
+                  />
+                )}
+              </div>
+              <div className="text-xs text-text-tertiary mt-2">
+                All Categories
+                {showPace && grandPace < 100 && (
+                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(grandPace) }}>{grandPace}%</span></>
+                )}
+              </div>
             </div>
           </div>
-          <div className="flex items-baseline gap-3 mb-1">
-            <span
-              className={`text-3xl sm:text-4xl font-bold tabular-nums`}
-              style={{ color: getPaceColor(data.grandTotal.pace) }}
-            >
-              {grandPctOfBudget}%
-            </span>
-            <span className="text-xs text-text-muted">of budget</span>
-          </div>
-          <div className="text-sm text-text-muted mb-2">
-            {formatNumber(data.grandTotal.actual)} / {formatNumber(data.grandTotal.budget)}
-          </div>
-          {/* Delta indicator when comparison is active */}
-          {data.comparison && (
-            <div className="flex items-center gap-2 mb-3">
-              <span
-                className="text-sm font-medium tabular-nums"
-                style={{ color: getDeltaColor(data.comparison.grandTotal.delta) }}
-              >
-                {formatDelta(data.comparison.grandTotal.deltaPct, true)}
-              </span>
-              <span className="text-xs text-text-tertiary">
-                vs {data.comparison.periodLabel.split("(")[0].trim()}
-              </span>
-            </div>
-          )}
-          {/* Progress Bar */}
-          <div className="relative h-2 bg-bg-tertiary rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${Math.min(100, grandPctOfBudget)}%`,
-                background: `linear-gradient(90deg, ${getPaceColor(data.grandTotal.pace)}, ${getPaceColorDark(data.grandTotal.pace)})`,
-              }}
-            />
-            {dateRange === "mtd" && (
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-white/50"
-                style={{ left: `${pctThroughPeriod}%` }}
-                title={`${pctThroughPeriod}% through period`}
-              />
-            )}
-          </div>
-          <div className="text-xs text-text-tertiary mt-2">
-            All Categories{dateRange === "mtd" && data.grandTotal.pace < 100 && <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(data.grandTotal.pace) }}>{data.grandTotal.pace}%</span></>}
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Category Details - Unified Cards with Progress + Table */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {data.categories.map((cat) => {
-          const pctOfBudget = cat.totals.budget > 0
-            ? Math.round((cat.totals.actual / cat.totals.budget) * 100)
+          // Get channel-specific actual for category
+          const catActual = channel === "combined"
+            ? cat.totals.actual
+            : channel === "retail"
+              ? cat.channelActuals?.retail || 0
+              : cat.channelActuals?.wholesale || 0;
+
+          // Get channel-specific budget for category
+          const catBudget = channel === "combined"
+            ? cat.totals.budget
+            : channel === "retail"
+              ? cat.channelBudgets?.retail || 0
+              : cat.channelBudgets?.wholesale || 0;
+
+          const pctOfBudget = catBudget > 0
+            ? Math.round((catActual / catBudget) * 100)
             : 0;
           const pctThroughPeriod = Math.round((data.daysElapsed / data.daysInPeriod) * 100);
           const isExpanded = expandedCategories.has(cat.category);
-          // Use pace from API for consistent color logic
-          const statusColor = getPaceColor(cat.totals.pace);
-          const statusColorDark = getPaceColorDark(cat.totals.pace);
+          // Get channel-specific pace
+          const catPace = channel === "combined"
+            ? cat.totals.pace
+            : channel === "retail"
+              ? cat.channelPace?.retail || 0
+              : cat.channelPace?.wholesale || 0;
+          const showPace = dateRange === "mtd"; // Pace is meaningful for MTD
+          const statusColor = showPace ? getPaceColor(catPace) : colors.accent;
+          const statusColorDark = showPace ? getPaceColorDark(catPace) : colors.accent;
 
           return (
-            <div key={cat.category} className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+            <div key={cat.category} className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden transition-all duration-300">
               {/* Rich Header with Progress */}
               <button
                 onClick={() => onToggleCategory(cat.category)}
@@ -4595,20 +4734,20 @@ function BudgetDashboard({
                   <div className="flex items-baseline justify-between">
                     <div className="flex items-baseline gap-2">
                       <span
-                        className="text-2xl font-bold tabular-nums"
+                        className="text-2xl font-bold tabular-nums transition-colors duration-300"
                         style={{ color: statusColor }}
                       >
                         {pctOfBudget}%
                       </span>
                       <span className="text-xs text-text-muted">of budget</span>
                     </div>
-                    <div className="text-right">
-                      <span className="text-sm text-text-primary tabular-nums font-medium">
-                        {formatNumber(cat.totals.actual)}
+                    <div className="text-right tabular-nums">
+                      <span className="text-sm text-text-primary font-medium transition-all duration-300">
+                        {formatNumber(catActual)}
                       </span>
-                      <span className="text-sm text-text-muted"> / </span>
-                      <span className="text-sm text-text-tertiary tabular-nums">
-                        {formatNumber(cat.totals.budget)}
+                      <span className="text-sm text-text-muted transition-all duration-300"> / </span>
+                      <span className="text-sm text-text-tertiary transition-all duration-300">
+                        {formatNumber(catBudget)}
                       </span>
                     </div>
                   </div>
@@ -4647,14 +4786,35 @@ function BudgetDashboard({
                     </thead>
                     <tbody>
                       {cat.skus.map((sku, idx) => {
-                        // Display: raw % to monthly budget
-                        // Color: based on pace (are we on track?)
-                        const pctOfBudget = sku.budget > 0
-                          ? Math.round((sku.actual / sku.budget) * 100)
+                        // Get channel-specific actual for this SKU
+                        const skuActual = channel === "combined"
+                          ? sku.actual
+                          : channel === "retail"
+                            ? sku.channelActuals?.retail || 0
+                            : sku.channelActuals?.wholesale || 0;
+
+                        // Get channel-specific budget for this SKU
+                        const skuBudget = channel === "combined"
+                          ? sku.budget
+                          : channel === "retail"
+                            ? sku.channelBudgets?.retail || 0
+                            : sku.channelBudgets?.wholesale || 0;
+
+                        // Display: raw % to channel budget
+                        // Color: based on pace for all channel views
+                        const pctOfBudget = skuBudget > 0
+                          ? Math.round((skuActual / skuBudget) * 100)
                           : 0;
-                        const skuColor = getPaceColor(sku.pace);
+                        // Get channel-specific pace for this SKU
+                        const skuPace = channel === "combined"
+                          ? sku.pace
+                          : channel === "retail"
+                            ? sku.channelPace?.retail || 0
+                            : sku.channelPace?.wholesale || 0;
+                        const showPace = dateRange === "mtd"; // Pace is meaningful for MTD
+                        const skuColor = showPace ? getPaceColor(skuPace) : colors.accent;
                         // Pulse green only when actual exceeds budget (hit the goal early)
-                        const shouldPulse = sku.actual > sku.budget;
+                        const shouldPulse = showPace && skuActual > skuBudget;
 
                         return (
                           <tr
@@ -4666,8 +4826,8 @@ function BudgetDashboard({
                             <td className="py-1.5 px-3">
                               <div className="flex items-center gap-2">
                                 <div
-                                  className={`w-2 h-2 rounded-full flex-shrink-0 ${shouldPulse ? "animate-soft-pulse" : ""}`}
-                                  style={{ backgroundColor: skuColor, color: skuColor }}
+                                  className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors duration-300 ${shouldPulse ? "animate-soft-pulse" : ""}`}
+                                  style={{ backgroundColor: skuColor }}
                                 />
                                 <div>
                                   <div className="text-text-primary text-xs font-medium">{sku.displayName}</div>
@@ -4675,15 +4835,15 @@ function BudgetDashboard({
                                 </div>
                               </div>
                             </td>
-                            <td className="py-1.5 px-2 text-right text-text-muted tabular-nums text-xs">
-                              {formatNumber(sku.budget)}
+                            <td className="py-1.5 px-2 text-right text-text-muted tabular-nums text-xs transition-opacity duration-300">
+                              {formatNumber(skuBudget)}
                             </td>
-                            <td className="py-1.5 px-2 text-right text-text-primary tabular-nums text-xs font-medium">
-                              {formatNumber(sku.actual)}
+                            <td className="py-1.5 px-2 text-right text-text-primary tabular-nums text-xs font-medium transition-all duration-300">
+                              {formatNumber(skuActual)}
                             </td>
                             <td className="py-1.5 px-3 text-right">
                               <span
-                                className="inline-block text-xs font-semibold tabular-nums px-2 py-0.5 rounded"
+                                className="inline-block text-xs font-semibold tabular-nums px-2 py-0.5 rounded transition-all duration-300"
                                 style={{
                                   backgroundColor: `${skuColor}20`,
                                   color: skuColor

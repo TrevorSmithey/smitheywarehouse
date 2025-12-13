@@ -7,13 +7,16 @@ export const revalidate = 0;
 import {
   BudgetResponse,
   BudgetDateRange,
-  BudgetCategoryData,
   BudgetSkuRow,
   BudgetCategory,
   CompareType,
   BudgetCategoryComparison,
   ComparisonTotals,
   BudgetSkuComparison,
+  ChannelActuals,
+  ChannelBudgets,
+  BudgetSkuRowWithChannels,
+  BudgetCategoryDataWithChannels,
 } from "@/lib/types";
 
 // Validate env vars and create client (lazy initialization to avoid build-time errors)
@@ -509,7 +512,7 @@ function calculateComparisonPeriod(
  * Fetch sales data for a given date range
  * Uses same methodology as main GET handler for consistency:
  * - D2C: All orders (including cancelled) from Supabase
- * - B2B: All orders from Shopify API (including unfulfilled)
+ * - B2B: All orders from b2b_fulfilled table (synced from Shopify)
  */
 async function fetchSalesData(
   supabase: SupabaseClient,
@@ -517,9 +520,6 @@ async function fetchSalesData(
   end: string
 ): Promise<Map<string, number>> {
   const salesBySku = new Map<string, number>();
-
-  // SKIP RPC - Using direct queries to match main GET handler methodology
-  // RPC uses b2b_fulfilled table (fulfilled_at) but we need Shopify API (created_at)
 
   // Query D2C retail sales with pagination
   const PAGE_SIZE = 50000;
@@ -542,16 +542,23 @@ async function fetchSalesData(
 
     if (page && page.length > 0) {
       retailData.push(...page);
-      offset += PAGE_SIZE;  // FIX: Always advance by PAGE_SIZE, not page.length
+      offset += PAGE_SIZE;
       hasMore = page.length === PAGE_SIZE;
     } else {
       hasMore = false;
     }
   }
 
-  // Fetch B2B data from Shopify directly (includes all orders, not just fulfilled)
-  // This matches Excel/Coupler methodology for apples-to-apples comparison
-  const b2bData = await fetchB2BFromShopify(start, end);
+  // Query B2B from b2b_fulfilled table (already synced from Shopify with status:any)
+  const { data: b2bData, error: b2bError } = await supabase
+    .from("b2b_fulfilled")
+    .select("sku, quantity")
+    .gte("created_at", start)
+    .lte("created_at", end);
+
+  if (b2bError) {
+    throw new Error(`Failed to fetch B2B sales: ${b2bError.message}`);
+  }
 
   for (const item of retailData || []) {
     if (item.sku) {
@@ -587,8 +594,13 @@ async function fetchSalesData(
       .lte("orders.created_at", end)
       .limit(100000);
 
-    // Fetch B2B care kits from Shopify (includes all orders, not just fulfilled)
-    const careKitB2B = await fetchB2BFromShopify(effectiveStart, end, CARE_KIT_SKU);
+    // Query B2B care kits from b2b_fulfilled table
+    const { data: careKitB2B } = await supabase
+      .from("b2b_fulfilled")
+      .select("sku, quantity")
+      .ilike("sku", CARE_KIT_SKU)
+      .gte("created_at", effectiveStart)
+      .lte("created_at", end);
 
     let careKitCount = 0;
     for (const item of careKitRetail || []) {
@@ -620,6 +632,9 @@ export async function GET(request: Request) {
     const compareType = searchParams.get("compare") as CompareType | null;
     const compareStart = searchParams.get("compareStart") || undefined;
     const compareEnd = searchParams.get("compareEnd") || undefined;
+
+    // Channel param is deprecated - we now return all channel data in one response
+    // The frontend handles filtering client-side for instant switching
 
     const validRanges: BudgetDateRange[] = ["mtd", "last_month", "qtd", "ytd", "6months", "custom"];
     if (!validRanges.includes(range)) {
@@ -659,11 +674,11 @@ export async function GET(request: Request) {
     // Supabase .or() with compound conditions uses: and(col1.eq.val1,col2.eq.val2)
     const budgetConditions = months.map(m => `and(year.eq.${m.year},month.eq.${m.month})`);
 
-    // Query budgets from Supabase
+    // Query budgets from Supabase (now includes channel column)
     // High limit to prevent any future truncation issues
     const { data: budgetData, error: budgetError } = await supabase
       .from("budgets")
-      .select("sku, year, month, budget")
+      .select("sku, year, month, channel, budget")
       .or(budgetConditions.join(","))
       .limit(1000000);
 
@@ -671,18 +686,44 @@ export async function GET(request: Request) {
       throw new Error(`Failed to fetch budgets: ${budgetError.message}`);
     }
 
-    // Aggregate budgets by SKU (FULL month budgets - no pro-rating)
-    // User wants to see progress against full month target, not prorated target
+    // Aggregate budgets by SKU and channel (FULL month budgets - no pro-rating)
     // Use lowercase keys for case-insensitive matching
-    const budgetsBySku = new Map<string, number>();
+    // Note: "total" is its own channel in the database, NOT the sum of retail + wholesale
+    const retailBudgetsBySku = new Map<string, number>();
+    const wholesaleBudgetsBySku = new Map<string, number>();
+    const totalBudgetsBySku = new Map<string, number>();
+
     for (const row of budgetData || []) {
       const skuLower = row.sku.toLowerCase();
-      const current = budgetsBySku.get(skuLower) || 0;
-      budgetsBySku.set(skuLower, current + row.budget);
+      const budget = row.budget || 0;
+      const channel = row.channel || "total"; // Default to total for legacy data
+
+      if (channel === "retail") {
+        retailBudgetsBySku.set(skuLower, (retailBudgetsBySku.get(skuLower) || 0) + budget);
+      } else if (channel === "wholesale") {
+        wholesaleBudgetsBySku.set(skuLower, (wholesaleBudgetsBySku.get(skuLower) || 0) + budget);
+      } else if (channel === "total") {
+        // Total is its own budget, not the sum of retail + wholesale
+        totalBudgetsBySku.set(skuLower, (totalBudgetsBySku.get(skuLower) || 0) + budget);
+      }
     }
 
-    // Get unique SKUs that have budgets
-    const budgetSkus = new Set(budgetsBySku.keys());
+    // CARE KIT BUDGET: Use Smith-AC-Brush budgets for Smith-AC-CareKit
+    // The brush SKU in the spreadsheet IS the Care Kit budget
+    const BRUSH_SKU = "smith-ac-brush";
+    const CAREKIT_SKU = "smith-ac-carekit";
+    if (retailBudgetsBySku.has(BRUSH_SKU)) {
+      retailBudgetsBySku.set(CAREKIT_SKU, retailBudgetsBySku.get(BRUSH_SKU) || 0);
+    }
+    if (wholesaleBudgetsBySku.has(BRUSH_SKU)) {
+      wholesaleBudgetsBySku.set(CAREKIT_SKU, wholesaleBudgetsBySku.get(BRUSH_SKU) || 0);
+    }
+    if (totalBudgetsBySku.has(BRUSH_SKU)) {
+      totalBudgetsBySku.set(CAREKIT_SKU, totalBudgetsBySku.get(BRUSH_SKU) || 0);
+    }
+
+    // Get unique SKUs that have budgets (from total channel, which is the authoritative source)
+    const budgetSkus = new Set(totalBudgetsBySku.keys());
 
     // Query products for display names and categories
     const { data: productsData, error: productsError } = await supabase
@@ -702,66 +743,27 @@ export async function GET(request: Request) {
       });
     }
 
-    // Aggregate sales by SKU (case-insensitive)
-    const salesBySku = new Map<string, number>();
+    // Aggregate sales by SKU per channel (case-insensitive)
+    const retailSalesBySku = new Map<string, number>();
+    const wholesaleSalesBySku = new Map<string, number>();
 
-    // SKIP RPC - Using direct queries to include cancelled D2C orders and all B2B orders from Shopify
-    // This matches Excel/Coupler methodology for apples-to-apples comparison
-    // TODO: Update the RPC function in Supabase to include cancelled orders, then re-enable
-    console.log(`[Budget API] Using direct queries (includes cancelled orders & all B2B from Shopify)`);
+    // OPTIMIZATION: Use RPC for fast aggregation at database level
+    console.log(`[Budget API] Using optimized RPC (get_budget_actuals_v2)`);
 
-    // Query retail sales (line_items joined with orders)
-    // Use pagination to avoid Supabase row limits
-    const PAGE_SIZE = 50000;
-    const retailData: Array<{ sku: string | null; quantity: number }> = [];
-    let offset = 0;
-    let hasMore = true;
+    const { data: rpcData, error: rpcError } = await supabase.rpc("get_budget_actuals_v2", {
+      p_start_date: start,
+      p_end_date: end,
+    });
 
-    while (hasMore) {
-      // Include all orders (including cancelled) to match Excel/Coupler methodology
-      const { data: page, error: pageError } = await supabase
-        .from("line_items")
-        .select(`
-          sku,
-          quantity,
-          orders!inner(created_at)
-        `)
-        .gte("orders.created_at", start)
-        .lte("orders.created_at", end)
-        .range(offset, offset + PAGE_SIZE - 1);
-
-      if (pageError) {
-        throw new Error(`Failed to fetch retail sales: ${pageError.message}`);
-      }
-
-      if (page && page.length > 0) {
-        retailData.push(...page);
-        offset += PAGE_SIZE;  // FIX: Always advance by PAGE_SIZE, not page.length
-        hasMore = page.length === PAGE_SIZE;
-      } else {
-        hasMore = false;
-      }
+    if (rpcError) {
+      throw new Error(`Failed to fetch sales data: ${rpcError.message}`);
     }
 
-    // Fetch B2B data from Shopify directly (includes all orders, not just fulfilled)
-    // This matches Excel/Coupler methodology for apples-to-apples comparison
-    const b2bData = await fetchB2BFromShopify(start, end);
-
-    // Aggregate sales by SKU
-    for (const item of retailData || []) {
-      if (item.sku) {
-        const key = item.sku.toLowerCase();
-        const current = salesBySku.get(key) || 0;
-        salesBySku.set(key, current + (item.quantity || 0));
-      }
-    }
-
-    for (const item of b2bData || []) {
-      if (item.sku) {
-        const key = item.sku.toLowerCase();
-        const current = salesBySku.get(key) || 0;
-        salesBySku.set(key, current + (item.quantity || 0));
-      }
+    // Build sales maps from RPC result
+    for (const row of rpcData || []) {
+      const skuLower = row.sku.toLowerCase();
+      retailSalesBySku.set(skuLower, row.retail_qty || 0);
+      wholesaleSalesBySku.set(skuLower, row.wholesale_qty || 0);
     }
 
     // CARE KIT BUNDLE ADJUSTMENT (effective July 1, 2025)
@@ -772,10 +774,9 @@ export async function GET(request: Request) {
     const CARE_KIT_SKU = "smith-ac-carekit";
     const CHAINMAIL_SKU = "smith-ac-scrub1";
     const SEASONING_OIL_SKU = "smith-ac-season";
-    const CARE_KIT_BUNDLE_START = "2025-07-01";
 
     // Only apply adjustment if date range includes dates >= July 1, 2025
-    const bundleStartDate = new Date(Date.UTC(2025, 6, 1, 0, 0, 0)); // July 1, 2025 UTC midnight // July 1, 2025 EST
+    const bundleStartDate = new Date(Date.UTC(2025, 6, 1, 0, 0, 0)); // July 1, 2025 UTC midnight
     const rangeEndDate = new Date(end);
 
     if (rangeEndDate >= bundleStartDate) {
@@ -799,29 +800,45 @@ export async function GET(request: Request) {
         .lte("orders.created_at", end)
         .limit(100000);
 
-      // Fetch B2B care kits from Shopify (includes all orders, not just fulfilled)
-      const careKitB2B = await fetchB2BFromShopify(effectiveStart, end, CARE_KIT_SKU);
+      // Query B2B care kits from b2b_fulfilled table (already synced from Shopify)
+      const { data: careKitB2B } = await supabase
+        .from("b2b_fulfilled")
+        .select("sku, quantity")
+        .ilike("sku", CARE_KIT_SKU)
+        .gte("created_at", effectiveStart)
+        .lte("created_at", end);
 
-      // Count total Care Kits sold after July 1, 2025
-      let careKitCount = 0;
+      // Count Care Kits sold by channel after July 1, 2025
+      let retailCareKitCount = 0;
+      let wholesaleCareKitCount = 0;
       for (const item of careKitRetail || []) {
-        careKitCount += item.quantity || 0;
+        retailCareKitCount += item.quantity || 0;
       }
       for (const item of careKitB2B || []) {
-        careKitCount += item.quantity || 0;
+        wholesaleCareKitCount += item.quantity || 0;
       }
 
-      // Add Care Kit bundle components to their respective SKU actuals
-      if (careKitCount > 0) {
-        const currentChainmail = salesBySku.get(CHAINMAIL_SKU) || 0;
-        const currentSeasoningOil = salesBySku.get(SEASONING_OIL_SKU) || 0;
-        salesBySku.set(CHAINMAIL_SKU, currentChainmail + careKitCount);
-        salesBySku.set(SEASONING_OIL_SKU, currentSeasoningOil + careKitCount);
+      // Add Care Kit bundle components to their respective channel actuals
+      if (retailCareKitCount > 0) {
+        retailSalesBySku.set(CHAINMAIL_SKU, (retailSalesBySku.get(CHAINMAIL_SKU) || 0) + retailCareKitCount);
+        retailSalesBySku.set(SEASONING_OIL_SKU, (retailSalesBySku.get(SEASONING_OIL_SKU) || 0) + retailCareKitCount);
+      }
+      if (wholesaleCareKitCount > 0) {
+        wholesaleSalesBySku.set(CHAINMAIL_SKU, (wholesaleSalesBySku.get(CHAINMAIL_SKU) || 0) + wholesaleCareKitCount);
+        wholesaleSalesBySku.set(SEASONING_OIL_SKU, (wholesaleSalesBySku.get(SEASONING_OIL_SKU) || 0) + wholesaleCareKitCount);
       }
     }
 
-    // Build category data
-    const categoryDataMap = new Map<BudgetCategory, BudgetSkuRow[]>();
+    // Calculate combined sales (retail + wholesale) for budget comparison
+    // We keep both maps for channel breakdowns in the response
+    const salesBySku = new Map<string, number>();
+    retailSalesBySku.forEach((qty, sku) => salesBySku.set(sku, qty));
+    wholesaleSalesBySku.forEach((qty, sku) => {
+      salesBySku.set(sku, (salesBySku.get(sku) || 0) + qty);
+    });
+
+    // Build category data with channel breakdowns
+    const categoryDataMap = new Map<BudgetCategory, BudgetSkuRowWithChannels[]>();
     for (const cat of CATEGORY_ORDER) {
       categoryDataMap.set(cat, []);
     }
@@ -836,8 +853,18 @@ export async function GET(request: Request) {
 
       if (!category) continue;
 
-      const budget = budgetsBySku.get(sku.toLowerCase()) || 0;
-      const actual = salesBySku.get(sku.toLowerCase()) || 0;
+      const skuLower = sku.toLowerCase();
+
+      // Get channel-specific budgets
+      const retailBudget = retailBudgetsBySku.get(skuLower) || 0;
+      const wholesaleBudget = wholesaleBudgetsBySku.get(skuLower) || 0;
+      const budget = totalBudgetsBySku.get(skuLower) || 0; // Total budget
+
+      // Get channel-specific actuals
+      const retailActual = retailSalesBySku.get(skuLower) || 0;
+      const wholesaleActual = wholesaleSalesBySku.get(skuLower) || 0;
+      const actual = retailActual + wholesaleActual; // Combined
+
       const variance = actual - budget;
       const variancePct = budget > 0 ? (variance / budget) * 100 : 0;
 
@@ -852,10 +879,16 @@ export async function GET(request: Request) {
       const expectedByNow = budget * periodProgressFactor;
       const pace = expectedByNow > 0 ? (actual / expectedByNow) * 100 : 0;
 
+      // Calculate channel-specific pace
+      const retailExpected = retailBudget * periodProgressFactor;
+      const retailPace = retailExpected > 0 ? (retailActual / retailExpected) * 100 : 0;
+      const wholesaleExpected = wholesaleBudget * periodProgressFactor;
+      const wholesalePace = wholesaleExpected > 0 ? (wholesaleActual / wholesaleExpected) * 100 : 0;
+
       // Use display name from products table, fallback to SKU
       const displayName = product?.displayName || sku;
 
-      const row: BudgetSkuRow = {
+      const row: BudgetSkuRowWithChannels = {
         displayName,
         sku,
         budget,
@@ -863,17 +896,40 @@ export async function GET(request: Request) {
         variance,
         variancePct,
         pace: Math.round(pace),
+        channelActuals: {
+          retail: retailActual,
+          wholesale: wholesaleActual,
+          total: actual,
+        },
+        channelBudgets: {
+          retail: retailBudget,
+          wholesale: wholesaleBudget,
+          total: budget,
+        },
+        channelPace: {
+          retail: Math.round(retailPace),
+          wholesale: Math.round(wholesalePace),
+          total: Math.round(pace),
+        },
       };
 
       categoryDataMap.get(category)?.push(row);
     }
 
-    // Sort and calculate totals
-    const categories: BudgetCategoryData[] = [];
+    // Sort and calculate totals with channel breakdowns
+    const categories: BudgetCategoryDataWithChannels[] = [];
     let cookwareBudget = 0;
     let cookwareActual = 0;
+    let cookwareRetail = 0;
+    let cookwareWholesale = 0;
+    let cookwareRetailBudget = 0;
+    let cookwareWholesaleBudget = 0;
     let grandBudget = 0;
     let grandActual = 0;
+    let grandRetail = 0;
+    let grandWholesale = 0;
+    let grandRetailBudget = 0;
+    let grandWholesaleBudget = 0;
 
     for (const cat of CATEGORY_ORDER) {
       const skus = categoryDataMap.get(cat) || [];
@@ -884,41 +940,77 @@ export async function GET(request: Request) {
         return orderA - orderB;
       });
 
-      const totals = skus.reduce(
-        (acc, row) => ({
-          budget: acc.budget + row.budget,
-          actual: acc.actual + row.actual,
-          variance: acc.variance + row.variance,
-          variancePct: 0,
-          pace: 0,
-        }),
-        { budget: 0, actual: 0, variance: 0, variancePct: 0, pace: 0 }
-      );
+      // Calculate totals including channel breakdowns for actuals AND budgets
+      let catBudget = 0, catActual = 0, catVariance = 0;
+      let catRetail = 0, catWholesale = 0;
+      let catRetailBudget = 0, catWholesaleBudget = 0;
+      for (const row of skus) {
+        catBudget += row.budget;
+        catActual += row.actual;
+        catVariance += row.variance;
+        catRetail += row.channelActuals.retail;
+        catWholesale += row.channelActuals.wholesale;
+        catRetailBudget += row.channelBudgets.retail;
+        catWholesaleBudget += row.channelBudgets.wholesale;
+      }
 
-      totals.variancePct = totals.budget > 0 ? (totals.variance / totals.budget) * 100 : 0;
+      const variancePct = catBudget > 0 ? (catVariance / catBudget) * 100 : 0;
 
-      // Calculate pace for category totals
+      // Calculate pace for category totals (total and per channel)
       const totalDaysInBudgetPeriod = months.reduce((sum, m) => sum + m.totalDays, 0);
       const daysElapsedInPeriod = months.reduce((sum, m) => sum + m.daysInRange, 0);
       const periodProgressFactor = totalDaysInBudgetPeriod > 0
         ? daysElapsedInPeriod / totalDaysInBudgetPeriod
         : 1;
-      const expectedByNow = totals.budget * periodProgressFactor;
-      totals.pace = expectedByNow > 0 ? Math.round((totals.actual / expectedByNow) * 100) : 0;
+      const expectedByNow = catBudget * periodProgressFactor;
+      const pace = expectedByNow > 0 ? Math.round((catActual / expectedByNow) * 100) : 0;
+      const catRetailExpected = catRetailBudget * periodProgressFactor;
+      const catRetailPace = catRetailExpected > 0 ? Math.round((catRetail / catRetailExpected) * 100) : 0;
+      const catWholesaleExpected = catWholesaleBudget * periodProgressFactor;
+      const catWholesalePace = catWholesaleExpected > 0 ? Math.round((catWholesale / catWholesaleExpected) * 100) : 0;
 
       categories.push({
         category: cat,
         displayName: CATEGORY_DISPLAY_NAMES[cat],
         skus,
-        totals,
+        totals: {
+          budget: catBudget,
+          actual: catActual,
+          variance: catVariance,
+          variancePct,
+          pace,
+        },
+        channelActuals: {
+          retail: catRetail,
+          wholesale: catWholesale,
+          total: catActual,
+        },
+        channelBudgets: {
+          retail: catRetailBudget,
+          wholesale: catWholesaleBudget,
+          total: catBudget,
+        },
+        channelPace: {
+          retail: catRetailPace,
+          wholesale: catWholesalePace,
+          total: pace,
+        },
       });
 
-      grandBudget += totals.budget;
-      grandActual += totals.actual;
+      grandBudget += catBudget;
+      grandActual += catActual;
+      grandRetail += catRetail;
+      grandWholesale += catWholesale;
+      grandRetailBudget += catRetailBudget;
+      grandWholesaleBudget += catWholesaleBudget;
 
       if (cat === "cast_iron" || cat === "carbon_steel") {
-        cookwareBudget += totals.budget;
-        cookwareActual += totals.actual;
+        cookwareBudget += catBudget;
+        cookwareActual += catActual;
+        cookwareRetail += catRetail;
+        cookwareWholesale += catWholesale;
+        cookwareRetailBudget += catRetailBudget;
+        cookwareWholesaleBudget += catWholesaleBudget;
       }
     }
 
@@ -927,9 +1019,13 @@ export async function GET(request: Request) {
     const daysElapsedInPeriod = months.reduce((sum, m) => sum + m.daysInRange, 0);
     const periodProgressFactor = totalDaysInPeriod > 0 ? daysElapsedInPeriod / totalDaysInPeriod : 1;
 
-    // Cookware pace calculation
+    // Cookware pace calculation (total and per channel)
     const cookwareExpectedByNow = cookwareBudget * periodProgressFactor;
     const cookwarePace = cookwareExpectedByNow > 0 ? (cookwareActual / cookwareExpectedByNow) * 100 : 0;
+    const cookwareRetailExpected = cookwareRetailBudget * periodProgressFactor;
+    const cookwareRetailPace = cookwareRetailExpected > 0 ? (cookwareRetail / cookwareRetailExpected) * 100 : 0;
+    const cookwareWholesaleExpected = cookwareWholesaleBudget * periodProgressFactor;
+    const cookwareWholesalePace = cookwareWholesaleExpected > 0 ? (cookwareWholesale / cookwareWholesaleExpected) * 100 : 0;
 
     const cookwareTotal = {
       budget: cookwareBudget,
@@ -937,18 +1033,52 @@ export async function GET(request: Request) {
       variance: cookwareActual - cookwareBudget,
       variancePct: cookwareBudget > 0 ? ((cookwareActual - cookwareBudget) / cookwareBudget) * 100 : 0,
       pace: Math.round(cookwarePace),
+      channelActuals: {
+        retail: cookwareRetail,
+        wholesale: cookwareWholesale,
+        total: cookwareActual,
+      },
+      channelBudgets: {
+        retail: cookwareRetailBudget,
+        wholesale: cookwareWholesaleBudget,
+        total: cookwareBudget,
+      },
+      channelPace: {
+        retail: Math.round(cookwareRetailPace),
+        wholesale: Math.round(cookwareWholesalePace),
+        total: Math.round(cookwarePace),
+      },
     };
 
-    // Grand total pace calculation
+    // Grand total pace calculation (total and per channel)
     const grandExpectedByNow = grandBudget * periodProgressFactor;
     const grandPace = grandExpectedByNow > 0 ? (grandActual / grandExpectedByNow) * 100 : 0;
+    const grandRetailExpected = grandRetailBudget * periodProgressFactor;
+    const grandRetailPace = grandRetailExpected > 0 ? (grandRetail / grandRetailExpected) * 100 : 0;
+    const grandWholesaleExpected = grandWholesaleBudget * periodProgressFactor;
+    const grandWholesalePace = grandWholesaleExpected > 0 ? (grandWholesale / grandWholesaleExpected) * 100 : 0;
 
-    const grandTotal = {
+    const grandTotalData = {
       budget: grandBudget,
       actual: grandActual,
       variance: grandActual - grandBudget,
       variancePct: grandBudget > 0 ? ((grandActual - grandBudget) / grandBudget) * 100 : 0,
       pace: Math.round(grandPace),
+      channelActuals: {
+        retail: grandRetail,
+        wholesale: grandWholesale,
+        total: grandActual,
+      },
+      channelBudgets: {
+        retail: grandRetailBudget,
+        wholesale: grandWholesaleBudget,
+        total: grandBudget,
+      },
+      channelPace: {
+        retail: Math.round(grandRetailPace),
+        wholesale: Math.round(grandWholesalePace),
+        total: Math.round(grandPace),
+      },
     };
 
     // Use the correctly calculated values from months array
@@ -1045,7 +1175,7 @@ export async function GET(request: Request) {
       const cookwareDeltaPct = compCookwareActual > 0 ? (cookwareDelta / compCookwareActual) * 100 : 0;
 
       // Calculate grand comparison totals
-      const grandDelta = grandTotal.actual - compGrandActual;
+      const grandDelta = grandTotalData.actual - compGrandActual;
       const grandDeltaPct = compGrandActual > 0 ? (grandDelta / compGrandActual) * 100 : 0;
 
       // Calculate comparison period days
@@ -1059,12 +1189,20 @@ export async function GET(request: Request) {
         daysElapsed: compDaysInPeriod, // Comparison period is always complete
         categories: comparisonCategories,
         cookwareTotal: {
-          ...cookwareTotal,
+          budget: cookwareTotal.budget,
+          actual: cookwareTotal.actual,
+          variance: cookwareTotal.variance,
+          variancePct: cookwareTotal.variancePct,
+          pace: cookwareTotal.pace,
           delta: cookwareDelta,
           deltaPct: cookwareDeltaPct,
         },
         grandTotal: {
-          ...grandTotal,
+          budget: grandTotalData.budget,
+          actual: grandTotalData.actual,
+          variance: grandTotalData.variance,
+          variancePct: grandTotalData.variancePct,
+          pace: grandTotalData.pace,
           delta: grandDelta,
           deltaPct: grandDeltaPct,
         },
@@ -1074,7 +1212,7 @@ export async function GET(request: Request) {
     const response: BudgetResponse = {
       categories,
       cookwareTotal,
-      grandTotal,
+      grandTotal: grandTotalData,
       dateRange: range,
       periodLabel,
       periodProgress,
