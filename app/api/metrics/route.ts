@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { QUERY_LIMITS, checkQueryLimit, safeArrayAccess } from "@/lib/constants";
+import { checkRateLimit, rateLimitedResponse, addRateLimitHeaders, RATE_LIMITS } from "@/lib/rate-limit";
 import type {
   MetricsResponse,
   WarehouseMetrics,
@@ -63,6 +64,16 @@ async function fetchAllPaginated<T>(
 }
 
 export async function GET(request: Request) {
+  // Rate limiting - use IP or forwarded IP
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+             request.headers.get("x-real-ip") ||
+             "unknown";
+  const rateLimitResult = checkRateLimit(`metrics:${ip}`, RATE_LIMITS.API);
+
+  if (!rateLimitResult.success) {
+    return rateLimitedResponse(rateLimitResult);
+  }
+
   try {
     const supabase = await createClient();
     const now = new Date();
@@ -705,7 +716,12 @@ export async function GET(request: Request) {
       lastUpdated: new Date().toISOString(),
     };
 
-    return NextResponse.json(response);
+    // Cache for 30 seconds, stale-while-revalidate for 2 minutes
+    return NextResponse.json(response, {
+      headers: {
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+      },
+    });
   } catch (error) {
     console.error("Error fetching metrics:", error);
     return NextResponse.json(

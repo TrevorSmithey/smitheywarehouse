@@ -550,11 +550,13 @@ async function fetchSalesData(
   }
 
   // Query B2B from b2b_fulfilled table (already synced from Shopify with status:any)
+  // Filter out cancelled orders using soft-delete column
   const { data: b2bData, error: b2bError } = await supabase
     .from("b2b_fulfilled")
     .select("sku, quantity")
     .gte("created_at", start)
-    .lte("created_at", end);
+    .lte("created_at", end)
+    .is("cancelled_at", null);
 
   if (b2bError) {
     throw new Error(`Failed to fetch B2B sales: ${b2bError.message}`);
@@ -595,12 +597,14 @@ async function fetchSalesData(
       .limit(100000);
 
     // Query B2B care kits from b2b_fulfilled table
+    // Filter out cancelled orders using soft-delete column
     const { data: careKitB2B } = await supabase
       .from("b2b_fulfilled")
       .select("sku, quantity")
       .ilike("sku", CARE_KIT_SKU)
       .gte("created_at", effectiveStart)
-      .lte("created_at", end);
+      .lte("created_at", end)
+      .is("cancelled_at", null);
 
     let careKitCount = 0;
     for (const item of careKitRetail || []) {
@@ -801,12 +805,14 @@ export async function GET(request: Request) {
         .limit(100000);
 
       // Query B2B care kits from b2b_fulfilled table (already synced from Shopify)
+      // Filter out cancelled orders using soft-delete column
       const { data: careKitB2B } = await supabase
         .from("b2b_fulfilled")
         .select("sku, quantity")
         .ilike("sku", CARE_KIT_SKU)
         .gte("created_at", effectiveStart)
-        .lte("created_at", end);
+        .lte("created_at", end)
+        .is("cancelled_at", null);
 
       // Count Care Kits sold by channel after July 1, 2025
       let retailCareKitCount = 0;

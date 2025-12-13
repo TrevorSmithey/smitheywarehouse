@@ -1,20 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-// Validate env vars and create client (lazy initialization to avoid build-time errors)
-function getSupabaseClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!url || !key) {
-    throw new Error("Missing Supabase credentials (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY)");
-  }
-
-  return createClient(url, key);
-}
 
 export interface HolidayData {
   day_number: number;
@@ -56,7 +44,7 @@ export interface HolidayResponse {
 
 export async function GET() {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = createServiceClient();
 
     const { data, error } = await supabase
       .from("holiday_tracking")
@@ -111,7 +99,12 @@ export async function GET() {
       lastSynced,
     };
 
-    return NextResponse.json(response);
+    // Holiday data syncs daily, cache for 5 minutes
+    return NextResponse.json(response, {
+      headers: {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      },
+    });
   } catch (error) {
     console.error("Error fetching holiday data:", error);
     return NextResponse.json(

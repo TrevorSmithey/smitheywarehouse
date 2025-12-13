@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 import type {
   ProductInventory,
   InventoryCategory,
@@ -7,24 +7,14 @@ import type {
   SkuSalesVelocity,
 } from "@/lib/types";
 import { calculateDOI, buildBudgetLookup } from "@/lib/doi";
+import { WAREHOUSE_IDS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
-// Warehouse IDs
-const WAREHOUSE_IDS = {
-  pipefitter: 120758,
-  hobson: 77373,
-  selery: 93742,
-};
-
 export async function GET(request: Request) {
+  const supabase = createServiceClient();
+
   try {
     const { searchParams } = new URL(request.url);
     const categoryFilter = searchParams.get("category") as InventoryCategory | null;
@@ -99,12 +89,13 @@ export async function GET(request: Request) {
         .eq("orders.canceled", false)
         .limit(2000000),
 
-      // 6. Monthly B2B
+      // 6. Monthly B2B (filter out cancelled orders using soft-delete column)
       supabase
         .from("b2b_fulfilled")
         .select("sku, quantity")
         .gte("fulfilled_at", monthStart)
         .lte("fulfilled_at", monthEnd)
+        .is("cancelled_at", null)
         .limit(1000000),
 
       // 7. 3-day sales

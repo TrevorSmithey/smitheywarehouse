@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         break;
 
       case "orders/cancelled":
-        await deleteB2BOrder(supabase, order.id);
+        await cancelB2BOrder(supabase, order.id);
         break;
 
       default:
@@ -121,11 +121,9 @@ interface B2BOrder {
 }
 
 async function upsertB2BOrder(supabase: ReturnType<typeof createServiceClient>, order: B2BOrder) {
-  // Skip cancelled orders
-  // TODO: Consider including cancelled orders in the future for apples-to-apples
-  // comparison with Excel reports that include all orders placed
+  // Soft-delete cancelled orders (set cancelled_at) instead of skipping
   if (order.cancelled_at) {
-    await deleteB2BOrder(supabase, order.id);
+    await cancelB2BOrder(supabase, order.id);
     return;
   }
 
@@ -169,16 +167,21 @@ async function upsertB2BOrder(supabase: ReturnType<typeof createServiceClient>, 
   console.log(`Processed B2B order ${order.name} (${order.id})`);
 }
 
-async function deleteB2BOrder(supabase: ReturnType<typeof createServiceClient>, orderId: number) {
-  const { error } = await supabase
+/**
+ * Soft-delete B2B order by setting cancelled_at timestamp
+ * Preserves audit history instead of permanently deleting data
+ */
+async function cancelB2BOrder(supabase: ReturnType<typeof createServiceClient>, orderId: number) {
+  const { error, count } = await supabase
     .from("b2b_fulfilled")
-    .delete()
-    .eq("order_id", orderId);
+    .update({ cancelled_at: new Date().toISOString() })
+    .eq("order_id", orderId)
+    .is("cancelled_at", null); // Only update if not already cancelled
 
   if (error) {
-    console.error("Error deleting B2B order:", error);
+    console.error("Error cancelling B2B order:", error);
     throw error;
   }
 
-  console.log(`Deleted B2B order ${orderId}`);
+  console.log(`Soft-deleted B2B order ${orderId} (${count || 0} rows updated)`);
 }

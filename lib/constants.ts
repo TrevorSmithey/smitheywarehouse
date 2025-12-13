@@ -1,12 +1,86 @@
 /**
+ * Centralized Constants
+ *
+ * All magic numbers and configuration values should be defined here.
+ * This provides a single source of truth and makes changes easier.
+ */
+
+/**
+ * ShipHero Warehouse IDs
+ * These are the numeric IDs used in the inventory and fulfillment tables.
+ * The GraphQL API uses base64-encoded versions (see WAREHOUSE_GRAPHQL_IDS).
+ */
+export const WAREHOUSE_IDS = {
+  pipefitter: 120758,
+  hobson: 77373,
+  selery: 93742,
+} as const;
+
+/**
+ * ShipHero Warehouse GraphQL IDs
+ * Base64-encoded versions used in GraphQL queries.
+ * Decoded: V2FyZWhvdXNlOjEyMDc1OA== = "Warehouse:120758"
+ */
+export const WAREHOUSE_GRAPHQL_IDS = {
+  pipefitter: "V2FyZWhvdXNlOjEyMDc1OA==",
+  hobson: "V2FyZWhvdXNlOjc3Mzcz",
+  selery: "V2FyZWhvdXNlOjkzNzQy",
+} as const;
+
+/**
+ * Sync Window Configuration
+ * Default time windows for syncing historical data.
+ */
+export const SYNC_WINDOWS = {
+  /** Default sync window in days for B2B and metrics queries */
+  DEFAULT_DAYS: 7,
+  /** Milliseconds in one day */
+  MS_PER_DAY: 24 * 60 * 60 * 1000,
+} as const;
+
+/**
+ * Vercel Edge Function Timeouts
+ * NOTE: These cannot be used for Next.js segment config exports (maxDuration)
+ * because Next.js requires those to be static literals for build-time analysis.
+ * Use literal values (300, 60) directly in route files instead.
+ * These constants are kept for reference and for non-segment-config usage.
+ */
+export const VERCEL_TIMEOUTS = {
+  /** Standard cron job timeout (5 minutes) */
+  STANDARD: 300,
+  /** Short timeout for simple operations (1 minute) */
+  SHORT: 60,
+} as const;
+
+/**
+ * Batch Processing Sizes
+ * Chunk sizes for bulk database operations.
+ */
+export const BATCH_SIZES = {
+  /** Default upsert batch size */
+  DEFAULT: 500,
+  /** Shopify API page size (max 250) */
+  SHOPIFY_PAGE: 250,
+} as const;
+
+/**
+ * API Rate Limiting Delays
+ * Milliseconds to wait between API calls to avoid rate limits.
+ */
+export const RATE_LIMIT_DELAYS = {
+  /** Shopify API delay between requests */
+  SHOPIFY: 500,
+  /** ShipHero GraphQL delay between requests */
+  SHIPHERO: 100,
+} as const;
+
+/**
  * Query Limits Constants
  *
  * Centralized limits for all database queries.
  * These should be set high enough to never truncate real data.
  * If a limit is reached, a warning is logged.
  */
-
-// Metrics API limits
 export const QUERY_LIMITS = {
   // Restoration items - 20k should cover all restoration SKUs
   RESTORATION_ITEMS: 20000,

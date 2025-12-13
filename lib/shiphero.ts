@@ -4,15 +4,14 @@
  * Fetches inventory data from ShipHero for the Inventory Dashboard.
  */
 
+import { WAREHOUSE_GRAPHQL_IDS } from "@/lib/constants";
+
 const SHIPHERO_API_URL = "https://public-api.shiphero.com/graphql";
 
-// Warehouse ID mapping - ShipHero uses base64 encoded IDs in format "Warehouse:{id}"
-// Decoded: V2FyZWhvdXNlOjEyMDc1OA== = "Warehouse:120758"
+// Re-export with HQ added (not in central constants as it's only used here)
 export const WAREHOUSES = {
-  pipefitter: "V2FyZWhvdXNlOjEyMDc1OA==", // 120758
-  hobson: "V2FyZWhvdXNlOjc3Mzcz",         // 77373
-  selery: "V2FyZWhvdXNlOjkzNzQy",         // 93742
-  hq: "V2FyZWhvdXNlOjEyMDc1OQ==",         // 120759
+  ...WAREHOUSE_GRAPHQL_IDS,
+  hq: "V2FyZWhvdXNlOjEyMDc1OQ==", // 120759 - HQ warehouse
 } as const;
 
 export type WarehouseName = keyof typeof WAREHOUSES;

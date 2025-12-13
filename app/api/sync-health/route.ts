@@ -1,19 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-// Validate env vars and create client (lazy initialization)
-function getSupabaseClient(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!url || !key) {
-    throw new Error("Missing Supabase credentials (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_KEY)");
-  }
-
-  return createClient(url, key);
-}
 
 interface SyncHealthRow {
   sync_type: string;
@@ -42,7 +30,7 @@ const STALE_THRESHOLDS: Record<string, number> = {
 
 export async function GET() {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = createServiceClient();
 
     // Get latest sync status for each type
     const { data: health, error } = await supabase
@@ -87,10 +75,15 @@ export async function GET() {
       };
     });
 
+    // Cache for 1 minute, stale-while-revalidate for 3 minutes
     return NextResponse.json({
       status: overallStatus,
       syncs,
       checkedAt: new Date().toISOString(),
+    }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=180",
+      },
     });
   } catch (error) {
     console.error("Sync health check failed:", error);

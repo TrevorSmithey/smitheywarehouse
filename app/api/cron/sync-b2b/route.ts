@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { BATCH_SIZES, SYNC_WINDOWS, RATE_LIMIT_DELAYS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes max for Vercel
+export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
 
 const SHOPIFY_B2B_STORE = process.env.SHOPIFY_B2B_STORE_URL;
 const SHOPIFY_B2B_TOKEN = process.env.SHOPIFY_B2B_ADMIN_TOKEN;
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 interface ShopifyOrder {
   id: number;
@@ -86,7 +84,7 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
     }
 
     // Rate limiting
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAYS.SHOPIFY));
   }
 
   return allOrders;
@@ -130,7 +128,10 @@ function extractSoldItems(orders: ShopifyOrder[]): B2BSold[] {
   return items;
 }
 
-async function upsertItems(items: B2BSold[]): Promise<number> {
+async function upsertItems(
+  supabase: ReturnType<typeof createServiceClient>,
+  items: B2BSold[]
+): Promise<number> {
   if (items.length === 0) return 0;
 
   // Dedupe items by order_id + sku (one entry per SKU per order)
@@ -147,11 +148,10 @@ async function upsertItems(items: B2BSold[]): Promise<number> {
   const uniqueItems = Array.from(deduped.values());
 
   // Batch upsert
-  const chunkSize = 500;
   let totalUpserted = 0;
 
-  for (let i = 0; i < uniqueItems.length; i += chunkSize) {
-    const chunk = uniqueItems.slice(i, i + chunkSize);
+  for (let i = 0; i < uniqueItems.length; i += BATCH_SIZES.DEFAULT) {
+    const chunk = uniqueItems.slice(i, i + BATCH_SIZES.DEFAULT);
     const { error } = await supabase.from("b2b_fulfilled").upsert(chunk, {
       onConflict: "order_id,sku,fulfilled_at",
       ignoreDuplicates: false,
@@ -165,19 +165,15 @@ async function upsertItems(items: B2BSold[]): Promise<number> {
 }
 
 export async function GET(request: Request) {
+  // Always verify cron secret - no exceptions
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
+  }
+
   const startTime = Date.now();
+  const supabase = createServiceClient();
 
   try {
-    // Verify cron secret
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (process.env.NODE_ENV === "production" && cronSecret) {
-      if (authHeader !== `Bearer ${cronSecret}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
     if (!SHOPIFY_B2B_STORE || !SHOPIFY_B2B_TOKEN) {
       return NextResponse.json(
         { error: "Missing B2B Shopify credentials" },
@@ -201,10 +197,10 @@ export async function GET(request: Request) {
     const estMonth = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1;
     const estDay = parseInt(estParts.find(p => p.type === "day")?.value || "1");
 
-    // Create date at midnight EST, then subtract 7 days
+    // Create date at midnight EST, then subtract sync window days
     const todayEST = new Date(Date.UTC(estYear, estMonth, estDay, 5, 0, 0)); // 5 AM UTC = midnight EST
-    const sevenDaysAgo = new Date(todayEST.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const fromDate = sevenDaysAgo.toISOString();
+    const syncStart = new Date(todayEST.getTime() - SYNC_WINDOWS.DEFAULT_DAYS * SYNC_WINDOWS.MS_PER_DAY);
+    const fromDate = syncStart.toISOString();
 
     // Fetch orders
     const orders = await fetchOrders(fromDate);
@@ -215,7 +211,7 @@ export async function GET(request: Request) {
     console.log(`Extracted ${items.length} sold line items`);
 
     // Upsert to Supabase
-    const upserted = await upsertItems(items);
+    const upserted = await upsertItems(supabase, items);
 
     const elapsed = Date.now() - startTime;
     const elapsedSec = (elapsed / 1000).toFixed(1);
@@ -273,8 +269,9 @@ export async function GET(request: Request) {
         error_message: errorMessage,
         duration_ms: elapsed,
       });
-    } catch {
-      // Don't fail if logging fails
+    } catch (logError) {
+      // Don't fail the main operation if logging fails, but do log it
+      console.error("[B2B SYNC] Failed to log sync failure to sync_logs:", logError);
     }
 
     return NextResponse.json(

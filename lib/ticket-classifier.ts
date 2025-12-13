@@ -105,6 +105,10 @@ export interface ClassificationResult {
   sentiment: TicketSentiment;
   urgency: TicketUrgency;
   summary: string;
+  /** True if classification failed and this is a fallback result */
+  classificationFailed?: boolean;
+  /** Error message if classification failed */
+  error?: string;
 }
 
 // Valid categories for validation
@@ -175,14 +179,18 @@ export async function classifyTicket(messageBody: string): Promise<Classificatio
     const result = parseClassificationResponse(textContent.text);
     return result;
   } catch (error) {
-    console.error("Classification error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[CLASSIFICATION FAILURE] AI classification failed:", errorMessage);
 
-    // Return a safe fallback
+    // Return a result that clearly indicates failure
+    // The classificationFailed flag allows consumers to detect and handle this case
     return {
       category: "Other",
       sentiment: "Neutral",
       urgency: null,
-      summary: `Classification failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      summary: `[CLASSIFICATION FAILED] ${errorMessage}`,
+      classificationFailed: true,
+      error: errorMessage,
     };
   }
 }

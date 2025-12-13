@@ -10,27 +10,15 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { ReamazeClient, cleanMessageBody } from "@/lib/reamaze";
 import { classifyTicket } from "@/lib/ticket-classifier";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes max for cron
-
-// Verify cron secret for security
-function verifyCronSecret(request: Request): boolean {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret) {
-    console.warn("CRON_SECRET not configured");
-    return false;
-  }
-
-  return authHeader === `Bearer ${cronSecret}`;
-}
+export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
 
 export async function GET(request: Request) {
-  // Verify this is a legitimate cron call
+  // Always verify cron secret - no exceptions
   if (!verifyCronSecret(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse();
   }
 
   const startTime = Date.now();
@@ -210,12 +198,9 @@ export async function GET(request: Request) {
 
 // POST handler for manual triggers
 export async function POST(request: Request) {
-  // Allow manual triggers without cron secret for testing
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Use shared cron auth for consistency
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
   }
 
   // Reuse GET logic

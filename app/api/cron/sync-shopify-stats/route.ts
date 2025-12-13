@@ -13,24 +13,12 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // 1 minute max
+export const maxDuration = 60; // 1 minute - must be literal for Next.js static analysis
 
 const SHOPIFY_API_VERSION = "2024-04";
-
-// Verify cron secret for security
-function verifyCronSecret(request: Request): boolean {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret) {
-    console.warn("CRON_SECRET not configured");
-    return false;
-  }
-
-  return authHeader === `Bearer ${cronSecret}`;
-}
 
 interface ShopifyOrdersResponse {
   orders: Array<{
@@ -100,9 +88,9 @@ async function fetchShopifyOrders(startDate: Date, endDate: Date): Promise<Shopi
 }
 
 export async function GET(request: Request) {
-  // Verify this is a legitimate cron call
+  // Always verify cron secret - no exceptions
   if (!verifyCronSecret(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse();
   }
 
   const startTime = Date.now();

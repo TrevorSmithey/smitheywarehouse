@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 import * as XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
+export const maxDuration = 60; // 1 minute - must be literal for Next.js static analysis
 
 // Excel file location on Mac - adjust if needed for Vercel deployment
 const EXCEL_PATH = "/Users/trevorfunderburk/Library/CloudStorage/OneDrive-SharedLibraries-SmitheyIronware/Smithey Shared Drive - Finance/2025 Forecasts/Q4 Holiday Tracking/Holiday Tracking_Looker Source.xlsx";
@@ -44,13 +40,13 @@ function parseExcelDate(value: string | number | undefined): string | null {
 }
 
 export async function GET(request: Request) {
-  const startTime = Date.now();
-
-  // Verify cron secret for Vercel cron jobs
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Always verify cron secret - no exceptions
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
   }
+
+  const startTime = Date.now();
+  const supabase = createServiceClient();
 
   try {
     // Check if file exists (won't work on Vercel - this is for local dev)

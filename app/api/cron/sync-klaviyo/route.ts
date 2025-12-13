@@ -21,25 +21,13 @@ import {
   type KlaviyoCampaign,
 } from "@/lib/klaviyo";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes max for cron
+export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
 
 // Timeout threshold - alert if we exceed 80% of maxDuration
-const TIMEOUT_WARNING_THRESHOLD = maxDuration * 0.8 * 1000; // 240 seconds in ms
-
-// Verify cron secret for security
-function verifyCronSecret(request: Request): boolean {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret) {
-    console.warn("CRON_SECRET not configured");
-    return false;
-  }
-
-  return authHeader === `Bearer ${cronSecret}`;
-}
+const TIMEOUT_WARNING_THRESHOLD = maxDuration * 0.8 * 1000;
 
 // Get start of month for a given date
 function startOfMonth(date: Date): Date {
@@ -60,9 +48,9 @@ function daysAgo(days: number): Date {
 }
 
 export async function GET(request: Request) {
-  // Verify this is a legitimate cron call
+  // Always verify cron secret - no exceptions
   if (!verifyCronSecret(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse();
   }
 
   const startTime = Date.now();

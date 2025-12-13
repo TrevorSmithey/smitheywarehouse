@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createServiceClient } from "@/lib/supabase/server";
 import {
   fetchAllProducts,
   transformToInventory,
@@ -8,38 +8,22 @@ import {
   getCanonicalSku,
 } from "@/lib/shiphero";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { WAREHOUSE_IDS, BATCH_SIZES } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes max for Vercel
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
-
-// Warehouse IDs
-const WAREHOUSE_IDS = {
-  pipefitter: 120758,
-  hobson: 77373,
-  selery: 93742,
-};
+export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
 
 export async function GET(request: Request) {
+  // Always verify cron secret - no exceptions
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
+  }
+
   const startTime = Date.now();
+  const supabase = createServiceClient();
 
   try {
-    // Verify cron secret (Vercel sends this header for cron jobs)
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
-
-    // In production, verify the cron secret
-    if (process.env.NODE_ENV === "production" && cronSecret) {
-      if (authHeader !== `Bearer ${cronSecret}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
     console.log("Starting inventory sync from ShipHero...");
 
     // 1. Fetch all products from ShipHero
@@ -141,20 +125,19 @@ export async function GET(request: Request) {
     }
 
     // 5. Upsert inventory records in batches
-    const BATCH_SIZE = 500;
     let upserted = 0;
     const batchErrors: string[] = [];
     const recordsExpected = inventoryRecords.length;
 
-    for (let i = 0; i < inventoryRecords.length; i += BATCH_SIZE) {
-      const batch = inventoryRecords.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < inventoryRecords.length; i += BATCH_SIZES.DEFAULT) {
+      const batch = inventoryRecords.slice(i, i + BATCH_SIZES.DEFAULT);
       const { error } = await supabase
         .from("inventory")
         .upsert(batch, { onConflict: "sku,warehouse_id" });
 
       if (error) {
-        console.error(`Batch ${i / BATCH_SIZE + 1} upsert error:`, error);
-        batchErrors.push(`Batch ${i / BATCH_SIZE + 1}: ${error.message}`);
+        console.error(`Batch ${i / BATCH_SIZES.DEFAULT + 1} upsert error:`, error);
+        batchErrors.push(`Batch ${i / BATCH_SIZES.DEFAULT + 1}: ${error.message}`);
       } else {
         upserted += batch.length;
       }
@@ -281,8 +264,9 @@ export async function GET(request: Request) {
         error_message: errorMessage,
         duration_ms: elapsed,
       });
-    } catch {
-      // Don't fail if logging fails
+    } catch (logError) {
+      // Don't fail the main operation if logging fails, but do log it
+      console.error("[INVENTORY SYNC] Failed to log sync failure to sync_logs:", logError);
     }
 
     return NextResponse.json(

@@ -110,6 +110,10 @@ export interface FlowReportData {
 export interface SubscriberCounts {
   active120Day: number;
   engaged365: number;
+  /** True if any segment fetch failed */
+  fetchFailed?: boolean;
+  /** Error messages for failed fetches */
+  errors?: string[];
 }
 
 interface KlaviyoClientConfig {
@@ -315,7 +319,10 @@ export class KlaviyoClient {
 
       console.log(`[KLAVIYO] Got reports for ${statsMap.size} campaigns`);
     } catch (error) {
-      console.error("[KLAVIYO] Failed to get campaign reports:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("[KLAVIYO] Failed to get campaign reports:", errorMessage);
+      // Re-throw so callers know the fetch failed rather than assuming empty data
+      throw new Error(`Failed to fetch campaign reports: ${errorMessage}`);
     }
 
     return statsMap;
@@ -414,7 +421,10 @@ export class KlaviyoClient {
 
       console.log(`[KLAVIYO] Flow reports: $${totalRevenue.toFixed(2)} from ${byFlow.size} flows`);
     } catch (error) {
-      console.error("[KLAVIYO] Failed to get flow reports:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("[KLAVIYO] Failed to get flow reports:", errorMessage);
+      // Re-throw so callers know the fetch failed rather than assuming zero revenue
+      throw new Error(`Failed to fetch flow reports: ${errorMessage}`);
     }
 
     return { totalRevenue, totalConversions, byFlow };
@@ -500,18 +510,23 @@ export class KlaviyoClient {
       console.log(`[KLAVIYO] Got ${history.length} months of flow revenue history`);
       return history;
     } catch (error) {
-      console.error("[KLAVIYO] Failed to get flow revenue history:", error);
-      return [];
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("[KLAVIYO] Failed to get flow revenue history:", errorMessage);
+      // Re-throw so callers know the fetch failed rather than assuming no history
+      throw new Error(`Failed to fetch flow revenue history: ${errorMessage}`);
     }
   }
 
   /**
    * Get subscriber counts from key segments
+   * Returns counts with fetchFailed flag if any segment fetch failed
    */
   async getSubscriberCounts(): Promise<SubscriberCounts> {
     const counts: SubscriberCounts = {
       active120Day: 0,
       engaged365: 0,
+      fetchFailed: false,
+      errors: [],
     };
 
     // Get 120-day active segment
@@ -522,7 +537,10 @@ export class KlaviyoClient {
       counts.active120Day = active.data?.attributes?.profile_count || 0;
       console.log(`[KLAVIYO] 120-day count: ${counts.active120Day}`);
     } catch (error) {
-      console.error("[KLAVIYO] Failed to get 120-day subscriber count:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("[KLAVIYO] Failed to get 120-day subscriber count:", errorMessage);
+      counts.fetchFailed = true;
+      counts.errors!.push(`120-day segment: ${errorMessage}`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -535,10 +553,13 @@ export class KlaviyoClient {
       counts.engaged365 = engaged.data?.attributes?.profile_count || 0;
       console.log(`[KLAVIYO] 365-day count: ${counts.engaged365}`);
     } catch (error) {
-      console.error("[KLAVIYO] Failed to get 365-day subscriber count:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("[KLAVIYO] Failed to get 365-day subscriber count:", errorMessage);
+      counts.fetchFailed = true;
+      counts.errors!.push(`365-day segment: ${errorMessage}`);
     }
 
-    console.log(`[KLAVIYO] Final subscriber counts: 120-day=${counts.active120Day}, 365-day=${counts.engaged365}`);
+    console.log(`[KLAVIYO] Final subscriber counts: 120-day=${counts.active120Day}, 365-day=${counts.engaged365}${counts.fetchFailed ? " (with errors)" : ""}`);
     return counts;
   }
 
@@ -599,8 +620,10 @@ export class KlaviyoClient {
       console.log(`[KLAVIYO] Got ${history.length} months of history for segment ${segmentId}`);
       return history;
     } catch (error) {
-      console.error(`[KLAVIYO] Failed to get segment history for ${segmentId}:`, error);
-      return [];
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[KLAVIYO] Failed to get segment history for ${segmentId}:`, errorMessage);
+      // Re-throw so callers know the fetch failed rather than assuming no history
+      throw new Error(`Failed to fetch segment history for ${segmentId}: ${errorMessage}`);
     }
   }
 
@@ -657,6 +680,7 @@ export class KlaviyoClient {
 
   /**
    * Get list profile count for audience estimation
+   * Returns -1 if fetch fails to distinguish from genuinely empty lists
    */
   async getListSize(listId: string): Promise<number> {
     try {
@@ -669,13 +693,17 @@ export class KlaviyoClient {
       }>(`/lists/${listId}`);
 
       return response.data?.attributes?.profile_count || 0;
-    } catch {
-      return 0;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[KLAVIYO] Failed to get list size for ${listId}:`, errorMessage);
+      // Return -1 to indicate failure (distinguishable from empty list which is 0)
+      return -1;
     }
   }
 
   /**
    * Get segment profile count for audience estimation
+   * Returns -1 if fetch fails to distinguish from genuinely empty segments
    */
   async getSegmentSize(segmentId: string): Promise<number> {
     try {
@@ -688,8 +716,11 @@ export class KlaviyoClient {
       }>(`/segments/${segmentId}`);
 
       return response.data?.attributes?.profile_count || 0;
-    } catch {
-      return 0;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error(`[KLAVIYO] Failed to get segment size for ${segmentId}:`, errorMessage);
+      // Return -1 to indicate failure (distinguishable from empty segment which is 0)
+      return -1;
     }
   }
 }
