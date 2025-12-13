@@ -853,6 +853,12 @@ function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly })
             {anomaly.days_since_last_order}d
           </span>
         </div>
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Total orders</span>
+          <span className="font-medium text-text-primary tabular-nums">
+            {anomaly.order_count}
+          </span>
+        </div>
         <div className="flex items-center justify-between pt-1 border-t border-border/20">
           <span className="text-text-muted">Lifetime value</span>
           <span className="font-semibold text-text-primary tabular-nums">
@@ -1188,6 +1194,59 @@ export function WholesaleDashboard({
       </div>
 
       {/* ================================================================
+          CUSTOMER HEALTH SUMMARY
+          ================================================================ */}
+      <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-text-tertiary" />
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              CUSTOMER HEALTH SUMMARY
+            </h3>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-status-good tabular-nums">
+              {stats.health_distribution.thriving}
+            </div>
+            <div className="text-[10px] text-text-muted">Thriving</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-accent-blue tabular-nums">
+              {stats.health_distribution.stable}
+            </div>
+            <div className="text-[10px] text-text-muted">Stable</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-status-warning tabular-nums">
+              {stats.health_distribution.declining}
+            </div>
+            <div className="text-[10px] text-text-muted">Declining</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-status-warning tabular-nums">
+              {stats.health_distribution.at_risk}
+            </div>
+            <div className="text-[10px] text-text-muted">At Risk</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-400 tabular-nums">
+              {stats.health_distribution.new}
+            </div>
+            <div className="text-[10px] text-text-muted">New</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-text-muted tabular-nums">
+              {stats.health_distribution.churned}
+            </div>
+            <div className="text-[10px] text-text-muted">Churned</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ================================================================
           ORDERING ANOMALIES - Always visible (intelligent at-risk detection)
           ================================================================ */}
       {data.orderingAnomalies && data.orderingAnomalies.length > 0 && (
@@ -1245,59 +1304,6 @@ export function WholesaleDashboard({
       })()}
 
       {/* ================================================================
-          CUSTOMER HEALTH SUMMARY
-          ================================================================ */}
-      <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-text-tertiary" />
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-              CUSTOMER HEALTH SUMMARY
-            </h3>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-status-good tabular-nums">
-              {stats.health_distribution.thriving}
-            </div>
-            <div className="text-[10px] text-text-muted">Thriving</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-accent-blue tabular-nums">
-              {stats.health_distribution.stable}
-            </div>
-            <div className="text-[10px] text-text-muted">Stable</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-status-warning tabular-nums">
-              {stats.health_distribution.declining}
-            </div>
-            <div className="text-[10px] text-text-muted">Declining</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-status-warning tabular-nums">
-              {stats.health_distribution.at_risk}
-            </div>
-            <div className="text-[10px] text-text-muted">At Risk</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-purple-400 tabular-nums">
-              {stats.health_distribution.new}
-            </div>
-            <div className="text-[10px] text-text-muted">New</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-text-muted tabular-nums">
-              {stats.health_distribution.churned}
-            </div>
-            <div className="text-[10px] text-text-muted">Churned</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ================================================================
           MONTHLY TREND CHART
           ================================================================ */}
       {data.monthly && data.monthly.length > 1 && (
@@ -1305,11 +1311,33 @@ export function WholesaleDashboard({
       )}
 
       {/* ================================================================
-          NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES
+          NEVER ORDERED + CHURNED CUSTOMERS (Side by Side)
           ================================================================ */}
-      {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 && (
-        <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES (Left Half) */}
+        {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 ? (
+          <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No never-ordered customers found</p>
+            </div>
+          </div>
+        )}
+
+        {/* CHURNED CUSTOMERS (Right Half) */}
+        {data.churnedCustomers && data.churnedCustomers.length > 0 ? (
+          <ChurnedCustomersSection customers={data.churnedCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <UserMinus className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No churned customers</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ================================================================
           TOP CUSTOMERS + NEW CUSTOMERS (Side by Side)
@@ -1436,13 +1464,6 @@ export function WholesaleDashboard({
           </div>
         )}
       </div>
-
-      {/* ================================================================
-          CHURNED CUSTOMERS
-          ================================================================ */}
-      {data.churnedCustomers && data.churnedCustomers.length > 0 && (
-        <ChurnedCustomersSection customers={data.churnedCustomers} />
-      )}
     </div>
   );
 }
