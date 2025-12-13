@@ -105,26 +105,67 @@ function getPeriodLabel(period: WholesalePeriod): string {
 }
 
 // ============================================================================
+// TOOLTIP COMPONENT
+// ============================================================================
+
+function InfoTooltip({
+  children,
+  content,
+  position = "top"
+}: {
+  children: React.ReactNode;
+  content: string;
+  position?: "top" | "bottom";
+}) {
+  return (
+    <div className="relative group inline-flex">
+      {children}
+      <div className={`
+        absolute z-50 pointer-events-none
+        opacity-0 group-hover:opacity-100
+        transition-opacity duration-150 ease-out
+        ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}
+        left-1/2 -translate-x-1/2
+      `}>
+        <div className="relative bg-[#1a1a1a] border border-border/50 rounded-lg px-3 py-2 shadow-xl">
+          <div className="text-[11px] text-text-primary leading-relaxed whitespace-nowrap max-w-[200px] text-center">
+            {content}
+          </div>
+          {/* Arrow */}
+          <div className={`
+            absolute left-1/2 -translate-x-1/2 w-2 h-2
+            bg-[#1a1a1a] border-border/50 rotate-45
+            ${position === "top"
+              ? "top-full -mt-1 border-r border-b"
+              : "bottom-full -mb-1 border-l border-t"
+            }
+          `} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // SEGMENT / HEALTH BADGES
 // ============================================================================
 
 function SegmentBadge({ segment }: { segment: CustomerSegment }) {
   const config: Record<CustomerSegment, { label: string; color: string; tooltip: string }> = {
     major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Lifetime revenue $25,000+" },
-    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "Lifetime revenue $10,000 - $25,000" },
-    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400", tooltip: "Lifetime revenue $5,000 - $10,000" },
-    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning", tooltip: "Lifetime revenue $1,000 - $5,000" },
-    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary", tooltip: "Lifetime revenue $500 - $1,000" },
-    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted", tooltip: "Lifetime revenue under $500" },
+    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "$10,000 – $25,000 lifetime" },
+    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400", tooltip: "$5,000 – $10,000 lifetime" },
+    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning", tooltip: "$1,000 – $5,000 lifetime" },
+    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary", tooltip: "$500 – $1,000 lifetime" },
+    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted", tooltip: "Under $500 lifetime" },
   };
   const { label, color, tooltip } = config[segment];
   return (
-    <span
-      className={`text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help ${color}`}
-      title={tooltip}
-    >
-      {label}
-    </span>
+    <InfoTooltip content={tooltip}>
+      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help ${color}`}>
+        {label}
+      </span>
+    </InfoTooltip>
   );
 }
 
@@ -452,29 +493,23 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
   const avgRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0) / chartData.length;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <BarChart3 className="w-4 h-4 text-text-tertiary" />
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-              MONTHLY WHOLESALE REVENUE
-            </h3>
-          </div>
-          <p className="text-xs text-text-muted">
-            NetSuite wholesale transactions
-          </p>
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-text-tertiary" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+            MONTHLY WHOLESALE REVENUE
+          </h3>
         </div>
-
-        <div className="text-right">
-          <div className="text-xl font-semibold text-text-primary tabular-nums">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-text-muted">Avg/Month:</span>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">
             {formatCurrency(avgRevenue)}
-          </div>
-          <p className="text-[10px] text-text-muted uppercase tracking-wider">Avg/Month</p>
+          </span>
         </div>
       </div>
 
-      <div className="h-64">
+      <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
             <defs>
@@ -1200,44 +1235,63 @@ export function WholesaleDashboard({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <div className="text-center cursor-help" title="Growing revenue - ordered more recently than their typical pattern">
-            <div className="text-2xl font-bold text-status-good tabular-nums">
-              {stats.health_distribution.thriving}
+          <InfoTooltip content="Growing revenue, ordering more frequently than usual" position="bottom">
+            <div className="text-center cursor-help">
+              <div className="text-2xl font-bold text-status-good tabular-nums">
+                {stats.health_distribution.thriving}
+              </div>
+              <div className="text-[10px] text-text-muted">Thriving</div>
             </div>
-            <div className="text-[10px] text-text-muted">Thriving</div>
-          </div>
-          <div className="text-center cursor-help" title="Consistent ordering pattern - on track with typical behavior">
-            <div className="text-2xl font-bold text-accent-blue tabular-nums">
-              {stats.health_distribution.stable}
+          </InfoTooltip>
+          <InfoTooltip content="Consistent ordering pattern, on track" position="bottom">
+            <div className="text-center cursor-help">
+              <div className="text-2xl font-bold text-accent-blue tabular-nums">
+                {stats.health_distribution.stable}
+              </div>
+              <div className="text-[10px] text-text-muted">Stable</div>
             </div>
-            <div className="text-[10px] text-text-muted">Stable</div>
-          </div>
-          <div className="text-center cursor-help" title="Decreasing order frequency - ordering less often than usual">
-            <div className="text-2xl font-bold text-status-warning tabular-nums">
-              {stats.health_distribution.declining}
+          </InfoTooltip>
+          <InfoTooltip content="Ordering less often than their typical pattern" position="bottom">
+            <div className="text-center cursor-help">
+              <div className="text-2xl font-bold text-status-warning tabular-nums">
+                {stats.health_distribution.declining}
+              </div>
+              <div className="text-[10px] text-text-muted">Declining</div>
             </div>
-            <div className="text-[10px] text-text-muted">Declining</div>
-          </div>
-          <div className="text-center cursor-help" title="90-120 days since last order - may need re-engagement">
-            <div className="text-2xl font-bold text-status-warning tabular-nums">
-              {stats.health_distribution.at_risk}
+          </InfoTooltip>
+          <InfoTooltip content="90-120 days since last order, needs outreach" position="bottom">
+            <div className="text-center cursor-help">
+              <div className="text-2xl font-bold text-status-warning tabular-nums">
+                {stats.health_distribution.at_risk}
+              </div>
+              <div className="text-[10px] text-text-muted">At Risk</div>
             </div>
-            <div className="text-[10px] text-text-muted">At Risk</div>
-          </div>
-          <div className="text-center cursor-help" title="First order within the last 90 days">
-            <div className="text-2xl font-bold text-purple-400 tabular-nums">
-              {stats.health_distribution.new}
+          </InfoTooltip>
+          <InfoTooltip content="First order within the last 90 days" position="bottom">
+            <div className="text-center cursor-help">
+              <div className="text-2xl font-bold text-purple-400 tabular-nums">
+                {stats.health_distribution.new}
+              </div>
+              <div className="text-[10px] text-text-muted">New</div>
             </div>
-            <div className="text-[10px] text-text-muted">New</div>
-          </div>
-          <div className="text-center cursor-help" title="365+ days since last order - considered inactive">
-            <div className="text-2xl font-bold text-text-muted tabular-nums">
-              {stats.health_distribution.churned}
+          </InfoTooltip>
+          <InfoTooltip content="365+ days since last order, inactive" position="bottom">
+            <div className="text-center cursor-help">
+              <div className="text-2xl font-bold text-text-muted tabular-nums">
+                {stats.health_distribution.churned}
+              </div>
+              <div className="text-[10px] text-text-muted">Churned</div>
             </div>
-            <div className="text-[10px] text-text-muted">Churned</div>
-          </div>
+          </InfoTooltip>
         </div>
       </div>
+
+      {/* ================================================================
+          MONTHLY TREND CHART (Compact)
+          ================================================================ */}
+      {data.monthly && data.monthly.length > 1 && (
+        <MonthlyRevenueTrend monthly={data.monthly} period={period} />
+      )}
 
       {/* ================================================================
           ORDERING ANOMALIES - Always visible (intelligent at-risk detection)
@@ -1295,13 +1349,6 @@ export function WholesaleDashboard({
           </div>
         );
       })()}
-
-      {/* ================================================================
-          MONTHLY TREND CHART
-          ================================================================ */}
-      {data.monthly && data.monthly.length > 1 && (
-        <MonthlyRevenueTrend monthly={data.monthly} period={period} />
-      )}
 
       {/* ================================================================
           TOP CUSTOMERS + NEW CUSTOMERS (Side by Side)
