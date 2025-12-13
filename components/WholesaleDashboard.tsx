@@ -118,32 +118,39 @@ function InfoTooltip({
   position?: "top" | "bottom";
 }) {
   return (
-    <div className="relative group inline-flex">
+    <div className="relative group inline-flex justify-center">
       {children}
-      <div className={`
-        absolute z-50 pointer-events-none
-        opacity-0 group-hover:opacity-100
-        transition-opacity duration-150 ease-out
-        ${position === "top" ? "bottom-full mb-3" : "top-full mt-3"}
-        left-1/2 -translate-x-1/2
-      `}>
+      <div
+        className={`
+          absolute z-50 pointer-events-none
+          opacity-0 group-hover:opacity-100
+          transition-opacity duration-150 ease-out
+          left-1/2
+          ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}
+        `}
+        style={{ transform: 'translateX(-50%)' }}
+      >
         <div
-          className="relative rounded-lg px-4 py-2.5 shadow-2xl border border-white/10"
-          style={{ backgroundColor: '#0f0f0f' }}
+          className="relative rounded-md px-3 py-2 shadow-2xl"
+          style={{ backgroundColor: '#111111', border: '1px solid rgba(255,255,255,0.15)' }}
         >
-          <div className="text-[12px] text-white leading-relaxed whitespace-nowrap text-center">
+          <div className="text-[11px] text-white leading-normal whitespace-nowrap text-center">
             {content}
           </div>
           {/* Arrow */}
           <div
-            className={`
-              absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 border-white/10
-              ${position === "top"
-                ? "-bottom-1.5 border-r border-b"
-                : "-top-1.5 border-l border-t"
-              }
-            `}
-            style={{ backgroundColor: '#0f0f0f' }}
+            className="absolute"
+            style={{
+              left: '50%',
+              transform: 'translateX(-50%) rotate(45deg)',
+              width: '10px',
+              height: '10px',
+              backgroundColor: '#111111',
+              ...(position === "top"
+                ? { bottom: '-5px', borderRight: '1px solid rgba(255,255,255,0.15)', borderBottom: '1px solid rgba(255,255,255,0.15)' }
+                : { top: '-5px', borderLeft: '1px solid rgba(255,255,255,0.15)', borderTop: '1px solid rgba(255,255,255,0.15)' }
+              )
+            }}
           />
         </div>
       </div>
