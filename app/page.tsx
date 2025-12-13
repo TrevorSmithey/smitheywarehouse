@@ -910,15 +910,15 @@ export default function Dashboard() {
                 );
               })()}
 
-              {/* 3. Days to Clear */}
+              {/* 3. Days to Clear - uses fixed T7 rolling average, NOT date-range-filtered */}
               {(() => {
-                const daysInRange = getDaysInRange(dateRangeOption);
-                const avgPerDay = daysInRange > 0 ? Math.round(totals.today / daysInRange) : 0;
-                const daysToClear = avgPerDay > 0 ? Math.round(totals.queue / avgPerDay) : 0;
+                // Use fixed 7-day rolling average for days-to-clear calculation
+                // This ensures the metric is stable and not affected by date range selection
+                const daysToClear = totals.avg7d > 0 ? Math.round(totals.queue / totals.avg7d) : 0;
                 return (
                   <div>
                     <div className={`text-4xl font-bold tabular-nums ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
-                      {loading || avgPerDay === 0 ? "—" : `~${daysToClear}d`}
+                      {loading || totals.avg7d === 0 ? "—" : `~${daysToClear}d`}
                     </div>
                     <div className="text-xs text-text-muted mt-1">TO CLEAR</div>
                   </div>
@@ -965,10 +965,9 @@ export default function Dashboard() {
               const lt = metrics.fulfillmentLeadTime?.find(l => l.warehouse === wh.warehouse);
               const tr = metrics.transitAnalytics?.find(t => t.warehouse === wh.warehouse);
               const isSmithey = wh.warehouse === "smithey";
-              const daysInRange = getDaysInRange(dateRangeOption);
-              const avgPerDay = daysInRange > 0 ? Math.round(wh.fulfilled_today / daysInRange) : 0;
               const queueSize = wh.unfulfilled_count + wh.partial_count;
-              const daysToClear = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
+              // Use fixed 7-day rolling average for days-to-clear (stable, not affected by date range)
+              const daysToClear = wh.avg_per_day_7d > 0 ? Math.round(queueSize / wh.avg_per_day_7d) : 0;
 
               return (
                 <div key={wh.warehouse} className={`bg-bg-secondary rounded-xl border border-border/30 overflow-hidden transition-all hover:border-border-hover ${isSmithey ? "border-l-2 border-l-accent-blue" : "border-l-2 border-l-text-tertiary"}`}>
@@ -990,12 +989,12 @@ export default function Dashboard() {
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">QUEUE</div>
                       </div>
                       <div>
-                        <div className="text-2xl font-bold tabular-nums text-text-primary">{formatNumber(avgPerDay)}</div>
+                        <div className="text-2xl font-bold tabular-nums text-text-primary">{formatNumber(Math.round(wh.avg_per_day_7d))}</div>
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">AVG/DAY</div>
                       </div>
                       <div>
                         <div className={`text-2xl font-bold tabular-nums ${daysToClear > 5 ? "text-status-warning" : "text-text-primary"}`}>
-                          {avgPerDay > 0 ? `~${daysToClear}d` : "—"}
+                          {wh.avg_per_day_7d > 0 ? `~${daysToClear}d` : "—"}
                         </div>
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">TO CLEAR</div>
                       </div>
@@ -1004,6 +1003,24 @@ export default function Dashboard() {
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">SHIPPED</div>
                       </div>
                     </div>
+
+                    {/* Smithey Queue Breakdown - Default vs Engraving */}
+                    {isSmithey && metrics?.engravingQueue && (
+                      <div className="flex gap-4 mb-4 pb-4 border-b border-border/30">
+                        <div>
+                          <div className="text-lg font-bold tabular-nums text-text-primary">
+                            {formatNumber(queueSize - metrics.engravingQueue.smithey_engraving_orders)}
+                          </div>
+                          <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">DEFAULT</div>
+                        </div>
+                        <div>
+                          <div className="text-lg font-bold tabular-nums text-accent-blue">
+                            {formatNumber(metrics.engravingQueue.smithey_engraving_orders)}
+                          </div>
+                          <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">ENGRAVING</div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Aging + Speed Row */}
                     <div className="flex flex-wrap items-start justify-between gap-4 pt-4 border-t border-border/30">
@@ -1594,9 +1611,9 @@ function WarehousePanel({
           </div>
           <div>
             <div className="text-3xl font-light text-text-primary">
-              {loading ? "—" : formatNumber(Math.round(data.fulfilled_today / getDaysInRange(dateRangeOption)))}
+              {loading ? "—" : formatNumber(Math.round(data.avg_per_day_7d))}
             </div>
-            <div className="text-label text-text-tertiary mt-2">Avg/Day</div>
+            <div className="text-label text-text-tertiary mt-2">Avg/Day (T7)</div>
           </div>
         </div>
 
@@ -1693,12 +1710,11 @@ function WarehousePanel({
                 <span className="text-context text-text-muted ml-1">avg lead</span>
               </div>
               {(() => {
+                // Use fixed 7-day rolling average for days-to-clear (stable, not affected by date range)
                 const queueSize = data.unfulfilled_count + data.partial_count;
-                const daysInRange = getDaysInRange(dateRangeOption);
-                const avgPerDay = daysInRange > 0 ? Math.round(data.fulfilled_today / daysInRange) : 0;
-                const expectedDays = avgPerDay > 0 ? Math.round(queueSize / avgPerDay) : 0;
+                const expectedDays = data.avg_per_day_7d > 0 ? Math.round(queueSize / data.avg_per_day_7d) : 0;
 
-                return avgPerDay > 0 ? (
+                return data.avg_per_day_7d > 0 ? (
                   <div>
                     <span className={`text-xl font-light ${expectedDays > 5 ? "text-status-warning" : "text-text-primary"}`}>
                       ~{expectedDays}d

@@ -14,11 +14,11 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
+import { RATE_LIMIT_DELAYS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 1 minute - must be literal for Next.js static analysis
-
-const SHOPIFY_API_VERSION = "2024-04";
 
 interface ShopifyOrdersResponse {
   orders: Array<{
@@ -54,24 +54,33 @@ async function fetchShopifyOrders(startDate: Date, endDate: Date): Promise<Shopi
       url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json?created_at_min=${startIso}&created_at_max=${endIso}&status=any&limit=250&fields=id,total_price,created_at,cancelled_at,financial_status`;
     }
 
-    const response = await fetch(url, {
-      headers: {
-        "X-Shopify-Access-Token": accessToken,
-        "Content-Type": "application/json",
+    const { ordersData, linkHeader } = await withRetry(
+      async () => {
+        const response = await fetch(url, {
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[SHOPIFY STATS] API error: ${response.status} - ${errorText}`);
+          throw new Error(`Shopify API error: ${response.status}`);
+        }
+
+        const data: ShopifyOrdersResponse = await response.json();
+        return {
+          ordersData: data.orders,
+          linkHeader: response.headers.get("Link"),
+        };
       },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[SHOPIFY STATS] API error: ${response.status} - ${errorText}`);
-      throw new Error(`Shopify API error: ${response.status}`);
-    }
-
-    const data: ShopifyOrdersResponse = await response.json();
-    orders.push(...data.orders);
+      { maxRetries: 3, baseDelayMs: 1000 },
+      "Shopify stats fetch"
+    );
+    orders.push(...ordersData);
 
     // Handle pagination via Link header
-    const linkHeader = response.headers.get("Link");
     if (linkHeader && linkHeader.includes('rel="next"')) {
       const match = linkHeader.match(/<[^>]*page_info=([^>&]+)[^>]*>;\s*rel="next"/);
       pageInfo = match ? match[1] : null;
@@ -80,8 +89,8 @@ async function fetchShopifyOrders(startDate: Date, endDate: Date): Promise<Shopi
       hasNextPage = false;
     }
 
-    // Rate limiting
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Rate limiting - use centralized delay
+    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAYS.SHOPIFY));
   }
 
   return orders;

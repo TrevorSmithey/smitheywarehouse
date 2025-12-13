@@ -110,47 +110,8 @@ export async function GET(request: Request) {
     // This ensures the map always has sufficient data to populate all states
     const transit30dStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get restoration order IDs to exclude (SKUs containing "-Rest-")
-    // These are a different fulfillment cycle - customer ships item back first
-    // Join with orders to get warehouse and fulfillment_status for per-warehouse counts
-    const { data: restorationItems } = await supabase
-      .from("line_items")
-      .select("order_id, orders!inner(warehouse, fulfillment_status, canceled)")
-      .ilike("sku", "%-Rest-%")
-      .limit(QUERY_LIMITS.RESTORATION_ITEMS);
-
-    // Check if we hit the limit (potential data truncation)
-    checkQueryLimit(restorationItems?.length || 0, QUERY_LIMITS.RESTORATION_ITEMS, "restoration_items");
-
-    const restorationOrderIds = new Set(
-      (restorationItems || []).map((item) => item.order_id)
-    );
-
-    // Count unfulfilled restoration orders per warehouse (to subtract from queue counts)
-    const restorationByWarehouse = { smithey: 0, selery: 0 };
-    const countedOrderIds = new Set<number>();
-    for (const item of restorationItems || []) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const order = (item as any).orders;
-      if (!order || order.canceled || order.fulfillment_status === "fulfilled") continue;
-      if (countedOrderIds.has(item.order_id)) continue; // Don't double-count orders with multiple restoration items
-      countedOrderIds.add(item.order_id);
-      if (order.warehouse === "smithey") restorationByWarehouse.smithey++;
-      else if (order.warehouse === "selery") restorationByWarehouse.selery++;
-    }
-
-    // Helper to filter out restoration orders from results
-    // Works with order data that has an 'id' field or joined order data
-    const filterRestorationOrders = <T extends Record<string, unknown>>(
-      data: T[] | null,
-      idField: keyof T = "id" as keyof T
-    ): T[] => {
-      if (!data || restorationOrderIds.size === 0) return data || [];
-      return data.filter((row) => {
-        const orderId = row[idField] as number | undefined;
-        return orderId ? !restorationOrderIds.has(orderId) : true;
-      });
-    };
+    // NOTE: Restoration orders are now filtered at query level using is_restoration column
+    // No client-side filtering needed - all queries include .eq("is_restoration", false)
 
     // Date calculations
     const oneDayAgo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
@@ -174,6 +135,7 @@ export async function GET(request: Request) {
       fulfilled30dSeleryCount,
       prevPeriodSmitheyCount,
       prevPeriodSeleryCount,
+      // Placeholders - keeping array structure consistent
       _placeholder1,
       _placeholder2,
       // Queue aging counts
@@ -195,36 +157,40 @@ export async function GET(request: Request) {
       engravingQueueResult,
       agingDataResult,
     ] = await Promise.all([
-      // Unfulfilled Smithey
+      // Unfulfilled Smithey (excluding restoration orders)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
         .is("fulfillment_status", null)
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .eq("warehouse", "smithey"),
 
-      // Unfulfilled Selery
+      // Unfulfilled Selery (excluding restoration orders)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
         .is("fulfillment_status", null)
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .eq("warehouse", "selery"),
 
-      // Partial Smithey
+      // Partial Smithey (excluding restoration orders)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
         .eq("fulfillment_status", "partial")
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .eq("warehouse", "smithey"),
 
-      // Partial Selery
+      // Partial Selery (excluding restoration orders)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
         .eq("fulfillment_status", "partial")
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .eq("warehouse", "selery"),
 
       // Fulfilled in selected range - Smithey
@@ -355,39 +321,44 @@ export async function GET(request: Request) {
 
       // Daily fulfillments for chart - filtered by selected date range
       // Limit increased to handle high volume periods (1500/day × 30 days = 45k)
+      // Restoration orders excluded at query level for accurate counts
       supabase
         .from("orders")
         .select("id, warehouse, fulfilled_at")
         .gte("fulfilled_at", rangeStart.toISOString())
         .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .not("warehouse", "is", null)
         .not("fulfilled_at", "is", null)
         .order("fulfilled_at", { ascending: false })
         .limit(QUERY_LIMITS.DAILY_FULFILLMENTS),
 
-      // Oldest unfulfilled orders for Smithey (get extra so we can filter out restoration + excluded)
+      // Oldest unfulfilled orders for Smithey (restoration excluded at query level)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
         .is("fulfillment_status", null)
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .eq("warehouse", "smithey")
         .order("created_at", { ascending: true })
         .limit(QUERY_LIMITS.OLDEST_ORDERS_SMITHEY),
 
-      // Oldest unfulfilled orders for Selery (get extra so we can filter out restoration)
+      // Oldest unfulfilled orders for Selery (restoration excluded at query level)
       supabase
         .from("orders")
         .select("id, warehouse, order_name, created_at")
         .is("fulfillment_status", null)
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .eq("warehouse", "selery")
         .order("created_at", { ascending: true })
         .limit(QUERY_LIMITS.OLDEST_ORDERS_SELERY),
 
       // SKUs in unfulfilled queue - get all line items from unfulfilled orders
       // Increased limit from 5000 to 100000 to capture all data
+      // Restoration orders excluded at query level
       supabase
         .from("line_items")
         .select(`
@@ -395,14 +366,16 @@ export async function GET(request: Request) {
           title,
           quantity,
           fulfilled_quantity,
-          orders!inner(warehouse, fulfillment_status, canceled)
+          orders!inner(warehouse, fulfillment_status, canceled, is_restoration)
         `)
         .is("orders.fulfillment_status", null)
         .eq("orders.canceled", false)
+        .eq("orders.is_restoration", false)
         .not("orders.warehouse", "is", null)
         .limit(QUERY_LIMITS.SKU_QUEUE),
 
       // Stuck shipments - in transit with no scans for 3+ days
+      // Restoration orders excluded at query level
       supabase
         .from("shipments")
         .select(`
@@ -412,24 +385,27 @@ export async function GET(request: Request) {
           shipped_at,
           days_without_scan,
           last_scan_location,
-          orders!inner(order_name, warehouse)
+          orders!inner(order_name, warehouse, is_restoration)
         `)
         .eq("status", "in_transit")
+        .eq("orders.is_restoration", false)
         .gte("days_without_scan", 1)
         .order("days_without_scan", { ascending: false })
         .limit(QUERY_LIMITS.STUCK_SHIPMENTS),
 
       // Transit time data for delivered shipments - fixed 30-day window
       // Uses transit30dStart to ensure sufficient data regardless of date selector
+      // Restoration orders excluded at query level
       supabase
         .from("shipments")
         .select(`
           order_id,
           transit_days,
           delivery_state,
-          orders!inner(warehouse)
+          orders!inner(warehouse, is_restoration)
         `)
         .eq("status", "delivered")
+        .eq("orders.is_restoration", false)
         .not("transit_days", "is", null)
         .gte("delivered_at", transit30dStart.toISOString())
         .lte("delivered_at", now.toISOString())
@@ -440,6 +416,7 @@ export async function GET(request: Request) {
 
       // Fulfillment lead time data - filtered by selected date range
       // Limit increased from 10000 to 50000 - peak periods can have 20k+ fulfilled orders in 30 days
+      // Restoration orders excluded at query level
       supabase
         .from("orders")
         .select("id, warehouse, created_at, fulfilled_at")
@@ -447,13 +424,16 @@ export async function GET(request: Request) {
         .gte("fulfilled_at", rangeStart.toISOString())
         .lte("fulfilled_at", rangeEnd.toISOString())
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .not("warehouse", "is", null)
         .limit(QUERY_LIMITS.LEAD_TIME),
 
       // Engraving queue - line items with SKU 'Smith-Eng' or 'Smith-Eng2'
-      // Filter for non-canceled orders; exclude fulfilled orders client-side
-      // (PostgREST's .neq() doesn't include NULL, which is unfulfilled status)
-      // Limit increased from 10000 to 50000 - there are 25k+ engraving line items
+      // Filter for non-canceled orders and unfulfilled/partial orders at DB level
+      // Note: .neq("fulfilled") does NOT include NULL in PostgREST
+      // So we use .or() to match NULL (unfulfilled) OR 'partial'
+      // Restoration orders excluded at query level
+      // Note: warehouse included for Smithey queue breakdown
       supabase
         .from("line_items")
         .select(`
@@ -461,18 +441,22 @@ export async function GET(request: Request) {
           sku,
           quantity,
           fulfilled_quantity,
-          orders!inner(fulfillment_status, canceled)
+          orders!inner(fulfillment_status, canceled, is_restoration, warehouse)
         `)
         .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
+        .eq("orders.is_restoration", false)
+        .or("fulfillment_status.is.null,fulfillment_status.eq.partial", { referencedTable: "orders" })
         .limit(QUERY_LIMITS.ENGRAVING_QUEUE),
 
       // Unfulfilled orders for aging analysis
+      // Restoration orders excluded at query level
       supabase
         .from("orders")
         .select("id, warehouse, created_at")
         .is("fulfillment_status", null)
         .eq("canceled", false)
+        .eq("is_restoration", false)
         .not("warehouse", "is", null)
         .limit(QUERY_LIMITS.AGING_DATA),
     ]);
@@ -527,7 +511,7 @@ export async function GET(request: Request) {
     const warehouses: WarehouseMetrics[] = [
       {
         warehouse: "smithey",
-        unfulfilled_count: smitheyUnfulfilled - restorationByWarehouse.smithey,
+        unfulfilled_count: smitheyUnfulfilled, // Restoration already excluded at query level
         partial_count: smitheyPartial,
         fulfilled_today: smitheyToday,
         fulfilled_7d: smithey7d,
@@ -540,7 +524,7 @@ export async function GET(request: Request) {
       },
       {
         warehouse: "selery",
-        unfulfilled_count: seleryUnfulfilled - restorationByWarehouse.selery,
+        unfulfilled_count: seleryUnfulfilled, // Restoration already excluded at query level
         partial_count: seleryPartial,
         fulfilled_today: seleryToday,
         fulfilled_7d: selery7d,
@@ -553,16 +537,16 @@ export async function GET(request: Request) {
       },
     ];
 
-    // Process daily fulfillments - filter out restoration orders
-    const filteredDailyData = filterRestorationOrders(dailyResult.data);
-    const daily = processDailyFulfillments(filteredDailyData);
+    // Process daily fulfillments - restoration already filtered at query level
+    const dailyData = dailyResult.data || [];
+    const daily = processDailyFulfillments(dailyData);
 
     // Process weekly fulfillments (last 8 weeks)
-    const weekly = processWeeklyFulfillments(filteredDailyData);
+    const weekly = processWeeklyFulfillments(dailyData);
 
-    // Process order aging data - filter out restoration orders FIRST
-    // This filtered data is used for both queue health counts and the aging bar chart
-    const filteredAgingData = filterRestorationOrders(agingDataResult.data || []);
+    // Process order aging data - restoration already filtered at query level
+    // This data is used for both queue health counts and the aging bar chart
+    const agingData = agingDataResult.data || [];
 
     // Calculate queue health counts from filtered aging data (not raw count queries)
     // This ensures consistency with the order aging bar chart
@@ -574,7 +558,7 @@ export async function GET(request: Request) {
       selery: { waiting1d: 0, waiting3d: 0, waiting7d: 0 },
     };
 
-    for (const order of filteredAgingData) {
+    for (const order of agingData) {
       const warehouse = order.warehouse as "smithey" | "selery";
       if (!warehouse || !queueHealthCounts[warehouse]) continue;
 
@@ -604,12 +588,10 @@ export async function GET(request: Request) {
         oldest_order_name: null,
       },
     ];
-    // Set oldest order for Smithey (filter out restoration orders and excluded orders)
+    // Set oldest order for Smithey (restoration already filtered at query level)
     const excludedOrderNames = new Set(["S321703"]);
     const filteredSmitheyOrders = (oldestSmitheyResult.data || [])
-      .filter((o: { id: number; order_name: string }) =>
-        !restorationOrderIds.has(o.id) && !excludedOrderNames.has(o.order_name)
-      );
+      .filter((o: { order_name: string }) => !excludedOrderNames.has(o.order_name));
     const oldestSmithey = safeArrayAccess(filteredSmitheyOrders, 0);
     if (oldestSmithey) {
       const smitheyHealth = queueHealth.find(h => h.warehouse === "smithey");
@@ -620,10 +602,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // Set oldest order for Selery (filter out restoration orders)
-    const filteredSeleryOrders = (oldestSeleryResult.data || [])
-      .filter((o: { id: number }) => !restorationOrderIds.has(o.id));
-    const oldestSelery = safeArrayAccess(filteredSeleryOrders, 0);
+    // Set oldest order for Selery (restoration already filtered at query level)
+    const oldestSelery = safeArrayAccess(oldestSeleryResult.data, 0);
     if (oldestSelery) {
       const seleryHealth = queueHealth.find(h => h.warehouse === "selery");
       if (seleryHealth) {
@@ -641,21 +621,14 @@ export async function GET(request: Request) {
     );
 
     // Process stuck shipments - filter out restoration orders
-    const stuckShipments = processStuckShipments(
-      (stuckShipmentsResult.data || []).filter(
-        (row: { order_id: number }) => !restorationOrderIds.has(row.order_id)
-      ),
-      now
-    );
+    // Process stuck shipments - restoration already filtered at query level
+    const stuckShipments = processStuckShipments(stuckShipmentsResult.data || [], now);
 
-    // Process transit analytics - filter out restoration orders
-    const transitAnalytics = processTransitAnalytics(
-      (transitDataResult.data || []).filter(
-        (row: { order_id: number }) => !restorationOrderIds.has(row.order_id)
-      )
-    );
+    // Process transit analytics - restoration already filtered at query level
+    const transitAnalytics = processTransitAnalytics(transitDataResult.data || []);
 
     // Process daily orders for warehouse distribution - fetch with pagination to bypass 1000 row limit
+    // Restoration orders filtered at query level
     const dailyOrdersData = await fetchAllPaginated<{ id: number; warehouse: string | null; created_at: string }>(
       supabase,
       "orders",
@@ -664,41 +637,28 @@ export async function GET(request: Request) {
         { column: "created_at", op: "gte", value: rangeStart.toISOString() },
         { column: "created_at", op: "lte", value: rangeEnd.toISOString() },
         { column: "canceled", op: "eq", value: false },
+        { column: "is_restoration", op: "eq", value: false },
         { column: "warehouse", op: "not.is.null", value: null },
       ]
     );
-    // Filter out restoration orders from daily orders (for consistent backlog calculation)
-    const filteredDailyOrdersData = filterRestorationOrders(dailyOrdersData);
-    const dailyOrders = processDailyOrders(filteredDailyOrdersData);
+    const dailyOrders = processDailyOrders(dailyOrdersData);
 
-    // Process fulfillment lead time analytics - filter out restoration orders
+    // Process fulfillment lead time analytics - restoration already filtered at query level
     // Calculate midpoint of range for trend comparison
     const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
-    const filteredLeadTimeData = filterRestorationOrders(leadTimeResult.data || []);
-    const fulfillmentLeadTime = processFulfillmentLeadTime(filteredLeadTimeData, rangeMidpoint);
+    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
 
-    // Process engraving queue - filter out restoration orders for consistency
-    // Restoration orders follow a different fulfillment cycle (waiting on customer)
-    const engravingQueue = processEngravingQueue(
-      (engravingQueueResult.data || []).filter(
-        (row: { order_id: number }) => !restorationOrderIds.has(row.order_id)
-      )
-    );
+    // Process engraving queue - restoration already filtered at query level
+    const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
 
-    // Process order aging for bar chart - uses filteredAgingData created earlier
-    const orderAging = processOrderAging(filteredAgingData, now);
+    // Process order aging for bar chart - restoration already filtered at query level
+    const orderAging = processOrderAging(agingData, now);
 
     // Calculate daily backlog (orders created - orders fulfilled)
-    // Get current total unfulfilled to calculate running backlog
+    // Unfulfilled counts already exclude restoration orders at query level
     const currentUnfulfilled = (unfulfilledSmitheyCount.count || 0) + (unfulfilledSeleryCount.count || 0) +
                                (partialSmitheyCount.count || 0) + (partialSeleryCount.count || 0);
-    // For backlog, exclude restoration orders (they're waiting on customer, not warehouse)
-    // Count unfulfilled restoration orders from aging data
-    const restorationUnfulfilledCount = (agingDataResult.data || []).filter(
-      (o: { id: number }) => restorationOrderIds.has(o.id)
-    ).length;
-    const currentUnfulfilledExcludingRestoration = currentUnfulfilled - restorationUnfulfilledCount;
-    const dailyBacklog = calculateDailyBacklog(dailyOrders, daily, currentUnfulfilledExcludingRestoration);
+    const dailyBacklog = calculateDailyBacklog(dailyOrders, daily, currentUnfulfilled);
 
     const response: MetricsResponse = {
       warehouses,
@@ -1121,12 +1081,14 @@ interface EngravingQueueRow {
   orders: {
     fulfillment_status: string | null;
     canceled: boolean;
+    warehouse: string | null;
   } | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processEngravingQueue(data: any[]): EngravingQueue {
   const orderIds = new Set<number>();
+  const smitheyEngravingOrderIds = new Set<number>();
   let totalUnfulfilled = 0;
 
   for (const row of data) {
@@ -1141,6 +1103,11 @@ function processEngravingQueue(data: any[]): EngravingQueue {
     if (unfulfilled > 0) {
       totalUnfulfilled += unfulfilled;
       orderIds.add(typedRow.order_id);
+
+      // Track Smithey orders with engravings for queue breakdown
+      if (typedRow.orders.warehouse === "smithey") {
+        smitheyEngravingOrderIds.add(typedRow.order_id);
+      }
     }
   }
 
@@ -1148,6 +1115,7 @@ function processEngravingQueue(data: any[]): EngravingQueue {
     total_units: totalUnfulfilled,
     estimated_days: Math.round((totalUnfulfilled / ENGRAVING_DAILY_CAPACITY) * 10) / 10,
     order_count: orderIds.size,
+    smithey_engraving_orders: smitheyEngravingOrderIds.size,
   };
 }
 

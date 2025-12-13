@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { SHOPIFY_API_VERSION } from "@/lib/shopify";
 
 // Force dynamic rendering - never cache this route
 export const dynamic = 'force-dynamic';
@@ -83,7 +84,7 @@ async function fetchB2BFromShopify(
   while (hasMore) {
     try {
       const response: Response = await fetch(
-        `https://${SHOPIFY_B2B_URL}/admin/api/2024-10/graphql.json`,
+        `https://${SHOPIFY_B2B_URL}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
         {
           method: "POST",
           headers: {

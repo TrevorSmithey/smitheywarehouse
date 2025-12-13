@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { BATCH_SIZES, SYNC_WINDOWS, RATE_LIMIT_DELAYS } from "@/lib/constants";
+import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
@@ -47,7 +48,7 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
   while (hasMore) {
     let url: string;
     if (pageInfo) {
-      url = `https://${SHOPIFY_B2B_STORE}/admin/api/2024-01/orders.json?page_info=${pageInfo}`;
+      url = `https://${SHOPIFY_B2B_STORE}/admin/api/${SHOPIFY_API_VERSION}/orders.json?page_info=${pageInfo}`;
     } else {
       // Fetch ALL orders (not just shipped) - track sold, not fulfilled
       const params = new URLSearchParams({
@@ -55,26 +56,34 @@ async function fetchOrders(fromDate: string): Promise<ShopifyOrder[]> {
         created_at_min: fromDate,
         limit: "250",
       });
-      url = `https://${SHOPIFY_B2B_STORE}/admin/api/2024-01/orders.json?${params}`;
+      url = `https://${SHOPIFY_B2B_STORE}/admin/api/${SHOPIFY_API_VERSION}/orders.json?${params}`;
     }
 
-    const response = await fetch(url, {
-      headers: {
-        "X-Shopify-Access-Token": SHOPIFY_B2B_TOKEN!,
-        "Content-Type": "application/json",
+    const { orders, linkHeader } = await withRetry(
+      async () => {
+        const response = await fetch(url, {
+          headers: {
+            "X-Shopify-Access-Token": SHOPIFY_B2B_TOKEN!,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return {
+          orders: data.orders || [],
+          linkHeader: response.headers.get("link"),
+        };
       },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Shopify API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const orders = data.orders || [];
+      { maxRetries: 3, baseDelayMs: 1000 },
+      "B2B orders fetch"
+    );
     allOrders.push(...orders);
 
     // Check for pagination
-    const linkHeader = response.headers.get("link");
     if (linkHeader && linkHeader.includes('rel="next"')) {
       const match = linkHeader.match(/<[^>]*page_info=([^>&]*)[^>]*>; rel="next"/);
       pageInfo = match ? match[1] : null;

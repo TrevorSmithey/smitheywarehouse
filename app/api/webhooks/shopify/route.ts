@@ -100,6 +100,11 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     order.fulfillments
   );
 
+  // Check if any line item is a restoration SKU (contains "-Rest-")
+  const isRestoration = order.line_items.some(
+    (item) => item.sku && item.sku.toLowerCase().includes("-rest-")
+  );
+
   // Upsert order
   const { error: orderError } = await supabase.from("orders").upsert(
     {
@@ -110,6 +115,7 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
       canceled: !!order.cancelled_at,
       created_at: order.created_at,
       fulfilled_at: fulfilledAt,
+      is_restoration: isRestoration,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "id" }
@@ -120,25 +126,16 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     throw orderError;
   }
 
-  // Calculate fulfilled quantities from fulfillments
-  const fulfilledQuantities = new Map<number, number>();
-  if (order.fulfillments) {
-    for (const fulfillment of order.fulfillments) {
-      for (const item of fulfillment.line_items || []) {
-        const current = fulfilledQuantities.get(item.id) || 0;
-        fulfilledQuantities.set(item.id, current + item.quantity);
-      }
-    }
-  }
-
   // Upsert line items
+  // Use Shopify's fulfillable_quantity directly - it's more reliable than manual calculation
+  // fulfilled_quantity = quantity - fulfillable_quantity
   const lineItems = order.line_items.map((item) => ({
     id: item.id,
     order_id: order.id,
     sku: item.sku,
     title: item.title,
     quantity: item.quantity,
-    fulfilled_quantity: fulfilledQuantities.get(item.id) || 0,
+    fulfilled_quantity: item.quantity - (item.fulfillable_quantity || 0),
   }));
 
   if (lineItems.length > 0) {
@@ -187,14 +184,14 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     }
   }
 
-  // Log shipment errors with full context (order + tracking info)
-  // These are visible in Vercel logs for debugging
+  // Throw on shipment errors so Shopify retries the webhook
+  // Shipments are critical for transit analytics - we can't afford to silently lose them
   if (shipmentErrors.length > 0) {
-    console.error(
-      `[SHIPMENT ERROR] Order ${order.name} (${order.id}): ` +
+    const errorMsg = `[SHIPMENT ERROR] Order ${order.name} (${order.id}): ` +
       `Failed to upsert ${shipmentErrors.length} shipment(s): ` +
-      shipmentErrors.map(e => `${e.trackingNumber}: ${e.error}`).join("; ")
-    );
+      shipmentErrors.map(e => `${e.trackingNumber}: ${e.error}`).join("; ");
+    console.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
   console.log(`Processed order ${order.name} (${order.id})`);

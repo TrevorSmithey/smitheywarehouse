@@ -270,6 +270,8 @@ export interface EngravingQueue {
   total_units: number; // total unfulfilled engraving units
   estimated_days: number; // total_units / 250 (daily capacity)
   order_count: number; // number of orders with engravings
+  // Smithey queue breakdown - engravings only go to Smithey
+  smithey_engraving_orders: number; // unfulfilled Smithey orders with engraving line items
 }
 
 // Order aging by bucket for bar chart

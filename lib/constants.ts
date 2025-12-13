@@ -82,9 +82,6 @@ export const RATE_LIMIT_DELAYS = {
  * If a limit is reached, a warning is logged.
  */
 export const QUERY_LIMITS = {
-  // Restoration items - 20k should cover all restoration SKUs
-  RESTORATION_ITEMS: 20000,
-
   // Daily fulfillments - 50k covers ~33 days at 1500/day peak
   DAILY_FULFILLMENTS: 50000,
 
@@ -104,8 +101,8 @@ export const QUERY_LIMITS = {
   // Lead time data - 50k orders
   LEAD_TIME: 50000,
 
-  // Engraving queue - 50k line items
-  ENGRAVING_QUEUE: 50000,
+  // Engraving queue - unfulfilled only, should be ~2k max
+  ENGRAVING_QUEUE: 10000,
 
   // Aging data - 10k unfulfilled orders
   AGING_DATA: 10000,
