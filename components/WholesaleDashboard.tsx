@@ -127,49 +127,44 @@ function InfoTooltip({
         className={`
           absolute z-[100] pointer-events-none
           opacity-0 group-hover/tooltip:opacity-100
-          transition-all duration-200 ease-out
+          transition-all duration-150 ease-out delay-75
           scale-95 group-hover/tooltip:scale-100
           left-1/2 -translate-x-1/2
-          ${isTop ? "bottom-full mb-3" : "top-full mt-3"}
+          ${isTop ? "bottom-full mb-2" : "top-full mt-2"}
         `}
       >
         {/* Tooltip body */}
         <div className="relative">
           {/* Main pill */}
           <div
-            className="px-4 py-2 rounded-full shadow-lg"
+            className="px-3.5 py-1.5 rounded-full"
             style={{
-              background: 'linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)'
+              background: '#151515',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.4)'
             }}
           >
-            <span className="text-[11px] font-medium text-white/90 whitespace-nowrap tracking-wide">
+            <span className="text-[11px] font-medium text-white/95 whitespace-nowrap">
               {content}
             </span>
           </div>
 
-          {/* Arrow - using clip-path for perfect shape */}
-          <div
-            className="absolute left-1/2"
-            style={{
-              width: '12px',
-              height: '8px',
-              transform: 'translateX(-50%)',
-              ...(isTop ? { top: '100%', marginTop: '-1px' } : { bottom: '100%', marginBottom: '-1px' })
-            }}
+          {/* Arrow - SVG for crisp edges */}
+          <svg
+            className="absolute left-1/2 -translate-x-1/2"
+            width="10"
+            height="5"
+            viewBox="0 0 10 5"
+            style={isTop ? { top: '100%', marginTop: '-0.5px' } : { bottom: '100%', marginBottom: '-0.5px', transform: 'translateX(-50%) rotate(180deg)' }}
           >
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                background: isTop ? '#0d0d0d' : '#1a1a1a',
-                clipPath: isTop
-                  ? 'polygon(50% 100%, 0% 0%, 100% 0%)'
-                  : 'polygon(50% 0%, 0% 100%, 100% 100%)',
-              }}
+            <path
+              d="M0 0 L5 5 L10 0"
+              fill="#151515"
+              stroke="rgba(255,255,255,0.1)"
+              strokeWidth="1"
+              strokeLinejoin="round"
             />
-          </div>
+          </svg>
         </div>
       </div>
     </div>
