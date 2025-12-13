@@ -391,12 +391,12 @@ export async function GET(request: Request) {
     try {
       const { data: shopifyStats } = await supabase
         .from("daily_stats")
-        .select("revenue")
+        .select("total_revenue")
         .gte("date", rangeStart.toISOString().split("T")[0])
         .lte("date", rangeEnd.toISOString().split("T")[0]);
 
       if (shopifyStats) {
-        shopifyRevenue = shopifyStats.reduce((sum, d) => sum + (parseFloat(d.revenue) || 0), 0);
+        shopifyRevenue = shopifyStats.reduce((sum, d) => sum + (parseFloat(d.total_revenue) || 0), 0);
       }
     } catch (err) {
       console.error("[KLAVIYO API] Failed to fetch Shopify revenue:", err);
