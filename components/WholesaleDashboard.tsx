@@ -1181,10 +1181,6 @@ export function WholesaleDashboard({
               <div className="text-2xl font-semibold tracking-tight text-status-warning tabular-nums">
                 {(data.atRiskCustomers?.length || 0) + (data.orderingAnomalies?.length || 0)}
               </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs text-text-tertiary">Click to view all</span>
-                <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${showAllAtRisk ? "rotate-180" : ""}`} />
-              </div>
             </div>
             <div className="p-2.5 rounded-lg bg-status-warning/10">
               <AlertTriangle className="w-4 h-4 text-status-warning" />
