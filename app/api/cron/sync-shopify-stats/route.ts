@@ -43,8 +43,8 @@ interface ShopifyOrdersResponse {
 }
 
 async function fetchShopifyOrders(startDate: Date, endDate: Date): Promise<ShopifyOrdersResponse["orders"]> {
-  const shop = process.env.SHOPIFY_SHOP;
-  const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+  const shop = process.env.SHOPIFY_STORE_URL;
+  const accessToken = process.env.SHOPIFY_ADMIN_TOKEN;
 
   if (!shop || !accessToken) {
     throw new Error("Missing Shopify credentials");
