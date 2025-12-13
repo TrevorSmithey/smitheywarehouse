@@ -4298,20 +4298,26 @@ function BudgetDashboard({
     return `${sign}${formatNumber(delta)}`;
   };
 
-  // Get color based on PACE (all calculations use EST timezone)
-  // pace >= 100 = super hot (bright green)
-  // pace 90-99 = on track (green)
-  // pace 80-89 = needs attention (amber)
-  // pace < 80 = behind (red)
-  const getPaceColor = (pace: number) => {
-    if (pace >= 100) return "#22C55E"; // Super green (brighter)
+  // Get color based on PACE and BUDGET ACHIEVEMENT
+  // Conservative coloring: only celebrate when we're actually close to hitting budget
+  //
+  // Bright green: 90%+ of budget achieved (almost there, can celebrate)
+  // Muted green: On pace (100%+) but < 90% of budget (good trajectory, wait and see)
+  // Amber: 80-99% pace (slightly behind)
+  // Red: < 80% pace (needs attention)
+  const getPaceColor = (pace: number, pctOfBudget?: number) => {
+    // If we've hit 90%+ of budget, bright green regardless of pace
+    if (pctOfBudget !== undefined && pctOfBudget >= 90) return "#22C55E";
+    // On pace but not yet at 90% of budget - muted green (wait and see)
+    if (pace >= 100) return colors.emerald; // Muted green, not bright
     if (pace >= 90) return colors.emerald;
     if (pace >= 80) return colors.amber;
     return colors.rose;
   };
 
-  const getPaceColorDark = (pace: number) => {
-    if (pace >= 100) return "#16A34A"; // Super green dark
+  const getPaceColorDark = (pace: number, pctOfBudget?: number) => {
+    if (pctOfBudget !== undefined && pctOfBudget >= 90) return "#16A34A";
+    if (pace >= 100) return colors.emeraldDark;
     if (pace >= 90) return colors.emeraldDark;
     if (pace >= 80) return colors.amberDark;
     return colors.roseDark;
@@ -4543,7 +4549,7 @@ function BudgetDashboard({
               <div className="flex items-baseline gap-3 mb-1">
                 <span
                   className="text-3xl sm:text-4xl font-bold tabular-nums transition-colors duration-500"
-                  style={{ color: showPace ? getPaceColor(cookwarePace) : colors.accent }}
+                  style={{ color: showPace ? getPaceColor(cookwarePace, cookwarePct) : colors.accent }}
                 >
                   {cookwarePct}%
                 </span>
@@ -4582,7 +4588,7 @@ function BudgetDashboard({
                   style={{
                     width: `${Math.min(100, cookwarePct)}%`,
                     background: showPace
-                      ? `linear-gradient(90deg, ${getPaceColor(cookwarePace)}, ${getPaceColorDark(cookwarePace)})`
+                      ? `linear-gradient(90deg, ${getPaceColor(cookwarePace, cookwarePct)}, ${getPaceColorDark(cookwarePace, cookwarePct)})`
                       : `linear-gradient(90deg, ${colors.accent}, ${colors.accent})`,
                   }}
                 />
@@ -4597,7 +4603,7 @@ function BudgetDashboard({
               <div className="text-xs text-text-tertiary mt-2">
                 Cast Iron + Carbon Steel
                 {showPace && cookwarePace < 100 && (
-                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(cookwarePace) }}>{cookwarePace}%</span></>
+                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(cookwarePace, cookwarePct) }}>{cookwarePace}%</span></>
                 )}
               </div>
             </div>
@@ -4612,7 +4618,7 @@ function BudgetDashboard({
               <div className="flex items-baseline gap-3 mb-1">
                 <span
                   className="text-3xl sm:text-4xl font-bold tabular-nums transition-colors duration-500"
-                  style={{ color: showPace ? getPaceColor(grandPace) : colors.accent }}
+                  style={{ color: showPace ? getPaceColor(grandPace, grandPct) : colors.accent }}
                 >
                   {grandPct}%
                 </span>
@@ -4651,7 +4657,7 @@ function BudgetDashboard({
                   style={{
                     width: `${Math.min(100, grandPct)}%`,
                     background: showPace
-                      ? `linear-gradient(90deg, ${getPaceColor(grandPace)}, ${getPaceColorDark(grandPace)})`
+                      ? `linear-gradient(90deg, ${getPaceColor(grandPace, grandPct)}, ${getPaceColorDark(grandPace, grandPct)})`
                       : `linear-gradient(90deg, ${colors.accent}, ${colors.accent})`,
                   }}
                 />
@@ -4666,7 +4672,7 @@ function BudgetDashboard({
               <div className="text-xs text-text-tertiary mt-2">
                 All Categories
                 {showPace && grandPace < 100 && (
-                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(grandPace) }}>{grandPace}%</span></>
+                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(grandPace, grandPct) }}>{grandPace}%</span></>
                 )}
               </div>
             </div>
@@ -4703,8 +4709,8 @@ function BudgetDashboard({
               ? cat.channelPace?.retail || 0
               : cat.channelPace?.wholesale || 0;
           const showPace = dateRange === "mtd"; // Pace is meaningful for MTD
-          const statusColor = showPace ? getPaceColor(catPace) : colors.accent;
-          const statusColorDark = showPace ? getPaceColorDark(catPace) : colors.accent;
+          const statusColor = showPace ? getPaceColor(catPace, pctOfBudget) : colors.accent;
+          const statusColorDark = showPace ? getPaceColorDark(catPace, pctOfBudget) : colors.accent;
 
           return (
             <div key={cat.category} className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden transition-all duration-300">
@@ -4812,7 +4818,7 @@ function BudgetDashboard({
                             ? sku.channelPace?.retail || 0
                             : sku.channelPace?.wholesale || 0;
                         const showPace = dateRange === "mtd"; // Pace is meaningful for MTD
-                        const skuColor = showPace ? getPaceColor(skuPace) : colors.accent;
+                        const skuColor = showPace ? getPaceColor(skuPace, pctOfBudget) : colors.accent;
                         // Pulse green only when actual exceeds budget (hit the goal early)
                         const shouldPulse = showPace && skuActual > skuBudget;
 
