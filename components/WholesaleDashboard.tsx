@@ -111,47 +111,65 @@ function getPeriodLabel(period: WholesalePeriod): string {
 function InfoTooltip({
   children,
   content,
-  position = "top"
+  position = "bottom"
 }: {
   children: React.ReactNode;
   content: string;
   position?: "top" | "bottom";
 }) {
+  const isTop = position === "top";
+
   return (
-    <div className="relative group inline-flex justify-center">
+    <div className="relative group/tooltip inline-flex justify-center">
       {children}
+      {/* Tooltip container */}
       <div
         className={`
-          absolute z-50 pointer-events-none
-          opacity-0 group-hover:opacity-100
-          transition-opacity duration-150 ease-out
-          left-1/2
-          ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}
+          absolute z-[100] pointer-events-none
+          opacity-0 group-hover/tooltip:opacity-100
+          transition-all duration-200 ease-out
+          scale-95 group-hover/tooltip:scale-100
+          left-1/2 -translate-x-1/2
+          ${isTop ? "bottom-full mb-3" : "top-full mt-3"}
         `}
-        style={{ transform: 'translateX(-50%)' }}
       >
-        <div
-          className="relative rounded-md px-3 py-2 shadow-2xl"
-          style={{ backgroundColor: '#111111', border: '1px solid rgba(255,255,255,0.15)' }}
-        >
-          <div className="text-[11px] text-white leading-normal whitespace-nowrap text-center">
-            {content}
-          </div>
-          {/* Arrow */}
+        {/* Tooltip body */}
+        <div className="relative">
+          {/* Main pill */}
           <div
-            className="absolute"
+            className="px-4 py-2 rounded-full shadow-lg"
             style={{
-              left: '50%',
-              transform: 'translateX(-50%) rotate(45deg)',
-              width: '10px',
-              height: '10px',
-              backgroundColor: '#111111',
-              ...(position === "top"
-                ? { bottom: '-5px', borderRight: '1px solid rgba(255,255,255,0.15)', borderBottom: '1px solid rgba(255,255,255,0.15)' }
-                : { top: '-5px', borderLeft: '1px solid rgba(255,255,255,0.15)', borderTop: '1px solid rgba(255,255,255,0.15)' }
-              )
+              background: 'linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)'
             }}
-          />
+          >
+            <span className="text-[11px] font-medium text-white/90 whitespace-nowrap tracking-wide">
+              {content}
+            </span>
+          </div>
+
+          {/* Arrow - using clip-path for perfect shape */}
+          <div
+            className="absolute left-1/2"
+            style={{
+              width: '12px',
+              height: '8px',
+              transform: 'translateX(-50%)',
+              ...(isTop ? { top: '100%', marginTop: '-1px' } : { bottom: '100%', marginBottom: '-1px' })
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                background: isTop ? '#0d0d0d' : '#1a1a1a',
+                clipPath: isTop
+                  ? 'polygon(50% 100%, 0% 0%, 100% 0%)'
+                  : 'polygon(50% 0%, 0% 100%, 100% 100%)',
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>
