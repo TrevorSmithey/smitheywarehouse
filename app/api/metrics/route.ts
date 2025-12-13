@@ -135,9 +135,9 @@ export async function GET(request: Request) {
       fulfilled30dSeleryCount,
       prevPeriodSmitheyCount,
       prevPeriodSeleryCount,
-      // Placeholders - keeping array structure consistent
-      _placeholder1,
-      _placeholder2,
+      // Fulfilled in selected date range (for "SHIPPED" metric that changes with filter)
+      fulfilledInRangeSmitheyCount,
+      fulfilledInRangeSeleryCount,
       // Queue aging counts
       waiting1dSmithey,
       waiting1dSelery,
@@ -193,21 +193,21 @@ export async function GET(request: Request) {
         .eq("is_restoration", false)
         .eq("warehouse", "selery"),
 
-      // Fulfilled in selected range - Smithey
+      // Fulfilled TODAY - Smithey (fixed to today, independent of date range)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", rangeStart.toISOString())
-        .lte("fulfilled_at", rangeEnd.toISOString())
+        .gte("fulfilled_at", `${todayEST}T00:00:00`)
+        .lte("fulfilled_at", `${todayEST}T23:59:59`)
         .eq("canceled", false)
         .eq("warehouse", "smithey"),
 
-      // Fulfilled in selected range - Selery
+      // Fulfilled TODAY - Selery (fixed to today, independent of date range)
       supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", rangeStart.toISOString())
-        .lte("fulfilled_at", rangeEnd.toISOString())
+        .gte("fulfilled_at", `${todayEST}T00:00:00`)
+        .lte("fulfilled_at", `${todayEST}T23:59:59`)
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
@@ -261,9 +261,23 @@ export async function GET(request: Request) {
         .eq("canceled", false)
         .eq("warehouse", "selery"),
 
-      // Placeholders - keeping array structure consistent
-      Promise.resolve({ count: 0 }),
-      Promise.resolve({ count: 0 }),
+      // Fulfilled in selected date range - Smithey (for "SHIPPED" that respects date filter)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", rangeStart.toISOString())
+        .lte("fulfilled_at", rangeEnd.toISOString())
+        .eq("canceled", false)
+        .eq("warehouse", "smithey"),
+
+      // Fulfilled in selected date range - Selery (for "SHIPPED" that respects date filter)
+      supabase
+        .from("orders")
+        .select("*", { count: "exact", head: true })
+        .gte("fulfilled_at", rangeStart.toISOString())
+        .lte("fulfilled_at", rangeEnd.toISOString())
+        .eq("canceled", false)
+        .eq("warehouse", "selery"),
 
       // Queue aging: unfulfilled orders older than 1 day (Smithey)
       supabase
@@ -433,7 +447,7 @@ export async function GET(request: Request) {
       // Note: .neq("fulfilled") does NOT include NULL in PostgREST
       // So we use .or() to match NULL (unfulfilled) OR 'partial'
       // Restoration orders excluded at query level
-      // Note: warehouse included for Smithey queue breakdown
+      // Engraving queue - Smithey only (engraving orders only come to Smithey)
       supabase
         .from("line_items")
         .select(`
@@ -446,6 +460,7 @@ export async function GET(request: Request) {
         .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
         .eq("orders.canceled", false)
         .eq("orders.is_restoration", false)
+        .eq("orders.warehouse", "smithey")
         .or("fulfillment_status.is.null,fulfillment_status.eq.partial", { referencedTable: "orders" })
         .limit(QUERY_LIMITS.ENGRAVING_QUEUE),
 
@@ -498,27 +513,30 @@ export async function GET(request: Request) {
     const smithey30d = fulfilled30dSmitheyCount.count || 0;
     const selery30d = fulfilled30dSeleryCount.count || 0;
     const smitheyPrevPeriod = prevPeriodSmitheyCount.count || 0;
+    const smitheyInRange = fulfilledInRangeSmitheyCount.count || 0;
+    const seleryInRange = fulfilledInRangeSeleryCount.count || 0;
     const seleryPrevPeriod = prevPeriodSeleryCount.count || 0;
 
-    // Period-over-period change (current vs previous period of same duration)
+    // Period-over-period change (current range vs previous period of same duration)
     const smitheyPeriodChange = smitheyPrevPeriod > 0
-      ? ((smitheyToday - smitheyPrevPeriod) / smitheyPrevPeriod) * 100
-      : smitheyToday > 0 ? 100 : 0;
+      ? ((smitheyInRange - smitheyPrevPeriod) / smitheyPrevPeriod) * 100
+      : smitheyInRange > 0 ? 100 : 0;
     const seleryPeriodChange = seleryPrevPeriod > 0
-      ? ((seleryToday - seleryPrevPeriod) / seleryPrevPeriod) * 100
-      : seleryToday > 0 ? 100 : 0;
+      ? ((seleryInRange - seleryPrevPeriod) / seleryPrevPeriod) * 100
+      : seleryInRange > 0 ? 100 : 0;
 
     const warehouses: WarehouseMetrics[] = [
       {
         warehouse: "smithey",
         unfulfilled_count: smitheyUnfulfilled, // Restoration already excluded at query level
         partial_count: smitheyPartial,
-        fulfilled_today: smitheyToday,
+        fulfilled_today: smitheyToday, // Fixed to today (EST), always visible
+        fulfilled_in_range: smitheyInRange, // Respects date filter selection
         fulfilled_7d: smithey7d,
         fulfilled_30d: smithey30d,
         avg_per_day_7d: Math.round((smithey7d / 7) * 10) / 10,
         avg_per_day_30d: Math.round((smithey30d / 30) * 10) / 10,
-        fulfilled_this_week: smitheyToday, // Now uses selected period
+        fulfilled_this_week: smitheyInRange, // Uses selected period
         fulfilled_last_week: smitheyPrevPeriod,
         week_over_week_change: Math.round(smitheyPeriodChange * 10) / 10,
       },
@@ -526,12 +544,13 @@ export async function GET(request: Request) {
         warehouse: "selery",
         unfulfilled_count: seleryUnfulfilled, // Restoration already excluded at query level
         partial_count: seleryPartial,
-        fulfilled_today: seleryToday,
+        fulfilled_today: seleryToday, // Fixed to today (EST), always visible
+        fulfilled_in_range: seleryInRange, // Respects date filter selection
         fulfilled_7d: selery7d,
         fulfilled_30d: selery30d,
         avg_per_day_7d: Math.round((selery7d / 7) * 10) / 10,
         avg_per_day_30d: Math.round((selery30d / 30) * 10) / 10,
-        fulfilled_this_week: seleryToday, // Now uses selected period
+        fulfilled_this_week: seleryInRange, // Uses selected period
         fulfilled_last_week: seleryPrevPeriod,
         week_over_week_change: Math.round(seleryPeriodChange * 10) / 10,
       },
@@ -1088,7 +1107,6 @@ interface EngravingQueueRow {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processEngravingQueue(data: any[]): EngravingQueue {
   const orderIds = new Set<number>();
-  const smitheyEngravingOrderIds = new Set<number>();
   let totalUnfulfilled = 0;
 
   for (const row of data) {
@@ -1103,19 +1121,15 @@ function processEngravingQueue(data: any[]): EngravingQueue {
     if (unfulfilled > 0) {
       totalUnfulfilled += unfulfilled;
       orderIds.add(typedRow.order_id);
-
-      // Track Smithey orders with engravings for queue breakdown
-      if (typedRow.orders.warehouse === "smithey") {
-        smitheyEngravingOrderIds.add(typedRow.order_id);
-      }
     }
   }
 
+  // Query now filters to Smithey-only, so order_count = smithey_engraving_orders
   return {
     total_units: totalUnfulfilled,
     estimated_days: Math.round((totalUnfulfilled / ENGRAVING_DAILY_CAPACITY) * 10) / 10,
     order_count: orderIds.size,
-    smithey_engraving_orders: smitheyEngravingOrderIds.size,
+    smithey_engraving_orders: orderIds.size,
   };
 }
 

@@ -982,8 +982,8 @@ export default function Dashboard() {
                   </div>
 
                   <div className="p-5">
-                    {/* Primary Metrics Row - matches hero order: Queue, Avg/Day, To Clear, Shipped */}
-                    <div className="grid grid-cols-4 gap-4 mb-4">
+                    {/* Primary Metrics Row: Queue, Avg/Day, To Clear, Shipped, Today */}
+                    <div className="grid grid-cols-5 gap-4 mb-4">
                       <div>
                         <div className="text-2xl font-bold tabular-nums text-text-primary">{formatNumber(queueSize)}</div>
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">QUEUE</div>
@@ -999,8 +999,12 @@ export default function Dashboard() {
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">TO CLEAR</div>
                       </div>
                       <div>
-                        <div className="text-2xl font-bold tabular-nums text-status-good">{formatNumber(wh.fulfilled_today)}</div>
+                        <div className="text-2xl font-bold tabular-nums text-status-good">{formatNumber(wh.fulfilled_in_range)}</div>
                         <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">SHIPPED</div>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold tabular-nums text-accent-blue">{formatNumber(wh.fulfilled_today)}</div>
+                        <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.15em] text-text-muted mt-1">TODAY</div>
                       </div>
                     </div>
 

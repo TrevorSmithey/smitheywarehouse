@@ -110,7 +110,8 @@ export interface WarehouseMetrics {
   warehouse: string;
   unfulfilled_count: number;
   partial_count: number;
-  fulfilled_today: number;
+  fulfilled_today: number; // Fixed to today (EST), always visible regardless of date filter
+  fulfilled_in_range: number; // Respects date filter selection ("SHIPPED" metric)
   // Enhanced metrics
   fulfilled_7d: number;
   fulfilled_30d: number;
