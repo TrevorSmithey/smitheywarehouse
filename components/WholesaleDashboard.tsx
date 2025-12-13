@@ -1200,37 +1200,37 @@ export function WholesaleDashboard({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <div className="text-center">
+          <div className="text-center cursor-help" title="Growing revenue - ordered more recently than their typical pattern">
             <div className="text-2xl font-bold text-status-good tabular-nums">
               {stats.health_distribution.thriving}
             </div>
             <div className="text-[10px] text-text-muted">Thriving</div>
           </div>
-          <div className="text-center">
+          <div className="text-center cursor-help" title="Consistent ordering pattern - on track with typical behavior">
             <div className="text-2xl font-bold text-accent-blue tabular-nums">
               {stats.health_distribution.stable}
             </div>
             <div className="text-[10px] text-text-muted">Stable</div>
           </div>
-          <div className="text-center">
+          <div className="text-center cursor-help" title="Decreasing order frequency - ordering less often than usual">
             <div className="text-2xl font-bold text-status-warning tabular-nums">
               {stats.health_distribution.declining}
             </div>
             <div className="text-[10px] text-text-muted">Declining</div>
           </div>
-          <div className="text-center">
+          <div className="text-center cursor-help" title="90-120 days since last order - may need re-engagement">
             <div className="text-2xl font-bold text-status-warning tabular-nums">
               {stats.health_distribution.at_risk}
             </div>
             <div className="text-[10px] text-text-muted">At Risk</div>
           </div>
-          <div className="text-center">
+          <div className="text-center cursor-help" title="First order within the last 90 days">
             <div className="text-2xl font-bold text-purple-400 tabular-nums">
               {stats.health_distribution.new}
             </div>
             <div className="text-[10px] text-text-muted">New</div>
           </div>
-          <div className="text-center">
+          <div className="text-center cursor-help" title="365+ days since last order - considered inactive">
             <div className="text-2xl font-bold text-text-muted tabular-nums">
               {stats.health_distribution.churned}
             </div>
