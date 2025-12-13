@@ -12,6 +12,8 @@ import type {
   WholesaleAtRiskCustomer,
   WholesaleGrowthOpportunity,
   WholesaleNeverOrderedCustomer,
+  WholesaleOrderingAnomaly,
+  OrderingAnomalySeverity,
   WholesaleTransaction,
   WholesaleSkuStats,
   WholesaleStats,
@@ -279,11 +281,11 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total_revenue - a.total_revenue)
       .slice(0, 25);
 
-    // At-risk customers
+    // At-risk customers (includes churned - UI can filter them)
     const atRiskCustomers: WholesaleAtRiskCustomer[] = customers
-      .filter((c) => c.health_status === "at_risk" || c.health_status === "churning")
+      .filter((c) => c.health_status === "at_risk" || c.health_status === "churning" || c.health_status === "churned")
       .sort((a, b) => b.total_revenue - a.total_revenue)
-      .slice(0, 20)
+      .slice(0, 30)
       .map((c) => ({
         ns_customer_id: c.ns_customer_id,
         company_name: c.company_name,
@@ -295,6 +297,7 @@ export async function GET(request: Request) {
         avg_order_value: c.avg_order_value,
         risk_score: c.days_since_last_order ? Math.min(100, Math.round(c.days_since_last_order / 3.65)) : 0,
         recommended_action: c.days_since_last_order && c.days_since_last_order > 180 ? "Re-engagement campaign" : "Check-in call",
+        is_churned: (c.days_since_last_order || 0) >= 365,
       }));
 
     // Growth opportunities (customers with positive trends)
@@ -317,6 +320,82 @@ export async function GET(request: Request) {
         order_trend: c.order_trend,
         opportunity_type: getOpportunityType(c),
       }));
+
+    // ========================================================================
+    // ORDERING ANOMALIES - The intelligent way to detect at-risk customers
+    // Instead of fixed thresholds, we analyze each customer's own pattern
+    // ========================================================================
+    const orderingAnomalies: WholesaleOrderingAnomaly[] = [];
+
+    for (const c of customersResult.data || []) {
+      const orderCount = c.lifetime_orders || 0;
+      const totalRevenue = parseFloat(c.lifetime_revenue) || 0;
+      const daysSinceLastOrder = c.days_since_last_order;
+      const firstOrderDate = c.first_order_date ? new Date(c.first_order_date) : null;
+      const lastOrderDate = c.last_order_date ? new Date(c.last_order_date) : null;
+
+      // Skip customers without enough data to establish a RELIABLE pattern
+      // Need at least 4 orders - with only 2-3 orders, the "interval" could be noise
+      // (e.g., a split shipment over 2 days doesn't mean they order every 2 days)
+      if (orderCount < 4 || !firstOrderDate || !lastOrderDate || daysSinceLastOrder === null) {
+        continue;
+      }
+
+      // Calculate their average order interval (days between orders)
+      const daysBetweenFirstAndLast = Math.floor(
+        (lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const avgOrderIntervalDays = daysBetweenFirstAndLast / (orderCount - 1);
+
+      // Skip if average interval is too short (< 14 days) or too long (> 180 days)
+      // < 14 days: likely noise from split shipments, not a real pattern
+      // > 180 days: too infrequent to establish meaningful expectations
+      if (avgOrderIntervalDays < 14 || avgOrderIntervalDays > 180) {
+        continue;
+      }
+
+      // Calculate when we expected their next order
+      const expectedOrderDate = new Date(lastOrderDate.getTime() + avgOrderIntervalDays * 24 * 60 * 60 * 1000);
+      const daysOverdue = Math.floor(
+        (now.getTime() - expectedOrderDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Calculate overdue ratio (how late they are relative to their pattern)
+      // >1 means they're past their expected order date
+      const overdueRatio = daysSinceLastOrder / avgOrderIntervalDays;
+
+      // Only include customers who are at least 20% overdue (ratio > 1.2)
+      if (overdueRatio <= 1.2) {
+        continue;
+      }
+
+      const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
+
+      orderingAnomalies.push({
+        ns_customer_id: parseInt(c.ns_customer_id) || 0,
+        company_name: c.company_name || `Customer ${c.ns_customer_id}`,
+        segment,
+        total_revenue: totalRevenue,
+        order_count: orderCount,
+        avg_order_interval_days: Math.round(avgOrderIntervalDays),
+        last_order_date: c.last_order_date,
+        days_since_last_order: daysSinceLastOrder,
+        expected_order_date: expectedOrderDate.toISOString().split("T")[0],
+        days_overdue: daysOverdue,
+        overdue_ratio: Math.round(overdueRatio * 100) / 100, // Round to 2 decimal places
+        severity: getAnomalySeverity(overdueRatio),
+        is_churned: daysSinceLastOrder >= 365,
+      });
+    }
+
+    // Sort by severity (critical first), then by revenue (highest value at risk first)
+    orderingAnomalies.sort((a, b) => {
+      const severityOrder: Record<OrderingAnomalySeverity, number> = { critical: 0, warning: 1, watch: 2 };
+      if (severityOrder[a.severity] !== severityOrder[b.severity]) {
+        return severityOrder[a.severity] - severityOrder[b.severity];
+      }
+      return b.total_revenue - a.total_revenue;
+    });
 
     // Never ordered customers - sales opportunities
     // These are accounts in NetSuite that have never placed an order
@@ -439,6 +518,32 @@ export async function GET(request: Request) {
       segment_distribution: segmentDistribution,
     };
 
+    // New customers - first-time buyers in last 90 days
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const newCustomers: WholesaleCustomer[] = customers
+      .filter((c) => {
+        if (!c.first_sale_date || c.order_count === 0) return false;
+        const firstOrder = new Date(c.first_sale_date);
+        return firstOrder >= ninetyDaysAgo;
+      })
+      .sort((a, b) => {
+        // Sort by first order date (most recent first)
+        const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
+        const bDate = b.first_sale_date ? new Date(b.first_sale_date).getTime() : 0;
+        return bDate - aDate;
+      })
+      .slice(0, 25);
+
+    // Churned customers - 365+ days since last order, excludes major/corporate accounts
+    const churnedCustomers: WholesaleCustomer[] = customers
+      .filter((c) =>
+        c.health_status === "churned" &&
+        c.segment !== "major" && // Exclude corporate accounts like Crate & Barrel
+        c.order_count > 0 // Must have ordered at some point
+      )
+      .sort((a, b) => b.total_revenue - a.total_revenue) // Highest value first - these are win-back opportunities
+      .slice(0, 30);
+
     // Build response
     const response: WholesaleResponse = {
       monthly: monthly.sort((a, b) => a.month.localeCompare(b.month)),
@@ -447,6 +552,9 @@ export async function GET(request: Request) {
       atRiskCustomers,
       growthOpportunities,
       neverOrderedCustomers,
+      orderingAnomalies,
+      newCustomers,
+      churnedCustomers,
       recentTransactions,
       topSkus,
       lastSynced: new Date().toISOString(),
@@ -527,4 +635,12 @@ function getOpportunityType(
     return "cross_sell";
   }
   return "new_category";
+}
+
+// Helper to determine ordering anomaly severity based on overdue ratio
+// This is the intelligent way - based on each customer's own behavior pattern
+function getAnomalySeverity(overdueRatio: number): OrderingAnomalySeverity {
+  if (overdueRatio >= 2.0) return "critical"; // 2x+ late relative to their pattern
+  if (overdueRatio >= 1.5) return "warning";  // 1.5x late
+  return "watch";                              // 1.2x+ late
 }

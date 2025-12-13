@@ -1004,6 +1004,7 @@ export interface WholesaleAtRiskCustomer {
   avg_order_value: number;
   risk_score: number;
   recommended_action: string;
+  is_churned: boolean;
 }
 
 export type OpportunityType = "upsell" | "cross_sell" | "volume_increase" | "new_category";
@@ -1032,6 +1033,31 @@ export interface WholesaleGrowthOpportunity {
   opportunity_type: OpportunityType;
 }
 
+// Customers who are overdue based on their own ordering pattern
+// This is the RIGHT way to detect at-risk customers - per-customer behavioral analysis
+export type OrderingAnomalySeverity = "critical" | "warning" | "watch";
+
+export interface WholesaleOrderingAnomaly {
+  ns_customer_id: number;
+  company_name: string;
+  segment: CustomerSegment;
+  total_revenue: number;
+  order_count: number;
+  // Their typical ordering pattern
+  avg_order_interval_days: number;
+  // Current state
+  last_order_date: string;
+  days_since_last_order: number;
+  // Anomaly metrics
+  expected_order_date: string; // When we expected them to order
+  days_overdue: number; // How many days past their expected order (negative = not overdue)
+  overdue_ratio: number; // days_since_last_order / avg_order_interval (>1 means late)
+  // Severity: critical (>2x late), warning (>1.5x late), watch (>1.2x late)
+  severity: OrderingAnomalySeverity;
+  // Churned flag (365+ days since last order)
+  is_churned: boolean;
+}
+
 export interface WholesaleResponse {
   // Monthly revenue trend for charts
   monthly: WholesaleMonthlyStats[];
@@ -1042,6 +1068,12 @@ export interface WholesaleResponse {
   atRiskCustomers: WholesaleAtRiskCustomer[];
   growthOpportunities: WholesaleGrowthOpportunity[];
   neverOrderedCustomers: WholesaleNeverOrderedCustomer[];
+  // Ordering anomalies - customers late based on their own pattern (the RIGHT way)
+  orderingAnomalies: WholesaleOrderingAnomaly[];
+  // New customers - first-time buyers in last 90 days
+  newCustomers: WholesaleCustomer[];
+  // Churned customers - 365+ days since last order (excludes corporate/major accounts)
+  churnedCustomers: WholesaleCustomer[];
   // Recent transactions
   recentTransactions: WholesaleTransaction[];
   // Top SKUs

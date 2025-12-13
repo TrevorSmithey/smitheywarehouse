@@ -21,6 +21,8 @@ import {
   Clock,
   Layers,
   RefreshCw,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 import {
   AreaChart,
@@ -42,6 +44,8 @@ import type {
   WholesaleCustomer,
   WholesaleAtRiskCustomer,
   WholesaleNeverOrderedCustomer,
+  WholesaleOrderingAnomaly,
+  OrderingAnomalySeverity,
   WholesaleMonthlyStats,
   WholesalePeriod,
   CustomerHealthStatus,
@@ -151,6 +155,7 @@ function BreakdownCard({
   value,
   subValue,
   delta,
+  description,
   icon: Icon,
   color = "blue",
 }: {
@@ -158,6 +163,7 @@ function BreakdownCard({
   value: string;
   subValue?: string;
   delta?: number | null;
+  description?: string;
   icon: React.ComponentType<{ className?: string }>;
   color?: "blue" | "green" | "amber" | "purple";
 }) {
@@ -191,6 +197,11 @@ function BreakdownCard({
               </span>
             )}
           </div>
+          {description && (
+            <div className="text-[10px] text-text-muted mt-1.5">
+              {description}
+            </div>
+          )}
         </div>
         <div className={`p-2.5 rounded-lg ${colors.bgFaint}`}>
           <Icon className={`w-4 h-4 ${colors.text}`} />
@@ -286,13 +297,13 @@ function CustomerRow({ customer, rank }: { customer: WholesaleCustomer; rank: nu
 // ============================================================================
 
 function AtRiskCustomerCard({ customer }: { customer: WholesaleAtRiskCustomer }) {
-  const riskColor =
-    customer.risk_score >= 70 ? "border-status-bad/50 bg-status-bad/5" :
-    customer.risk_score >= 50 ? "border-status-warning/50 bg-status-warning/5" :
+  const daysColor =
+    customer.days_since_last_order >= 180 ? "border-status-bad/50 bg-status-bad/5" :
+    customer.days_since_last_order >= 120 ? "border-status-warning/50 bg-status-warning/5" :
     "border-border/30 bg-bg-secondary";
 
   return (
-    <div className={`rounded-lg border p-4 ${riskColor}`}>
+    <div className={`rounded-lg border p-4 ${daysColor}`}>
       <div className="flex items-start justify-between mb-3">
         <div>
           <div className="text-sm font-medium text-text-primary truncate max-w-[200px]">
@@ -305,24 +316,13 @@ function AtRiskCustomerCard({ customer }: { customer: WholesaleAtRiskCustomer })
             </span>
           </div>
         </div>
-        <div className={`text-lg font-bold tabular-nums ${
-          customer.risk_score >= 70 ? "text-status-bad" :
-          customer.risk_score >= 50 ? "text-status-warning" :
-          "text-text-secondary"
-        }`}>
-          {customer.risk_score}
-        </div>
       </div>
 
-      <div className="flex items-center justify-between text-xs mb-3">
+      <div className="flex items-center justify-between text-xs">
         <span className="text-text-muted">Lifetime Value</span>
         <span className="font-semibold text-text-primary tabular-nums">
           {formatCurrencyFull(customer.total_revenue)}
         </span>
-      </div>
-
-      <div className="text-[10px] text-text-tertiary bg-bg-tertiary/50 rounded px-2 py-1.5">
-        {customer.recommended_action}
       </div>
     </div>
   );
@@ -669,6 +669,278 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
   );
 }
 
+// ============================================================================
+// NEW CUSTOMERS - First-time buyers in last 90 days
+// ============================================================================
+
+function NewCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
+  if (!customers || customers.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-status-good/30 overflow-hidden h-full">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-status-good/5">
+        <div className="flex items-center gap-2">
+          <UserPlus className="w-4 h-4 text-status-good" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-status-good font-semibold">
+            NEW CUSTOMERS
+          </h3>
+        </div>
+        <span className="text-[10px] text-status-good font-medium">
+          {customers.length} in last 90 days
+        </span>
+      </div>
+
+      <div className="max-h-[450px] overflow-y-auto">
+        {customers.map((customer, idx) => (
+          <div
+            key={customer.ns_customer_id}
+            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <span className="text-[10px] text-text-muted tabular-nums w-5">{idx + 1}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-text-primary truncate font-medium">
+                  {customer.company_name}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <SegmentBadge segment={customer.segment} />
+                  <span className="text-[10px] text-text-muted">
+                    {customer.order_count} order{customer.order_count !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-semibold text-status-good tabular-nums">
+                {formatCurrencyFull(customer.total_revenue)}
+              </div>
+              {customer.first_sale_date && (
+                <div className="text-[10px] text-text-muted">
+                  {format(new Date(customer.first_sale_date), "MMM d")}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CHURNED CUSTOMERS - 365+ days since last order (excludes corporate)
+// ============================================================================
+
+function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
+  if (!customers || customers.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-text-muted/5">
+        <div className="flex items-center gap-2">
+          <UserMinus className="w-4 h-4 text-text-muted" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
+            CHURNED CUSTOMERS
+          </h3>
+        </div>
+        <span className="text-[10px] text-text-muted font-medium">
+          {customers.length} accounts • 365+ days inactive
+        </span>
+      </div>
+
+      <p className="px-5 py-3 text-xs text-text-tertiary border-b border-border/10">
+        Former customers who haven&apos;t ordered in over a year. Excludes corporate/major accounts.
+      </p>
+
+      <div className="max-h-[400px] overflow-y-auto">
+        {customers.map((customer) => (
+          <div
+            key={customer.ns_customer_id}
+            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-text-primary truncate font-medium">
+                {customer.company_name}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <SegmentBadge segment={customer.segment} />
+                <span className="text-[10px] text-text-muted">
+                  {customer.order_count} lifetime orders
+                </span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium text-text-secondary tabular-nums">
+                {formatCurrencyFull(customer.total_revenue)}
+              </div>
+              {customer.days_since_last_order !== null && (
+                <div className="text-[10px] text-text-muted tabular-nums">
+                  {customer.days_since_last_order}d ago
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// ORDERING ANOMALIES - Customers late based on their own pattern
+// This is the INTELLIGENT way to detect at-risk customers
+// ============================================================================
+
+function SeverityBadge({ severity }: { severity: OrderingAnomalySeverity }) {
+  const config: Record<OrderingAnomalySeverity, { label: string; color: string }> = {
+    critical: { label: "CRITICAL", color: "bg-status-bad/20 text-status-bad" },
+    warning: { label: "WARNING", color: "bg-status-warning/20 text-status-warning" },
+    watch: { label: "WATCH", color: "bg-accent-blue/20 text-accent-blue" },
+  };
+  const { label, color } = config[severity];
+  return (
+    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
+      {label}
+    </span>
+  );
+}
+
+function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly }) {
+  const borderColor =
+    anomaly.severity === "critical" ? "border-status-bad/50 bg-status-bad/5" :
+    anomaly.severity === "warning" ? "border-status-warning/50 bg-status-warning/5" :
+    "border-accent-blue/30 bg-accent-blue/5";
+
+  return (
+    <div className={`rounded-lg border p-4 ${borderColor}`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0 mr-3">
+          <div className="text-sm font-medium text-text-primary truncate">
+            {anomaly.company_name}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <SegmentBadge segment={anomaly.segment} />
+            <SeverityBadge severity={anomaly.severity} />
+          </div>
+        </div>
+        <div className="text-right">
+          <div className={`text-lg font-bold tabular-nums ${
+            anomaly.severity === "critical" ? "text-status-bad" :
+            anomaly.severity === "warning" ? "text-status-warning" :
+            "text-accent-blue"
+          }`}>
+            {anomaly.overdue_ratio.toFixed(1)}x
+          </div>
+          <div className="text-[9px] text-text-muted">late</div>
+        </div>
+      </div>
+
+      {/* Pattern Analysis */}
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Typical interval</span>
+          <span className="font-medium text-text-primary tabular-nums">
+            {anomaly.avg_order_interval_days}d between orders
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Days since last order</span>
+          <span className={`font-semibold tabular-nums ${
+            anomaly.severity === "critical" ? "text-status-bad" :
+            anomaly.severity === "warning" ? "text-status-warning" :
+            "text-text-primary"
+          }`}>
+            {anomaly.days_since_last_order}d
+          </span>
+        </div>
+        <div className="flex items-center justify-between pt-1 border-t border-border/20">
+          <span className="text-text-muted">Lifetime value</span>
+          <span className="font-semibold text-text-primary tabular-nums">
+            {formatCurrencyFull(anomaly.total_revenue)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderingAnomaliesSection({
+  anomalies,
+  hideChurned,
+  onToggleChurned,
+}: {
+  anomalies: WholesaleOrderingAnomaly[];
+  hideChurned: boolean;
+  onToggleChurned: () => void;
+}) {
+  if (!anomalies || anomalies.length === 0) return null;
+
+  const filtered = hideChurned ? anomalies.filter(a => !a.is_churned) : anomalies;
+  const churnedCount = anomalies.filter(a => a.is_churned).length;
+
+  const criticalCount = filtered.filter(a => a.severity === "critical").length;
+  const warningCount = filtered.filter(a => a.severity === "warning").length;
+  const watchCount = filtered.filter(a => a.severity === "watch").length;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-status-warning/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-status-warning/5">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-status-warning" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-status-warning font-semibold">
+            ORDERING ANOMALIES
+          </h3>
+        </div>
+        <div className="flex items-center gap-3 text-[10px]">
+          {criticalCount > 0 && (
+            <span className="text-status-bad font-semibold">{criticalCount} critical</span>
+          )}
+          {warningCount > 0 && (
+            <span className="text-status-warning font-semibold">{warningCount} warning</span>
+          )}
+          {watchCount > 0 && (
+            <span className="text-accent-blue font-semibold">{watchCount} watch</span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs text-text-muted">
+            Customers who are overdue based on their own historical ordering pattern.
+          </p>
+          {churnedCount > 0 && (
+            <button
+              onClick={onToggleChurned}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                hideChurned
+                  ? "bg-accent-blue/20 text-accent-blue"
+                  : "bg-text-muted/10 text-text-muted hover:bg-text-muted/20"
+              }`}
+            >
+              {hideChurned ? "Show" : "Hide"} {churnedCount} churned
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {filtered.slice(0, 9).map((anomaly) => (
+            <OrderingAnomalyCard key={anomaly.ns_customer_id} anomaly={anomaly} />
+          ))}
+        </div>
+
+        {filtered.length > 9 && (
+          <div className="mt-4 pt-3 border-t border-border/20 text-center">
+            <span className="text-xs text-text-muted">
+              +{filtered.length - 9} more customers with ordering anomalies
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 // ============================================================================
 // SORTABLE TABLE HEADER
@@ -724,6 +996,8 @@ export function WholesaleDashboard({
   onRefresh,
 }: WholesaleDashboardProps) {
   const [showAllCustomers, setShowAllCustomers] = useState(false);
+  const [showAllAtRisk, setShowAllAtRisk] = useState(false);
+  const [hideChurned, setHideChurned] = useState(true); // Hide churned by default
   const [sortField, setSortField] = useState<SortField>("revenue");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -878,6 +1152,7 @@ export function WholesaleDashboard({
           value={stats.active_customers.toString()}
           subValue={`of ${stats.total_customers} total`}
           delta={stats.customers_delta_pct}
+          description="Ordered in this period"
           icon={Users}
           color="blue"
         />
@@ -887,46 +1162,138 @@ export function WholesaleDashboard({
           icon={ShoppingCart}
           color="purple"
         />
-        <BreakdownCard
-          label="At Risk"
-          value={(data.atRiskCustomers?.length || 0).toString()}
-          subValue="customers need attention"
-          icon={AlertTriangle}
-          color="amber"
-        />
+{/* At Risk - Clickable to expand */}
+        <button
+          onClick={() => setShowAllAtRisk(!showAllAtRisk)}
+          className="relative overflow-hidden bg-bg-secondary rounded-xl border border-status-warning/30 p-5 text-left hover:bg-status-warning/5 transition-all group"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2">
+                At Risk
+              </div>
+              <div className="text-2xl font-semibold tracking-tight text-status-warning tabular-nums">
+                {(data.atRiskCustomers?.length || 0) + (data.orderingAnomalies?.length || 0)}
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-xs text-text-tertiary">Click to view all</span>
+                <ChevronDown className={`w-3 h-3 text-text-muted transition-transform ${showAllAtRisk ? "rotate-180" : ""}`} />
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-status-warning/10">
+              <AlertTriangle className="w-4 h-4 text-status-warning" />
+            </div>
+          </div>
+        </button>
       </div>
 
       {/* ================================================================
-          HEALTH DISTRIBUTION + AT RISK
+          ORDERING ANOMALIES - Always visible (intelligent at-risk detection)
           ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <HealthDistributionCard distribution={stats.health_distribution} />
+      {data.orderingAnomalies && data.orderingAnomalies.length > 0 && (
+        <OrderingAnomaliesSection
+          anomalies={data.orderingAnomalies}
+          hideChurned={hideChurned}
+          onToggleChurned={() => setHideChurned(!hideChurned)}
+        />
+      )}
 
-        <div className="lg:col-span-2 bg-bg-secondary rounded-xl border border-border/30 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-status-warning" />
-              <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-                AT-RISK CUSTOMERS
-              </h3>
+      {/* ================================================================
+          EXPANDED AT-RISK VIEW - Traditional fixed threshold (when clicked)
+          ================================================================ */}
+      {showAllAtRisk && data.atRiskCustomers && data.atRiskCustomers.length > 0 && (() => {
+        const filteredAtRisk = hideChurned
+          ? data.atRiskCustomers.filter(c => !c.is_churned)
+          : data.atRiskCustomers;
+        const churnedAtRiskCount = data.atRiskCustomers.filter(c => c.is_churned).length;
+
+        return (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-status-warning" />
+                <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                  AT-RISK CUSTOMERS (FIXED THRESHOLD)
+                </h3>
+              </div>
+              <div className="flex items-center gap-3">
+                {churnedAtRiskCount > 0 && (
+                  <button
+                    onClick={() => setHideChurned(!hideChurned)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                      hideChurned
+                        ? "bg-accent-blue/20 text-accent-blue"
+                        : "bg-text-muted/10 text-text-muted hover:bg-text-muted/20"
+                    }`}
+                  >
+                    {hideChurned ? "Show" : "Hide"} {churnedAtRiskCount} churned
+                  </button>
+                )}
+                <span className="text-[10px] text-text-muted">
+                  {filteredAtRisk.length} customers • 120+ days since last order
+                </span>
+              </div>
             </div>
-            <span className="text-[10px] text-text-muted">
-              Top 6 by risk score
-            </span>
-          </div>
 
-          {data.atRiskCustomers && data.atRiskCustomers.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {data.atRiskCustomers.slice(0, 6).map((customer) => (
+              {filteredAtRisk.map((customer) => (
                 <AtRiskCustomerCard key={customer.ns_customer_id} customer={customer} />
               ))}
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-40 text-text-muted">
-              <CheckCircle className="w-8 h-8 mb-2 text-status-good" />
-              <span className="text-sm">No at-risk customers</span>
+          </div>
+        );
+      })()}
+
+      {/* ================================================================
+          CUSTOMER HEALTH SUMMARY
+          ================================================================ */}
+      <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-text-tertiary" />
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              CUSTOMER HEALTH SUMMARY
+            </h3>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-status-good tabular-nums">
+              {stats.health_distribution.thriving}
             </div>
-          )}
+            <div className="text-[10px] text-text-muted">Thriving</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-accent-blue tabular-nums">
+              {stats.health_distribution.stable}
+            </div>
+            <div className="text-[10px] text-text-muted">Stable</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-status-warning tabular-nums">
+              {stats.health_distribution.declining}
+            </div>
+            <div className="text-[10px] text-text-muted">Declining</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-status-warning tabular-nums">
+              {stats.health_distribution.at_risk}
+            </div>
+            <div className="text-[10px] text-text-muted">At Risk</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-400 tabular-nums">
+              {stats.health_distribution.new}
+            </div>
+            <div className="text-[10px] text-text-muted">New</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-text-muted tabular-nums">
+              {stats.health_distribution.churned}
+            </div>
+            <div className="text-[10px] text-text-muted">Churned</div>
+          </div>
         </div>
       </div>
 
@@ -945,103 +1312,137 @@ export function WholesaleDashboard({
       )}
 
       {/* ================================================================
-          TOP CUSTOMERS TABLE
+          TOP CUSTOMERS + NEW CUSTOMERS (Side by Side)
           ================================================================ */}
-      <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-        <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-text-tertiary" />
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
-              TOP CUSTOMERS
-            </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* TOP CUSTOMERS TABLE (Left Half) */}
+        <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+          <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-text-tertiary" />
+              <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
+                TOP CUSTOMERS
+              </h3>
+            </div>
+            <span className="text-[10px] text-text-muted">
+              {sortedCustomers.length} customers
+            </span>
           </div>
-          <span className="text-[10px] text-text-muted">
-            {sortedCustomers.length} customers • sorted by {sortField.replace("_", " ")}
-          </span>
+
+          {displayedCustomers.length > 0 ? (
+            <>
+              <div className="overflow-x-auto max-h-[450px] overflow-y-auto">
+                <table className="w-full min-w-[500px]">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="border-b border-border/20 bg-bg-tertiary/95 backdrop-blur-sm">
+                      <th className="py-3 pl-4 pr-2 w-10 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                        #
+                      </th>
+                      <SortableHeader
+                        label="Customer"
+                        field="company"
+                        currentSort={sortField}
+                        currentDirection={sortDirection}
+                        onSort={handleSort}
+                        align="left"
+                      />
+                      <SortableHeader
+                        label="Revenue"
+                        field="revenue"
+                        currentSort={sortField}
+                        currentDirection={sortDirection}
+                        onSort={handleSort}
+                      />
+                      <SortableHeader
+                        label="Orders"
+                        field="orders"
+                        currentSort={sortField}
+                        currentDirection={sortDirection}
+                        onSort={handleSort}
+                      />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedCustomers.map((customer, idx) => (
+                      <tr key={customer.ns_customer_id} className="group border-b border-border/10 hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3 pl-4 pr-2 w-10">
+                          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold tabular-nums ${
+                            idx < 3 ? "bg-status-good/20 text-status-good" : "text-text-muted"
+                          }`}>
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="text-sm text-text-primary truncate max-w-[150px] font-medium">
+                            {customer.company_name}
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <SegmentBadge segment={customer.segment} />
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="text-sm font-semibold text-status-good tabular-nums">
+                            {formatCurrencyFull(customer.total_revenue)}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="text-sm text-text-primary tabular-nums">
+                            {customer.order_count}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {sortedCustomers.length > 10 && (
+                <div className="px-4 py-3 border-t border-border/20 bg-bg-tertiary/20">
+                  <button
+                    onClick={() => setShowAllCustomers(!showAllCustomers)}
+                    className="w-full py-2 text-sm text-accent-blue hover:text-accent-blue/80 flex items-center justify-center gap-1.5 transition-colors font-medium"
+                  >
+                    {showAllCustomers ? (
+                      <>
+                        Show Top 10 <ChevronUp className="w-4 h-4" />
+                      </>
+                    ) : (
+                      <>
+                        Show All {sortedCustomers.length} <ChevronDown className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-56 text-text-muted">
+              <Building2 className="w-10 h-10 mb-3 opacity-40" />
+              <span className="text-sm font-medium">No customer data</span>
+              <span className="text-xs mt-1">Try a different time period</span>
+            </div>
+          )}
         </div>
 
-        {displayedCustomers.length > 0 ? (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px]">
-                <thead>
-                  <tr className="border-b border-border/20 bg-bg-tertiary/30">
-                    <th className="py-3 pl-4 pr-2 w-10 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-                      #
-                    </th>
-                    <SortableHeader
-                      label="Customer"
-                      field="company"
-                      currentSort={sortField}
-                      currentDirection={sortDirection}
-                      onSort={handleSort}
-                      align="left"
-                    />
-                    <SortableHeader
-                      label="Revenue"
-                      field="revenue"
-                      currentSort={sortField}
-                      currentDirection={sortDirection}
-                      onSort={handleSort}
-                    />
-                    <SortableHeader
-                      label="Orders"
-                      field="orders"
-                      currentSort={sortField}
-                      currentDirection={sortDirection}
-                      onSort={handleSort}
-                    />
-                    <SortableHeader
-                      label="Last Order"
-                      field="last_order"
-                      currentSort={sortField}
-                      currentDirection={sortDirection}
-                      onSort={handleSort}
-                    />
-                    <th className="py-3 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-                      Trend
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedCustomers.map((customer, idx) => (
-                    <CustomerRow
-                      key={customer.ns_customer_id}
-                      customer={customer}
-                      rank={idx + 1}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {sortedCustomers.length > 10 && (
-              <div className="px-4 py-3 border-t border-border/20 bg-bg-tertiary/20">
-                <button
-                  onClick={() => setShowAllCustomers(!showAllCustomers)}
-                  className="w-full py-2 text-sm text-accent-blue hover:text-accent-blue/80 flex items-center justify-center gap-1.5 transition-colors font-medium"
-                >
-                  {showAllCustomers ? (
-                    <>
-                      Show Top 10 <ChevronUp className="w-4 h-4" />
-                    </>
-                  ) : (
-                    <>
-                      Show All {sortedCustomers.length} Customers <ChevronDown className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </>
+        {/* NEW CUSTOMERS (Right Half) */}
+        {data.newCustomers && data.newCustomers.length > 0 ? (
+          <NewCustomersSection customers={data.newCustomers} />
         ) : (
-          <div className="flex flex-col items-center justify-center h-56 text-text-muted">
-            <Building2 className="w-10 h-10 mb-3 opacity-40" />
-            <span className="text-sm font-medium">No customer data</span>
-            <span className="text-xs mt-1">Try a different time period</span>
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No new customers in the last 90 days</p>
+            </div>
           </div>
         )}
       </div>
+
+      {/* ================================================================
+          CHURNED CUSTOMERS
+          ================================================================ */}
+      {data.churnedCustomers && data.churnedCustomers.length > 0 && (
+        <ChurnedCustomersSection customers={data.churnedCustomers} />
+      )}
     </div>
   );
 }
