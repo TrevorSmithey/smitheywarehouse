@@ -109,17 +109,20 @@ function getPeriodLabel(period: WholesalePeriod): string {
 // ============================================================================
 
 function SegmentBadge({ segment }: { segment: CustomerSegment }) {
-  const config: Record<CustomerSegment, { label: string; color: string }> = {
-    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good" },
-    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue" },
-    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400" },
-    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning" },
-    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary" },
-    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted" },
+  const config: Record<CustomerSegment, { label: string; color: string; tooltip: string }> = {
+    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Lifetime revenue $25,000+" },
+    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "Lifetime revenue $10,000 - $25,000" },
+    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400", tooltip: "Lifetime revenue $5,000 - $10,000" },
+    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning", tooltip: "Lifetime revenue $1,000 - $5,000" },
+    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary", tooltip: "Lifetime revenue $500 - $1,000" },
+    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted", tooltip: "Lifetime revenue under $500" },
   };
-  const { label, color } = config[segment];
+  const { label, color, tooltip } = config[segment];
   return (
-    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
+    <span
+      className={`text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help ${color}`}
+      title={tooltip}
+    >
       {label}
     </span>
   );
@@ -929,19 +932,13 @@ function OrderingAnomaliesSection({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filtered.slice(0, 9).map((anomaly) => (
-            <OrderingAnomalyCard key={anomaly.ns_customer_id} anomaly={anomaly} />
-          ))}
-        </div>
-
-        {filtered.length > 9 && (
-          <div className="mt-4 pt-3 border-t border-border/20 text-center">
-            <span className="text-xs text-text-muted">
-              +{filtered.length - 9} more customers with ordering anomalies
-            </span>
+        <div className="max-h-[500px] overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {filtered.map((anomaly) => (
+              <OrderingAnomalyCard key={anomaly.ns_customer_id} anomaly={anomaly} />
+            ))}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -1307,35 +1304,6 @@ export function WholesaleDashboard({
       )}
 
       {/* ================================================================
-          NEVER ORDERED + CHURNED CUSTOMERS (Side by Side)
-          ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES (Left Half) */}
-        {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 ? (
-          <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No never-ordered customers found</p>
-            </div>
-          </div>
-        )}
-
-        {/* CHURNED CUSTOMERS (Right Half) */}
-        {data.churnedCustomers && data.churnedCustomers.length > 0 ? (
-          <ChurnedCustomersSection customers={data.churnedCustomers} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <UserMinus className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No churned customers</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ================================================================
           TOP CUSTOMERS + NEW CUSTOMERS (Side by Side)
           ================================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1456,6 +1424,35 @@ export function WholesaleDashboard({
             <div className="text-center text-text-muted">
               <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
               <p className="text-sm">No new customers in the last 90 days</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ================================================================
+          NEVER ORDERED + CHURNED CUSTOMERS (Side by Side)
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES (Left Half) */}
+        {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 ? (
+          <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No never-ordered customers found</p>
+            </div>
+          </div>
+        )}
+
+        {/* CHURNED CUSTOMERS (Right Half) */}
+        {data.churnedCustomers && data.churnedCustomers.length > 0 ? (
+          <ChurnedCustomersSection customers={data.churnedCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <UserMinus className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No churned customers</p>
             </div>
           </div>
         )}
