@@ -206,7 +206,17 @@ function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCo
   );
 }
 
-function HealthBadge({ status }: { status: CustomerHealthStatus }) {
+function HealthBadge({ status, isCorporate }: { status: CustomerHealthStatus; isCorporate?: boolean }) {
+  // Corporate customers get CORP badge instead of health status - it overrides all other types
+  if (isCorporate) {
+    return (
+      <div className="flex items-center gap-1 text-amber-400">
+        <Building2 className="w-3 h-3" />
+        <span className="text-[10px] font-medium">Corporate</span>
+      </div>
+    );
+  }
+
   const config: Record<CustomerHealthStatus, { label: string; color: string; icon: React.ReactNode }> = {
     thriving: { label: "Thriving", color: "text-status-good", icon: <TrendingUp className="w-3 h-3" /> },
     stable: { label: "Stable", color: "text-accent-blue", icon: <CheckCircle className="w-3 h-3" /> },
@@ -323,7 +333,7 @@ function CustomerRow({ customer, rank }: { customer: WholesaleCustomer; rank: nu
           </div>
           <div className="flex items-center gap-2 mt-1">
             <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
-            <HealthBadge status={customer.health_status} />
+            <HealthBadge status={customer.health_status} isCorporate={customer.is_corporate_gifting} />
           </div>
         </div>
       </td>
@@ -418,6 +428,8 @@ interface RevenueChartDataItem {
   month: string;
   displayMonth: string;
   revenue: number;
+  regularRevenue: number;
+  corporateRevenue: number;
   customers: number;
   orders: number;
   avgOrderValue: number;
@@ -453,12 +465,30 @@ function RevenueChartTooltip({ active, payload }: {
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-6">
-          <span className="text-xs text-text-secondary">Revenue</span>
-          <span className="text-sm font-semibold text-status-good tabular-nums">
+          <span className="text-xs text-text-secondary">Total Revenue</span>
+          <span className="text-sm font-semibold text-text-primary tabular-nums">
             {formatCurrency(item.revenue)}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-6">
+        <div className="flex items-center justify-between gap-6 pl-2">
+          <span className="text-xs text-text-muted flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-sm bg-status-good" />
+            Regular B2B
+          </span>
+          <span className="text-sm font-medium text-status-good tabular-nums">
+            {formatCurrency(item.regularRevenue)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6 pl-2">
+          <span className="text-xs text-text-muted flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-sm bg-amber-400" />
+            Corporate
+          </span>
+          <span className="text-sm font-medium text-amber-400 tabular-nums">
+            {formatCurrency(item.corporateRevenue)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-6 pt-2 border-t border-border/20">
           <span className="text-xs text-text-secondary">Orders</span>
           <span className="text-sm font-semibold text-text-primary tabular-nums">
             {item.orders}
@@ -513,10 +543,15 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
     return filtered.map(m => {
       const [year, month] = m.month.split("-").map(Number);
       const date = new Date(year, month - 1, 1);
+      // Use corporate_revenue if available, otherwise all revenue goes to regular
+      const corpRevenue = m.corporate_revenue || 0;
+      const regRevenue = m.regular_revenue || (m.total_revenue - corpRevenue);
       return {
         month: m.month,
         displayMonth: format(date, "MMM"),
         revenue: m.total_revenue,
+        regularRevenue: regRevenue,
+        corporateRevenue: corpRevenue,
         customers: m.unique_customers,
         orders: m.transaction_count,
         avgOrderValue: m.avg_order_value,
@@ -550,9 +585,13 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
             <defs>
-              <linearGradient id="wholesaleRevenueGradient" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="regularRevenueGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#10B981" stopOpacity={0.8} />
-                <stop offset="100%" stopColor="#10B981" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#10B981" stopOpacity={0.4} />
+              </linearGradient>
+              <linearGradient id="corporateRevenueGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.9} />
+                <stop offset="100%" stopColor="#F59E0B" stopOpacity={0.5} />
               </linearGradient>
             </defs>
 
@@ -577,7 +616,8 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
               strokeOpacity={0.4}
             />
 
-            <Bar dataKey="revenue" fill="url(#wholesaleRevenueGradient)" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="regularRevenue" stackId="revenue" fill="url(#regularRevenueGradient)" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="corporateRevenue" stackId="revenue" fill="url(#corporateRevenueGradient)" radius={[3, 3, 0, 0]} />
             <Line
               type="monotone"
               dataKey="customers"
@@ -594,7 +634,11 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
       <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-4 border-t border-border/20">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm bg-status-good" />
-          <span className="text-[10px] text-text-tertiary font-medium">Revenue</span>
+          <span className="text-[10px] text-text-tertiary font-medium">Regular B2B</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm bg-amber-500" />
+          <span className="text-[10px] text-text-tertiary font-medium">Corporate</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-0 border-t border-dashed border-text-tertiary opacity-50" />
@@ -920,7 +964,10 @@ function NewCustomersSection({
 // ============================================================================
 
 function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
-  if (!customers || customers.length === 0) return null;
+  // Filter out corporate customers - they have different ordering patterns
+  const nonCorporateCustomers = customers.filter(c => !c.is_corporate_gifting);
+
+  if (!nonCorporateCustomers || nonCorporateCustomers.length === 0) return null;
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden">
@@ -932,16 +979,16 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
           </h3>
         </div>
         <span className="text-[10px] text-text-muted font-medium">
-          {customers.length} accounts • 365+ days inactive
+          {nonCorporateCustomers.length} accounts • 365+ days inactive
         </span>
       </div>
 
       <p className="px-5 py-3 text-xs text-text-tertiary border-b border-border/10">
-        Former customers who haven&apos;t ordered in over a year. Excludes corporate/major accounts.
+        Former customers who haven&apos;t ordered in over a year. Excludes corporate accounts.
       </p>
 
       <div className="max-h-[400px] overflow-y-auto">
-        {customers.map((customer) => (
+        {nonCorporateCustomers.map((customer) => (
           <div
             key={customer.ns_customer_id}
             className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
@@ -1067,10 +1114,13 @@ function OrderingAnomaliesSection({
   hideChurned: boolean;
   onToggleChurned: () => void;
 }) {
-  if (!anomalies || anomalies.length === 0) return null;
+  // Filter out corporate customers - they have different ordering patterns
+  const nonCorporateAnomalies = anomalies.filter(a => !a.is_corporate_gifting);
 
-  const filtered = hideChurned ? anomalies.filter(a => !a.is_churned) : anomalies;
-  const churnedCount = anomalies.filter(a => a.is_churned).length;
+  if (!nonCorporateAnomalies || nonCorporateAnomalies.length === 0) return null;
+
+  const filtered = hideChurned ? nonCorporateAnomalies.filter(a => !a.is_churned) : nonCorporateAnomalies;
+  const churnedCount = nonCorporateAnomalies.filter(a => a.is_churned).length;
 
   const criticalCount = filtered.filter(a => a.severity === "critical").length;
   const warningCount = filtered.filter(a => a.severity === "warning").length;
@@ -2413,7 +2463,7 @@ export function WholesaleDashboard({
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
-                            <HealthBadge status={customer.health_status} />
+                            <HealthBadge status={customer.health_status} isCorporate={customer.is_corporate_gifting} />
                           </div>
                         </td>
                         <td className="py-3 px-3 text-right">

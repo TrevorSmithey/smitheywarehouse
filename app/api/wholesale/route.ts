@@ -188,6 +188,8 @@ export async function GET(request: Request) {
         total_units: Number(m.total_units) || 0,
         total_revenue: Number(m.total_revenue) || 0,
         avg_order_value: Number(m.avg_order_value) || 0,
+        corporate_revenue: 0, // Will be calculated below
+        regular_revenue: 0, // Will be calculated below
         yoy_revenue_change: Number(m.yoy_revenue_change) || null,
         yoy_customer_change: Number(m.yoy_customer_change) || null,
       }));
@@ -211,6 +213,8 @@ export async function GET(request: Request) {
             total_units: 0,
             total_revenue: 0,
             avg_order_value: 0,
+            corporate_revenue: 0, // Will be calculated below
+            regular_revenue: 0, // Will be calculated below
             yoy_revenue_change: null,
             yoy_customer_change: null,
           };
@@ -242,6 +246,47 @@ export async function GET(request: Request) {
           }
         }
       }
+    }
+
+    // Calculate monthly corporate vs regular revenue breakdown
+    // Build customer category map for revenue breakdown
+    const customerCategoryMapForMonthly = new Map<number, string>();
+    for (const c of customersResult.data || []) {
+      customerCategoryMapForMonthly.set(parseInt(c.ns_customer_id), c.category || "");
+    }
+
+    // Query all transactions from the last 24 months for monthly breakdown
+    const monthlyBreakdownStart = new Date();
+    monthlyBreakdownStart.setMonth(monthlyBreakdownStart.getMonth() - 24);
+    const { data: monthlyTxns } = await supabase
+      .from("ns_wholesale_transactions")
+      .select("ns_customer_id, foreign_total, tran_date")
+      .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
+      .gte("tran_date", monthlyBreakdownStart.toISOString().split("T")[0]);
+
+    // Group transactions by month and calculate corporate vs regular revenue
+    const monthlyRevenueBreakdown = new Map<string, { corporate: number; regular: number }>();
+    for (const txn of monthlyTxns || []) {
+      if (!txn.tran_date) continue;
+      const monthKey = txn.tran_date.substring(0, 7) + "-01"; // YYYY-MM-01 format
+      const revenue = parseFloat(txn.foreign_total) || 0;
+      const category = customerCategoryMapForMonthly.get(txn.ns_customer_id);
+      const isCorporate = category === "Corporate";
+
+      const existing = monthlyRevenueBreakdown.get(monthKey) || { corporate: 0, regular: 0 };
+      if (isCorporate) {
+        existing.corporate += revenue;
+      } else {
+        existing.regular += revenue;
+      }
+      monthlyRevenueBreakdown.set(monthKey, existing);
+    }
+
+    // Merge corporate/regular revenue into monthly stats
+    for (const m of monthly) {
+      const breakdown = monthlyRevenueBreakdown.get(m.month) || { corporate: 0, regular: 0 };
+      m.corporate_revenue = Math.round(breakdown.corporate * 100) / 100;
+      m.regular_revenue = Math.round(breakdown.regular * 100) / 100;
     }
 
     // Process customers - the DB already computes health_status, segment, etc.

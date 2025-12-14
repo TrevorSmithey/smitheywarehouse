@@ -943,6 +943,9 @@ export interface WholesaleMonthlyStats {
   total_units: number;
   total_revenue: number;
   avg_order_value: number;
+  // Revenue breakdown by customer type
+  corporate_revenue: number;
+  regular_revenue: number;
   // YoY comparison (calculated in API)
   yoy_revenue_change: number | null;
   yoy_customer_change: number | null;
