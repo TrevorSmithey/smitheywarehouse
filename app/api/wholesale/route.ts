@@ -594,7 +594,7 @@ export async function GET(request: Request) {
         customerNamesMap.set(parseInt(c.ns_customer_id), c.company_name || `Customer ${c.ns_customer_id}`);
       }
 
-      // Get ALL transactions to find each customer's first order date
+      // Get ALL transactions to find each customer's first order date AND total revenue per period
       // (this is the source of truth, not the customers table)
       const { data: allTxns } = await supabase
         .from("ns_wholesale_transactions")
@@ -602,52 +602,76 @@ export async function GET(request: Request) {
         .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .order("tran_date", { ascending: true });
 
-      // Build map of each customer's first transaction ever
-      const customerFirstTxn = new Map<number, { date: string; revenue: number }>();
+      // Build map of each customer's first transaction ever (for determining "new" status)
+      const customerFirstTxn = new Map<number, { date: string }>();
+      // Build map of each customer's total revenue in current YTD period
+      const customerCurrentYTDRevenue = new Map<number, number>();
+      // Build map of each customer's total revenue in prior YTD period
+      const customerPriorYTDRevenue = new Map<number, number>();
+
       for (const txn of allTxns || []) {
+        const txnDate = new Date(txn.tran_date);
+        const revenue = parseFloat(txn.foreign_total) || 0;
+
+        // Track first transaction date (for "new" status)
         if (!customerFirstTxn.has(txn.ns_customer_id)) {
-          customerFirstTxn.set(txn.ns_customer_id, {
-            date: txn.tran_date,
-            revenue: parseFloat(txn.foreign_total) || 0,
-          });
+          customerFirstTxn.set(txn.ns_customer_id, { date: txn.tran_date });
+        }
+
+        // Accumulate current YTD revenue
+        if (txnDate >= currentYearStart && txnDate <= currentYearEnd) {
+          customerCurrentYTDRevenue.set(
+            txn.ns_customer_id,
+            (customerCurrentYTDRevenue.get(txn.ns_customer_id) || 0) + revenue
+          );
+        }
+
+        // Accumulate prior YTD revenue
+        if (txnDate >= priorYearStart && txnDate <= priorYearEnd) {
+          customerPriorYTDRevenue.set(
+            txn.ns_customer_id,
+            (customerPriorYTDRevenue.get(txn.ns_customer_id) || 0) + revenue
+          );
         }
       }
 
-      // Find NEW customers in current YTD (first transaction in 2025 YTD)
-      const currentFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
+      // Find NEW customers in current YTD (first transaction ever is in 2025 YTD)
+      // Revenue = their TOTAL YTD revenue, not just first order
+      const currentNewCustomers = new Map<number, { revenue: number; firstOrderDate: string; companyName: string }>();
       for (const [customerId, firstTxn] of customerFirstTxn) {
         const firstDate = new Date(firstTxn.date);
         if (firstDate >= currentYearStart && firstDate <= currentYearEnd) {
-          currentFirstOrderByCustomer.set(customerId, {
-            revenue: firstTxn.revenue,
-            date: firstTxn.date,
+          currentNewCustomers.set(customerId, {
+            revenue: customerCurrentYTDRevenue.get(customerId) || 0,
+            firstOrderDate: firstTxn.date,
             companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
         }
       }
 
-      const currentNewCustomerCount = currentFirstOrderByCustomer.size;
-      const currentTotalRevenue = Array.from(currentFirstOrderByCustomer.values())
+      const currentNewCustomerCount = currentNewCustomers.size;
+      const currentTotalRevenue = Array.from(currentNewCustomers.values())
         .reduce((sum, o) => sum + o.revenue, 0);
       const currentAvgOrderValue = currentNewCustomerCount > 0
         ? currentTotalRevenue / currentNewCustomerCount
         : 0;
 
-      // Find NEW customers in prior YTD (first transaction in 2024 YTD)
-      const priorFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
+      // Find NEW customers in prior YTD (first transaction ever is in 2024 YTD)
+      // Revenue = their TOTAL prior YTD revenue, not just first order
+      const priorNewCustomers = new Map<number, { revenue: number; firstOrderDate: string; companyName: string }>();
       for (const [customerId, firstTxn] of customerFirstTxn) {
         const firstDate = new Date(firstTxn.date);
         if (firstDate >= priorYearStart && firstDate <= priorYearEnd) {
-          priorFirstOrderByCustomer.set(customerId, {
-            revenue: firstTxn.revenue,
-            date: firstTxn.date,
+          priorNewCustomers.set(customerId, {
+            revenue: customerPriorYTDRevenue.get(customerId) || 0,
+            firstOrderDate: firstTxn.date,
             companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
         }
       }
 
-      const priorNewCustomerCount = priorFirstOrderByCustomer.size;
-      const priorTotalRevenue = Array.from(priorFirstOrderByCustomer.values())
+      const priorNewCustomerCount = priorNewCustomers.size;
+      const priorTotalRevenue = Array.from(priorNewCustomers.values())
         .reduce((sum, o) => sum + o.revenue, 0);
       const priorAvgOrderValue = priorNewCustomerCount > 0
         ? priorTotalRevenue / priorNewCustomerCount
@@ -662,33 +686,33 @@ export async function GET(request: Request) {
       let currentAdjustedRevenue = currentTotalRevenue;
       let priorAdjustedRevenue = priorTotalRevenue;
 
-      // Find current period outliers
-      for (const [customerId, order] of currentFirstOrderByCustomer) {
-        if (order.revenue > outlierThreshold && outlierThreshold > 0) {
+      // Find current period outliers (using total YTD revenue, not just first order)
+      for (const [customerId, customer] of currentNewCustomers) {
+        if (customer.revenue > outlierThreshold && outlierThreshold > 0) {
           outliers.push({
             ns_customer_id: customerId,
-            company_name: order.companyName,
-            revenue: order.revenue,
-            orderDate: order.date,
+            company_name: customer.companyName,
+            revenue: customer.revenue,
+            orderDate: customer.firstOrderDate,
             period: "current",
-            reason: `>${Math.round(order.revenue / combinedAvg)}x average first order ($${combinedAvg.toLocaleString("en-US", { maximumFractionDigits: 0 })} avg)`,
+            reason: `>${Math.round(customer.revenue / combinedAvg)}x average new customer revenue ($${combinedAvg.toLocaleString("en-US", { maximumFractionDigits: 0 })} avg)`,
           });
-          currentAdjustedRevenue -= order.revenue;
+          currentAdjustedRevenue -= customer.revenue;
         }
       }
 
-      // Find prior period outliers
-      for (const [customerId, order] of priorFirstOrderByCustomer) {
-        if (order.revenue > outlierThreshold && outlierThreshold > 0) {
+      // Find prior period outliers (using total YTD revenue, not just first order)
+      for (const [customerId, customer] of priorNewCustomers) {
+        if (customer.revenue > outlierThreshold && outlierThreshold > 0) {
           outliers.push({
             ns_customer_id: customerId,
-            company_name: order.companyName,
-            revenue: order.revenue,
-            orderDate: order.date,
+            company_name: customer.companyName,
+            revenue: customer.revenue,
+            orderDate: customer.firstOrderDate,
             period: "prior",
-            reason: `>${Math.round(order.revenue / combinedAvg)}x average first order ($${combinedAvg.toLocaleString("en-US", { maximumFractionDigits: 0 })} avg)`,
+            reason: `>${Math.round(customer.revenue / combinedAvg)}x average new customer revenue ($${combinedAvg.toLocaleString("en-US", { maximumFractionDigits: 0 })} avg)`,
           });
-          priorAdjustedRevenue -= order.revenue;
+          priorAdjustedRevenue -= customer.revenue;
         }
       }
 
