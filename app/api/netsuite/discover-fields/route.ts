@@ -15,25 +15,7 @@ export async function GET() {
   }
 
   try {
-    // Query CustomField table for customer entity custom fields
-    const customFields = await executeSuiteQL<{
-      scriptid: string;
-      fieldtype: string;
-      label: string;
-      description: string | null;
-    }>(`
-      SELECT
-        cf.scriptid,
-        cf.fieldtype,
-        cf.label,
-        cf.description
-      FROM CustomField cf
-      WHERE cf.appliesto = 'ENTITY'
-      OR cf.scriptid LIKE 'custentity%'
-      ORDER BY cf.scriptid
-    `);
-
-    // Also get a sample customer with all fields to see what's available
+    // Get a sample customer with all fields to see what's available
     const sampleCustomer = await executeSuiteQL<Record<string, unknown>>(`
       SELECT *
       FROM customer c
@@ -47,9 +29,16 @@ export async function GET() {
       ? Object.keys(sampleCustomer[0]).sort()
       : [];
 
+    // Identify custom fields (custentity_* prefix)
+    const customFields = availableFields.filter(f => f.startsWith("custentity"));
+    const standardFields = availableFields.filter(f => !f.startsWith("custentity"));
+
     return NextResponse.json({
+      totalFields: availableFields.length,
+      customFieldCount: customFields.length,
+      standardFieldCount: standardFields.length,
       customFields,
-      availableFields,
+      standardFields,
       sampleCustomer: sampleCustomer[0] || null,
     });
   } catch (error) {
