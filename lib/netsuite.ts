@@ -72,16 +72,24 @@ function buildAuthHeader(method: string, url: string): string {
 
 /**
  * Execute SuiteQL query against NetSuite
+ * Uses AbortController for timeout and exponential backoff for reliability
  */
 export async function executeSuiteQL<T = Record<string, unknown>>(
   query: string,
-  retries = 3
+  retries = 4
 ): Promise<T[]> {
   const url = `${NS_BASE_URL}/services/rest/query/v1/suiteql`;
+  const TIMEOUT_MS = 30000; // 30 second timeout for Vercel serverless
 
   for (let attempt = 0; attempt < retries; attempt++) {
+    // Create AbortController for timeout handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
     try {
       const authHeader = buildAuthHeader("POST", url);
+
+      console.log(`[NETSUITE] Executing query (attempt ${attempt + 1}/${retries})...`);
 
       const response = await fetch(url, {
         method: "POST",
@@ -91,10 +99,13 @@ export async function executeSuiteQL<T = Record<string, unknown>>(
           Prefer: "transient",
         },
         body: JSON.stringify({ q: query }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (response.status === 429) {
-        console.log(`[NETSUITE] Rate limited, waiting 30s...`);
+        console.log(`[NETSUITE] Rate limited (429), waiting 30s...`);
         await new Promise((r) => setTimeout(r, 30000));
         continue;
       }
@@ -105,11 +116,23 @@ export async function executeSuiteQL<T = Record<string, unknown>>(
       }
 
       const data = await response.json();
+      console.log(`[NETSUITE] Query successful, got ${data.items?.length || 0} items`);
       return (data.items || []) as T[];
     } catch (error) {
-      console.error(`[NETSUITE] Request error (attempt ${attempt + 1}):`, error);
+      clearTimeout(timeoutId);
+
+      // Classify error type for better debugging
+      const isTimeout = error instanceof Error && error.name === "AbortError";
+      const errorType = isTimeout ? "TIMEOUT" : "NETWORK/API";
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+      console.error(`[NETSUITE] ${errorType} error (attempt ${attempt + 1}/${retries}): ${errorMessage}`);
+
       if (attempt < retries - 1) {
-        await new Promise((r) => setTimeout(r, 5000));
+        // Exponential backoff: 2s, 8s, 32s
+        const backoffMs = Math.pow(4, attempt) * 2000;
+        console.log(`[NETSUITE] Waiting ${backoffMs / 1000}s before retry...`);
+        await new Promise((r) => setTimeout(r, backoffMs));
       }
     }
   }

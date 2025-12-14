@@ -85,22 +85,22 @@ export async function GET(request: Request) {
     const klaviyo = createKlaviyoClient();
 
     // ============================================================
-    // 1. Sync sent campaigns from last year (364 days to stay under Klaviyo's 1-year limit)
+    // 1. Sync sent campaigns from last 30 days (historical data already imported)
     // ============================================================
-    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 364 days)...");
+    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 30 days)...");
 
-    const oneYearAgo = daysAgo(364); // 364 days to stay safely under Klaviyo's 1-year limit
+    const thirtyDaysAgo = daysAgo(30); // Only sync recent data - historical already imported
     const now = new Date();
 
-    // Build custom timeframe for reports (Klaviyo API max is 1 year)
+    // Build custom timeframe for reports (30 days is well under Klaviyo's 1-year limit)
     const customTimeframe = {
-      start: oneYearAgo.toISOString().split("T")[0],
+      start: thirtyDaysAgo.toISOString().split("T")[0],
       end: now.toISOString().split("T")[0],
     };
 
     // Get campaigns list and bulk reports in parallel
     const [sentCampaigns, campaignReports] = await Promise.all([
-      klaviyo.getSentCampaigns(oneYearAgo, now),
+      klaviyo.getSentCampaigns(thirtyDaysAgo, now),
       klaviyo.getAllCampaignReports(customTimeframe),
     ]);
 
@@ -330,10 +330,10 @@ export async function GET(request: Request) {
     // Get subscriber counts (current)
     const subscriberCounts = await klaviyo.getSubscriberCounts();
 
-    // Get historical data for backfilling charts (2 years)
+    // Get historical data for last 30 days only (historical data already imported)
     const [subscriberHistory, flowRevenueHistory] = await Promise.all([
-      klaviyo.getSubscriberHistory(customTimeframe),
-      klaviyo.getFlowRevenueHistory(customTimeframe),
+      klaviyo.getSubscriberHistory("last_30_days"),
+      klaviyo.getFlowRevenueHistory("last_30_days"),
     ]);
 
     console.log(`[KLAVIYO SYNC] Flow revenue MTD: $${mtdFlowRevenue.toFixed(2)}, Subscribers: ${subscriberCounts.engaged365}`);
@@ -348,12 +348,12 @@ export async function GET(request: Request) {
     const currentMonth = startOfMonth(now);
     const previousMonth = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-    // Find all distinct months with campaigns (last 364 days to match Klaviyo sync limit)
+    // Find all distinct months with campaigns (last 30 days - historical data already imported)
     const { data: campaignMonths } = await supabase
       .from("klaviyo_campaigns")
       .select("send_time")
       .eq("status", "Sent")
-      .gte("send_time", daysAgo(364).toISOString())
+      .gte("send_time", thirtyDaysAgo.toISOString())
       .order("send_time", { ascending: false });
 
     // Build unique set of month starts
