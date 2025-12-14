@@ -237,43 +237,102 @@ function MetricCard({
 }
 
 // ============================================================================
-// FUNNEL CHART
+// CONVERSION FUNNEL BY FORM TYPE
 // ============================================================================
 
-function FunnelChart({ data }: { data: LeadsResponse }) {
+function ConversionFunnel({ data }: { data: LeadsResponse }) {
   const { funnel } = data;
 
-  const funnelData = [
-    { name: "New", value: funnel.new_leads, color: "#60A5FA" },
-    { name: "Contacted", value: funnel.contacted_leads, color: "#A78BFA" },
-    { name: "Qualified", value: funnel.qualified_leads, color: "#FBBF24" },
-    { name: "Converted", value: funnel.converted_leads, color: "#4ADE80" },
-    { name: "Lost", value: funnel.lost_leads, color: "#F87171" },
+  // Data for each form type
+  const funnelTypes = [
+    {
+      name: "B2B Wholesale",
+      icon: <Building2 className="w-4 h-4" />,
+      color: "#60A5FA",
+      bgColor: "bg-accent-blue/20",
+      total: funnel.wholesale.total,
+      converted: funnel.wholesale.converted,
+      rate: funnel.wholesale.conversion_rate,
+      avgDays: funnel.wholesale.avg_days_to_conversion,
+    },
+    {
+      name: "Corporate",
+      icon: <Gift className="w-4 h-4" />,
+      color: "#A78BFA",
+      bgColor: "bg-purple-400/20",
+      total: funnel.corporate.total,
+      converted: funnel.corporate.converted,
+      rate: funnel.corporate.conversion_rate,
+      avgDays: funnel.corporate.avg_days_to_conversion,
+    },
   ];
-
-  const total = funnel.total_leads || 1; // Avoid division by zero
 
   return (
     <div className="bg-surface-secondary rounded-lg p-4 border border-border/30">
-      <h3 className="text-sm font-medium text-text-primary mb-4">Lead Funnel</h3>
-      <div className="space-y-2">
-        {funnelData.map((item) => {
-          const pct = (item.value / total) * 100;
-          return (
-            <div key={item.name} className="flex items-center gap-3">
-              <span className="text-xs text-text-muted w-20">{item.name}</span>
-              <div className="flex-1 h-6 bg-surface-primary rounded overflow-hidden">
-                <div
-                  className="h-full rounded transition-all duration-500"
-                  style={{ width: `${pct}%`, backgroundColor: item.color }}
-                />
-              </div>
-              <span className="text-xs font-medium text-text-secondary w-12 text-right">
-                {item.value}
-              </span>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-text-primary">Conversion by Form Type</h3>
+        <span className="text-[10px] text-text-muted uppercase">T365</span>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {funnelTypes.map((type) => (
+          <div key={type.name} className="space-y-3">
+            {/* Header */}
+            <div className="flex items-center gap-2">
+              <span style={{ color: type.color }}>{type.icon}</span>
+              <span className="text-xs font-medium text-text-secondary">{type.name}</span>
             </div>
-          );
-        })}
+
+            {/* Funnel visualization */}
+            <div className="space-y-1.5">
+              {/* Total leads */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-7 bg-surface-primary rounded overflow-hidden">
+                  <div
+                    className="h-full rounded flex items-center justify-between px-2"
+                    style={{ width: "100%", backgroundColor: `${type.color}33` }}
+                  >
+                    <span className="text-[10px] text-text-muted">Leads</span>
+                    <span className="text-xs font-medium" style={{ color: type.color }}>
+                      {type.total}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Converted */}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-7 bg-surface-primary rounded overflow-hidden">
+                  <div
+                    className="h-full rounded flex items-center justify-between px-2"
+                    style={{
+                      width: type.total > 0 ? `${Math.max((type.converted / type.total) * 100, 15)}%` : "15%",
+                      backgroundColor: "#4ADE8033",
+                    }}
+                  >
+                    <span className="text-[10px] text-text-muted">Conv</span>
+                    <span className="text-xs font-medium text-status-good">
+                      {type.converted}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Metrics */}
+            <div className="pt-2 border-t border-border/20 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-text-muted">Rate</span>
+                <span className="font-medium text-status-good">{type.rate}%</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-text-muted">Avg Days</span>
+                <span className="font-medium text-text-secondary">
+                  {type.avgDays !== null ? type.avgDays : "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -757,18 +816,9 @@ export function LeadsDashboard({ data, loading, onRefresh }: LeadsDashboardProps
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <FunnelChart data={data} />
+        <ConversionFunnel data={data} />
         <VolumeTrendChart data={data} />
       </div>
-
-      {/* Breakdown Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <FormTypeBreakdown data={data} />
-        <MatchStatusBreakdown data={data} />
-      </div>
-
-      {/* Pending Review */}
-      <PendingReviewSection leads={data.pending_review} />
 
       {/* Leads Table */}
       <div>

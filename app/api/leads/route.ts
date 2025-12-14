@@ -15,6 +15,7 @@ import type {
   LeadStatus,
   LeadFormType,
   LeadMatchStatus,
+  FormTypeFunnelMetrics,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -119,10 +120,16 @@ export async function GET(request: Request) {
       match_candidates: row.match_candidates as TypeformLead["match_candidates"],
     }));
 
-    // Get funnel metrics (aggregate counts)
+    // Calculate T365 date filter (trailing 365 days from today)
+    const t365Date = new Date();
+    t365Date.setDate(t365Date.getDate() - 365);
+    const t365Str = t365Date.toISOString();
+
+    // Get funnel metrics - scoped to T365 for relevance
     const { data: funnelData, error: funnelError } = await supabase
       .from("typeform_leads")
-      .select("status, form_type, match_status, converted_at, days_to_conversion, first_order_amount");
+      .select("status, form_type, match_status, converted_at, days_to_conversion, first_order_amount, submitted_at")
+      .gte("submitted_at", t365Str);
 
     if (funnelError) {
       console.error("[LEADS] Funnel query error:", funnelError);
@@ -130,19 +137,11 @@ export async function GET(request: Request) {
 
     const funnel = calculateFunnelMetrics(funnelData || []);
 
-    // Get volume trend (monthly)
-    const { data: volumeData, error: volumeError } = await supabase.rpc(
-      "get_lead_volume_by_month"
-    );
-
-    // If RPC doesn't exist, calculate manually
-    let volumeTrend: LeadVolumeByPeriod[] = [];
-    if (volumeError) {
-      // Fallback: calculate from raw data
-      volumeTrend = calculateVolumeTrend(funnelData || []);
-    } else {
-      volumeTrend = volumeData || [];
-    }
+    // Volume trend is calculated from the full T365 data
+    const volumeTrend = calculateVolumeTrend((funnelData || []).map(row => ({
+      ...row,
+      submitted_at: row.submitted_at,
+    })));
 
     // Get leads pending review (for matching)
     const { data: pendingData } = await supabase
@@ -193,6 +192,7 @@ interface FunnelRow {
   converted_at: string | null;
   days_to_conversion: number | null;
   first_order_amount: number | null;
+  submitted_at: string;
 }
 
 function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
@@ -208,19 +208,35 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
     archived: 0,
   };
 
-  // Count by form type
-  let wholesaleLeads = 0;
-  let corporateLeads = 0;
+  // Count by form type with conversion tracking
+  // Track separately: all leads vs matched leads (where conversion can be tracked)
+  const byFormType = {
+    wholesale: {
+      total: 0,
+      matched: 0, // Leads we can track for conversion
+      converted: 0,
+      totalDays: 0,
+      convertedCount: 0,
+    },
+    corporate: {
+      total: 0,
+      matched: 0,
+      converted: 0,
+      totalDays: 0,
+      convertedCount: 0,
+    },
+  };
 
   // Count by match status
   let autoMatched = 0;
   let manualMatched = 0;
   let pendingMatch = 0;
 
-  // Conversion metrics
+  // Overall conversion metrics (only for matched leads)
   let totalConversionDays = 0;
   let conversionCount = 0;
   let totalConversionRevenue = 0;
+  let totalMatched = 0;
 
   for (const row of data) {
     // Status
@@ -228,55 +244,102 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
       statusCounts[row.status]++;
     }
 
-    // Form type
-    if (row.form_type === "wholesale") wholesaleLeads++;
-    if (row.form_type === "corporate") corporateLeads++;
+    const isMatched = row.match_status === "auto_matched" || row.match_status === "manual_matched";
+
+    // Form type with conversion tracking
+    if (row.form_type === "wholesale") {
+      byFormType.wholesale.total++;
+      if (isMatched) {
+        byFormType.wholesale.matched++;
+        if (row.converted_at) {
+          byFormType.wholesale.converted++;
+          if (row.days_to_conversion !== null) {
+            byFormType.wholesale.totalDays += row.days_to_conversion;
+            byFormType.wholesale.convertedCount++;
+          }
+        }
+      }
+    }
+    if (row.form_type === "corporate") {
+      byFormType.corporate.total++;
+      if (isMatched) {
+        byFormType.corporate.matched++;
+        if (row.converted_at) {
+          byFormType.corporate.converted++;
+          if (row.days_to_conversion !== null) {
+            byFormType.corporate.totalDays += row.days_to_conversion;
+            byFormType.corporate.convertedCount++;
+          }
+        }
+      }
+    }
 
     // Match status
     if (row.match_status === "auto_matched") autoMatched++;
     if (row.match_status === "manual_matched") manualMatched++;
     if (row.match_status === "pending") pendingMatch++;
 
-    // Conversion
-    if (row.converted_at) {
-      conversionCount++;
-      if (row.days_to_conversion !== null) {
-        totalConversionDays += row.days_to_conversion;
-      }
-      if (row.first_order_amount !== null) {
-        totalConversionRevenue += row.first_order_amount;
+    // Overall conversion (only count matched leads)
+    if (isMatched) {
+      totalMatched++;
+      if (row.converted_at) {
+        conversionCount++;
+        if (row.days_to_conversion !== null) {
+          totalConversionDays += row.days_to_conversion;
+        }
+        if (row.first_order_amount !== null) {
+          totalConversionRevenue += row.first_order_amount;
+        }
       }
     }
   }
 
-  // Calculate conversion rate
-  // Denominator: leads that have reached a terminal state (qualified → converted or lost)
-  const terminalLeads =
-    statusCounts.converted + statusCounts.lost + statusCounts.qualified;
-  const conversionRate =
-    terminalLeads > 0
-      ? (statusCounts.converted / terminalLeads) * 100
-      : 0;
+  // Calculate form-type-specific funnel metrics
+  // Conversion rate is based on MATCHED leads (where we can track)
+  const calculateFormTypeMetrics = (
+    stats: typeof byFormType.wholesale
+  ): FormTypeFunnelMetrics => ({
+    total: stats.total,
+    converted: stats.converted,
+    // Conversion rate based on matched leads only (where tracking is possible)
+    conversion_rate:
+      stats.matched > 0
+        ? Math.round((stats.converted / stats.matched) * 1000) / 10
+        : 0,
+    avg_days_to_conversion:
+      stats.convertedCount > 0
+        ? Math.round((stats.totalDays / stats.convertedCount) * 10) / 10
+        : null,
+  });
+
+  // Calculate overall conversion rate (among matched leads only)
+  const overallConversionRate =
+    totalMatched > 0 ? Math.round((conversionCount / totalMatched) * 1000) / 10 : 0;
 
   const avgDaysToConversion =
     conversionCount > 0 ? totalConversionDays / conversionCount : null;
 
   return {
+    // Primary metrics
     total_leads: total,
-    new_leads: statusCounts.new,
-    contacted_leads: statusCounts.contacted,
-    qualified_leads: statusCounts.qualified,
-    converted_leads: statusCounts.converted,
-    lost_leads: statusCounts.lost,
-    wholesale_leads: wholesaleLeads,
-    corporate_leads: corporateLeads,
-    auto_matched: autoMatched,
-    manual_matched: manualMatched,
-    pending_match: pendingMatch,
-    conversion_rate: Math.round(conversionRate * 100) / 100,
+    converted_leads: conversionCount,
+    conversion_rate: overallConversionRate,
     avg_days_to_conversion: avgDaysToConversion
       ? Math.round(avgDaysToConversion * 10) / 10
       : null,
+    // Form type breakdown - the main funnel view
+    wholesale: calculateFormTypeMetrics(byFormType.wholesale),
+    corporate: calculateFormTypeMetrics(byFormType.corporate),
+    // Legacy fields for backwards compatibility
+    new_leads: statusCounts.new,
+    contacted_leads: statusCounts.contacted,
+    qualified_leads: statusCounts.qualified,
+    lost_leads: statusCounts.lost,
+    wholesale_leads: byFormType.wholesale.total,
+    corporate_leads: byFormType.corporate.total,
+    auto_matched: autoMatched,
+    manual_matched: manualMatched,
+    pending_match: pendingMatch,
     total_conversion_revenue: totalConversionRevenue,
     // Deltas would need historical data - placeholder for now
     leads_delta: 0,
@@ -285,46 +348,44 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
   };
 }
 
-interface VolumeRow {
-  form_type: LeadFormType;
-  status: LeadStatus;
-  converted_at: string | null;
-  submitted_at?: string;
-}
-
-function calculateVolumeTrend(data: VolumeRow[]): LeadVolumeByPeriod[] {
+function calculateVolumeTrend(data: FunnelRow[]): LeadVolumeByPeriod[] {
   // Group by month
   const byMonth: Record<
     string,
-    { wholesale: number; corporate: number; converted: number }
+    { wholesale: number; corporate: number; converted: number; matched: number }
   > = {};
 
   for (const row of data) {
-    // Need submitted_at for this - if not available, skip
-    const submittedAt = (row as { submitted_at?: string }).submitted_at;
-    if (!submittedAt) continue;
+    if (!row.submitted_at) continue;
 
-    const month = submittedAt.substring(0, 7); // YYYY-MM
+    const month = row.submitted_at.substring(0, 7); // YYYY-MM
     if (!byMonth[month]) {
-      byMonth[month] = { wholesale: 0, corporate: 0, converted: 0 };
+      byMonth[month] = { wholesale: 0, corporate: 0, converted: 0, matched: 0 };
     }
 
     if (row.form_type === "wholesale") byMonth[month].wholesale++;
     if (row.form_type === "corporate") byMonth[month].corporate++;
-    if (row.converted_at) byMonth[month].converted++;
+
+    const isMatched = row.match_status === "auto_matched" || row.match_status === "manual_matched";
+    if (isMatched) {
+      byMonth[month].matched++;
+      if (row.converted_at) byMonth[month].converted++;
+    }
   }
 
   // Convert to array and sort
   return Object.entries(byMonth)
     .map(([period, counts]) => {
       const total = counts.wholesale + counts.corporate;
+      // Conversion rate based on matched leads (where we can track)
+      const convRate = counts.matched > 0 ? (counts.converted / counts.matched) * 100 : 0;
       return {
         period,
         wholesale: counts.wholesale,
         corporate: counts.corporate,
         total,
         converted: counts.converted,
-        conversion_rate: total > 0 ? (counts.converted / total) * 100 : 0,
+        conversion_rate: Math.round(convRate * 10) / 10,
       };
     })
     .sort((a, b) => a.period.localeCompare(b.period));

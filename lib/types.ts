@@ -1301,26 +1301,34 @@ export interface MatchCandidate {
   match_reasons: string[]; // e.g., ["company_name: 92%", "email_domain: 100%"]
 }
 
+// Metrics for a single form type (wholesale or corporate)
+export interface FormTypeFunnelMetrics {
+  total: number; // All leads of this type
+  converted: number; // Leads that converted (matched + placed order)
+  conversion_rate: number; // converted / matched * 100 (only trackable leads)
+  avg_days_to_conversion: number | null;
+}
+
 export interface LeadFunnelMetrics {
-  // Volume
+  // Overall totals
   total_leads: number;
+  converted_leads: number;
+  conversion_rate: number; // converted / total * 100
+  avg_days_to_conversion: number | null;
+  // By form type - simplified funnel
+  wholesale: FormTypeFunnelMetrics;
+  corporate: FormTypeFunnelMetrics;
+  // Legacy fields kept for backwards compatibility
   new_leads: number;
   contacted_leads: number;
   qualified_leads: number;
-  converted_leads: number;
   lost_leads: number;
-  // By form type
   wholesale_leads: number;
   corporate_leads: number;
-  // Matching
   auto_matched: number;
   manual_matched: number;
   pending_match: number;
-  // Conversion
-  conversion_rate: number; // converted / (qualified + converted + lost) * 100
-  avg_days_to_conversion: number | null;
   total_conversion_revenue: number;
-  // Comparison vs prior period
   leads_delta: number;
   leads_delta_pct: number;
   conversion_rate_delta: number;
