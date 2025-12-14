@@ -1298,8 +1298,8 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
 // ============================================================================
 
 function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
-  // Calculate YTD totals (show 0 if empty)
-  const ytdRevenue = customers.reduce((sum, c) => sum + c.ytd_revenue, 0);
+  // Calculate lifetime totals for corporate customers
+  const lifetimeRevenue = customers.reduce((sum, c) => sum + c.total_revenue, 0);
   const totalOrders = customers.reduce((sum, c) => sum + c.order_count, 0);
 
   return (
@@ -1319,9 +1319,9 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
       {/* Summary Stats */}
       <div className="px-5 py-3 border-b border-border/10 bg-bg-tertiary/30 grid grid-cols-2 gap-4">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-text-muted">YTD Revenue</div>
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Lifetime Revenue</div>
           <div className="text-sm font-semibold text-text-primary tabular-nums">
-            {formatCurrencyFull(ytdRevenue)}
+            {formatCurrencyFull(lifetimeRevenue)}
           </div>
         </div>
         <div>
@@ -1357,9 +1357,9 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
               </div>
               <div className="text-right">
                 <div className={`text-sm font-semibold tabular-nums ${
-                  customer.ytd_revenue > 0 ? "text-status-good" : "text-text-tertiary"
+                  customer.total_revenue > 0 ? "text-status-good" : "text-text-tertiary"
                 }`}>
-                  {customer.ytd_revenue > 0 ? formatCurrencyFull(customer.ytd_revenue) : "$0"}
+                  {formatCurrencyFull(customer.total_revenue)}
                 </div>
                 {customer.last_sale_date && (
                   <div className="text-[10px] text-text-muted">

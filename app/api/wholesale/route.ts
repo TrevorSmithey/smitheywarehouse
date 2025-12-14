@@ -273,7 +273,7 @@ export async function GET(request: Request) {
       const revenue = parseFloat(txn.foreign_total) || 0;
       // Add parseInt to handle potential string type from Supabase
       const category = customerCategoryMapForMonthly.get(parseInt(String(txn.ns_customer_id)));
-      const isCorporate = category === "Corporate";
+      const isCorporate = category === "Corporate" || category === "4";
 
       const existing = monthlyRevenueBreakdown.get(monthKey) || { corporate: 0, regular: 0 };
       if (isCorporate) {
@@ -631,7 +631,7 @@ export async function GET(request: Request) {
       const category = customerCategoryMap.get(t.ns_customer_id);
       const revenue = parseFloat(t.foreign_total) || 0;
 
-      if (category === "Corporate") {
+      if (category === "Corporate" || category === "4") {
         corporateRevenue += revenue;
         corporateOrderCount++;
         corporateCustomerIds.add(t.ns_customer_id);
