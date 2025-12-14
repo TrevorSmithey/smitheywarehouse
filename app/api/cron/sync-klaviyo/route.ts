@@ -85,22 +85,22 @@ export async function GET(request: Request) {
     const klaviyo = createKlaviyoClient();
 
     // ============================================================
-    // 1. Sync sent campaigns from last 2 years (730 days)
+    // 1. Sync sent campaigns from last year (364 days to stay under Klaviyo's 1-year limit)
     // ============================================================
-    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 2 years)...");
+    console.log("[KLAVIYO SYNC] Fetching sent campaigns (last 364 days)...");
 
-    const twoYearsAgo = daysAgo(730);
+    const oneYearAgo = daysAgo(364); // 364 days to stay safely under Klaviyo's 1-year limit
     const now = new Date();
 
-    // Build custom timeframe for reports (2 years back)
+    // Build custom timeframe for reports (Klaviyo API max is 1 year)
     const customTimeframe = {
-      start: twoYearsAgo.toISOString().split("T")[0],
+      start: oneYearAgo.toISOString().split("T")[0],
       end: now.toISOString().split("T")[0],
     };
 
     // Get campaigns list and bulk reports in parallel
     const [sentCampaigns, campaignReports] = await Promise.all([
-      klaviyo.getSentCampaigns(twoYearsAgo, now),
+      klaviyo.getSentCampaigns(oneYearAgo, now),
       klaviyo.getAllCampaignReports(customTimeframe),
     ]);
 
