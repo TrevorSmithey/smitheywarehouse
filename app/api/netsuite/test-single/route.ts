@@ -52,9 +52,26 @@ export async function GET(request: Request) {
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 50 ROWS ONLY
     `},
-    "7": { name: "200 customers 10 fields", query: `
-      SELECT c.id, c.entityid, c.companyname, c.email, c.phone, c.datecreated,
-             c.lastmodifieddate, c.isinactive, c.balance, c.creditlimit
+    "7": { name: "50 customers 5 basic fields", query: `
+      SELECT c.id, c.entityid, c.companyname, c.email, c.phone
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 50 ROWS ONLY
+    `},
+    "8": { name: "50 customers 5 basic + datecreated", query: `
+      SELECT c.id, c.entityid, c.companyname, c.email, c.phone, c.datecreated
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 50 ROWS ONLY
+    `},
+    "9": { name: "50 customers 5 basic + balance", query: `
+      SELECT c.id, c.entityid, c.companyname, c.email, c.phone, c.balance
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 50 ROWS ONLY
+    `},
+    "10": { name: "200 customers 5 basic fields", query: `
+      SELECT c.id, c.entityid, c.companyname, c.email, c.phone
       FROM customer c
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 200 ROWS ONLY
