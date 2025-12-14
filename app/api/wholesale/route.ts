@@ -574,7 +574,8 @@ export async function GET(request: Request) {
     // ========================================================================
     // NEW CUSTOMER ACQUISITION YoY COMPARISON
     // Compare new customers acquired YTD vs same period last year
-    // Includes outlier detection for large orders that skew the comparison
+    // IMPORTANT: We derive "first order date" from the transactions table,
+    // NOT from ns_wholesale_customers.first_order_date (which is incomplete)
     // ========================================================================
     let newCustomerAcquisition: WholesaleNewCustomerAcquisition | null = null;
     const partialErrors: { section: string; message: string }[] = [];
@@ -588,93 +589,74 @@ export async function GET(request: Request) {
       const priorYearStart = new Date(now.getFullYear() - 1, 0, 1);
       const priorYearEnd = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
 
-      // Get first-time customers in current YTD
-      const currentNewCustomers = customers.filter((c) => {
-        if (!c.first_sale_date || c.order_count === 0) return false;
-        const firstOrder = new Date(c.first_sale_date);
-        return firstOrder >= currentYearStart && firstOrder <= currentYearEnd;
-      });
-
-      // Build lookup map for current new customers
-      const currentCustomerIds = currentNewCustomers.map(c => c.ns_customer_id);
-      const currentCustomerNames = new Map<number, string>();
-      for (const c of currentNewCustomers) {
-        currentCustomerNames.set(c.ns_customer_id, c.company_name || `Customer ${c.ns_customer_id}`);
+      // Get customer names lookup from customers table
+      const customerNamesMap = new Map<number, string>();
+      for (const c of customersResult.data || []) {
+        customerNamesMap.set(parseInt(c.ns_customer_id), c.company_name || `Customer ${c.ns_customer_id}`);
       }
 
-      // Get first transactions for current year new customers
-      const { data: currentFirstTxns } = await supabase
+      // Get ALL transactions to find each customer's first order date
+      // (this is the source of truth, not the customers table)
+      const { data: allTxns } = await supabase
         .from("ns_wholesale_transactions")
         .select("ns_customer_id, foreign_total, tran_date")
-        .in("ns_customer_id", currentCustomerIds.length > 0 ? currentCustomerIds : [0])
-        .gte("tran_date", formatDate(currentYearStart))
-        .lte("tran_date", formatDate(currentYearEnd))
+        .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .order("tran_date", { ascending: true });
 
-      // Get first transaction per customer (their first order)
-      const currentFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
-      for (const txn of currentFirstTxns || []) {
-        if (!currentFirstOrderByCustomer.has(txn.ns_customer_id)) {
-          currentFirstOrderByCustomer.set(txn.ns_customer_id, {
-            revenue: parseFloat(txn.foreign_total) || 0,
+      // Build map of each customer's first transaction ever
+      const customerFirstTxn = new Map<number, { date: string; revenue: number }>();
+      for (const txn of allTxns || []) {
+        if (!customerFirstTxn.has(txn.ns_customer_id)) {
+          customerFirstTxn.set(txn.ns_customer_id, {
             date: txn.tran_date,
-            companyName: currentCustomerNames.get(txn.ns_customer_id) || `Customer ${txn.ns_customer_id}`,
+            revenue: parseFloat(txn.foreign_total) || 0,
           });
         }
       }
 
+      // Find NEW customers in current YTD (first transaction in 2025 YTD)
+      const currentFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
+      for (const [customerId, firstTxn] of customerFirstTxn) {
+        const firstDate = new Date(firstTxn.date);
+        if (firstDate >= currentYearStart && firstDate <= currentYearEnd) {
+          currentFirstOrderByCustomer.set(customerId, {
+            revenue: firstTxn.revenue,
+            date: firstTxn.date,
+            companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
+          });
+        }
+      }
+
+      const currentNewCustomerCount = currentFirstOrderByCustomer.size;
       const currentTotalRevenue = Array.from(currentFirstOrderByCustomer.values())
         .reduce((sum, o) => sum + o.revenue, 0);
-      const currentAvgOrderValue = currentNewCustomers.length > 0
-        ? currentTotalRevenue / currentNewCustomers.length
+      const currentAvgOrderValue = currentNewCustomerCount > 0
+        ? currentTotalRevenue / currentNewCustomerCount
         : 0;
 
-      // Query for prior year new customers (first order in prior YTD period)
-      const { data: priorYearCustomers } = await supabase
-        .from("ns_wholesale_customers")
-        .select("ns_customer_id, company_name, first_order_date")
-        .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
-        .gte("first_order_date", formatDate(priorYearStart))
-        .lte("first_order_date", formatDate(priorYearEnd));
-
-      // Build lookup map for prior year customers
-      const priorCustomerIds = (priorYearCustomers || []).map(c => parseInt(c.ns_customer_id));
-      const priorCustomerNames = new Map<number, string>();
-      for (const c of priorYearCustomers || []) {
-        priorCustomerNames.set(parseInt(c.ns_customer_id), c.company_name || `Customer ${c.ns_customer_id}`);
-      }
-
-      // Get first transactions for prior year new customers
-      const { data: priorFirstTxns } = await supabase
-        .from("ns_wholesale_transactions")
-        .select("ns_customer_id, foreign_total, tran_date")
-        .in("ns_customer_id", priorCustomerIds.length > 0 ? priorCustomerIds : [0])
-        .gte("tran_date", formatDate(priorYearStart))
-        .lte("tran_date", formatDate(priorYearEnd))
-        .order("tran_date", { ascending: true });
-
-      // Get first transaction per customer for prior year
+      // Find NEW customers in prior YTD (first transaction in 2024 YTD)
       const priorFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
-      for (const txn of priorFirstTxns || []) {
-        if (!priorFirstOrderByCustomer.has(txn.ns_customer_id)) {
-          priorFirstOrderByCustomer.set(txn.ns_customer_id, {
-            revenue: parseFloat(txn.foreign_total) || 0,
-            date: txn.tran_date,
-            companyName: priorCustomerNames.get(txn.ns_customer_id) || `Customer ${txn.ns_customer_id}`,
+      for (const [customerId, firstTxn] of customerFirstTxn) {
+        const firstDate = new Date(firstTxn.date);
+        if (firstDate >= priorYearStart && firstDate <= priorYearEnd) {
+          priorFirstOrderByCustomer.set(customerId, {
+            revenue: firstTxn.revenue,
+            date: firstTxn.date,
+            companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
         }
       }
 
+      const priorNewCustomerCount = priorFirstOrderByCustomer.size;
       const priorTotalRevenue = Array.from(priorFirstOrderByCustomer.values())
         .reduce((sum, o) => sum + o.revenue, 0);
-      const priorNewCustomerCount = priorYearCustomers?.length || 0;
       const priorAvgOrderValue = priorNewCustomerCount > 0
         ? priorTotalRevenue / priorNewCustomerCount
         : 0;
 
       // Detect outliers: orders > 3x the combined average
       const combinedAvg = (currentTotalRevenue + priorTotalRevenue) /
-        Math.max(1, currentNewCustomers.length + priorNewCustomerCount);
+        Math.max(1, currentNewCustomerCount + priorNewCustomerCount);
       const outlierThreshold = combinedAvg * 3;
 
       const outliers: WholesaleNewCustomerAcquisition["outliers"] = [];
@@ -712,10 +694,10 @@ export async function GET(request: Request) {
       }
 
       // Calculate YoY comparison
-      const customerCountDelta = currentNewCustomers.length - priorNewCustomerCount;
+      const customerCountDelta = currentNewCustomerCount - priorNewCustomerCount;
       const customerCountDeltaPct = priorNewCustomerCount > 0
         ? (customerCountDelta / priorNewCustomerCount) * 100
-        : currentNewCustomers.length > 0 ? 100 : 0;
+        : currentNewCustomerCount > 0 ? 100 : 0;
       const revenueDelta = currentTotalRevenue - priorTotalRevenue;
       const revenueDeltaPct = priorTotalRevenue > 0
         ? (revenueDelta / priorTotalRevenue) * 100
@@ -731,7 +713,7 @@ export async function GET(request: Request) {
         currentPeriod: {
           startDate: formatDate(currentYearStart),
           endDate: formatDate(currentYearEnd),
-          newCustomerCount: currentNewCustomers.length,
+          newCustomerCount: currentNewCustomerCount,
           totalRevenue: Math.round(currentTotalRevenue),
           avgOrderValue: Math.round(currentAvgOrderValue),
         },
