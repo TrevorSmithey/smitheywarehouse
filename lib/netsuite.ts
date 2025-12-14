@@ -324,16 +324,47 @@ export async function fetchWholesaleLineItems(
 
 /**
  * Fetch wholesale customers (business entities)
- * Uses SELECT * to get all available fields dynamically
+ * Uses optimized field list for performance
  */
 export async function fetchWholesaleCustomers(
   offset = 0,
   limit = 1000
 ): Promise<NSCustomer[]> {
-  // Use SELECT * - simpler and more robust than listing all fields
-  // NetSuite returns all fields that exist for each customer
+  // Core fields needed for sync - optimized for performance
   const query = `
-    SELECT *
+    SELECT
+      c.id,
+      c.entityid,
+      c.companyname,
+      c.email,
+      c.phone,
+      c.altphone,
+      c.fax,
+      c.url,
+      c.datecreated,
+      c.lastmodifieddate,
+      c.firstsaledate,
+      c.lastsaledate,
+      c.firstorderdate,
+      c.lastorderdate,
+      c.isinactive,
+      c.parent,
+      BUILTIN.DF(c.terms) as terms,
+      BUILTIN.DF(c.category) as category,
+      BUILTIN.DF(c.entitystatus) as entitystatus,
+      BUILTIN.DF(c.salesrep) as salesrep,
+      BUILTIN.DF(c.territory) as territory,
+      BUILTIN.DF(c.currency) as currency,
+      c.creditlimit,
+      c.balance,
+      c.overduebalance,
+      c.consolbalance,
+      c.unbilledorders,
+      c.depositbalance,
+      c.billaddress,
+      c.shipaddress,
+      c.defaultbillingaddress,
+      c.defaultshippingaddress
     FROM customer c
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)
