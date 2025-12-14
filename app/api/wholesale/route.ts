@@ -331,7 +331,7 @@ export async function GET(request: Request) {
         days_since_last_order: c.days_since_last_order,
         revenue_trend: yoyChange,
         order_trend: 0, // Not computed in DB
-        is_corporate_gifting: c.is_corporate_gifting === true,
+        is_corporate_gifting: c.is_corporate_gifting === true || c.customer_type === "corporate",
       };
     });
 
@@ -418,7 +418,7 @@ export async function GET(request: Request) {
       const daysSinceLastOrder = c.days_since_last_order;
       const firstOrderDate = c.first_order_date ? new Date(c.first_order_date) : null;
       const lastOrderDate = c.last_order_date ? new Date(c.last_order_date) : null;
-      const isCorporate = c.is_corporate_gifting === true;
+      const isCorporate = c.is_corporate_gifting === true || c.customer_type === "corporate";
       const customerId = parseInt(c.ns_customer_id) || 0;
 
       // Skip corporate gifting - rare repeat customers, not useful for anomaly detection
@@ -694,7 +694,7 @@ export async function GET(request: Request) {
     const newCustomers: WholesaleCustomer[] = customers
       .filter((c) => {
         if (!c.first_sale_date || c.order_count === 0) return false;
-        if (c.is_corporate_gifting) return false; // Exclude corporate
+        if (c.is_corporate_gifting || c.customer_type === "corporate") return false; // Exclude corporate
         const firstOrder = new Date(c.first_sale_date);
         return firstOrder >= ninetyDaysAgo;
       })
@@ -709,7 +709,7 @@ export async function GET(request: Request) {
     // Corporate customers - ALL corporate gifting accounts (including $0 revenue)
     // Sorted by YTD revenue descending
     const corporateCustomers: WholesaleCustomer[] = customers
-      .filter((c) => c.is_corporate_gifting)
+      .filter((c) => c.is_corporate_gifting || c.customer_type === "corporate")
       .sort((a, b) => b.ytd_revenue - a.ytd_revenue);
 
     // Churned customers - 365+ days since last order, excludes major/corporate accounts
