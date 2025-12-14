@@ -131,7 +131,7 @@ export async function GET(request: Request) {
     // Get funnel metrics - scoped to T365 for relevance
     const { data: funnelData, error: funnelError } = await supabase
       .from("typeform_leads")
-      .select("status, form_type, match_status, converted_at, days_to_conversion, first_order_amount, submitted_at")
+      .select("status, form_type, match_status, converted_at, days_to_conversion, first_order_amount, submitted_at, ai_fit_score")
       .gte("submitted_at", t365Str);
 
     if (funnelError) {
@@ -196,6 +196,7 @@ interface FunnelRow {
   days_to_conversion: number | null;
   first_order_amount: number | null;
   submitted_at: string;
+  ai_fit_score: number | null;
 }
 
 function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
@@ -234,6 +235,16 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
   let autoMatched = 0;
   let manualMatched = 0;
   let pendingMatch = 0;
+
+  // AI fit score distribution: Poor (1), Weak (2), Maybe (3), Good (4), Great (5), Pending (null)
+  const aiScoreDistribution = {
+    poor: 0,   // 1
+    weak: 0,   // 2
+    maybe: 0,  // 3
+    good: 0,   // 4
+    great: 0,  // 5
+    pending: 0, // null
+  };
 
   // Overall conversion metrics (only for matched leads)
   let totalConversionDays = 0;
@@ -281,6 +292,20 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
     if (row.match_status === "auto_matched") autoMatched++;
     if (row.match_status === "manual_matched") manualMatched++;
     if (row.match_status === "pending") pendingMatch++;
+
+    // AI fit score distribution
+    if (row.ai_fit_score === null) {
+      aiScoreDistribution.pending++;
+    } else {
+      switch (row.ai_fit_score) {
+        case 1: aiScoreDistribution.poor++; break;
+        case 2: aiScoreDistribution.weak++; break;
+        case 3: aiScoreDistribution.maybe++; break;
+        case 4: aiScoreDistribution.good++; break;
+        case 5: aiScoreDistribution.great++; break;
+        default: aiScoreDistribution.maybe++; // fallback
+      }
+    }
 
     // Overall conversion (only count matched leads)
     if (isMatched) {
@@ -344,6 +369,8 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
     manual_matched: manualMatched,
     pending_match: pendingMatch,
     total_conversion_revenue: totalConversionRevenue,
+    // AI fit score distribution
+    ai_score_distribution: aiScoreDistribution,
     // Deltas would need historical data - placeholder for now
     leads_delta: 0,
     leads_delta_pct: 0,

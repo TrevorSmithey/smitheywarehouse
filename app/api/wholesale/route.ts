@@ -688,10 +688,12 @@ export async function GET(request: Request) {
     };
 
     // New customers - first-time buyers in last 90 days
+    // EXCLUDE corporate gifting customers (they're not recurring wholesale accounts)
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     const newCustomers: WholesaleCustomer[] = customers
       .filter((c) => {
         if (!c.first_sale_date || c.order_count === 0) return false;
+        if (c.is_corporate_gifting) return false; // Exclude corporate
         const firstOrder = new Date(c.first_sale_date);
         return firstOrder >= ninetyDaysAgo;
       })
@@ -702,6 +704,12 @@ export async function GET(request: Request) {
         return bDate - aDate;
       })
       .slice(0, 25);
+
+    // Corporate customers - ALL corporate gifting accounts (including $0 revenue)
+    // Sorted by YTD revenue descending
+    const corporateCustomers: WholesaleCustomer[] = customers
+      .filter((c) => c.is_corporate_gifting)
+      .sort((a, b) => b.total_revenue - a.total_revenue);
 
     // Churned customers - 365+ days since last order, excludes major/corporate accounts
     const churnedCustomers: WholesaleCustomer[] = customers
@@ -718,9 +726,19 @@ export async function GET(request: Request) {
     // Compare new customers acquired YTD vs same period last year
     // IMPORTANT: We derive "first order date" from the transactions table,
     // NOT from ns_wholesale_customers.first_order_date (which is incomplete)
+    // EXCLUDES: Corporate gifting customers (not recurring B2B accounts)
     // ========================================================================
     let newCustomerAcquisition: WholesaleNewCustomerAcquisition | null = null;
     const partialErrors: { section: string; message: string }[] = [];
+
+    // Build set of corporate gifting customer IDs to exclude from YoY calculation
+    // (Uses is_corporate_gifting flag, not category - these are non-recurring gifting accounts)
+    const corporateGiftingIds = new Set<number>();
+    for (const c of customersResult.data || []) {
+      if (c.is_corporate_gifting === true) {
+        corporateGiftingIds.add(parseInt(c.ns_customer_id));
+      }
+    }
 
     try {
       // Current YTD period
@@ -753,6 +771,11 @@ export async function GET(request: Request) {
       const customerPriorYTDRevenue = new Map<number, number>();
 
       for (const txn of allTxns || []) {
+        // Skip corporate gifting customers - they're not part of recurring B2B book of business
+        if (corporateGiftingIds.has(txn.ns_customer_id)) {
+          continue;
+        }
+
         const txnDate = new Date(txn.tran_date);
         const revenue = parseFloat(txn.foreign_total) || 0;
 
@@ -924,6 +947,7 @@ export async function GET(request: Request) {
       neverOrderedCustomers,
       orderingAnomalies,
       newCustomers,
+      corporateCustomers,
       churnedCustomers,
       recentTransactions,
       topSkus,

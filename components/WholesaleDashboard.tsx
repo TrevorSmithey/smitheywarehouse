@@ -1294,6 +1294,88 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
 }
 
 // ============================================================================
+// CORPORATE CUSTOMERS - All corporate gifting accounts
+// ============================================================================
+
+function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
+  // Calculate totals (show 0 if empty)
+  const totalRevenue = customers.reduce((sum, c) => sum + c.total_revenue, 0);
+  const totalOrders = customers.reduce((sum, c) => sum + c.order_count, 0);
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden h-full flex flex-col">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-accent-blue/5">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-accent-blue" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-accent-blue font-semibold">
+            CORPORATE GIFTING
+          </h3>
+        </div>
+        <span className="text-[10px] text-accent-blue font-medium">
+          {customers.length} accounts
+        </span>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="px-5 py-3 border-b border-border/10 bg-bg-tertiary/30 grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Total Revenue</div>
+          <div className="text-sm font-semibold text-text-primary tabular-nums">
+            {formatCurrencyFull(totalRevenue)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">Total Orders</div>
+          <div className="text-sm font-semibold text-text-primary tabular-nums">
+            {totalOrders.toLocaleString()}
+          </div>
+        </div>
+      </div>
+
+      {/* Customer List - No slicing, show all */}
+      <div className="max-h-[280px] overflow-y-auto flex-1">
+        {customers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-text-muted">
+            <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+            <span className="text-xs">No corporate customers</span>
+          </div>
+        ) : (
+          customers.map((customer) => (
+            <div
+              key={customer.ns_customer_id}
+              className="flex items-center justify-between px-5 py-2.5 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-text-primary truncate font-medium">
+                  {customer.company_name}
+                </div>
+                <div className="text-[10px] text-text-muted">
+                  {customer.order_count === 0
+                    ? "No orders yet"
+                    : `${customer.order_count} order${customer.order_count !== 1 ? "s" : ""}`}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-sm font-semibold tabular-nums ${
+                  customer.total_revenue > 0 ? "text-status-good" : "text-text-tertiary"
+                }`}>
+                  {customer.total_revenue > 0 ? formatCurrencyFull(customer.total_revenue) : "$0"}
+                </div>
+                {customer.last_sale_date && (
+                  <div className="text-[10px] text-text-muted">
+                    Last: {format(new Date(customer.last_sale_date), "MMM d")}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // SEGMENT INTELLIGENCE - Actionable Business Intelligence
 // ============================================================================
 
@@ -2569,11 +2651,33 @@ export function WholesaleDashboard({
       )}
 
       {/* ================================================================
-          RECENT TRANSACTIONS (Full Width)
+          RECENT TRANSACTIONS + CORPORATE CUSTOMERS (Side by Side)
           ================================================================ */}
-      {data.recentTransactions && data.recentTransactions.length > 0 && (
-        <RecentTransactionsSection transactions={data.recentTransactions} />
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* RECENT TRANSACTIONS (Left Half) */}
+        {data.recentTransactions && data.recentTransactions.length > 0 ? (
+          <RecentTransactionsSection transactions={data.recentTransactions} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <Activity className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No recent transactions</p>
+            </div>
+          </div>
+        )}
+
+        {/* CORPORATE GIFTING CUSTOMERS (Right Half) */}
+        {data.corporateCustomers && data.corporateCustomers.length > 0 ? (
+          <CorporateCustomersSection customers={data.corporateCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No corporate gifting accounts</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1144,8 +1144,10 @@ export interface WholesaleResponse {
   neverOrderedCustomers: WholesaleNeverOrderedCustomer[];
   // Ordering anomalies - customers late based on their own pattern (the RIGHT way)
   orderingAnomalies: WholesaleOrderingAnomaly[];
-  // New customers - first-time buyers in last 90 days
+  // New customers - first-time buyers in last 90 days (excludes corporate gifting)
   newCustomers: WholesaleCustomer[];
+  // Corporate gifting customers - all accounts flagged as corporate (show all, no slicing)
+  corporateCustomers: WholesaleCustomer[];
   // Churned customers - 365+ days since last order (excludes corporate/major accounts)
   churnedCustomers: WholesaleCustomer[];
   // Recent transactions
@@ -1344,6 +1346,15 @@ export interface LeadFunnelMetrics {
   leads_delta: number;
   leads_delta_pct: number;
   conversion_rate_delta: number;
+  // AI fit score distribution (1-5 scale + pending)
+  ai_score_distribution: {
+    poor: number;   // Score 1
+    weak: number;   // Score 2
+    maybe: number;  // Score 3
+    good: number;   // Score 4
+    great: number;  // Score 5
+    pending: number; // Not yet analyzed
+  };
 }
 
 export interface LeadVolumeByPeriod {
