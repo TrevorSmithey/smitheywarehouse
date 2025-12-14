@@ -382,10 +382,34 @@ export async function GET(request: Request) {
       }));
 
     // ========================================================================
-    // ORDERING ANOMALIES - The intelligent way to detect at-risk customers
-    // Instead of fixed thresholds, we analyze each customer's own pattern
+    // ORDERING ANOMALIES - B2B Wholesale only
+    // Excludes corporate gifting (rare repeat customers)
+    // Uses median intervals + coefficient of variation for robustness
     // ========================================================================
+
+    // Query transaction-level data to calculate actual intervals per customer
+    const { data: intervalData } = await supabase.rpc("get_customer_order_intervals", {
+      min_order_count: 4,
+    });
+
     const orderingAnomalies: WholesaleOrderingAnomaly[] = [];
+
+    // Build a map of interval stats from RPC call
+    const intervalMap = new Map<number, {
+      medianInterval: number;
+      meanInterval: number;
+      stdDev: number;
+    }>();
+
+    if (intervalData) {
+      for (const row of intervalData) {
+        intervalMap.set(row.ns_customer_id, {
+          medianInterval: row.median_interval || 0,
+          meanInterval: row.mean_interval || 0,
+          stdDev: row.std_dev || 0,
+        });
+      }
+    }
 
     for (const c of customersResult.data || []) {
       const orderCount = c.lifetime_orders || 0;
@@ -393,38 +417,56 @@ export async function GET(request: Request) {
       const daysSinceLastOrder = c.days_since_last_order;
       const firstOrderDate = c.first_order_date ? new Date(c.first_order_date) : null;
       const lastOrderDate = c.last_order_date ? new Date(c.last_order_date) : null;
+      const isCorporate = c.is_corporate_gifting === true;
+      const customerId = parseInt(c.ns_customer_id) || 0;
 
-      // Skip customers without enough data to establish a RELIABLE pattern
-      // Need at least 4 orders - with only 2-3 orders, the "interval" could be noise
-      // (e.g., a split shipment over 2 days doesn't mean they order every 2 days)
+      // Skip corporate gifting - rare repeat customers, not useful for anomaly detection
+      if (isCorporate) {
+        continue;
+      }
+
+      // Skip customers without enough data
       if (orderCount < 4 || !firstOrderDate || !lastOrderDate || daysSinceLastOrder === null) {
         continue;
       }
 
-      // Calculate their average order interval (days between orders)
-      const daysBetweenFirstAndLast = Math.floor(
-        (lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      const avgOrderIntervalDays = daysBetweenFirstAndLast / (orderCount - 1);
+      // Get interval stats (from RPC or fallback to simple calculation)
+      let medianInterval: number;
+      let coefficientOfVariation: number;
 
-      // Skip if average interval is too short (< 14 days) or too long (> 180 days)
-      // < 14 days: likely noise from split shipments, not a real pattern
-      // > 180 days: too infrequent to establish meaningful expectations
-      if (avgOrderIntervalDays < 14 || avgOrderIntervalDays > 180) {
+      const stats = intervalMap.get(customerId);
+      if (stats && stats.medianInterval > 0) {
+        medianInterval = stats.medianInterval;
+        // Coefficient of variation = stdDev / mean (lower = more consistent)
+        coefficientOfVariation = stats.meanInterval > 0 ? stats.stdDev / stats.meanInterval : 999;
+      } else {
+        // Fallback to simple mean calculation
+        const daysBetweenFirstAndLast = Math.floor(
+          (lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        medianInterval = daysBetweenFirstAndLast / (orderCount - 1);
+        coefficientOfVariation = 0.5; // Assume moderate variability for fallback
+      }
+
+      // Skip if interval is too short (split shipments) or too long (infrequent)
+      if (medianInterval < 14 || medianInterval > 180) {
         continue;
       }
 
-      // Calculate when we expected their next order
-      const expectedOrderDate = new Date(lastOrderDate.getTime() + avgOrderIntervalDays * 24 * 60 * 60 * 1000);
+      // Skip highly erratic patterns (CV > 1.5 means std dev is 150% of mean)
+      // These customers don't have a predictable pattern we can use
+      if (coefficientOfVariation > 1.5) {
+        continue;
+      }
+
+      // Calculate overdue metrics
+      const expectedOrderDate = new Date(lastOrderDate.getTime() + medianInterval * 24 * 60 * 60 * 1000);
       const daysOverdue = Math.floor(
         (now.getTime() - expectedOrderDate.getTime()) / (1000 * 60 * 60 * 24)
       );
+      const overdueRatio = daysSinceLastOrder / medianInterval;
 
-      // Calculate overdue ratio (how late they are relative to their pattern)
-      // >1 means they're past their expected order date
-      const overdueRatio = daysSinceLastOrder / avgOrderIntervalDays;
-
-      // Only include customers who are at least 20% overdue (ratio > 1.2)
+      // Only include customers who are >20% overdue
       if (overdueRatio <= 1.2) {
         continue;
       }
@@ -432,20 +474,20 @@ export async function GET(request: Request) {
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
 
       orderingAnomalies.push({
-        ns_customer_id: parseInt(c.ns_customer_id) || 0,
+        ns_customer_id: customerId,
         company_name: c.company_name || `Customer ${c.ns_customer_id}`,
         segment,
         total_revenue: totalRevenue,
         order_count: orderCount,
-        avg_order_interval_days: Math.round(avgOrderIntervalDays),
+        avg_order_interval_days: Math.round(medianInterval),
         last_order_date: c.last_order_date,
         days_since_last_order: daysSinceLastOrder,
         expected_order_date: expectedOrderDate.toISOString().split("T")[0],
         days_overdue: daysOverdue,
-        overdue_ratio: Math.round(overdueRatio * 100) / 100, // Round to 2 decimal places
+        overdue_ratio: Math.round(overdueRatio * 100) / 100,
         severity: getAnomalySeverity(overdueRatio),
         is_churned: daysSinceLastOrder >= 365,
-        is_corporate_gifting: c.is_corporate_gifting === true,
+        is_corporate_gifting: false, // Always false now since we skip corporate
       });
     }
 

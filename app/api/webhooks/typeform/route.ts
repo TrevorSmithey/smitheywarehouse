@@ -17,7 +17,8 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getAutoMatchResult, type CustomerForMatching } from "@/lib/fuzzy-match";
-import type { LeadFormType } from "@/lib/types";
+import type { LeadFormType, TypeformLead } from "@/lib/types";
+import Anthropic from "@anthropic-ai/sdk";
 
 // Typeform webhook payload structure
 interface TypeformWebhook {
@@ -319,6 +320,125 @@ function getFormType(formId: string): LeadFormType {
   return "wholesale";
 }
 
+// AI Analysis prompts
+const B2B_WHOLESALE_PROMPT = `You are evaluating wholesale partnership applications for Smithey Ironware, a premium cast iron and carbon steel cookware company based in Charleston, SC. Our products are heirloom-quality, handcrafted cookware priced at $200-$500+ per piece.
+
+IDEAL WHOLESALE PARTNERS:
+- Established retail stores with 3+ years in business
+- Premium kitchenware, home goods, or specialty food stores
+- High-end hospitality (restaurants, hotels, resorts)
+- Curated lifestyle boutiques with affluent clientele
+- Strong physical presence (brick & mortar preferred)
+- Professional web presence and/or social media
+- Clear understanding of premium positioning
+
+RED FLAGS:
+- Brand new businesses (<1 year)
+- Mass-market discount retailers
+- Vague or generic business descriptions
+- No web/social presence
+- Commodity-focused retailers
+
+Return JSON with:
+{
+  "summary": "2-3 sentence assessment of who this is and their fit",
+  "fit_score": 1-5 (1=poor, 3=maybe, 5=excellent),
+  "recommendation": "APPROVE" | "REVIEW" | "DECLINE"
+}
+
+Only output valid JSON.`;
+
+const CORPORATE_GIFTING_PROMPT = `You are evaluating corporate gifting inquiries for Smithey Ironware, a premium cast iron and carbon steel cookware company. Our corporate program serves businesses giving high-end gifts to clients, employees, or partners.
+
+IDEAL CORPORATE CLIENTS:
+- Established companies with meaningful gifting budgets
+- Executive/VIP gift programs
+- Client appreciation gifts
+- Employee milestone awards (5/10/25 year, retirement)
+- Holiday gifting programs
+- Real estate closing gifts
+
+Return JSON with:
+{
+  "summary": "2-3 sentence assessment of who this is and their gifting needs",
+  "fit_score": 1-5 (1=poor, 3=maybe, 5=excellent),
+  "recommendation": "HIGH_PRIORITY" | "STANDARD" | "LOW_PRIORITY"
+}
+
+Only output valid JSON.`;
+
+interface LeadAnalysisResult {
+  summary: string;
+  fit_score: number;
+  recommendation: string;
+}
+
+/**
+ * Run AI analysis on a new lead
+ */
+async function analyzeLeadWithAI(
+  leadData: ReturnType<typeof extractLeadData>,
+  formType: LeadFormType
+): Promise<LeadAnalysisResult | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn("[TYPEFORM] No ANTHROPIC_API_KEY, skipping AI analysis");
+    return null;
+  }
+
+  const anthropic = new Anthropic({ apiKey });
+  const isB2B = formType === "wholesale";
+  const systemPrompt = isB2B ? B2B_WHOLESALE_PROMPT : CORPORATE_GIFTING_PROMPT;
+
+  // Build context string from lead data
+  const lines: string[] = [`Company: ${leadData.company_name}`];
+  if (leadData.contact_first_name || leadData.contact_last_name) {
+    lines.push(`Contact: ${[leadData.contact_first_name, leadData.contact_last_name].filter(Boolean).join(" ")}${leadData.contact_title ? ` (${leadData.contact_title})` : ""}`);
+  }
+  if (leadData.email) lines.push(`Email: ${leadData.email}`);
+  if (leadData.industry) lines.push(`Industry: ${leadData.industry}`);
+  if (leadData.years_in_business) lines.push(`Years in Business: ${leadData.years_in_business}`);
+  if (leadData.store_type) lines.push(`Store Type: ${leadData.store_type}`);
+  if (leadData.location_count) lines.push(`Locations: ${leadData.location_count}`);
+  if (leadData.city || leadData.state) lines.push(`Location: ${[leadData.city, leadData.state].filter(Boolean).join(", ")}`);
+  if (leadData.has_website !== null) lines.push(`Has Website: ${leadData.has_website ? "Yes" : "No"}`);
+  if (leadData.website) lines.push(`Website: ${leadData.website}`);
+  if (leadData.has_instagram !== null) lines.push(`Has Instagram: ${leadData.has_instagram ? "Yes" : "No"}`);
+  if (leadData.referral_source) lines.push(`How they heard about Smithey: ${leadData.referral_source}`);
+  if (leadData.fit_reason) lines.push(`Why they think they'd be a good fit: ${leadData.fit_reason}`);
+  if (leadData.notes) lines.push(`Additional notes: ${leadData.notes}`);
+
+  const leadContext = lines.join("\n");
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-3-5-haiku-20241022",
+      max_tokens: 500,
+      temperature: 0.3,
+      messages: [{ role: "user", content: `Analyze this ${isB2B ? "wholesale partnership" : "corporate gifting"} application:\n\n${leadContext}` }],
+      system: systemPrompt,
+    });
+
+    const textContent = response.content.find((c) => c.type === "text");
+    if (!textContent || textContent.type !== "text") return null;
+
+    // Parse JSON response
+    let jsonText = textContent.text.trim();
+    const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) jsonText = jsonMatch[1];
+
+    const parsed = JSON.parse(jsonText);
+    return {
+      summary: typeof parsed.summary === "string" ? parsed.summary : "Analysis incomplete.",
+      fit_score: typeof parsed.fit_score === "number" ? Math.max(1, Math.min(5, Math.round(parsed.fit_score))) : 3,
+      recommendation: typeof parsed.recommendation === "string" ? parsed.recommendation : "REVIEW",
+    };
+  } catch (error) {
+    console.error("[TYPEFORM] AI analysis error:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const secret = process.env.TYPEFORM_WEBHOOK_SECRET;
@@ -387,15 +507,38 @@ export async function POST(request: NextRequest) {
     };
 
     // Upsert to typeform_leads
-    const { error: upsertError } = await supabase
+    const { data: upsertedLead, error: upsertError } = await supabase
       .from("typeform_leads")
       .upsert(leadRecord, {
         onConflict: "typeform_response_id",
-      });
+      })
+      .select("id")
+      .single();
 
     if (upsertError) {
       console.error("[TYPEFORM] Upsert error:", upsertError);
       throw upsertError;
+    }
+
+    // Run AI analysis on new lead
+    let aiScore: number | null = null;
+    const analysis = await analyzeLeadWithAI(leadData, formType);
+    if (analysis && upsertedLead?.id) {
+      const { error: updateError } = await supabase
+        .from("typeform_leads")
+        .update({
+          ai_summary: analysis.summary,
+          ai_fit_score: analysis.fit_score,
+          ai_analyzed_at: new Date().toISOString(),
+        })
+        .eq("id", upsertedLead.id);
+
+      if (updateError) {
+        console.error("[TYPEFORM] AI update error:", updateError);
+      } else {
+        aiScore = analysis.fit_score;
+        console.log(`[TYPEFORM] AI analysis: Score ${analysis.fit_score}/5 - ${analysis.recommendation}`);
+      }
     }
 
     const elapsed = Date.now() - startTime;
@@ -428,6 +571,7 @@ export async function POST(request: NextRequest) {
         form_type: formType,
         match_status: matchResult.match_status,
         match_confidence: matchResult.match_confidence,
+        ai_fit_score: aiScore,
       },
     });
   } catch (error) {
