@@ -137,7 +137,6 @@ export async function GET(request: Request) {
       monthlyResult,
       customersResult,
       transactionsResult,
-      lineItemsResult,
       prevTransactionsResult,
       skuResult,
     ] = await Promise.all([
@@ -157,12 +156,6 @@ export async function GET(request: Request) {
         .gte("tran_date", formatDate(rangeStart))
         .lte("tran_date", formatDate(rangeEnd))
         .order("tran_date", { ascending: false }),
-      // Line items in current period (for SKU analysis)
-      supabase
-        .from("ns_wholesale_line_items")
-        .select("*, ns_wholesale_transactions!inner(tran_date)")
-        .gte("ns_wholesale_transactions.tran_date", formatDate(rangeStart))
-        .lte("ns_wholesale_transactions.tran_date", formatDate(rangeEnd)),
       // Previous period transactions for comparison (excluding D2C)
       supabase
         .from("ns_wholesale_transactions")
