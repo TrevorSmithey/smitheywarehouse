@@ -768,7 +768,7 @@ function NewCustomersSection({
       {acquisition && (
         <div className="px-5 py-4 border-b border-border/10 bg-bg-tertiary/30">
           <div className="grid grid-cols-3 gap-4">
-            {/* Current YTD */}
+            {/* Current YTD - show adjusted if outliers exist */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
                 {new Date().getFullYear()} YTD
@@ -777,11 +777,11 @@ function NewCustomersSection({
                 {acquisition.currentPeriod.newCustomerCount.toLocaleString()}
               </div>
               <div className="text-xs text-status-good tabular-nums">
-                {formatCurrencyFull(acquisition.currentPeriod.totalRevenue)}
+                {formatCurrencyFull(hasOutliers ? acquisition.adjustedComparison.currentRevenue : acquisition.currentPeriod.totalRevenue)}
               </div>
             </div>
 
-            {/* Prior YTD */}
+            {/* Prior YTD - show adjusted if outliers exist */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
                 {new Date().getFullYear() - 1} YTD
@@ -790,20 +790,20 @@ function NewCustomersSection({
                 {acquisition.priorPeriod.newCustomerCount.toLocaleString()}
               </div>
               <div className="text-xs text-text-tertiary tabular-nums">
-                {formatCurrencyFull(acquisition.priorPeriod.totalRevenue)}
+                {formatCurrencyFull(hasOutliers ? acquisition.adjustedComparison.priorRevenue : acquisition.priorPeriod.totalRevenue)}
               </div>
             </div>
 
-            {/* YoY Change */}
+            {/* YoY Change - show adjusted if outliers exist */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
                 YoY Change
               </div>
               <div className={`text-lg font-bold tabular-nums ${
-                acquisition.yoyComparison.revenueDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
+                (hasOutliers ? acquisition.adjustedComparison.revenueDeltaPct : acquisition.yoyComparison.revenueDeltaPct) >= 0 ? "text-status-good" : "text-status-bad"
               }`}>
-                {acquisition.yoyComparison.revenueDeltaPct >= 0 ? "+" : ""}
-                {acquisition.yoyComparison.revenueDeltaPct.toFixed(1)}%
+                {(hasOutliers ? acquisition.adjustedComparison.revenueDeltaPct : acquisition.yoyComparison.revenueDeltaPct) >= 0 ? "+" : ""}
+                {(hasOutliers ? acquisition.adjustedComparison.revenueDeltaPct : acquisition.yoyComparison.revenueDeltaPct).toFixed(1)}%
               </div>
               <div className={`text-xs tabular-nums ${
                 acquisition.yoyComparison.customerCountDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
@@ -814,7 +814,7 @@ function NewCustomersSection({
             </div>
           </div>
 
-          {/* Outlier warning + adjusted comparison */}
+          {/* Outlier detail - show raw totals when expanded */}
           {showAdjusted && (
             <div className="mt-3 pt-3 border-t border-border/10">
               <button
@@ -854,12 +854,12 @@ function NewCustomersSection({
               )}
 
               <div className="mt-2 flex items-center justify-between text-[10px]">
-                <span className="text-text-muted">Adjusted (excl. outliers):</span>
+                <span className="text-text-muted">Raw (incl. outliers):</span>
                 <span className={`font-semibold tabular-nums ${
-                  acquisition.adjustedComparison.revenueDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
+                  acquisition.yoyComparison.revenueDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
                 }`}>
-                  {acquisition.adjustedComparison.revenueDeltaPct >= 0 ? "+" : ""}
-                  {acquisition.adjustedComparison.revenueDeltaPct.toFixed(1)}% YoY
+                  {acquisition.yoyComparison.revenueDeltaPct >= 0 ? "+" : ""}
+                  {acquisition.yoyComparison.revenueDeltaPct.toFixed(1)}% YoY
                 </span>
               </div>
             </div>
