@@ -64,6 +64,9 @@ type LeadRow = {
   first_order_date: string | null;
   first_order_amount: number | null;
   days_to_conversion: number | null;
+  ai_summary: string | null;
+  ai_fit_score: number | null;
+  ai_analyzed_at: string | null;
   synced_at: string;
   updated_at: string;
 };

@@ -20,6 +20,8 @@ import {
   Phone,
   ExternalLink,
   Link2,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -192,6 +194,35 @@ function MatchStatusBadge({ status, confidence }: { status: LeadMatchStatus; con
         <span className="opacity-70">({confidence}%)</span>
       )}
     </span>
+  );
+}
+
+function FitScoreBadge({ score }: { score: number | null }) {
+  if (score === null) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-text-muted/10 text-text-muted">
+        <Loader2 className="w-3 h-3 animate-spin" />
+        PENDING
+      </span>
+    );
+  }
+
+  const config: Record<number, { label: string; color: string }> = {
+    1: { label: "POOR", color: "bg-status-error/20 text-status-error" },
+    2: { label: "WEAK", color: "bg-orange-400/20 text-orange-400" },
+    3: { label: "MAYBE", color: "bg-status-warning/20 text-status-warning" },
+    4: { label: "GOOD", color: "bg-accent-blue/20 text-accent-blue" },
+    5: { label: "GREAT", color: "bg-status-good/20 text-status-good" },
+  };
+
+  const { label, color } = config[score] || config[3];
+  return (
+    <InfoTooltip content={`AI Fit Score: ${score}/5`}>
+      <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help ${color}`}>
+        <Sparkles className="w-3 h-3" />
+        {label}
+      </span>
+    </InfoTooltip>
   );
 }
 
@@ -623,7 +654,10 @@ function LeadsTable({ leads }: { leads: TypeformLead[] }) {
                 </button>
               </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">
-                Contact
+                <span className="flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  AI Analysis
+                </span>
               </th>
             </tr>
           </thead>
@@ -653,19 +687,15 @@ function LeadsTable({ leads }: { leads: TypeformLead[] }) {
                   <div className="text-xs">{format(new Date(lead.submitted_at), "MMM d, yyyy")}</div>
                   <div className="text-xs text-text-muted">{formatDistanceToNow(new Date(lead.submitted_at), { addSuffix: true })}</div>
                 </td>
-                <td className="px-4 py-3">
-                  {lead.email && (
-                    <div className="flex items-center gap-1 text-xs text-text-secondary">
-                      <Mail className="w-3 h-3 text-text-muted" />
-                      <span className="truncate max-w-[150px]">{lead.email}</span>
-                    </div>
-                  )}
-                  {lead.phone && (
-                    <div className="flex items-center gap-1 text-xs text-text-muted">
-                      <Phone className="w-3 h-3" />
-                      {lead.phone}
-                    </div>
-                  )}
+                <td className="px-4 py-3 max-w-[250px]">
+                  <div className="flex items-start gap-2">
+                    <FitScoreBadge score={lead.ai_fit_score} />
+                    {lead.ai_summary ? (
+                      <p className="text-xs text-text-secondary line-clamp-2">{lead.ai_summary}</p>
+                    ) : (
+                      <p className="text-xs text-text-muted italic">Analysis pending...</p>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
