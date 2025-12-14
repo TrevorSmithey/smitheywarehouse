@@ -16,7 +16,6 @@ import {
   UserX,
   Building2,
   Gift,
-  Mail,
   Phone,
   ExternalLink,
   Link2,
@@ -37,7 +36,6 @@ import {
 import type {
   LeadsResponse,
   TypeformLead,
-  LeadStatus,
   LeadFormType,
   LeadMatchStatus,
 } from "@/lib/types";
@@ -132,24 +130,6 @@ function InfoTooltip({
 // ============================================================================
 // STATUS BADGES
 // ============================================================================
-
-function LeadStatusBadge({ status }: { status: LeadStatus }) {
-  const config: Record<LeadStatus, { label: string; color: string; icon: React.ReactNode }> = {
-    new: { label: "NEW", color: "bg-accent-blue/20 text-accent-blue", icon: <UserCheck className="w-3 h-3" /> },
-    contacted: { label: "CONTACTED", color: "bg-purple-400/20 text-purple-400", icon: <Mail className="w-3 h-3" /> },
-    qualified: { label: "QUALIFIED", color: "bg-status-warning/20 text-status-warning", icon: <Target className="w-3 h-3" /> },
-    converted: { label: "CONVERTED", color: "bg-status-good/20 text-status-good", icon: <CheckCircle className="w-3 h-3" /> },
-    lost: { label: "LOST", color: "bg-status-error/20 text-status-error", icon: <UserX className="w-3 h-3" /> },
-    archived: { label: "ARCHIVED", color: "bg-text-muted/20 text-text-muted", icon: <AlertCircle className="w-3 h-3" /> },
-  };
-  const { label, color, icon } = config[status];
-  return (
-    <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
-      {icon}
-      {label}
-    </span>
-  );
-}
 
 function FormTypeBadge({ formType }: { formType: LeadFormType }) {
   const config: Record<LeadFormType, { label: string; color: string; icon: React.ReactNode; tooltip: string }> = {
@@ -637,12 +617,6 @@ function LeadsTable({ leads }: { leads: TypeformLead[] }) {
                 Type
               </th>
               <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">
-                Status
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">
-                Match
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">
                 <button
                   onClick={() => toggleSort("submitted_at")}
                   className="flex items-center gap-1 hover:text-text-primary transition-colors"
@@ -677,21 +651,15 @@ function LeadsTable({ leads }: { leads: TypeformLead[] }) {
                 <td className="px-4 py-3">
                   <FormTypeBadge formType={lead.form_type} />
                 </td>
-                <td className="px-4 py-3">
-                  <LeadStatusBadge status={lead.status} />
-                </td>
-                <td className="px-4 py-3">
-                  <MatchStatusBadge status={lead.match_status} confidence={lead.match_confidence} />
-                </td>
                 <td className="px-4 py-3 text-text-secondary">
                   <div className="text-xs">{format(new Date(lead.submitted_at), "MMM d, yyyy")}</div>
                   <div className="text-xs text-text-muted">{formatDistanceToNow(new Date(lead.submitted_at), { addSuffix: true })}</div>
                 </td>
-                <td className="px-4 py-3 max-w-[250px]">
+                <td className="px-4 py-3">
                   <div className="flex items-start gap-2">
                     <FitScoreBadge score={lead.ai_fit_score} />
                     {lead.ai_summary ? (
-                      <p className="text-xs text-text-secondary line-clamp-2">{lead.ai_summary}</p>
+                      <p className="text-xs text-text-secondary">{lead.ai_summary}</p>
                     ) : (
                       <p className="text-xs text-text-muted italic">Analysis pending...</p>
                     )}
