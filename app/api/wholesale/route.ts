@@ -268,9 +268,11 @@ export async function GET(request: Request) {
     const monthlyRevenueBreakdown = new Map<string, { corporate: number; regular: number }>();
     for (const txn of monthlyTxns || []) {
       if (!txn.tran_date) continue;
-      const monthKey = txn.tran_date.substring(0, 7) + "-01"; // YYYY-MM-01 format
+      // Use YYYY-MM format to match RPC output (primary path)
+      const monthKey = txn.tran_date.substring(0, 7); // YYYY-MM format
       const revenue = parseFloat(txn.foreign_total) || 0;
-      const category = customerCategoryMapForMonthly.get(txn.ns_customer_id);
+      // Add parseInt to handle potential string type from Supabase
+      const category = customerCategoryMapForMonthly.get(parseInt(String(txn.ns_customer_id)));
       const isCorporate = category === "Corporate";
 
       const existing = monthlyRevenueBreakdown.get(monthKey) || { corporate: 0, regular: 0 };
@@ -284,7 +286,9 @@ export async function GET(request: Request) {
 
     // Merge corporate/regular revenue into monthly stats
     for (const m of monthly) {
-      const breakdown = monthlyRevenueBreakdown.get(m.month) || { corporate: 0, regular: 0 };
+      // Normalize month key: RPC returns YYYY-MM, view returns YYYY-MM-01
+      const normalizedMonth = m.month.substring(0, 7); // Always use YYYY-MM for lookup
+      const breakdown = monthlyRevenueBreakdown.get(normalizedMonth) || { corporate: 0, regular: 0 };
       m.corporate_revenue = Math.round(breakdown.corporate * 100) / 100;
       m.regular_revenue = Math.round(breakdown.regular * 100) / 100;
     }

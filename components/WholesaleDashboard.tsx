@@ -543,9 +543,9 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: WholesaleMonthlySta
     return filtered.map(m => {
       const [year, month] = m.month.split("-").map(Number);
       const date = new Date(year, month - 1, 1);
-      // Use corporate_revenue if available, otherwise all revenue goes to regular
-      const corpRevenue = m.corporate_revenue || 0;
-      const regRevenue = m.regular_revenue || (m.total_revenue - corpRevenue);
+      // Use nullish coalescing to handle 0 as a valid value (not fallback)
+      const corpRevenue = m.corporate_revenue ?? 0;
+      const regRevenue = m.regular_revenue ?? 0;
       return {
         month: m.month,
         displayMonth: format(date, "MMM"),
