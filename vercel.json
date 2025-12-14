@@ -1,4 +1,18 @@
 {
+  "functions": {
+    "app/api/cron/sync-netsuite-customers/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/sync-netsuite-transactions/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/sync-netsuite-lineitems/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/sync-klaviyo/route.ts": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/tracking/check",
@@ -38,7 +52,7 @@
     },
     {
       "path": "/api/cron/sync-netsuite-lineitems",
-      "schedule": "10 6 * * *"
+      "schedule": "*/10 6-7 * * *"
     }
   ]
 }

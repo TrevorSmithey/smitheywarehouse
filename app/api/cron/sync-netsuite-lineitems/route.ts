@@ -1,9 +1,10 @@
 /**
  * NetSuite Line Items Sync (Part 3 of 3)
  *
- * Syncs wholesale line items from NetSuite.
- * Uses chunked approach - fetches in 200-row batches with safety limit.
- * Optimized for Vercel serverless timeout constraints.
+ * Syncs wholesale line items from NetSuite using incremental cursor.
+ * Uses chunked approach - fetches in 200-row batches.
+ * Persists cursor between runs to handle large datasets (~250K rows).
+ * Each run processes up to 4 minutes of work, then saves progress.
  */
 
 import { NextResponse } from "next/server";
@@ -19,6 +20,9 @@ import { BATCH_SIZES } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Time limit for processing (leave 60s buffer for cleanup)
+const PROCESSING_TIME_LIMIT_MS = 240000; // 4 minutes
+
 export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return unauthorizedResponse();
@@ -32,22 +36,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    console.log("[NETSUITE] Starting line items sync...");
+    // Get the cursor (last offset) from sync details
+    const { data: cursorData } = await supabase
+      .from("sync_logs")
+      .select("details")
+      .eq("sync_type", "netsuite_lineitems_cursor")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .single();
 
-    // Fetch all batches sequentially (smaller batches to avoid timeouts)
-    const limit = 200; // Reduced from 1000 to match customers sync
-    let offset = 0;
+    // Start from saved offset or 0
+    const details = cursorData?.details as { next_offset?: number } | null;
+    let offset = details?.next_offset || 0;
+    const initialOffset = offset;
+
+    console.log(`[NETSUITE] Starting line items sync from offset ${offset}...`);
+
+    const limit = 200;
     let totalFetched = 0;
     let totalUpserted = 0;
     let hasMore = true;
     let batchCount = 0;
+    let isComplete = false;
 
-    while (hasMore && batchCount < 100) { // Safety limit: max 20,000 line items
+    // Process batches until time limit or no more data
+    while (hasMore && (Date.now() - startTime) < PROCESSING_TIME_LIMIT_MS) {
       batchCount++;
-      console.log(`[NETSUITE] Line items batch ${batchCount}: offset ${offset}`);
 
       const lineItems = await fetchWholesaleLineItems(offset, limit);
-      if (lineItems.length === 0) break;
+
+      if (lineItems.length === 0) {
+        // No more data - sync complete
+        isComplete = true;
+        break;
+      }
+
       totalFetched += lineItems.length;
 
       const records = lineItems.map((li: NSLineItem) => ({
@@ -77,27 +100,51 @@ export async function GET(request: Request) {
       }
 
       hasMore = lineItems.length === limit;
-      console.log(`[NETSUITE] Line items batch ${batchCount} done: ${lineItems.length} fetched, ${records.length} upserted`);
+
+      if (batchCount % 10 === 0) {
+        console.log(`[NETSUITE] Line items batch ${batchCount}: ${totalFetched} fetched, ${totalUpserted} upserted`);
+      }
 
       if (hasMore) {
         offset += limit;
-        // Small delay between batches to avoid overwhelming APIs
-        await new Promise((r) => setTimeout(r, 100));
+        // Small delay between batches
+        await new Promise((r) => setTimeout(r, 50));
       }
     }
 
     const elapsed = Date.now() - startTime;
-    console.log(`[NETSUITE] Line items sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
 
+    // Save cursor for next run (or reset to 0 if complete)
+    const nextOffset = isComplete ? 0 : offset;
+    await supabase.from("sync_logs").insert({
+      sync_type: "netsuite_lineitems_cursor",
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      status: "success",
+      records_expected: 0,
+      records_synced: 0,
+      duration_ms: 0,
+      details: { next_offset: nextOffset, last_processed_offset: offset },
+    });
+
+    // Log the actual sync progress
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_lineitems",
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
-      status: "success",
+      status: isComplete ? "success" : "partial",
       records_expected: totalFetched,
       records_synced: totalUpserted,
       duration_ms: elapsed,
+      details: {
+        start_offset: initialOffset,
+        end_offset: offset,
+        is_complete: isComplete,
+        batches: batchCount,
+      },
     });
+
+    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s. Complete: ${isComplete}`);
 
     return NextResponse.json({
       success: true,
@@ -105,6 +152,9 @@ export async function GET(request: Request) {
       fetched: totalFetched,
       upserted: totalUpserted,
       batches: batchCount,
+      startOffset: initialOffset,
+      endOffset: offset,
+      isComplete,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
     });
   } catch (error) {
