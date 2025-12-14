@@ -144,6 +144,7 @@ export class KlaviyoClient {
 
   /**
    * Make authenticated request to Klaviyo API with retry on rate limit
+   * Uses aggressive backoff (15s, 30s, 60s) to handle Klaviyo's strict rate limits
    */
   private async request<T>(
     endpoint: string,
@@ -166,11 +167,24 @@ export class KlaviyoClient {
         },
       });
 
-      // Handle rate limiting with exponential backoff
+      // Handle rate limiting with aggressive backoff to handle Klaviyo's strict limits
       if (response.status === 429 && attempt < retries) {
-        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-        console.log(`[KLAVIYO] Rate limited, waiting ${waitTime}ms...`);
-        await new Promise((r) => setTimeout(r, waitTime));
+        // Try to parse the "Expected available in X seconds" from the response
+        let waitSeconds = 15 * Math.pow(2, attempt); // Default: 15s, 30s, 60s
+
+        try {
+          const errorBody = await response.clone().text();
+          const match = errorBody.match(/Expected available in (\d+) seconds?/);
+          if (match) {
+            // Use the API-suggested wait time + 2s buffer
+            waitSeconds = parseInt(match[1], 10) + 2;
+          }
+        } catch {
+          // Use default if parsing fails
+        }
+
+        console.log(`[KLAVIYO] Rate limited, waiting ${waitSeconds}s before retry...`);
+        await new Promise((r) => setTimeout(r, waitSeconds * 1000));
         continue;
       }
 
