@@ -295,16 +295,16 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
   }
 
   // Calculate form-type-specific funnel metrics
-  // Conversion rate is based on MATCHED leads (where we can track)
+  // Conversion rate is based on ALL leads (not just matched)
   const calculateFormTypeMetrics = (
     stats: typeof byFormType.wholesale
   ): FormTypeFunnelMetrics => ({
     total: stats.total,
     converted: stats.converted,
-    // Conversion rate based on matched leads only (where tracking is possible)
+    // Conversion rate based on all leads of this type
     conversion_rate:
-      stats.matched > 0
-        ? Math.round((stats.converted / stats.matched) * 1000) / 10
+      stats.total > 0
+        ? Math.round((stats.converted / stats.total) * 1000) / 10
         : 0,
     avg_days_to_conversion:
       stats.convertedCount > 0
@@ -312,9 +312,9 @@ function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
         : null,
   });
 
-  // Calculate overall conversion rate (among matched leads only)
+  // Calculate overall conversion rate (against all leads)
   const overallConversionRate =
-    totalMatched > 0 ? Math.round((conversionCount / totalMatched) * 1000) / 10 : 0;
+    total > 0 ? Math.round((conversionCount / total) * 1000) / 10 : 0;
 
   const avgDaysToConversion =
     conversionCount > 0 ? totalConversionDays / conversionCount : null;

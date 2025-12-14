@@ -411,15 +411,13 @@ function VolumeTrendChart({ data }: { data: LeadsResponse }) {
             <Area
               type="monotone"
               dataKey="wholesale"
-              stackId="1"
               stroke="#60A5FA"
               fill="url(#wholesaleGradient)"
-              name="Wholesale"
+              name="B2B Wholesale"
             />
             <Area
               type="monotone"
               dataKey="corporate"
-              stackId="1"
               stroke="#A78BFA"
               fill="url(#corporateGradient)"
               name="Corporate"
