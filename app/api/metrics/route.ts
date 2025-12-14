@@ -506,8 +506,7 @@ export async function GET(request: Request) {
 
     // Calculate daily backlog (orders created - orders fulfilled)
     // Unfulfilled counts already exclude restoration orders at query level
-    const currentUnfulfilled = (unfulfilledSmitheyCount.count || 0) + (unfulfilledSeleryCount.count || 0) +
-                               (partialSmitheyCount.count || 0) + (partialSeleryCount.count || 0);
+    const currentUnfulfilled = smitheyUnfulfilled + seleryUnfulfilled + smitheyPartial + seleryPartial;
     const dailyBacklog = calculateDailyBacklog(dailyOrders, daily, currentUnfulfilled);
 
     const response: MetricsResponse = {
