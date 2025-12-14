@@ -733,10 +733,11 @@ export async function GET(request: Request) {
     const partialErrors: { section: string; message: string }[] = [];
 
     // Build set of corporate gifting customer IDs to exclude from YoY calculation
-    // (Uses is_corporate_gifting flag, not category - these are non-recurring gifting accounts)
+    // Excludes customers with is_corporate_gifting=true OR customer_type='corporate'
+    // (These are non-recurring gifting accounts, not part of B2B book of business)
     const corporateGiftingIds = new Set<number>();
     for (const c of customersResult.data || []) {
-      if (c.is_corporate_gifting === true) {
+      if (c.is_corporate_gifting === true || c.customer_type === "corporate") {
         corporateGiftingIds.add(parseInt(c.ns_customer_id));
       }
     }
