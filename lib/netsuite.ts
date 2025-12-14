@@ -350,13 +350,14 @@ export async function fetchWholesaleLineItems(
 
 /**
  * Fetch wholesale customers (business entities)
- * Uses optimized field list for performance
+ * Simplified query for better performance from serverless environments
+ * BUILTIN.DF calls removed - they cause timeouts from Vercel
  */
 export async function fetchWholesaleCustomers(
   offset = 0,
-  limit = 1000
+  limit = 200
 ): Promise<NSCustomer[]> {
-  // Core fields needed for sync - optimized for performance
+  // Simplified fields - removed BUILTIN.DF calls that cause timeouts
   const query = `
     SELECT
       c.id,
@@ -375,12 +376,12 @@ export async function fetchWholesaleCustomers(
       c.lastorderdate,
       c.isinactive,
       c.parent,
-      BUILTIN.DF(c.terms) as terms,
-      BUILTIN.DF(c.category) as category,
-      BUILTIN.DF(c.entitystatus) as entitystatus,
-      BUILTIN.DF(c.salesrep) as salesrep,
-      BUILTIN.DF(c.territory) as territory,
-      BUILTIN.DF(c.currency) as currency,
+      c.terms,
+      c.category,
+      c.entitystatus,
+      c.salesrep,
+      c.territory,
+      c.currency,
       c.creditlimit,
       c.balance,
       c.overduebalance,
