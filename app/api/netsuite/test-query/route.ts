@@ -52,7 +52,7 @@ export async function GET() {
     results.push({ query: "10 customers (with DF)", status: "failed", time: Date.now() - start3, error: (e as Error).message });
   }
 
-  // Test 4: Full customer query (50 rows)
+  // Test 4: Simplified customer query (50 rows, no BUILTIN.DF)
   const start4 = Date.now();
   try {
     const data = await executeSuiteQL(`
@@ -60,9 +60,7 @@ export async function GET() {
         c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
         c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
         c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
-        BUILTIN.DF(c.terms) as terms, BUILTIN.DF(c.category) as category,
-        BUILTIN.DF(c.entitystatus) as entitystatus, BUILTIN.DF(c.salesrep) as salesrep,
-        BUILTIN.DF(c.territory) as territory, BUILTIN.DF(c.currency) as currency,
+        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency,
         c.creditlimit, c.balance, c.overduebalance, c.consolbalance,
         c.unbilledorders, c.depositbalance, c.billaddress, c.shipaddress,
         c.defaultbillingaddress, c.defaultshippingaddress
@@ -71,9 +69,31 @@ export async function GET() {
       ORDER BY c.id
       FETCH FIRST 50 ROWS ONLY
     `);
-    results.push({ query: "50 customers (full query)", status: "success", time: Date.now() - start4, count: data.length });
+    results.push({ query: "50 customers (no DF)", status: "success", time: Date.now() - start4, count: data.length });
   } catch (e) {
-    results.push({ query: "50 customers (full query)", status: "failed", time: Date.now() - start4, error: (e as Error).message });
+    results.push({ query: "50 customers (no DF)", status: "failed", time: Date.now() - start4, error: (e as Error).message });
+  }
+
+  // Test 5: 200 customers (the actual batch size)
+  const start5 = Date.now();
+  try {
+    const data = await executeSuiteQL(`
+      SELECT
+        c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
+        c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
+        c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
+        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency,
+        c.creditlimit, c.balance, c.overduebalance, c.consolbalance,
+        c.unbilledorders, c.depositbalance, c.billaddress, c.shipaddress,
+        c.defaultbillingaddress, c.defaultshippingaddress
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id
+      FETCH FIRST 200 ROWS ONLY
+    `);
+    results.push({ query: "200 customers (batch size)", status: "success", time: Date.now() - start5, count: data.length });
+  } catch (e) {
+    results.push({ query: "200 customers (batch size)", status: "failed", time: Date.now() - start5, error: (e as Error).message });
   }
 
   return NextResponse.json({
