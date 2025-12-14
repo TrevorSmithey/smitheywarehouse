@@ -55,8 +55,8 @@ async function checkTracking() {
     // Get shipments that need checking:
     // - Status is 'in_transit' (not delivered/returned)
     // - Either never checked or checked more than 1 hour ago
-    // - Only shipments from Nov 15, 2025 onwards (to limit EasyPost costs)
-    const trackingStartDate = "2025-11-15T00:00:00.000Z";
+    // - Only shipments from Dec 8, 2025 onwards (to limit EasyPost costs)
+    const trackingStartDate = "2025-12-08T00:00:00.000Z";
 
     const { data: shipments, error: fetchError } = await supabase
       .from("shipments")
@@ -64,7 +64,7 @@ async function checkTracking() {
       .eq("status", "in_transit")
       .gte("shipped_at", trackingStartDate)
       .or(`checked_at.is.null,checked_at.lt.${oneHourAgo.toISOString()}`)
-      .limit(50); // Process in batches to avoid timeouts
+      .limit(200); // Process in batches - 200/hour clears backlog in ~5 days
 
     if (fetchError) {
       console.error("Error fetching shipments:", fetchError);
