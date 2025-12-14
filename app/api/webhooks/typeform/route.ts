@@ -67,9 +67,10 @@ const FIELD_MAPPING = {
   // Core contact fields
   // B2B: "What is your first name?"
   // Corporate: "What is your first & last name?" (combined - handled specially)
-  first_name: ["what is your first name", "first name"],
-  last_name: ["what is your last name", "last name"],
-  full_name: ["first & last name"], // Corporate form combines first/last
+  // IMPORTANT: Order matters - check full_name BEFORE first/last to avoid partial matches
+  full_name: ["first & last name", "first and last name"], // Corporate form combines first/last
+  first_name: ["what is your first name"],
+  last_name: ["what is your last name"],
 
   // Company name
   // B2B: "What is the name of your store?"
@@ -235,17 +236,20 @@ function extractLeadData(webhook: TypeformWebhook) {
   };
 
   // Handle first/last name - B2B has separate fields, Corporate has combined
-  let firstName = getString(FIELD_MAPPING.first_name);
-  let lastName = getString(FIELD_MAPPING.last_name);
+  // Check full_name FIRST (Corporate form: "What is your first & last name?")
+  const fullName = getString(FIELD_MAPPING.full_name);
+  let firstName: string | null = null;
+  let lastName: string | null = null;
 
-  // Corporate form: "What is your first & last name?" - need to split
-  if (!firstName && !lastName) {
-    const fullName = getString(FIELD_MAPPING.full_name);
-    if (fullName) {
-      const parts = fullName.trim().split(/\s+/);
-      firstName = parts[0] || null;
-      lastName = parts.slice(1).join(" ") || null;
-    }
+  if (fullName) {
+    // Corporate form: split "Sarah Johnson" into first/last
+    const parts = fullName.trim().split(/\s+/);
+    firstName = parts[0] || null;
+    lastName = parts.slice(1).join(" ") || null;
+  } else {
+    // B2B form: separate fields
+    firstName = getString(FIELD_MAPPING.first_name);
+    lastName = getString(FIELD_MAPPING.last_name);
   }
 
   // Get company name - different questions for B2B vs Corporate
