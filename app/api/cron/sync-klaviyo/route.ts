@@ -348,12 +348,12 @@ export async function GET(request: Request) {
     const currentMonth = startOfMonth(now);
     const previousMonth = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-    // Find all distinct months with campaigns (last 2 years)
+    // Find all distinct months with campaigns (last 364 days to match Klaviyo sync limit)
     const { data: campaignMonths } = await supabase
       .from("klaviyo_campaigns")
       .select("send_time")
       .eq("status", "Sent")
-      .gte("send_time", twoYearsAgo.toISOString())
+      .gte("send_time", daysAgo(364).toISOString())
       .order("send_time", { ascending: false });
 
     // Build unique set of month starts
