@@ -408,13 +408,13 @@ export async function GET(request: Request) {
 
     // Never ordered customers - sales opportunities
     // These are accounts in NetSuite that have never placed an order
-    // Current DB schema uses lifetime_orders, created_at instead of order_count, date_created
+    // DB schema: date_created is the NetSuite creation date (when customer was created in NS)
     const neverOrderedCustomers: WholesaleNeverOrderedCustomer[] = (customersResult.data || [])
       .filter((c) => (c.lifetime_orders || 0) === 0)
       .sort((a, b) => {
-        // Sort by created_at (newest first) - these are the hottest leads
-        const aDate = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bDate = b.created_at ? new Date(b.created_at).getTime() : 0;
+        // Sort by date_created (newest first) - these are the hottest leads
+        const aDate = a.date_created ? new Date(a.date_created).getTime() : 0;
+        const bDate = b.date_created ? new Date(b.date_created).getTime() : 0;
         return bDate - aDate;
       })
       .slice(0, 50)
@@ -424,9 +424,9 @@ export async function GET(request: Request) {
         company_name: c.company_name || `Customer ${c.ns_customer_id}`,
         email: null, // Not in current schema
         phone: null, // Not in current schema
-        date_created: c.created_at,
-        days_since_created: c.created_at
-          ? Math.floor((now.getTime() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        date_created: c.date_created,
+        days_since_created: c.date_created
+          ? Math.floor((now.getTime() - new Date(c.date_created).getTime()) / (1000 * 60 * 60 * 24))
           : null,
         category: null, // Not in current schema
         is_inactive: false, // Not in current schema
