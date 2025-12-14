@@ -100,6 +100,24 @@ export async function GET(request: Request) {
 
     const elapsed = Date.now() - startTime;
 
+    // Refresh materialized views for lead funnel stats
+    // Uses CONCURRENTLY to avoid blocking reads
+    console.log("[ANALYZE-LEADS] Refreshing materialized views...");
+    const refreshStart = Date.now();
+
+    const { error: funnelRefreshError } = await supabase.rpc("refresh_lead_funnel_stats");
+    if (funnelRefreshError) {
+      console.error("[ANALYZE-LEADS] Failed to refresh lead_funnel_stats:", funnelRefreshError.message);
+    }
+
+    const { error: volumeRefreshError } = await supabase.rpc("refresh_lead_volume_by_month");
+    if (volumeRefreshError) {
+      console.error("[ANALYZE-LEADS] Failed to refresh lead_volume_by_month:", volumeRefreshError.message);
+    }
+
+    const refreshDuration = Date.now() - refreshStart;
+    console.log(`[ANALYZE-LEADS] Materialized views refreshed in ${refreshDuration}ms`);
+
     // Log to sync_logs
     await supabase.from("sync_logs").insert({
       sync_type: "lead_analysis",
@@ -113,6 +131,7 @@ export async function GET(request: Request) {
         leads_found: unanalyzedLeads.length,
         leads_analyzed: analyzed,
         leads_failed: failed,
+        view_refresh_ms: refreshDuration,
       },
     });
 
@@ -125,6 +144,7 @@ export async function GET(request: Request) {
       analyzed,
       failed,
       duration_ms: elapsed,
+      view_refresh_ms: refreshDuration,
     });
   } catch (error) {
     const elapsed = Date.now() - startTime;

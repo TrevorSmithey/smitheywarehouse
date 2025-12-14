@@ -3,6 +3,9 @@
  *
  * Fetches leads from typeform_leads table with funnel metrics and volume trends.
  * Supports filtering by form_type, status, match_status, and date range.
+ *
+ * OPTIMIZATION: Uses materialized views (lead_funnel_stats, lead_volume_by_month)
+ * for pre-computed metrics instead of calculating in JS on every request.
  */
 
 import { NextResponse } from "next/server";
@@ -15,7 +18,6 @@ import type {
   LeadStatus,
   LeadFormType,
   LeadMatchStatus,
-  FormTypeFunnelMetrics,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -123,28 +125,29 @@ export async function GET(request: Request) {
       match_candidates: row.match_candidates as TypeformLead["match_candidates"],
     }));
 
-    // Calculate T365 date filter (trailing 365 days from today)
-    const t365Date = new Date();
-    t365Date.setDate(t365Date.getDate() - 365);
-    const t365Str = t365Date.toISOString();
-
-    // Get funnel metrics - scoped to T365 for relevance
-    const { data: funnelData, error: funnelError } = await supabase
-      .from("typeform_leads")
-      .select("status, form_type, match_status, converted_at, days_to_conversion, first_order_amount, submitted_at, ai_fit_score")
-      .gte("submitted_at", t365Str);
+    // Get funnel metrics from materialized view (pre-computed, much faster)
+    const { data: funnelRow, error: funnelError } = await supabase
+      .from("lead_funnel_stats")
+      .select("*")
+      .single();
 
     if (funnelError) {
-      console.error("[LEADS] Funnel query error:", funnelError);
+      console.error("[LEADS] Funnel view query error:", funnelError);
     }
 
-    const funnel = calculateFunnelMetrics(funnelData || []);
+    const funnel = transformFunnelViewToMetrics(funnelRow);
 
-    // Volume trend is calculated from the full T365 data
-    const volumeTrend = calculateVolumeTrend((funnelData || []).map(row => ({
-      ...row,
-      submitted_at: row.submitted_at,
-    })));
+    // Get volume trend from materialized view
+    const { data: volumeData, error: volumeError } = await supabase
+      .from("lead_volume_by_month")
+      .select("*")
+      .order("month", { ascending: true });
+
+    if (volumeError) {
+      console.error("[LEADS] Volume view query error:", volumeError);
+    }
+
+    const volumeTrend = transformVolumeViewToTrend(volumeData || []);
 
     // Get leads pending review (for matching)
     const { data: pendingData } = await supabase
@@ -188,235 +191,130 @@ export async function GET(request: Request) {
   }
 }
 
-interface FunnelRow {
-  status: LeadStatus;
-  form_type: LeadFormType;
-  match_status: LeadMatchStatus;
-  converted_at: string | null;
-  days_to_conversion: number | null;
-  first_order_amount: number | null;
-  submitted_at: string;
-  ai_fit_score: number | null;
+// Type for the materialized view row
+interface FunnelViewRow {
+  total_leads: number;
+  converted_leads: number;
+  conversion_rate: string;
+  avg_days_to_conversion: string | null;
+  wholesale_leads: number;
+  corporate_leads: number;
+  wholesale_converted: number;
+  corporate_converted: number;
+  auto_matched: number;
+  manual_matched: number;
+  pending_match: number;
+  ai_score_poor: number;
+  ai_score_weak: number;
+  ai_score_maybe: number;
+  ai_score_good: number;
+  ai_score_great: number;
+  ai_score_pending: number;
+  total_conversion_revenue: string;
+  refreshed_at: string;
 }
 
-function calculateFunnelMetrics(data: FunnelRow[]): LeadFunnelMetrics {
-  const total = data.length;
+interface VolumeViewRow {
+  month: string;
+  wholesale: number;
+  corporate: number;
+  total: number;
+  converted: number;
+  conversion_rate: string;
+}
 
-  // Count by status
-  const statusCounts = {
-    new: 0,
-    contacted: 0,
-    qualified: 0,
-    converted: 0,
-    lost: 0,
-    archived: 0,
-  };
-
-  // Count by form type with conversion tracking
-  // Track separately: all leads vs matched leads (where conversion can be tracked)
-  const byFormType = {
-    wholesale: {
-      total: 0,
-      matched: 0, // Leads we can track for conversion
-      converted: 0,
-      totalDays: 0,
-      convertedCount: 0,
-    },
-    corporate: {
-      total: 0,
-      matched: 0,
-      converted: 0,
-      totalDays: 0,
-      convertedCount: 0,
-    },
-  };
-
-  // Count by match status
-  let autoMatched = 0;
-  let manualMatched = 0;
-  let pendingMatch = 0;
-
-  // AI fit score distribution: Poor (1), Weak (2), Maybe (3), Good (4), Great (5), Pending (null)
-  const aiScoreDistribution = {
-    poor: 0,   // 1
-    weak: 0,   // 2
-    maybe: 0,  // 3
-    good: 0,   // 4
-    great: 0,  // 5
-    pending: 0, // null
-  };
-
-  // Overall conversion metrics (only for matched leads)
-  let totalConversionDays = 0;
-  let conversionCount = 0;
-  let totalConversionRevenue = 0;
-  let totalMatched = 0;
-
-  for (const row of data) {
-    // Status
-    if (row.status && statusCounts[row.status] !== undefined) {
-      statusCounts[row.status]++;
-    }
-
-    const isMatched = row.match_status === "auto_matched" || row.match_status === "manual_matched";
-
-    // Form type with conversion tracking
-    if (row.form_type === "wholesale") {
-      byFormType.wholesale.total++;
-      if (isMatched) {
-        byFormType.wholesale.matched++;
-        if (row.converted_at) {
-          byFormType.wholesale.converted++;
-          if (row.days_to_conversion !== null) {
-            byFormType.wholesale.totalDays += row.days_to_conversion;
-            byFormType.wholesale.convertedCount++;
-          }
-        }
-      }
-    }
-    if (row.form_type === "corporate") {
-      byFormType.corporate.total++;
-      if (isMatched) {
-        byFormType.corporate.matched++;
-        if (row.converted_at) {
-          byFormType.corporate.converted++;
-          if (row.days_to_conversion !== null) {
-            byFormType.corporate.totalDays += row.days_to_conversion;
-            byFormType.corporate.convertedCount++;
-          }
-        }
-      }
-    }
-
-    // Match status
-    if (row.match_status === "auto_matched") autoMatched++;
-    if (row.match_status === "manual_matched") manualMatched++;
-    if (row.match_status === "pending") pendingMatch++;
-
-    // AI fit score distribution
-    if (row.ai_fit_score === null) {
-      aiScoreDistribution.pending++;
-    } else {
-      switch (row.ai_fit_score) {
-        case 1: aiScoreDistribution.poor++; break;
-        case 2: aiScoreDistribution.weak++; break;
-        case 3: aiScoreDistribution.maybe++; break;
-        case 4: aiScoreDistribution.good++; break;
-        case 5: aiScoreDistribution.great++; break;
-        default: aiScoreDistribution.maybe++; // fallback
-      }
-    }
-
-    // Overall conversion (only count matched leads)
-    if (isMatched) {
-      totalMatched++;
-      if (row.converted_at) {
-        conversionCount++;
-        if (row.days_to_conversion !== null) {
-          totalConversionDays += row.days_to_conversion;
-        }
-        if (row.first_order_amount !== null) {
-          totalConversionRevenue += row.first_order_amount;
-        }
-      }
-    }
+/**
+ * Transform materialized view row to LeadFunnelMetrics
+ * Much simpler than calculating in JS - just map fields
+ */
+function transformFunnelViewToMetrics(row: FunnelViewRow | null): LeadFunnelMetrics {
+  if (!row) {
+    // Return empty metrics if view is empty
+    return {
+      total_leads: 0,
+      converted_leads: 0,
+      conversion_rate: 0,
+      avg_days_to_conversion: null,
+      wholesale: { total: 0, converted: 0, conversion_rate: 0, avg_days_to_conversion: null },
+      corporate: { total: 0, converted: 0, conversion_rate: 0, avg_days_to_conversion: null },
+      new_leads: 0,
+      contacted_leads: 0,
+      qualified_leads: 0,
+      lost_leads: 0,
+      wholesale_leads: 0,
+      corporate_leads: 0,
+      auto_matched: 0,
+      manual_matched: 0,
+      pending_match: 0,
+      total_conversion_revenue: 0,
+      ai_score_distribution: { poor: 0, weak: 0, maybe: 0, good: 0, great: 0, pending: 0 },
+      leads_delta: 0,
+      leads_delta_pct: 0,
+      conversion_rate_delta: 0,
+    };
   }
 
-  // Calculate form-type-specific funnel metrics
-  // Conversion rate is based on ALL leads (not just matched)
-  const calculateFormTypeMetrics = (
-    stats: typeof byFormType.wholesale
-  ): FormTypeFunnelMetrics => ({
-    total: stats.total,
-    converted: stats.converted,
-    // Conversion rate based on all leads of this type
-    conversion_rate:
-      stats.total > 0
-        ? Math.round((stats.converted / stats.total) * 1000) / 10
-        : 0,
-    avg_days_to_conversion:
-      stats.convertedCount > 0
-        ? Math.round((stats.totalDays / stats.convertedCount) * 10) / 10
-        : null,
-  });
-
-  // Calculate overall conversion rate (against all leads)
-  const overallConversionRate =
-    total > 0 ? Math.round((conversionCount / total) * 1000) / 10 : 0;
-
-  const avgDaysToConversion =
-    conversionCount > 0 ? totalConversionDays / conversionCount : null;
+  // Calculate form-type conversion rates
+  const wholesaleConvRate = row.wholesale_leads > 0
+    ? Math.round((row.wholesale_converted / row.wholesale_leads) * 1000) / 10
+    : 0;
+  const corporateConvRate = row.corporate_leads > 0
+    ? Math.round((row.corporate_converted / row.corporate_leads) * 1000) / 10
+    : 0;
 
   return {
-    // Primary metrics
-    total_leads: total,
-    converted_leads: conversionCount,
-    conversion_rate: overallConversionRate,
-    avg_days_to_conversion: avgDaysToConversion
-      ? Math.round(avgDaysToConversion * 10) / 10
-      : null,
-    // Form type breakdown - the main funnel view
-    wholesale: calculateFormTypeMetrics(byFormType.wholesale),
-    corporate: calculateFormTypeMetrics(byFormType.corporate),
-    // Legacy fields for backwards compatibility
-    new_leads: statusCounts.new,
-    contacted_leads: statusCounts.contacted,
-    qualified_leads: statusCounts.qualified,
-    lost_leads: statusCounts.lost,
-    wholesale_leads: byFormType.wholesale.total,
-    corporate_leads: byFormType.corporate.total,
-    auto_matched: autoMatched,
-    manual_matched: manualMatched,
-    pending_match: pendingMatch,
-    total_conversion_revenue: totalConversionRevenue,
-    // AI fit score distribution
-    ai_score_distribution: aiScoreDistribution,
-    // Deltas would need historical data - placeholder for now
+    total_leads: row.total_leads,
+    converted_leads: row.converted_leads,
+    conversion_rate: parseFloat(row.conversion_rate) || 0,
+    avg_days_to_conversion: row.avg_days_to_conversion ? parseFloat(row.avg_days_to_conversion) : null,
+    wholesale: {
+      total: row.wholesale_leads,
+      converted: row.wholesale_converted,
+      conversion_rate: wholesaleConvRate,
+      avg_days_to_conversion: null, // Would need separate tracking per form type
+    },
+    corporate: {
+      total: row.corporate_leads,
+      converted: row.corporate_converted,
+      conversion_rate: corporateConvRate,
+      avg_days_to_conversion: null,
+    },
+    // Legacy fields - status counts not in view, default to 0
+    new_leads: 0,
+    contacted_leads: 0,
+    qualified_leads: 0,
+    lost_leads: 0,
+    wholesale_leads: row.wholesale_leads,
+    corporate_leads: row.corporate_leads,
+    auto_matched: row.auto_matched,
+    manual_matched: row.manual_matched,
+    pending_match: row.pending_match,
+    total_conversion_revenue: parseFloat(row.total_conversion_revenue) || 0,
+    ai_score_distribution: {
+      poor: row.ai_score_poor,
+      weak: row.ai_score_weak,
+      maybe: row.ai_score_maybe,
+      good: row.ai_score_good,
+      great: row.ai_score_great,
+      pending: row.ai_score_pending,
+    },
+    // Deltas would need historical snapshots - placeholder for now
     leads_delta: 0,
     leads_delta_pct: 0,
     conversion_rate_delta: 0,
   };
 }
 
-function calculateVolumeTrend(data: FunnelRow[]): LeadVolumeByPeriod[] {
-  // Group by month
-  const byMonth: Record<
-    string,
-    { wholesale: number; corporate: number; converted: number; matched: number }
-  > = {};
-
-  for (const row of data) {
-    if (!row.submitted_at) continue;
-
-    const month = row.submitted_at.substring(0, 7); // YYYY-MM
-    if (!byMonth[month]) {
-      byMonth[month] = { wholesale: 0, corporate: 0, converted: 0, matched: 0 };
-    }
-
-    if (row.form_type === "wholesale") byMonth[month].wholesale++;
-    if (row.form_type === "corporate") byMonth[month].corporate++;
-
-    const isMatched = row.match_status === "auto_matched" || row.match_status === "manual_matched";
-    if (isMatched) {
-      byMonth[month].matched++;
-      if (row.converted_at) byMonth[month].converted++;
-    }
-  }
-
-  // Convert to array and sort
-  return Object.entries(byMonth)
-    .map(([period, counts]) => {
-      const total = counts.wholesale + counts.corporate;
-      // Conversion rate based on matched leads (where we can track)
-      const convRate = counts.matched > 0 ? (counts.converted / counts.matched) * 100 : 0;
-      return {
-        period,
-        wholesale: counts.wholesale,
-        corporate: counts.corporate,
-        total,
-        converted: counts.converted,
-        conversion_rate: Math.round(convRate * 10) / 10,
-      };
-    })
-    .sort((a, b) => a.period.localeCompare(b.period));
+/**
+ * Transform volume view rows to LeadVolumeByPeriod array
+ */
+function transformVolumeViewToTrend(rows: VolumeViewRow[]): LeadVolumeByPeriod[] {
+  return rows.map((row) => ({
+    period: row.month.substring(0, 7), // YYYY-MM from YYYY-MM-DD
+    wholesale: row.wholesale,
+    corporate: row.corporate,
+    total: row.total,
+    converted: row.converted,
+    conversion_rate: parseFloat(row.conversion_rate) || 0,
+  }));
 }
