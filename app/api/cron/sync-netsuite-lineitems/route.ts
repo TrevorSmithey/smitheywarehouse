@@ -2,7 +2,8 @@
  * NetSuite Line Items Sync (Part 3 of 3)
  *
  * Syncs wholesale line items from NetSuite.
- * Split from main sync to avoid Vercel timeout.
+ * Uses chunked approach - fetches in 200-row batches with safety limit.
+ * Optimized for Vercel serverless timeout constraints.
  */
 
 import { NextResponse } from "next/server";
@@ -10,7 +11,6 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import {
   hasNetSuiteCredentials,
-  testConnection,
   fetchWholesaleLineItems,
   type NSLineItem,
 } from "@/lib/netsuite";
@@ -34,17 +34,18 @@ export async function GET(request: Request) {
 
     console.log("[NETSUITE] Starting line items sync...");
 
-    const connected = await testConnection();
-    if (!connected) {
-      throw new Error("Failed to connect to NetSuite API");
-    }
-
+    // Fetch all batches sequentially (smaller batches to avoid timeouts)
+    const limit = 200; // Reduced from 1000 to match customers sync
     let offset = 0;
-    const limit = 1000;
     let totalFetched = 0;
     let totalUpserted = 0;
+    let hasMore = true;
+    let batchCount = 0;
 
-    while (true) {
+    while (hasMore && batchCount < 100) { // Safety limit: max 20,000 line items
+      batchCount++;
+      console.log(`[NETSUITE] Line items batch ${batchCount}: offset ${offset}`);
+
       const lineItems = await fetchWholesaleLineItems(offset, limit);
       if (lineItems.length === 0) break;
       totalFetched += lineItems.length;
@@ -75,14 +76,18 @@ export async function GET(request: Request) {
         }
       }
 
-      console.log(`[NETSUITE] Line items: ${totalFetched} fetched, ${totalUpserted} upserted`);
+      hasMore = lineItems.length === limit;
+      console.log(`[NETSUITE] Line items batch ${batchCount} done: ${lineItems.length} fetched, ${records.length} upserted`);
 
-      if (lineItems.length < limit) break;
-      offset += limit;
-      await new Promise((r) => setTimeout(r, 200));
+      if (hasMore) {
+        offset += limit;
+        // Small delay between batches to avoid overwhelming APIs
+        await new Promise((r) => setTimeout(r, 100));
+      }
     }
 
     const elapsed = Date.now() - startTime;
+    console.log(`[NETSUITE] Line items sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
 
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_lineitems",
@@ -94,13 +99,12 @@ export async function GET(request: Request) {
       duration_ms: elapsed,
     });
 
-    console.log(`[NETSUITE] Line items sync complete: ${totalUpserted} records in ${(elapsed/1000).toFixed(1)}s`);
-
     return NextResponse.json({
       success: true,
       type: "lineitems",
       fetched: totalFetched,
       upserted: totalUpserted,
+      batches: batchCount,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
     });
   } catch (error) {

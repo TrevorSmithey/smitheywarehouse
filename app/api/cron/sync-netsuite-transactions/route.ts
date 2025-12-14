@@ -2,7 +2,8 @@
  * NetSuite Transactions Sync (Part 2 of 3)
  *
  * Syncs wholesale transactions from NetSuite.
- * Split from main sync to avoid Vercel timeout.
+ * Uses chunked approach - fetches in 200-row batches with safety limit.
+ * Optimized for Vercel serverless timeout constraints.
  */
 
 import { NextResponse } from "next/server";
@@ -10,7 +11,6 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import {
   hasNetSuiteCredentials,
-  testConnection,
   fetchWholesaleTransactions,
   type NSTransaction,
 } from "@/lib/netsuite";
@@ -34,18 +34,19 @@ export async function GET(request: Request) {
 
     console.log("[NETSUITE] Starting transactions sync...");
 
-    const connected = await testConnection();
-    if (!connected) {
-      throw new Error("Failed to connect to NetSuite API");
-    }
-
+    // Fetch all batches sequentially (smaller batches to avoid timeouts)
+    const limit = 200; // Reduced from 1000 to match customers sync
     let offset = 0;
-    const limit = 1000;
     let totalFetched = 0;
     let totalUpserted = 0;
+    let hasMore = true;
+    let batchCount = 0;
     const seenIds = new Set<number>();
 
-    while (true) {
+    while (hasMore && batchCount < 50) { // Safety limit: max 10,000 transactions
+      batchCount++;
+      console.log(`[NETSUITE] Transactions batch ${batchCount}: offset ${offset}`);
+
       const transactions = await fetchWholesaleTransactions(offset, limit);
       if (transactions.length === 0) break;
       totalFetched += transactions.length;
@@ -86,14 +87,18 @@ export async function GET(request: Request) {
         }
       }
 
-      console.log(`[NETSUITE] Transactions: ${totalFetched} fetched, ${totalUpserted} upserted`);
+      hasMore = transactions.length === limit;
+      console.log(`[NETSUITE] Transactions batch ${batchCount} done: ${transactions.length} fetched, ${records.length} upserted`);
 
-      if (transactions.length < limit) break;
-      offset += limit;
-      await new Promise((r) => setTimeout(r, 200));
+      if (hasMore) {
+        offset += limit;
+        // Small delay between batches to avoid overwhelming APIs
+        await new Promise((r) => setTimeout(r, 100));
+      }
     }
 
     const elapsed = Date.now() - startTime;
+    console.log(`[NETSUITE] Transactions sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
 
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_transactions",
@@ -105,13 +110,12 @@ export async function GET(request: Request) {
       duration_ms: elapsed,
     });
 
-    console.log(`[NETSUITE] Transactions sync complete: ${totalUpserted} records in ${(elapsed/1000).toFixed(1)}s`);
-
     return NextResponse.json({
       success: true,
       type: "transactions",
       fetched: totalFetched,
       upserted: totalUpserted,
+      batches: batchCount,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
     });
   } catch (error) {
