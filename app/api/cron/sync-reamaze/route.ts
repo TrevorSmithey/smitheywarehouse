@@ -63,11 +63,29 @@ export async function GET(request: Request) {
 
     if (conversations.length === 0) {
       console.log("[REAMAZE SYNC] No new conversations");
+      const duration = Date.now() - startTime;
+
+      // Log success even when no new conversations
+      try {
+        await supabase.from("sync_logs").insert({
+          sync_type: "reamaze",
+          started_at: new Date(startTime).toISOString(),
+          completed_at: new Date().toISOString(),
+          status: "success",
+          records_expected: 0,
+          records_synced: 0,
+          details: { message: "No new conversations" },
+          duration_ms: duration,
+        });
+      } catch (logError) {
+        console.error("[REAMAZE SYNC] Failed to log sync success:", logError);
+      }
+
       return NextResponse.json({
         success: true,
         message: "No new conversations",
         processed: 0,
-        duration: Date.now() - startTime,
+        duration,
       });
     }
 
@@ -144,6 +162,22 @@ export async function GET(request: Request) {
     // Log failed ticket IDs for debugging
     if (failedTicketIds.length > 0) {
       console.error(`[REAMAZE SYNC] Failed ticket IDs: ${failedTicketIds.join(", ")}`);
+    }
+
+    // Log success to sync_logs
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "reamaze",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: errors > 0 ? "partial" : "success",
+        records_expected: conversations.length,
+        records_synced: processed,
+        details: { processed, skipped, errors },
+        duration_ms: duration,
+      });
+    } catch (logError) {
+      console.error("[REAMAZE SYNC] Failed to log sync success:", logError);
     }
 
     return NextResponse.json({
