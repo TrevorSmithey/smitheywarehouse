@@ -688,28 +688,10 @@ export async function GET(request: Request) {
       revenue_by_type: revenueByType,
     };
 
-    // New customers - first-time buyers in last 90 days
-    // EXCLUDE corporate gifting customers (they're not recurring wholesale accounts)
-    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    const newCustomers: WholesaleCustomer[] = customers
-      .filter((c) => {
-        if (!c.first_sale_date || c.order_count === 0) return false;
-        if (c.is_corporate) return false; // Exclude corporate (uses DB computed column)
-        const firstOrder = new Date(c.first_sale_date);
-        return firstOrder >= ninetyDaysAgo;
-      })
-      .sort((a, b) => {
-        // Sort by first order date (most recent first)
-        const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
-        const bDate = b.first_sale_date ? new Date(b.first_sale_date).getTime() : 0;
-        return bDate - aDate;
-      })
-      .slice(0, 25);
-
     // Corporate customers - ALL corporate gifting accounts (including $0 revenue)
     // Sorted by YTD revenue descending
     const corporateCustomers: WholesaleCustomer[] = customers
-      .filter((c) => c.is_corporate) // Uses DB computed column
+      .filter((c) => c.is_corporate_gifting) // Uses DB computed column
       .sort((a, b) => b.ytd_revenue - a.ytd_revenue);
 
     // Churned customers - 365+ days since last order, excludes major/corporate accounts
@@ -731,6 +713,8 @@ export async function GET(request: Request) {
     // ========================================================================
     let newCustomerAcquisition: WholesaleNewCustomerAcquisition | null = null;
     const partialErrors: { section: string; message: string }[] = [];
+    // Set to track YTD new customer IDs (populated inside try block, used for table after)
+    const ytdNewCustomerIds = new Set<number>();
 
     // Build set of corporate customer IDs to exclude from YoY calculation
     // Uses DB computed column `is_corporate` (non-recurring gifting accounts, not part of B2B book)
@@ -813,6 +797,8 @@ export async function GET(request: Request) {
             firstOrderDate: firstTxn.date,
             companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
+          // Populate external Set for newCustomers table (outside try block)
+          ytdNewCustomerIds.add(customerId);
         }
       }
 
@@ -937,6 +923,18 @@ export async function GET(request: Request) {
       });
       // newCustomerAcquisition remains null on error
     }
+
+    // New customers - first-time buyers in current YTD (derived from YoY calculation above)
+    // Uses transaction-based first order date (source of truth), excludes corporate
+    // If YoY calculation failed, ytdNewCustomerIds will be empty → empty table
+    const newCustomers: WholesaleCustomer[] = customers
+      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id))
+      .sort((a, b) => {
+        // Sort by first order date (most recent first)
+        const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
+        const bDate = b.first_sale_date ? new Date(b.first_sale_date).getTime() : 0;
+        return bDate - aDate;
+      });
 
     // Build response
     const response: WholesaleResponse = {
