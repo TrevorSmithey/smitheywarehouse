@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     }
 
     let offset = 0;
-    const limit = 1000;
+    const limit = 200; // Reduced from 1000 for better reliability from serverless
     let totalFetched = 0;
     let totalUpserted = 0;
 
