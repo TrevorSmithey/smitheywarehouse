@@ -569,6 +569,19 @@ export async function GET(request: Request) {
       });
     }
 
+    // Log success to sync_logs
+    const totalSynced = stats.campaignsSynced + stats.scheduledSynced + stats.flowsSynced;
+    await supabase.from("sync_logs").insert({
+      sync_type: "klaviyo",
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      status: "success",
+      records_expected: totalSynced,
+      records_synced: totalSynced,
+      duration_ms: duration,
+      details: stats,
+    });
+
     return NextResponse.json({
       success: true,
       ...stats,
