@@ -126,6 +126,16 @@ export async function GET(request: Request) {
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 200 ROWS ONLY
     `},
+    "16": { name: "200 customers FULL no address/balance fields", query: `
+      SELECT
+        c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
+        c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
+        c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
+        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 200 ROWS ONLY
+    `},
   };
 
   const test = queries[testNum];
