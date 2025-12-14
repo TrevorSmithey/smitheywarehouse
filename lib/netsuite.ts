@@ -289,11 +289,17 @@ export interface NSCustomer {
 
 /**
  * Fetch wholesale transactions (CashSale + CustInvc for business customers)
+ * @param sinceDays - If provided, only fetch transactions from the last N days (for incremental sync)
  */
 export async function fetchWholesaleTransactions(
   offset = 0,
-  limit = 1000
+  limit = 1000,
+  sinceDays?: number
 ): Promise<NSTransaction[]> {
+  const dateFilter = sinceDays
+    ? `AND t.trandate >= SYSDATE - ${sinceDays}`
+    : '';
+
   const query = `
     SELECT DISTINCT
       t.id as transaction_id,
@@ -308,6 +314,7 @@ export async function fetchWholesaleTransactions(
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)
     AND t.type IN ('CashSale', 'CustInvc')
+    ${dateFilter}
     ORDER BY t.id
     OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
   `;
@@ -317,11 +324,17 @@ export async function fetchWholesaleTransactions(
 
 /**
  * Fetch wholesale line items
+ * @param sinceDays - If provided, only fetch line items from transactions in the last N days (for incremental sync)
  */
 export async function fetchWholesaleLineItems(
   offset = 0,
-  limit = 1000
+  limit = 1000,
+  sinceDays?: number
 ): Promise<NSLineItem[]> {
+  const dateFilter = sinceDays
+    ? `AND t.trandate >= SYSDATE - ${sinceDays}`
+    : '';
+
   const query = `
     SELECT
       t.id as transaction_id,
@@ -341,6 +354,7 @@ export async function fetchWholesaleLineItems(
     AND t.type IN ('CashSale', 'CustInvc')
     AND tl.mainline = 'F'
     AND tl.item IS NOT NULL
+    ${dateFilter}
     ORDER BY t.id, tl.linesequencenumber
     OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
   `;

@@ -2,8 +2,8 @@
  * NetSuite Transactions Sync (Part 2 of 3)
  *
  * Syncs wholesale transactions from NetSuite.
- * Uses chunked approach - fetches in 200-row batches with safety limit.
- * Optimized for Vercel serverless timeout constraints.
+ * Uses incremental sync - only fetches last 7 days by default.
+ * Pass ?full=true for full historical sync.
  */
 
 import { NextResponse } from "next/server";
@@ -19,6 +19,9 @@ import { BATCH_SIZES } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Default to 7 days for incremental sync
+const DEFAULT_SYNC_DAYS = 7;
+
 export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return unauthorizedResponse();
@@ -27,15 +30,19 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const supabase = createServiceClient();
 
+  // Check for full sync flag
+  const url = new URL(request.url);
+  const isFullSync = url.searchParams.get("full") === "true";
+  const syncDays = isFullSync ? undefined : DEFAULT_SYNC_DAYS;
+
   try {
     if (!hasNetSuiteCredentials()) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    console.log("[NETSUITE] Starting transactions sync...");
+    console.log(`[NETSUITE] Starting transactions sync (${isFullSync ? 'FULL' : `last ${DEFAULT_SYNC_DAYS} days`})...`);
 
-    // Fetch all batches sequentially (smaller batches to avoid timeouts)
-    const limit = 200; // Reduced from 1000 to match customers sync
+    const limit = 200;
     let offset = 0;
     let totalFetched = 0;
     let totalUpserted = 0;
@@ -43,11 +50,11 @@ export async function GET(request: Request) {
     let batchCount = 0;
     const seenIds = new Set<number>();
 
-    while (hasMore && batchCount < 50) { // Safety limit: max 10,000 transactions
+    while (hasMore && batchCount < 50) {
       batchCount++;
       console.log(`[NETSUITE] Transactions batch ${batchCount}: offset ${offset}`);
 
-      const transactions = await fetchWholesaleTransactions(offset, limit);
+      const transactions = await fetchWholesaleTransactions(offset, limit, syncDays);
       if (transactions.length === 0) break;
       totalFetched += transactions.length;
 
@@ -113,6 +120,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       type: "transactions",
+      mode: isFullSync ? "full" : `incremental_${DEFAULT_SYNC_DAYS}d`,
       fetched: totalFetched,
       upserted: totalUpserted,
       batches: batchCount,

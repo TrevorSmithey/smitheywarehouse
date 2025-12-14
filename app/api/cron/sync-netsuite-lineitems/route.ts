@@ -1,10 +1,9 @@
 /**
  * NetSuite Line Items Sync (Part 3 of 3)
  *
- * Syncs wholesale line items from NetSuite using incremental cursor.
- * Uses chunked approach - fetches in 200-row batches.
- * Persists cursor between runs to handle large datasets (~250K rows).
- * Each run processes up to 4 minutes of work, then saves progress.
+ * Syncs wholesale line items from NetSuite.
+ * Uses incremental sync - only fetches last 7 days by default.
+ * Pass ?full=true for full historical sync (uses cursor for large dataset).
  */
 
 import { NextResponse } from "next/server";
@@ -20,7 +19,9 @@ import { BATCH_SIZES } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Time limit for processing (leave 60s buffer for cleanup)
+// Default to 7 days for incremental sync
+const DEFAULT_SYNC_DAYS = 7;
+// Time limit for full sync processing (leave 60s buffer for cleanup)
 const PROCESSING_TIME_LIMIT_MS = 240000; // 4 minutes
 
 export async function GET(request: Request) {
@@ -31,26 +32,34 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const supabase = createServiceClient();
 
+  // Check for full sync flag
+  const url = new URL(request.url);
+  const isFullSync = url.searchParams.get("full") === "true";
+  const syncDays = isFullSync ? undefined : DEFAULT_SYNC_DAYS;
+
   try {
     if (!hasNetSuiteCredentials()) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    // Get the cursor (last offset) from sync details
-    const { data: cursorData } = await supabase
-      .from("sync_logs")
-      .select("details")
-      .eq("sync_type", "netsuite_lineitems_cursor")
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .single();
+    let offset = 0;
+    const initialOffset = 0;
 
-    // Start from saved offset or 0
-    const details = cursorData?.details as { next_offset?: number } | null;
-    let offset = details?.next_offset || 0;
-    const initialOffset = offset;
+    // For full sync, use cursor to handle 250K+ rows across multiple runs
+    if (isFullSync) {
+      const { data: cursorData } = await supabase
+        .from("sync_logs")
+        .select("details")
+        .eq("sync_type", "netsuite_lineitems_cursor")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .single();
 
-    console.log(`[NETSUITE] Starting line items sync from offset ${offset}...`);
+      const details = cursorData?.details as { next_offset?: number } | null;
+      offset = details?.next_offset || 0;
+    }
+
+    console.log(`[NETSUITE] Starting line items sync (${isFullSync ? `FULL from offset ${offset}` : `last ${DEFAULT_SYNC_DAYS} days`})...`);
 
     const limit = 200;
     let totalFetched = 0;
@@ -59,11 +68,14 @@ export async function GET(request: Request) {
     let batchCount = 0;
     let isComplete = false;
 
-    // Process batches until time limit or no more data
-    while (hasMore && (Date.now() - startTime) < PROCESSING_TIME_LIMIT_MS) {
+    // For incremental: simple loop, no time limit needed (small dataset)
+    // For full sync: time limit to handle 250K+ rows across multiple runs
+    const useTimeLimit = isFullSync;
+
+    while (hasMore && (!useTimeLimit || (Date.now() - startTime) < PROCESSING_TIME_LIMIT_MS)) {
       batchCount++;
 
-      const lineItems = await fetchWholesaleLineItems(offset, limit);
+      const lineItems = await fetchWholesaleLineItems(offset, limit, syncDays);
 
       if (lineItems.length === 0) {
         // No more data - sync complete
@@ -114,18 +126,20 @@ export async function GET(request: Request) {
 
     const elapsed = Date.now() - startTime;
 
-    // Save cursor for next run (or reset to 0 if complete)
-    const nextOffset = isComplete ? 0 : offset;
-    await supabase.from("sync_logs").insert({
-      sync_type: "netsuite_lineitems_cursor",
-      started_at: new Date(startTime).toISOString(),
-      completed_at: new Date().toISOString(),
-      status: "success",
-      records_expected: 0,
-      records_synced: 0,
-      duration_ms: 0,
-      details: { next_offset: nextOffset, last_processed_offset: offset },
-    });
+    // Only save cursor for full sync (not needed for incremental)
+    if (isFullSync) {
+      const nextOffset = isComplete ? 0 : offset;
+      await supabase.from("sync_logs").insert({
+        sync_type: "netsuite_lineitems_cursor",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "success",
+        records_expected: 0,
+        records_synced: 0,
+        duration_ms: 0,
+        details: { next_offset: nextOffset, last_processed_offset: offset },
+      });
+    }
 
     // Log the actual sync progress
     await supabase.from("sync_logs").insert({
@@ -149,11 +163,11 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       type: "lineitems",
+      mode: isFullSync ? "full" : `incremental_${DEFAULT_SYNC_DAYS}d`,
       fetched: totalFetched,
       upserted: totalUpserted,
       batches: batchCount,
-      startOffset: initialOffset,
-      endOffset: offset,
+      ...(isFullSync ? { startOffset: initialOffset, endOffset: offset } : {}),
       isComplete,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
     });

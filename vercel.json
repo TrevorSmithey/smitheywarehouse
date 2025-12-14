@@ -52,7 +52,7 @@
     },
     {
       "path": "/api/cron/sync-netsuite-lineitems",
-      "schedule": "*/10 6-7 * * *"
+      "schedule": "10 6 * * *"
     }
   ]
 }
