@@ -180,7 +180,13 @@ export async function GET(request: Request) {
 
     // Build monthly stats from raw data if RPC doesn't exist
     let monthly: WholesaleMonthlyStats[] = [];
-    if (monthlyResult.data) {
+
+    // Log RPC result for debugging
+    if (monthlyResult.error) {
+      console.error("[WHOLESALE API] Monthly RPC error:", monthlyResult.error);
+    }
+
+    if (monthlyResult.data && Array.isArray(monthlyResult.data) && monthlyResult.data.length > 0) {
       monthly = monthlyResult.data.map((m: Record<string, unknown>) => ({
         month: m.month as string,
         transaction_count: Number(m.transaction_count) || 0,
