@@ -174,6 +174,22 @@ export async function GET(request: Request) {
     const duration = Date.now() - startTime;
     console.log(`[SHOPIFY STATS] Complete in ${duration}ms:`, stats);
 
+    // Log success to sync_logs
+    try {
+      await supabase.from("sync_logs").insert({
+        sync_type: "shopify_stats",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "success",
+        records_expected: stats.ordersProcessed,
+        records_synced: stats.daysUpdated,
+        details: stats,
+        duration_ms: duration,
+      });
+    } catch (logError) {
+      console.error("[SHOPIFY STATS] Failed to log sync success:", logError);
+    }
+
     return NextResponse.json({
       success: true,
       ...stats,

@@ -110,26 +110,28 @@ export default function DashboardLayout({
                 height={40}
                 className="object-contain"
               />
-              <div>
-                <p className="text-sm text-text-secondary uppercase tracking-wide">
-                  SMITHEY OPERATIONS
-                </p>
-                <p className="text-xs text-text-muted">
-                  {lastRefresh
-                    ? `Updated ${formatDistanceToNow(lastRefresh, { addSuffix: true })}`
-                    : "Loading..."}
-                </p>
-              </div>
+              <p className="text-sm text-text-secondary uppercase tracking-wide">
+                SMITHEY OPERATIONS
+              </p>
             </div>
             <button
               onClick={() => triggerRefresh?.()}
               disabled={isRefreshing || !triggerRefresh}
-              aria-label="Refresh data"
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-accent-blue hover:bg-bg-secondary active:scale-95 transition-all disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue rounded-lg"
+              aria-label="Reload data from database"
+              title="Reload data from database"
+              className={`group flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
+                isRefreshing
+                  ? "text-accent-blue bg-accent-blue/10"
+                  : "text-text-secondary hover:text-accent-blue hover:bg-bg-secondary active:scale-95 disabled:opacity-50"
+              }`}
             >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`w-4 h-4 transition-transform duration-300 ${
+                  isRefreshing ? "animate-spin" : "group-hover:rotate-45"
+                }`}
+              />
               <span className="hidden sm:inline">
-                {isRefreshing ? "Refreshing..." : "Refresh"}
+                {isRefreshing ? "Loading..." : "Reload"}
               </span>
             </button>
           </div>

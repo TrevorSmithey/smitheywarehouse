@@ -84,12 +84,6 @@ function formatCurrencyFull(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-function formatNumber(n: number): string {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
-  return n.toLocaleString();
-}
-
 function formatPct(n: number | null): string {
   if (n === null || n === undefined) return "—";
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
@@ -721,9 +715,7 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
                   customer.days_since_created < 90 ? "text-amber-400" :
                   "text-text-muted"
                 }`}>
-                  {customer.days_since_created < 30 ? "Hot lead" :
-                   customer.days_since_created < 90 ? `${customer.days_since_created}d old` :
-                   `${Math.floor(customer.days_since_created / 30)}mo old`}
+                  Created {customer.days_since_created}d ago
                 </div>
               )}
               {customer.category && (
@@ -1907,10 +1899,23 @@ export function WholesaleDashboard({
     );
   }
 
-  const { stats } = data;
+  const { stats, partialErrors } = data;
 
   return (
     <div className="space-y-8">
+      {/* Partial errors banner */}
+      {partialErrors && partialErrors.length > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-status-warning/10 border border-status-warning/30 rounded-lg">
+          <AlertTriangle className="w-4 h-4 text-status-warning flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-status-warning">Some data failed to load</p>
+            <p className="text-xs text-text-secondary mt-1">
+              {partialErrors.map(e => e.section).join(", ")} data is temporarily unavailable. Other metrics are still accurate.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ================================================================
           HEADER ROW
           ================================================================ */}

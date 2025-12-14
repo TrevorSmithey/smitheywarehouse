@@ -1141,6 +1141,11 @@ export interface WholesaleResponse {
   };
   // Metadata
   lastSynced: string | null;
+  // Partial errors - indicates which data sections failed to load
+  partialErrors?: {
+    section: string;
+    message: string;
+  }[];
 }
 
 // ============================================================

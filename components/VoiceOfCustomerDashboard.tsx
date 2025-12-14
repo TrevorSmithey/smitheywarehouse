@@ -34,6 +34,7 @@ import type {
   WordCloudItem,
   TORTrendPoint,
 } from "@/lib/types";
+import { formatNumber } from "@/lib/dashboard-utils";
 
 interface VoiceOfCustomerDashboardProps {
   data: TicketsResponse | null;
@@ -54,11 +55,6 @@ interface VoiceOfCustomerDashboardProps {
   onSearchChange: (search: string) => void;
   page: number;
   onPageChange: (page: number) => void;
-}
-
-// Format number with commas
-function formatNumber(n: number): string {
-  return n.toLocaleString();
 }
 
 // Format percentage

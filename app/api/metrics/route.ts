@@ -754,16 +754,32 @@ function processWeeklyFulfillments(
 ): WeeklyFulfillment[] {
   const grouped = new Map<string, number>();
 
+  // Use Intl.DateTimeFormat for proper DST-aware EST/EDT conversion
+  const estFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  });
+
   for (const row of data) {
     if (!row.warehouse || !row.fulfilled_at) continue;
 
-    // Convert UTC to EST first, then calculate week
+    // Convert UTC to EST/EDT using Intl (handles DST correctly)
     const utcDate = new Date(row.fulfilled_at);
-    const date = new Date(utcDate.getTime() - 5 * 60 * 60 * 1000); // EST
-    const dayOfWeek = date.getUTCDay(); // Use UTC methods since we already offset
-    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const weekStart = new Date(date);
-    weekStart.setUTCDate(date.getUTCDate() - mondayOffset);
+    const parts = estFormatter.formatToParts(utcDate);
+    const year = parseInt(parts.find(p => p.type === "year")?.value || "2025");
+    const month = parseInt(parts.find(p => p.type === "month")?.value || "1") - 1;
+    const day = parseInt(parts.find(p => p.type === "day")?.value || "1");
+    const weekday = parts.find(p => p.type === "weekday")?.value || "Mon";
+
+    // Map weekday to day index (Mon=0, Sun=6 for Monday-based weeks)
+    const weekdayMap: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+    const dayIndex = weekdayMap[weekday] ?? 0;
+
+    // Calculate Monday of this week
+    const weekStart = new Date(year, month, day - dayIndex);
     const weekKey = weekStart.toISOString().split("T")[0];
 
     const key = `${weekKey}|${row.warehouse}`;

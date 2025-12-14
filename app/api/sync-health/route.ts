@@ -21,12 +21,22 @@ interface SyncHealthRow {
 // Crons: Depend on schedule, but 24h is reasonable for most
 // Assembly: Only runs when manually triggered, give it more slack
 const STALE_THRESHOLDS: Record<string, number> = {
-  d2c: 12,       // D2C webhook - orders should come in frequently
-  b2b: 24,       // B2B webhook - less frequent, 24h is ok
-  inventory: 6,  // Inventory cron - runs every few hours
-  holiday: 24,   // Holiday sync - runs daily
-  assembly: 48,  // Assembly sync - manually triggered
+  d2c: 12,          // D2C webhook - orders should come in frequently
+  b2b: 24,          // B2B webhook - less frequent, 24h is ok
+  inventory: 6,     // Inventory cron - runs every few hours
+  holiday: 24,      // Holiday sync - runs daily
+  assembly: 48,     // Assembly sync - manually triggered
+  netsuite: 24,     // NetSuite sync - runs daily at 6 AM UTC
+  klaviyo: 24,      // Klaviyo sync - runs daily
+  reamaze: 24,      // Reamaze sync - runs daily
+  shopify_stats: 24, // Shopify stats - runs daily
 };
+
+// Sync types to exclude from health monitoring
+// These are disabled/unconfigured syncs that shouldn't trigger alerts
+const EXCLUDED_SYNC_TYPES = new Set<string>([
+  // Add sync types here that are intentionally disabled
+]);
 
 export async function GET() {
   try {
@@ -43,13 +53,16 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Determine overall health
-    const hasFailures = health?.some((h) => h.status === "failed") ?? false;
-    const hasPartials = health?.some((h) => h.status === "partial") ?? false;
-    const hasStaleData = health?.some((h) => {
+    // Filter out excluded/disabled sync types
+    const activeHealth = (health || []).filter(h => !EXCLUDED_SYNC_TYPES.has(h.sync_type));
+
+    // Determine overall health (only from active syncs)
+    const hasFailures = activeHealth.some((h) => h.status === "failed");
+    const hasPartials = activeHealth.some((h) => h.status === "partial");
+    const hasStaleData = activeHealth.some((h) => {
       const threshold = STALE_THRESHOLDS[h.sync_type] || 24;
       return h.hours_since_success && h.hours_since_success > threshold;
-    }) ?? false;
+    });
 
     const overallStatus = hasFailures
       ? "critical"
@@ -57,8 +70,8 @@ export async function GET() {
         ? "warning"
         : "healthy";
 
-    // Format for dashboard consumption
-    const syncs = (health || []).map((h) => {
+    // Format for dashboard consumption (only active syncs)
+    const syncs = activeHealth.map((h) => {
       const threshold = STALE_THRESHOLDS[h.sync_type] || 24;
       return {
         type: h.sync_type,

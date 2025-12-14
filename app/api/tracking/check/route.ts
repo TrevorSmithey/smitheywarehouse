@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 const EASYPOST_API_KEY = process.env.EASYPOST_API_KEY;
 const EASYPOST_API_URL = "https://api.easypost.com/v2";
@@ -23,11 +24,18 @@ interface EasyPostTracker {
 }
 
 // GET for Vercel cron, POST for manual triggers
-export async function GET() {
+// Both require CRON_SECRET authentication
+export async function GET(request: Request) {
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
+  }
   return checkTracking();
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
+  }
   return checkTracking();
 }
 

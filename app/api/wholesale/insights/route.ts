@@ -16,6 +16,7 @@ import {
   type CustomerPattern,
   type ChurnPrediction,
 } from "@/lib/pattern-recognition";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -73,7 +74,14 @@ export interface PatternInsightsResponse {
   lastAnalyzed: string;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Rate limiting
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  const rateLimitResult = checkRateLimit(`wholesale-insights:${ip}`, RATE_LIMITS.API);
+  if (!rateLimitResult.success) {
+    return rateLimitedResponse(rateLimitResult);
+  }
+
   try {
     const supabase = await createClient();
     const now = new Date();

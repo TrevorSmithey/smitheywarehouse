@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,7 +43,14 @@ export interface HolidayResponse {
   lastSynced: string | null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Rate limiting
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  const rateLimitResult = checkRateLimit(`holiday:${ip}`, RATE_LIMITS.API);
+  if (!rateLimitResult.success) {
+    return rateLimitedResponse(rateLimitResult);
+  }
+
   try {
     const supabase = createServiceClient();
 

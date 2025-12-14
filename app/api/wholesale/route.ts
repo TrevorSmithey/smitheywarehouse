@@ -21,6 +21,7 @@ import type {
   CustomerHealthStatus,
   CustomerSegment,
 } from "@/lib/types";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -61,6 +62,13 @@ function getHealthStatus(
 }
 
 export async function GET(request: Request) {
+  // Rate limiting
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  const rateLimitResult = checkRateLimit(`wholesale:${ip}`, RATE_LIMITS.API);
+  if (!rateLimitResult.success) {
+    return rateLimitedResponse(rateLimitResult);
+  }
+
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -563,6 +571,7 @@ export async function GET(request: Request) {
     // Includes outlier detection for large orders that skew the comparison
     // ========================================================================
     let newCustomerAcquisition: WholesaleNewCustomerAcquisition | null = null;
+    const partialErrors: { section: string; message: string }[] = [];
 
     try {
       // Current YTD period
@@ -744,6 +753,10 @@ export async function GET(request: Request) {
       };
     } catch (error) {
       console.error("[WHOLESALE API] Error calculating new customer acquisition:", error);
+      partialErrors.push({
+        section: "newCustomerAcquisition",
+        message: error instanceof Error ? error.message : "Failed to calculate YoY acquisition data",
+      });
       // newCustomerAcquisition remains null on error
     }
 
@@ -763,6 +776,7 @@ export async function GET(request: Request) {
       newCustomerAcquisition,
       customersByHealth,
       lastSynced: new Date().toISOString(),
+      ...(partialErrors.length > 0 ? { partialErrors } : {}),
     };
 
     return NextResponse.json(response, {

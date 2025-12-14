@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
+import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,12 +12,9 @@ export const dynamic = "force-dynamic";
  * Only works when RESEND_API_KEY is configured
  */
 export async function GET(request: Request) {
-  // Require authentication
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Require authentication - use centralized cron auth
+  if (!verifyCronSecret(request)) {
+    return unauthorizedResponse();
   }
 
   const hasResendKey = !!process.env.RESEND_API_KEY;

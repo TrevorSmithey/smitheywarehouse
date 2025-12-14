@@ -4,6 +4,7 @@ import { Download } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { InventoryResponse, ProductInventory } from "@/lib/types";
 import { SAFETY_STOCK } from "@/lib/shiphero";
+import { formatNumber } from "@/lib/dashboard-utils";
 
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -13,11 +14,6 @@ interface InventoryDashboardProps {
   expandedCategories: Set<string>;
   onToggleCategory: (category: string) => void;
   onRefresh: () => void;
-}
-
-function formatNumber(num: number | undefined | null): string {
-  if (num === undefined || num === null || isNaN(num)) return "0";
-  return num.toLocaleString("en-US");
 }
 
 export function InventoryDashboard({
@@ -335,7 +331,7 @@ export function InventoryDashboard({
                   <div className="hidden sm:flex text-sm tabular-nums items-center gap-1">
                     <span className="text-amber-400">{formatNumber(totals.hobson)}</span>
                     <span className="text-text-muted/50">/</span>
-                    <span className="text-green-400">{formatNumber(totals.selery)}</span>
+                    <span className="text-cyan-400">{formatNumber(totals.selery)}</span>
                     <span className="text-text-muted/50 mx-1">=</span>
                     <span className="text-text-primary font-bold">{formatNumber(totals.total)}</span>
                   </div>
@@ -358,7 +354,7 @@ export function InventoryDashboard({
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
                         <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-amber-400">Hobson</th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-green-400">Selery</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-cyan-400">Selery</th>
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium">Total</th>
                         {cat.showDoi && (
                           <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">DOI</th>
@@ -433,7 +429,7 @@ export function InventoryDashboard({
                             </td>
                             <td className={`py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-semibold ${
                               product.selery < 0 ? "text-red-400 bg-red-500/10" :
-                              product.selery < 10 ? "text-green-400 bg-status-warning/20" : "text-green-400"
+                              product.selery < 10 ? "text-cyan-400 bg-status-warning/20" : "text-cyan-400"
                             }`}>
                               {formatNumber(product.selery)}
                             </td>
@@ -486,7 +482,7 @@ export function InventoryDashboard({
                         <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-amber-400">
                           {formatNumber(totals.hobson)}
                         </td>
-                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-green-400">
+                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-cyan-400">
                           {formatNumber(totals.selery)}
                         </td>
                         <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">

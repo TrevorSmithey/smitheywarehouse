@@ -1,6 +1,6 @@
 "use client";
 
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   ComposedChart,
   BarChart,
@@ -141,6 +141,15 @@ export function AssemblyDashboard({
 
   return (
     <div className="space-y-6">
+      {/* Sync Status */}
+      {data.lastSynced && (
+        <div className="flex justify-end">
+          <span className="text-[10px] text-text-muted">
+            Synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
+          </span>
+        </div>
+      )}
+
       {/* Production Stats Row */}
       {(() => {
         // Calculate MTD production (current month)

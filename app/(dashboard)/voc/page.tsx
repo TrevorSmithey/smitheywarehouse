@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { VoiceOfCustomerDashboard } from "@/components/VoiceOfCustomerDashboard";
 import { useDashboard } from "../layout";
 import type { TicketsResponse, TicketCategory } from "@/lib/types";
+import type { DateRangeOption } from "@/lib/dashboard-utils";
 
-type DateRangeOption = "today" | "7days" | "30days" | "90days" | "custom";
+// VOC uses a subset of DateRangeOption (no yesterday or 3days)
+type VOCDateRange = Extract<DateRangeOption, "today" | "7days" | "30days" | "90days" | "custom">;
 type SentimentFilter = "all" | "Positive" | "Negative" | "Neutral" | "Mixed";
 
 export default function VOCPage() {
@@ -16,7 +18,7 @@ export default function VOCPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filter state
-  const [dateRange, setDateRange] = useState<DateRangeOption>("7days");
+  const [dateRange, setDateRange] = useState<VOCDateRange>("7days");
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<TicketCategory | "all">("all");

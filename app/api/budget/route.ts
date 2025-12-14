@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { SHOPIFY_API_VERSION } from "@/lib/shopify";
+import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Force dynamic rendering - never cache this route
 export const dynamic = 'force-dynamic';
@@ -625,6 +626,13 @@ async function fetchSalesData(
 }
 
 export async function GET(request: Request) {
+  // Rate limiting
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  const rateLimitResult = checkRateLimit(`budget:${ip}`, RATE_LIMITS.API);
+  if (!rateLimitResult.success) {
+    return rateLimitedResponse(rateLimitResult);
+  }
+
   try {
     const supabase = getSupabaseClient();
 

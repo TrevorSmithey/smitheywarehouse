@@ -27,8 +27,11 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
   inventory: "Inventory",
   d2c: "D2C Orders",
   b2b: "B2B Orders",
-  assembly: "Assembly",
+  netsuite: "NetSuite",
   holiday: "Holiday",
+  klaviyo: "Klaviyo",
+  reamaze: "Reamaze",
+  shopify_stats: "Shopify Stats",
 };
 
 export function SyncHealthBanner() {

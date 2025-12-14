@@ -46,6 +46,7 @@ import type {
   SendTimeAnalysis,
   FlowBreakdown,
 } from "@/lib/types";
+import { formatNumber, formatNumberCompact } from "@/lib/dashboard-utils";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
 type SortField = "date" | "revenue" | "recipients" | "open_rate" | "click_rate" | "conversions";
@@ -71,16 +72,6 @@ function formatCurrency(n: number): string {
 
 function formatCurrencyFull(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-function formatNumber(n: number): string {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
-  return n.toLocaleString();
-}
-
-function formatNumberFull(n: number): string {
-  return n.toLocaleString();
 }
 
 function formatPct(n: number | null): string {
@@ -253,7 +244,7 @@ function CampaignRow({ campaign, rank }: { campaign: KlaviyoCampaignSummary; ran
       {/* Recipients */}
       <td className="py-3.5 px-3 text-right">
         <div className="text-sm text-text-primary tabular-nums">
-          {formatNumberFull(campaign.recipients)}
+          {formatNumber(campaign.recipients)}
         </div>
       </td>
 
@@ -638,7 +629,7 @@ function SubscriberGrowthTooltip({ active, payload }: {
               <span className="text-xs text-text-secondary">365-day</span>
             </div>
             <span className="text-sm font-semibold text-text-primary tabular-nums">
-              {formatNumberFull(item.engaged365Day)}
+              {formatNumber(item.engaged365Day)}
             </span>
           </div>
         )}
@@ -649,7 +640,7 @@ function SubscriberGrowthTooltip({ active, payload }: {
               <span className="text-xs text-text-secondary">120-day</span>
             </div>
             <span className="text-sm font-semibold text-text-primary tabular-nums">
-              {formatNumberFull(item.active120Day)}
+              {formatNumber(item.active120Day)}
             </span>
           </div>
         )}
@@ -730,13 +721,13 @@ function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySum
         <div className="grid grid-cols-2 gap-6">
           <div>
             <div className="text-2xl font-semibold text-purple-400 tabular-nums">
-              {formatNumber(current.engaged365Day || 0)}
+              {formatNumberCompact(current.engaged365Day || 0)}
             </div>
             <div className="text-xs text-text-muted mt-1">365-day engaged</div>
           </div>
           <div>
             <div className="text-2xl font-semibold text-accent-blue tabular-nums">
-              {formatNumber(current.active120Day || 0)}
+              {formatNumberCompact(current.active120Day || 0)}
             </div>
             <div className="text-xs text-text-muted mt-1">120-day active</div>
           </div>
@@ -985,7 +976,7 @@ function DeliverabilityMetrics({
           </div>
           <div className="text-[10px] text-text-muted mt-0.5">Delivery Rate</div>
           <div className="text-[10px] text-text-tertiary">
-            {formatNumber(totalDelivered)} delivered
+            {formatNumberCompact(totalDelivered)} delivered
           </div>
         </div>
 
@@ -999,7 +990,7 @@ function DeliverabilityMetrics({
           </div>
           <div className="text-[10px] text-text-muted mt-0.5">Bounce Rate</div>
           <div className="text-[10px] text-text-tertiary">
-            {formatNumber(totalBounces)} bounced
+            {formatNumberCompact(totalBounces)} bounced
           </div>
         </div>
 
@@ -1500,7 +1491,7 @@ export function KlaviyoDashboard({
 
         <BreakdownCard
           label="Email Subscribers"
-          value={formatNumber(stats.subscribers_365day || 0)}
+          value={formatNumberCompact(stats.subscribers_365day || 0)}
           subValue="365-day engaged"
           icon={Users}
           color="purple"
@@ -1537,12 +1528,12 @@ export function KlaviyoDashboard({
         />
         <InlineMetric
           label="Total Orders"
-          value={formatNumber(stats.total_conversions || 0)}
+          value={formatNumberCompact(stats.total_conversions || 0)}
           icon={ShoppingCart}
         />
         <InlineMetric
           label="120-Day Active"
-          value={formatNumber(stats.subscribers_120day || 0)}
+          value={formatNumberCompact(stats.subscribers_120day || 0)}
           icon={Users}
         />
       </div>

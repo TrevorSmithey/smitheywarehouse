@@ -2,7 +2,7 @@
  * Shared utility functions for dashboard components
  */
 
-export type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "custom";
+export type DateRangeOption = "today" | "yesterday" | "3days" | "7days" | "30days" | "90days" | "custom";
 
 /**
  * Calculate date range bounds based on selection
@@ -44,6 +44,12 @@ export function getDateBounds(option: DateRangeOption, customStart?: Date, custo
       start.setHours(0, 0, 0, 0);
       return { start, end };
     }
+    case "90days": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 89);
+      start.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
     case "custom": {
       if (customStart && customEnd) {
         const start = new Date(customStart);
@@ -67,6 +73,16 @@ export function getDateBounds(option: DateRangeOption, customStart?: Date, custo
 export function formatNumber(num: number | undefined | null): string {
   if (num === undefined || num === null || isNaN(num)) return "0";
   return num.toLocaleString("en-US");
+}
+
+/**
+ * Format a number with compact notation (K, M abbreviations)
+ * Useful for large numbers in constrained UI spaces
+ */
+export function formatNumberCompact(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
+  return n.toLocaleString("en-US");
 }
 
 /**
@@ -96,6 +112,7 @@ export function getDaysInRange(option: DateRangeOption): number {
     case "3days": return 3;
     case "7days": return 7;
     case "30days": return 30;
+    case "90days": return 90;
     case "custom": return 7; // Fallback for custom
     default: return 7;
   }
@@ -111,6 +128,7 @@ export function getComparisonLabel(option: DateRangeOption): string {
     case "3days": return "vs prev 3d";
     case "7days": return "vs prev 7d";
     case "30days": return "vs prev 30d";
+    case "90days": return "vs prev 90d";
     case "custom": return "vs prev period";
     default: return "vs prev period";
   }
@@ -126,6 +144,7 @@ export function getShortRangeLabel(option: DateRangeOption): string {
     case "3days": return "3d";
     case "7days": return "7d";
     case "30days": return "30d";
+    case "90days": return "90d";
     case "custom": return "period";
     default: return "period";
   }
