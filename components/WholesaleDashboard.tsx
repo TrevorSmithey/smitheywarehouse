@@ -176,7 +176,18 @@ function InfoTooltip({
 // SEGMENT / HEALTH BADGES
 // ============================================================================
 
-function SegmentBadge({ segment }: { segment: CustomerSegment }) {
+function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCorporate?: boolean }) {
+  // Corporate customers get CORP badge instead of segment badge
+  if (isCorporate) {
+    return (
+      <InfoTooltip content="Corporate Gifting Customer">
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help bg-amber-500/20 text-amber-400">
+          CORP
+        </span>
+      </InfoTooltip>
+    );
+  }
+
   const config: Record<CustomerSegment, { label: string; color: string; tooltip: string }> = {
     major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Lifetime revenue $25,000+" },
     large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "$10,000 – $25,000 lifetime" },
@@ -311,7 +322,7 @@ function CustomerRow({ customer, rank }: { customer: WholesaleCustomer; rank: nu
             {customer.company_name}
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <SegmentBadge segment={customer.segment} />
+            <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
             <HealthBadge status={customer.health_status} />
           </div>
         </div>
@@ -380,7 +391,7 @@ function AtRiskCustomerCard({ customer }: { customer: WholesaleAtRiskCustomer })
             {customer.company_name}
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <SegmentBadge segment={customer.segment} />
+            <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
             <span className="text-[10px] text-text-muted">
               {customer.days_since_last_order}d since last order
             </span>
@@ -880,7 +891,7 @@ function NewCustomersSection({
                   {customer.company_name}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <SegmentBadge segment={customer.segment} />
+                  <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
                   <span className="text-[10px] text-text-muted">
                     {customer.order_count.toLocaleString()} order{customer.order_count !== 1 ? "s" : ""}
                   </span>
@@ -940,7 +951,7 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
                 {customer.company_name}
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <SegmentBadge segment={customer.segment} />
+                <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
                 <span className="text-[10px] text-text-muted">
                   {customer.order_count.toLocaleString()} lifetime orders
                 </span>
@@ -996,7 +1007,7 @@ function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly })
             {anomaly.company_name}
           </div>
           <div className="flex items-center gap-2 mt-1">
-            <SegmentBadge segment={anomaly.segment} />
+            <SegmentBadge segment={anomaly.segment} isCorporate={anomaly.is_corporate_gifting} />
             <SeverityBadge severity={anomaly.severity} />
           </div>
         </div>
@@ -2401,7 +2412,7 @@ export function WholesaleDashboard({
                             {customer.company_name}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <SegmentBadge segment={customer.segment} />
+                            <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
                             <HealthBadge status={customer.health_status} />
                           </div>
                         </td>

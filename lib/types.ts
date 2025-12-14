@@ -911,6 +911,8 @@ export interface WholesaleCustomer {
   // Growth metrics
   revenue_trend: number; // % change vs prior period
   order_trend: number; // % change vs prior period
+  // Corporate customer flag - replaces segment badge display when true
+  is_corporate_gifting: boolean;
 }
 
 export interface WholesaleTransaction {
@@ -1026,6 +1028,7 @@ export interface WholesaleAtRiskCustomer {
   risk_score: number;
   recommended_action: string;
   is_churned: boolean;
+  is_corporate_gifting: boolean;
 }
 
 export type OpportunityType = "upsell" | "cross_sell" | "volume_increase" | "new_category";
@@ -1077,6 +1080,8 @@ export interface WholesaleOrderingAnomaly {
   severity: OrderingAnomalySeverity;
   // Churned flag (365+ days since last order)
   is_churned: boolean;
+  // Corporate gifting customer
+  is_corporate_gifting: boolean;
 }
 
 // New customer acquisition comparison - YoY with outlier handling

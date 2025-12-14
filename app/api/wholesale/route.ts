@@ -281,6 +281,7 @@ export async function GET(request: Request) {
         days_since_last_order: c.days_since_last_order,
         revenue_trend: yoyChange,
         order_trend: 0, // Not computed in DB
+        is_corporate_gifting: c.is_corporate_gifting === true,
       };
     });
 
@@ -307,6 +308,7 @@ export async function GET(request: Request) {
         risk_score: c.days_since_last_order ? Math.min(100, Math.round(c.days_since_last_order / 3.65)) : 0,
         recommended_action: c.days_since_last_order && c.days_since_last_order > 180 ? "Re-engagement campaign" : "Check-in call",
         is_churned: (c.days_since_last_order || 0) >= 365,
+        is_corporate_gifting: c.is_corporate_gifting,
       }));
 
     // Growth opportunities (customers with positive trends)
@@ -394,6 +396,7 @@ export async function GET(request: Request) {
         overdue_ratio: Math.round(overdueRatio * 100) / 100, // Round to 2 decimal places
         severity: getAnomalySeverity(overdueRatio),
         is_churned: daysSinceLastOrder >= 365,
+        is_corporate_gifting: c.is_corporate_gifting === true,
       });
     }
 
