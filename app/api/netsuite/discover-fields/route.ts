@@ -9,18 +9,25 @@ import { executeSuiteQL, hasNetSuiteCredentials } from "@/lib/netsuite";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!hasNetSuiteCredentials()) {
     return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
   }
 
   try {
-    // Get a sample customer with all fields to see what's available
+    // Get URL params for customer search
+    const url = new URL(request.url);
+    const customerSearch = url.searchParams.get("customer");
+
+    // Build query - search by name if provided, otherwise get first wholesale customer
+    const whereClause = customerSearch
+      ? `WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501) AND LOWER(c.companyname) LIKE '%${customerSearch.toLowerCase()}%'`
+      : `WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)`;
+
     const sampleCustomer = await executeSuiteQL<Record<string, unknown>>(`
       SELECT *
       FROM customer c
-      WHERE c.isperson = 'F'
-      AND c.id NOT IN (493, 2501)
+      ${whereClause}
       FETCH FIRST 1 ROWS ONLY
     `);
 

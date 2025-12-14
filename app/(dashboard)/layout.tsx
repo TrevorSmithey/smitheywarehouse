@@ -4,9 +4,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { formatDistanceToNow } from "date-fns";
 import {
-  RefreshCw,
   BarChart3,
   MessageCircle,
   Target,
@@ -101,39 +99,17 @@ export default function DashboardLayout({
       <div className="min-h-screen bg-bg-primary text-text-primary p-4 sm:p-6 overscroll-none">
         {/* Header */}
         <header className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Image
-                src="/smithey-logo-white.png"
-                alt="Smithey"
-                width={40}
-                height={40}
-                className="object-contain"
-              />
-              <p className="text-sm text-text-secondary uppercase tracking-wide">
-                SMITHEY OPERATIONS
-              </p>
-            </div>
-            <button
-              onClick={() => triggerRefresh?.()}
-              disabled={isRefreshing || !triggerRefresh}
-              aria-label="Reload data from database"
-              title="Reload data from database"
-              className={`group flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue ${
-                isRefreshing
-                  ? "text-accent-blue bg-accent-blue/10"
-                  : "text-text-secondary hover:text-accent-blue hover:bg-bg-secondary active:scale-95 disabled:opacity-50"
-              }`}
-            >
-              <RefreshCw
-                className={`w-4 h-4 transition-transform duration-300 ${
-                  isRefreshing ? "animate-spin" : "group-hover:rotate-45"
-                }`}
-              />
-              <span className="hidden sm:inline">
-                {isRefreshing ? "Loading..." : "Reload"}
-              </span>
-            </button>
+          <div className="flex items-center gap-3 mb-4">
+            <Image
+              src="/smithey-logo-white.png"
+              alt="Smithey"
+              width={40}
+              height={40}
+              className="object-contain"
+            />
+            <p className="text-sm text-text-secondary uppercase tracking-wide">
+              SMITHEY OPERATIONS
+            </p>
           </div>
 
           {/* Primary Tab Navigation */}
