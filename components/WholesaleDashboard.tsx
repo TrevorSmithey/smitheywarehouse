@@ -2138,6 +2138,30 @@ export function WholesaleDashboard({
           </button>
         </div>
 
+        {/* Revenue Mix: Corporate vs Standard B2B */}
+        {stats.revenue_by_type && (
+          <div className="mt-2 flex items-center gap-3 text-[12px] text-text-muted">
+            <span className="text-[10px] uppercase tracking-[0.15em]">Revenue Mix</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                <span>
+                  Corporate: <span className="text-purple-400 font-medium">{stats.revenue_by_type.corporate.revenue_pct}%</span>
+                  <span className="text-text-tertiary ml-1">({formatCurrency(stats.revenue_by_type.corporate.revenue)})</span>
+                </span>
+              </div>
+              <span className="text-text-muted/30">|</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-accent-blue"></span>
+                <span>
+                  B2B: <span className="text-accent-blue font-medium">{stats.revenue_by_type.standard_b2b.revenue_pct}%</span>
+                  <span className="text-text-tertiary ml-1">({formatCurrency(stats.revenue_by_type.standard_b2b.revenue)})</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Expandable Customer List */}
         {selectedHealthFilter && (
           <div className="mt-4 pt-4 border-t border-border/20">

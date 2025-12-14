@@ -53,6 +53,10 @@
     {
       "path": "/api/cron/sync-netsuite-lineitems",
       "schedule": "10 6 * * *"
+    },
+    {
+      "path": "/api/cron/check-lead-conversions",
+      "schedule": "0 7 * * *"
     }
   ]
 }

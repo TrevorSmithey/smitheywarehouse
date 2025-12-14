@@ -18,6 +18,7 @@ import type {
   WholesaleSkuStats,
   WholesaleStats,
   WholesaleNewCustomerAcquisition,
+  WholesaleRevenueByType,
   CustomerHealthStatus,
   CustomerSegment,
 } from "@/lib/types";
@@ -512,6 +513,60 @@ export async function GET(request: Request) {
       minimal: customers.filter((c) => c.segment === "minimal").length,
     };
 
+    // ========================================================================
+    // REVENUE BY BUSINESS TYPE (Corporate vs Standard B2B)
+    // Uses the 'category' field from NetSuite to identify corporate customers
+    // ========================================================================
+
+    // Build a map of customer_id -> category from the raw customers data
+    const customerCategoryMap = new Map<number, string>();
+    for (const c of customersResult.data || []) {
+      customerCategoryMap.set(parseInt(c.ns_customer_id), c.category || "");
+    }
+
+    // Calculate revenue breakdown by type for current period
+    let corporateRevenue = 0;
+    let corporateOrderCount = 0;
+    const corporateCustomerIds = new Set<number>();
+    let standardB2BRevenue = 0;
+    let standardB2BOrderCount = 0;
+    const standardB2BCustomerIds = new Set<number>();
+
+    for (const t of transactionsResult.data || []) {
+      const category = customerCategoryMap.get(t.ns_customer_id);
+      const revenue = parseFloat(t.foreign_total) || 0;
+
+      if (category === "Corporate") {
+        corporateRevenue += revenue;
+        corporateOrderCount++;
+        corporateCustomerIds.add(t.ns_customer_id);
+      } else {
+        standardB2BRevenue += revenue;
+        standardB2BOrderCount++;
+        standardB2BCustomerIds.add(t.ns_customer_id);
+      }
+    }
+
+    const totalRevenueForPct = corporateRevenue + standardB2BRevenue;
+    const revenueByType: WholesaleRevenueByType = {
+      corporate: {
+        revenue: Math.round(corporateRevenue * 100) / 100,
+        customer_count: corporateCustomerIds.size,
+        order_count: corporateOrderCount,
+        revenue_pct: totalRevenueForPct > 0
+          ? Math.round((corporateRevenue / totalRevenueForPct) * 1000) / 10
+          : 0,
+      },
+      standard_b2b: {
+        revenue: Math.round(standardB2BRevenue * 100) / 100,
+        customer_count: standardB2BCustomerIds.size,
+        order_count: standardB2BOrderCount,
+        revenue_pct: totalRevenueForPct > 0
+          ? Math.round((standardB2BRevenue / totalRevenueForPct) * 1000) / 10
+          : 0,
+      },
+    };
+
     const stats: WholesaleStats = {
       total_revenue: currentPeriodRevenue,
       total_orders: currentPeriodOrders,
@@ -535,6 +590,7 @@ export async function GET(request: Request) {
           : 0,
       health_distribution: healthDistribution,
       segment_distribution: segmentDistribution,
+      revenue_by_type: revenueByType,
     };
 
     // New customers - first-time buyers in last 90 days

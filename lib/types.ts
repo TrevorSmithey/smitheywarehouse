@@ -977,6 +977,22 @@ export interface WholesaleSegmentDistribution {
   minimal: number;
 }
 
+// Revenue breakdown by business type (corporate vs standard B2B)
+export interface WholesaleRevenueByType {
+  corporate: {
+    revenue: number;
+    customer_count: number;
+    order_count: number;
+    revenue_pct: number;
+  };
+  standard_b2b: {
+    revenue: number;
+    customer_count: number;
+    order_count: number;
+    revenue_pct: number;
+  };
+}
+
 export interface WholesaleStats {
   // Period totals
   total_revenue: number;
@@ -994,6 +1010,8 @@ export interface WholesaleStats {
   // Customer breakdown
   health_distribution: WholesaleHealthDistribution;
   segment_distribution: WholesaleSegmentDistribution;
+  // Revenue breakdown by business type
+  revenue_by_type?: WholesaleRevenueByType;
 }
 
 export interface WholesaleAtRiskCustomer {
@@ -1207,4 +1225,126 @@ export interface PatternInsightsResponse {
     combinedWarning: number;
   };
   lastAnalyzed: string;
+}
+
+// ============================================================
+// Typeform Lead Tracking Types
+// ============================================================
+
+export type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "lost" | "archived";
+
+export type LeadFormType = "wholesale" | "corporate";
+
+export type LeadMatchStatus = "pending" | "auto_matched" | "manual_matched" | "no_match" | "rejected";
+
+export interface TypeformLead {
+  id: number;
+  typeform_response_id: string;
+  typeform_form_id: string;
+  form_type: LeadFormType;
+  // Submission data - Core
+  company_name: string;
+  contact_first_name: string | null;
+  contact_last_name: string | null;
+  contact_title: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  // Address
+  address: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  country: string | null;
+  // Business details
+  store_type: string | null; // "Brick and mortar", "Online only", "Both brick and mortar and online presence"
+  location_count: string | null;
+  industry: string | null;
+  years_in_business: string | null;
+  ein: string | null;
+  // Social/Web
+  instagram_url: string | null;
+  has_instagram: boolean | null;
+  has_website: boolean | null;
+  // Lead qualification
+  referral_source: string | null; // "How did you first hear about Smithey?"
+  fit_reason: string | null; // "Why might Smithey be a good fit?"
+  notes: string | null; // Additional notes from submission
+  submitted_at: string;
+  raw_payload: Record<string, unknown>;
+  // Lead status
+  status: LeadStatus;
+  assigned_to: string | null;
+  // Matching
+  match_status: LeadMatchStatus;
+  matched_customer_id: number | null;
+  match_confidence: number | null;
+  match_candidates: MatchCandidate[] | null;
+  matched_at: string | null;
+  matched_by: string | null; // "auto" or user ID
+  // Conversion tracking
+  converted_at: string | null;
+  first_order_id: number | null;
+  first_order_date: string | null;
+  first_order_amount: number | null;
+  days_to_conversion: number | null;
+  // Timestamps
+  synced_at: string;
+  updated_at: string;
+}
+
+export interface MatchCandidate {
+  ns_customer_id: number;
+  company_name: string;
+  confidence: number; // 0-100 similarity score
+  match_reasons: string[]; // e.g., ["company_name: 92%", "email_domain: 100%"]
+}
+
+export interface LeadFunnelMetrics {
+  // Volume
+  total_leads: number;
+  new_leads: number;
+  contacted_leads: number;
+  qualified_leads: number;
+  converted_leads: number;
+  lost_leads: number;
+  // By form type
+  wholesale_leads: number;
+  corporate_leads: number;
+  // Matching
+  auto_matched: number;
+  manual_matched: number;
+  pending_match: number;
+  // Conversion
+  conversion_rate: number; // converted / (qualified + converted + lost) * 100
+  avg_days_to_conversion: number | null;
+  total_conversion_revenue: number;
+  // Comparison vs prior period
+  leads_delta: number;
+  leads_delta_pct: number;
+  conversion_rate_delta: number;
+}
+
+export interface LeadVolumeByPeriod {
+  period: string; // YYYY-MM or YYYY-MM-DD depending on granularity
+  wholesale: number;
+  corporate: number;
+  total: number;
+  converted: number;
+  conversion_rate: number;
+}
+
+export interface LeadsResponse {
+  // Lead list (paginated)
+  leads: TypeformLead[];
+  total_count: number;
+  // Funnel metrics
+  funnel: LeadFunnelMetrics;
+  // Volume trend
+  volume_trend: LeadVolumeByPeriod[];
+  // Leads needing review (pending match, sorted by confidence desc)
+  pending_review: TypeformLead[];
+  // Metadata
+  lastSynced: string | null;
 }
