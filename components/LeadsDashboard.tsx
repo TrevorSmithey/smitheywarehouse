@@ -4,20 +4,14 @@ import { useState, useMemo } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Users,
-  TrendingUp,
-  TrendingDown,
   ChevronDown,
   ChevronUp,
-  Target,
-  Clock,
   CheckCircle,
   AlertCircle,
   UserCheck,
   UserX,
   Building2,
   Gift,
-  Phone,
-  ExternalLink,
   Link2,
   Sparkles,
   Loader2,
@@ -29,9 +23,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
 } from "recharts";
 import type {
   LeadsResponse,
@@ -207,44 +198,128 @@ function FitScoreBadge({ score }: { score: number | null }) {
 }
 
 // ============================================================================
-// METRIC CARD
+// LEAD CONVERSION HEADER
 // ============================================================================
 
-function MetricCard({
-  label,
-  value,
-  delta,
-  icon,
-  tooltip,
-}: {
-  label: string;
-  value: string | number;
-  delta?: number | null;
-  icon: React.ReactNode;
-  tooltip?: string;
-}) {
-  const content = (
-    <div className="bg-surface-secondary rounded-lg p-4 border border-border/30">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-text-muted text-xs uppercase tracking-wider">{label}</span>
-        <span className="text-text-muted">{icon}</span>
+function LeadConversionHeader({ data }: { data: LeadsResponse }) {
+  const { funnel } = data;
+
+  const funnelTypes = [
+    {
+      name: "B2B Wholesale",
+      icon: <Building2 className="w-5 h-5" />,
+      color: "#60A5FA",
+      borderColor: "border-accent-blue/30",
+      total: funnel.wholesale.total,
+      converted: funnel.wholesale.converted,
+      rate: funnel.wholesale.conversion_rate,
+      avgDays: funnel.wholesale.avg_days_to_conversion,
+    },
+    {
+      name: "Corporate Gifting",
+      icon: <Gift className="w-5 h-5" />,
+      color: "#A78BFA",
+      borderColor: "border-purple-400/30",
+      total: funnel.corporate.total,
+      converted: funnel.corporate.converted,
+      rate: funnel.corporate.conversion_rate,
+      avgDays: funnel.corporate.avg_days_to_conversion,
+    },
+  ];
+
+  return (
+    <div className="bg-surface-secondary rounded-xl border border-border/30 p-5">
+      {/* Header with totals */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">Lead Conversion</h3>
+          <span className="text-[10px] text-text-muted/60 uppercase tracking-wider">T365</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider block mb-0.5">Total Leads</span>
+            <span className="text-xl font-semibold text-text-primary tabular-nums">{funnel.total_leads}</span>
+          </div>
+          <div className="h-8 w-px bg-border/30" />
+          <div className="text-right">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider block mb-0.5">Converted</span>
+            <span className="text-xl font-semibold text-status-good tabular-nums">{funnel.converted_leads}</span>
+          </div>
+          <div className="h-8 w-px bg-border/30" />
+          <div className="text-right">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider block mb-0.5">Overall Rate</span>
+            <span className="text-xl font-semibold text-text-primary tabular-nums">{funnel.conversion_rate.toFixed(1)}%</span>
+          </div>
+          <div className="h-8 w-px bg-border/30" />
+          <div className="text-right">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider block mb-0.5">Revenue</span>
+            <span className="text-xl font-semibold text-accent-blue tabular-nums">{formatCurrency(funnel.total_conversion_revenue)}</span>
+          </div>
+        </div>
       </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold text-text-primary">{value}</span>
-        {delta !== undefined && delta !== null && (
-          <span className={`text-xs flex items-center ${delta >= 0 ? "text-status-good" : "text-status-error"}`}>
-            {delta >= 0 ? <TrendingUp className="w-3 h-3 mr-0.5" /> : <TrendingDown className="w-3 h-3 mr-0.5" />}
-            {formatPct(delta)}
-          </span>
-        )}
+
+      {/* Form Type Breakdown */}
+      <div className="grid grid-cols-2 gap-6">
+        {funnelTypes.map((type) => {
+          const conversionPct = type.total > 0 ? (type.converted / type.total) * 100 : 0;
+
+          return (
+            <div
+              key={type.name}
+              className={`bg-surface-primary/30 rounded-lg p-4 border ${type.borderColor}`}
+            >
+              {/* Type Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: type.color }}>{type.icon}</span>
+                  <span className="text-sm font-medium text-text-primary">{type.name}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <span className="text-[9px] text-text-muted uppercase">Leads</span>
+                    <span className="text-lg font-semibold text-text-primary tabular-nums ml-2">{type.total}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mb-4">
+                <div className="h-2 bg-surface-primary rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.max(conversionPct, 2)}%`,
+                      backgroundColor: type.color
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Metrics Row */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <span className="text-[9px] text-text-muted uppercase block mb-1">Converted</span>
+                  <span className="text-base font-semibold text-status-good tabular-nums">{type.converted}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-text-muted uppercase block mb-1">Rate</span>
+                  <span className="text-base font-semibold tabular-nums" style={{ color: type.color }}>
+                    {type.rate.toFixed(1)}%
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-text-muted uppercase block mb-1">Avg Days</span>
+                  <span className="text-base font-semibold text-text-secondary tabular-nums">
+                    {type.avgDays !== null ? type.avgDays.toFixed(0) : "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
-
-  if (tooltip) {
-    return <InfoTooltip content={tooltip}>{content}</InfoTooltip>;
-  }
-  return content;
 }
 
 // ============================================================================
@@ -776,45 +851,13 @@ export function LeadsDashboard({ data, loading, onRefresh }: LeadsDashboardProps
     );
   }
 
-  const { funnel } = data;
-
   return (
     <div className="space-y-6">
-      {/* Metrics Strip */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="Total Leads"
-          value={funnel.total_leads}
-          delta={funnel.leads_delta_pct || null}
-          icon={<Users className="w-4 h-4" />}
-          tooltip="All-time lead submissions"
-        />
-        <MetricCard
-          label="Conversion Rate"
-          value={`${funnel.conversion_rate.toFixed(1)}%`}
-          delta={funnel.conversion_rate_delta || null}
-          icon={<Target className="w-4 h-4" />}
-          tooltip="Leads that became customers"
-        />
-        <MetricCard
-          label="Avg Days to Convert"
-          value={funnel.avg_days_to_conversion !== null ? funnel.avg_days_to_conversion.toFixed(0) : "—"}
-          icon={<Clock className="w-4 h-4" />}
-          tooltip="Average time from lead to first order"
-        />
-        <MetricCard
-          label="Conversion Revenue"
-          value={formatCurrency(funnel.total_conversion_revenue)}
-          icon={<TrendingUp className="w-4 h-4" />}
-          tooltip="Total first order revenue from converted leads"
-        />
-      </div>
+      {/* Lead Conversion Header - combines KPIs and form type breakdown */}
+      <LeadConversionHeader data={data} />
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ConversionFunnel data={data} />
-        <VolumeTrendChart data={data} />
-      </div>
+      {/* Volume Trend Chart */}
+      <VolumeTrendChart data={data} />
 
       {/* Leads Table */}
       <div>
