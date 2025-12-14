@@ -26,7 +26,9 @@ const STALE_THRESHOLDS: Record<string, number> = {
   inventory: 6,     // Inventory cron - runs every few hours
   holiday: 24,      // Holiday sync - runs daily
   assembly: 48,     // Assembly sync - manually triggered
-  netsuite: 24,     // NetSuite sync - runs daily at 6 AM UTC
+  netsuite_customers: 24,    // NetSuite customers - runs daily at 6 AM UTC
+  netsuite_transactions: 24, // NetSuite transactions - runs daily at 6:05 AM UTC
+  netsuite_lineitems: 24,    // NetSuite line items - runs daily at 6:10 AM UTC
   klaviyo: 24,      // Klaviyo sync - runs daily
   reamaze: 24,      // Reamaze sync - runs daily
   shopify_stats: 24, // Shopify stats - runs daily
@@ -35,7 +37,7 @@ const STALE_THRESHOLDS: Record<string, number> = {
 // Sync types to exclude from health monitoring
 // These are disabled/unconfigured syncs that shouldn't trigger alerts
 const EXCLUDED_SYNC_TYPES = new Set<string>([
-  // Add sync types here that are intentionally disabled
+  "netsuite", // Replaced by chunked sync: netsuite_customers, netsuite_transactions, netsuite_lineitems
 ]);
 
 export async function GET() {
