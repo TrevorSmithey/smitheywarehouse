@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { executeSuiteQL, hasNetSuiteCredentials } from "@/lib/netsuite";
+import { executeSuiteQL, hasNetSuiteCredentials, fetchWholesaleCustomers } from "@/lib/netsuite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -136,6 +136,7 @@ export async function GET(request: Request) {
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 200 ROWS ONLY
     `},
+    "sync": { name: "ACTUAL sync function test", query: "USE_FETCH_FUNCTION" },
   };
 
   const test = queries[testNum];
@@ -145,6 +146,19 @@ export async function GET(request: Request) {
 
   const start = Date.now();
   try {
+    // Special case: test the actual sync function
+    if (test.query === "USE_FETCH_FUNCTION") {
+      const data = await fetchWholesaleCustomers(0, 200);
+      return NextResponse.json({
+        test: testNum,
+        name: test.name,
+        status: "success",
+        time: Date.now() - start,
+        count: data.length,
+        sample: data.slice(0, 2), // Show first 2 records to verify fields
+      });
+    }
+
     const data = await executeSuiteQL(test.query);
     return NextResponse.json({
       test: testNum,
