@@ -53,40 +53,109 @@ async function syncCustomers(
     if (customers.length === 0) break;
     totalFetched += customers.length;
 
-    // Transform to Supabase format - sync all raw NetSuite fields
+    // Transform to Supabase format - sync all raw NetSuite fields (71 total)
     const records = customers.map((c: NSCustomer) => ({
+      // Core identifiers
       ns_customer_id: c.id,
       entity_id: c.entityid,
+      entity_number: c.entitynumber,
+      entity_title: c.entitytitle,
+      external_id: c.externalid,
       company_name: c.companyname || "Unknown",
+      alt_name: c.altname,
+      full_name: c.fullname,
+
+      // Contact info
       email: c.email,
       phone: c.phone,
       alt_phone: c.altphone,
       fax: c.fax,
       url: c.url,
+
+      // Dates
+      date_created: c.datecreated ? new Date(c.datecreated).toISOString().split("T")[0] : null,
+      date_closed: c.dateclosed,
+      last_modified: c.lastmodifieddate,
       first_sale_date: c.firstsaledate,
       last_sale_date: c.lastsaledate,
       first_order_date: c.firstorderdate,
       last_order_date: c.lastorderdate,
-      date_created: c.datecreated ? new Date(c.datecreated).toISOString().split("T")[0] : null,
-      last_modified: c.lastmodifieddate,
+      first_sale_period: c.firstsaleperiod,
+      last_sale_period: c.lastsaleperiod,
+
+      // Status flags
       is_inactive: c.isinactive === "T",
+      is_person: c.isperson === "T",
+      is_job: c.isjob === "T",
+      is_budget_approved: c.isbudgetapproved === "T",
+      is_duplicate: c.duplicate === "T",
+      is_web_lead: c.weblead === "T",
+      give_access: c.giveaccess === "T",
+      is_unsubscribed: c.unsubscribe === "T",
+
+      // Relationships
       parent_id: c.parent,
+      top_level_parent: c.toplevelparent,
+
+      // Classification
       terms: c.terms,
       category: c.category,
       entity_status: c.entitystatus,
       sales_rep: c.salesrep,
       territory: c.territory,
+      search_stage: c.searchstage,
+      probability: c.probability ? parseFloat(c.probability) : null,
+
+      // Currency & Financial
       currency: c.currency,
+      display_symbol: c.displaysymbol,
+      symbol_placement: c.symbolplacement,
+      override_currency_format: c.overridecurrencyformat === "T",
       credit_limit: c.creditlimit ? parseFloat(c.creditlimit) : null,
       balance: c.balance ? parseFloat(c.balance) : null,
       overdue_balance: c.overduebalance ? parseFloat(c.overduebalance) : null,
       consol_balance: c.consolbalance ? parseFloat(c.consolbalance) : null,
       unbilled_orders: c.unbilledorders ? parseFloat(c.unbilledorders) : null,
       deposit_balance: c.depositbalance ? parseFloat(c.depositbalance) : null,
+      receivables_account: c.receivablesaccount,
+      credit_hold_override: c.creditholdoverride,
+      on_credit_hold: c.oncredithold === "T",
+      days_overdue_search: c.daysoverduesearch ? parseInt(c.daysoverduesearch) : null,
+
+      // Addresses
       bill_address: c.billaddress,
       ship_address: c.shipaddress,
       default_billing_address: c.defaultbillingaddress,
       default_shipping_address: c.defaultshippingaddress,
+
+      // Preferences
+      email_preference: c.emailpreference,
+      email_transactions: c.emailtransactions === "T",
+      fax_transactions: c.faxtransactions === "T",
+      print_transactions: c.printtransactions === "T",
+      global_subscription_status: c.globalsubscriptionstatus,
+      ship_complete: c.shipcomplete === "T",
+      shipping_carrier: c.shippingcarrier,
+      alcohol_recipient_type: c.alcoholrecipienttype,
+      is_taxable: c.taxable === "T",
+
+      // Custom fields (custentity_*)
+      custentity1: c.custentity1,
+      custentity_2663_customer_refund: c.custentity_2663_customer_refund === "T",
+      custentity_2663_direct_debit: c.custentity_2663_direct_debit === "T",
+      custentity_alf_cust_hide_service_periods: c.custentity_alf_cust_hide_service_periods === "T",
+      custentity_alf_customer_hide_total_vat: c.custentity_alf_customer_hide_total_vat === "T",
+      custentity_alf_customer_store_pdf: c.custentity_alf_customer_store_pdf === "T",
+      custentity_bdc_lastupdatedbyimport: c.custentity_bdc_lastupdatedbyimport === "T",
+      custentity_bdc_shortname: c.custentity_bdc_shortname,
+      custentity_bdc_sync_exclude: c.custentity_bdc_sync_exclude === "T",
+      custentity_celigo_etail_cust_exported: c.custentity_celigo_etail_cust_exported === "T",
+      custentity_celigo_is_updated_via_shp: c.custentity_celigo_is_updated_via_shp === "T",
+      custentity_mhi_customer_type: c.custentity_mhi_customer_type,
+      custentity_mhi_intsagramfacebook: c.custentity_mhi_intsagramfacebook === "T",
+      custentity_naw_trans_need_approval: c.custentity_naw_trans_need_approval === "T",
+
+      // Metadata
       synced_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));

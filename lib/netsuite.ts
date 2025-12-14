@@ -160,38 +160,105 @@ export interface NSLineItem {
 }
 
 export interface NSCustomer {
+  // Core identifiers
   id: number;
   entityid: string;
+  entitynumber: string | null;
+  entitytitle: string | null;
+  externalid: string | null;
   companyname: string;
+  altname: string | null;
+  fullname: string | null;
+
+  // Contact info
   email: string | null;
   phone: string | null;
   altphone: string | null;
   fax: string | null;
   url: string | null;
+
+  // Dates
+  datecreated: string | null;
+  dateclosed: string | null;
+  lastmodifieddate: string | null;
   firstsaledate: string | null;
   lastsaledate: string | null;
   firstorderdate: string | null;
   lastorderdate: string | null;
-  datecreated: string | null;
-  lastmodifieddate: string | null;
+  firstsaleperiod: string | null;
+  lastsaleperiod: string | null;
+
+  // Status flags
   isinactive: string;
+  isperson: string;
+  isjob: string;
+  isbudgetapproved: string;
+  duplicate: string;
+  weblead: string;
+  giveaccess: string;
+  unsubscribe: string;
+
+  // Relationships
   parent: number | null;
+  toplevelparent: number | null;
+
+  // Classification
   terms: string | null;
   category: string | null;
   entitystatus: string | null;
   salesrep: string | null;
   territory: string | null;
+  searchstage: string | null;
+  probability: string | null;
+
+  // Currency & Financial
   currency: string | null;
+  displaysymbol: string | null;
+  symbolplacement: string | null;
+  overridecurrencyformat: string;
   creditlimit: string | null;
   balance: string | null;
   overduebalance: string | null;
   consolbalance: string | null;
   unbilledorders: string | null;
   depositbalance: string | null;
+  receivablesaccount: string | null;
+  creditholdoverride: string | null;
+  oncredithold: string;
+  daysoverduesearch: string | null;
+
+  // Addresses
   billaddress: string | null;
   shipaddress: string | null;
   defaultbillingaddress: string | null;
   defaultshippingaddress: string | null;
+
+  // Preferences
+  emailpreference: string | null;
+  emailtransactions: string;
+  faxtransactions: string;
+  printtransactions: string;
+  globalsubscriptionstatus: string | null;
+  shipcomplete: string;
+  shippingcarrier: string | null;
+  alcoholrecipienttype: string | null;
+  taxable: string;
+
+  // Custom fields (custentity_*)
+  custentity1: string | null;
+  custentity_2663_customer_refund: string;
+  custentity_2663_direct_debit: string;
+  custentity_alf_cust_hide_service_periods: string;
+  custentity_alf_customer_hide_total_vat: string;
+  custentity_alf_customer_store_pdf: string;
+  custentity_bdc_lastupdatedbyimport: string;
+  custentity_bdc_shortname: string | null;
+  custentity_bdc_sync_exclude: string;
+  custentity_celigo_etail_cust_exported: string;
+  custentity_celigo_is_updated_via_shp: string;
+  custentity_mhi_customer_type: string | null;
+  custentity_mhi_intsagramfacebook: string;
+  custentity_naw_trans_need_approval: string;
 }
 
 /**
@@ -267,36 +334,84 @@ export async function fetchWholesaleCustomers(
     SELECT
       c.id,
       c.entityid,
+      c.entitynumber,
+      c.entitytitle,
+      c.externalid,
       c.companyname,
+      c.altname,
+      c.fullname,
       c.email,
       c.phone,
       c.altphone,
       c.fax,
       c.url,
+      c.datecreated,
+      c.dateclosed,
+      c.lastmodifieddate,
       c.firstsaledate,
       c.lastsaledate,
       c.firstorderdate,
       c.lastorderdate,
-      c.datecreated,
-      c.lastmodifieddate,
+      c.firstsaleperiod,
+      c.lastsaleperiod,
       c.isinactive,
+      c.isperson,
+      c.isjob,
+      c.isbudgetapproved,
+      c.duplicate,
+      c.weblead,
+      c.giveaccess,
+      c.unsubscribe,
       c.parent,
+      c.toplevelparent,
       BUILTIN.DF(c.terms) as terms,
       BUILTIN.DF(c.category) as category,
       BUILTIN.DF(c.entitystatus) as entitystatus,
       BUILTIN.DF(c.salesrep) as salesrep,
       BUILTIN.DF(c.territory) as territory,
+      c.searchstage,
+      c.probability,
       BUILTIN.DF(c.currency) as currency,
+      c.displaysymbol,
+      c.symbolplacement,
+      c.overridecurrencyformat,
       c.creditlimit,
       c.balance,
       c.overduebalance,
       c.consolbalance,
       c.unbilledorders,
       c.depositbalance,
+      c.receivablesaccount,
+      c.creditholdoverride,
+      c.oncredithold,
+      c.daysoverduesearch,
       c.billaddress,
       c.shipaddress,
       c.defaultbillingaddress,
-      c.defaultshippingaddress
+      c.defaultshippingaddress,
+      c.emailpreference,
+      c.emailtransactions,
+      c.faxtransactions,
+      c.printtransactions,
+      c.globalsubscriptionstatus,
+      c.shipcomplete,
+      c.shippingcarrier,
+      c.alcoholrecipienttype,
+      c.taxable,
+      c.custentity1,
+      c.custentity_2663_customer_refund,
+      c.custentity_2663_direct_debit,
+      c.custentity_alf_cust_hide_service_periods,
+      c.custentity_alf_customer_hide_total_vat,
+      c.custentity_alf_customer_store_pdf,
+      c.custentity_bdc_lastupdatedbyimport,
+      c.custentity_bdc_shortname,
+      c.custentity_bdc_sync_exclude,
+      c.custentity_celigo_etail_cust_exported,
+      c.custentity_celigo_is_updated_via_shp,
+      c.custentity_mhi_customer_type,
+      c.custentity_mhi_intsagramfacebook,
+      c.custentity_naw_trans_need_approval
     FROM customer c
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)
