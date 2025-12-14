@@ -423,7 +423,6 @@ export async function GET(request: Request) {
         const bDate = b.date_created ? new Date(b.date_created).getTime() : 0;
         return bDate - aDate;
       })
-      .slice(0, 50)
       .map((c) => ({
         ns_customer_id: parseInt(c.ns_customer_id) || 0,
         entity_id: c.ns_customer_id?.toString() || "",
