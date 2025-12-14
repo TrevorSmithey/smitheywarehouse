@@ -76,17 +76,41 @@ export async function GET(request: Request) {
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 200 ROWS ONLY
     `},
-    "11": { name: "200 customers PRODUCTION query (no balance fields)", query: `
+    "11": { name: "200 customers without creditlimit", query: `
       SELECT
         c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
         c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
         c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
         c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency,
-        c.creditlimit, c.billaddress, c.shipaddress,
+        c.billaddress, c.shipaddress,
         c.defaultbillingaddress, c.defaultshippingaddress
       FROM customer c
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 200 ROWS ONLY
+    `},
+    "12": { name: "100 customers same fields", query: `
+      SELECT
+        c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
+        c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
+        c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
+        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency,
+        c.billaddress, c.shipaddress,
+        c.defaultbillingaddress, c.defaultshippingaddress
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 100 ROWS ONLY
+    `},
+    "13": { name: "50 customers same fields", query: `
+      SELECT
+        c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
+        c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
+        c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
+        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency,
+        c.billaddress, c.shipaddress,
+        c.defaultbillingaddress, c.defaultshippingaddress
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 50 ROWS ONLY
     `},
   };
 
