@@ -2082,9 +2082,22 @@ export function WholesaleDashboard({
               onClick={() => setSelectedHealthFilter(null)}
               className="w-full flex items-center justify-between mb-2 group cursor-pointer hover:bg-white/[0.02] -mx-2 px-2 py-1 rounded transition-colors"
             >
-              <h4 className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-medium">
-                {selectedHealthFilter.replace("_", " ")} customers
-              </h4>
+              <div className="text-left">
+                <h4 className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-medium">
+                  {selectedHealthFilter.replace("_", " ")} customers
+                </h4>
+                <span className="text-[9px] text-text-tertiary">
+                  {selectedHealthFilter === "churning" && "No orders in 90+ days"}
+                  {selectedHealthFilter === "at_risk" && "Order frequency declining significantly"}
+                  {selectedHealthFilter === "declining" && "Order frequency slowing down"}
+                  {selectedHealthFilter === "thriving" && "Growing order volume or frequency"}
+                  {selectedHealthFilter === "stable" && "Consistent ordering patterns"}
+                  {selectedHealthFilter === "new" && "First order within 90 days"}
+                  {selectedHealthFilter === "one_time" && "Only placed 1 order ever"}
+                  {selectedHealthFilter === "churned" && "No orders in 180+ days"}
+                  {selectedHealthFilter === "never_ordered" && "No orders on record"}
+                </span>
+              </div>
               <div className="flex items-center gap-2 text-text-muted group-hover:text-accent-blue transition-colors">
                 <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
                   Click to close
