@@ -125,8 +125,11 @@ export async function executeSuiteQL<T = Record<string, unknown>>(
       const isTimeout = error instanceof Error && error.name === "AbortError";
       const errorType = isTimeout ? "TIMEOUT" : "NETWORK/API";
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorStack = error instanceof Error ? error.stack : "";
 
       console.error(`[NETSUITE] ${errorType} error (attempt ${attempt + 1}/${retries}): ${errorMessage}`);
+      console.error(`[NETSUITE] Error details: name=${error instanceof Error ? error.name : "unknown"}, cause=${JSON.stringify((error as Error)?.cause || "none")}`);
+      if (errorStack) console.error(`[NETSUITE] Stack: ${errorStack.split("\n").slice(0, 3).join(" -> ")}`);
 
       if (attempt < retries - 1) {
         // Exponential backoff: 2s, 8s, 32s
