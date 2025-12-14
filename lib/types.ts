@@ -1061,6 +1061,51 @@ export interface WholesaleOrderingAnomaly {
   is_churned: boolean;
 }
 
+// New customer acquisition comparison - YoY with outlier handling
+export interface WholesaleNewCustomerAcquisition {
+  // Current period (YTD or selected period)
+  currentPeriod: {
+    startDate: string;
+    endDate: string;
+    newCustomerCount: number;
+    totalRevenue: number;
+    avgOrderValue: number;
+  };
+  // Same period prior year
+  priorPeriod: {
+    startDate: string;
+    endDate: string;
+    newCustomerCount: number;
+    totalRevenue: number;
+    avgOrderValue: number;
+  };
+  // YoY comparison (raw, includes outliers)
+  yoyComparison: {
+    customerCountDelta: number;
+    customerCountDeltaPct: number;
+    revenueDelta: number;
+    revenueDeltaPct: number;
+  };
+  // Outliers - large single orders that skew comparison
+  outliers: Array<{
+    ns_customer_id: number;
+    company_name: string;
+    revenue: number;
+    orderDate: string;
+    period: "current" | "prior";
+    // Why it's an outlier (e.g., ">3x average order value")
+    reason: string;
+  }>;
+  // Adjusted comparison (excludes outliers for apples-to-apples)
+  adjustedComparison: {
+    currentRevenue: number;
+    priorRevenue: number;
+    revenueDelta: number;
+    revenueDeltaPct: number;
+    outliersExcluded: number;
+  };
+}
+
 export interface WholesaleResponse {
   // Monthly revenue trend for charts
   monthly: WholesaleMonthlyStats[];
@@ -1081,6 +1126,80 @@ export interface WholesaleResponse {
   recentTransactions: WholesaleTransaction[];
   // Top SKUs
   topSkus: WholesaleSkuStats[];
+  // New customer acquisition YoY comparison with outlier handling
+  newCustomerAcquisition: WholesaleNewCustomerAcquisition | null;
+  // Customers grouped by health status for drill-down views
+  customersByHealth: {
+    thriving: WholesaleCustomer[];
+    stable: WholesaleCustomer[];
+    declining: WholesaleCustomer[];
+    at_risk: WholesaleCustomer[];
+    churning: WholesaleCustomer[];
+    churned: WholesaleCustomer[];
+    new: WholesaleCustomer[];
+    one_time: WholesaleCustomer[];
+  };
   // Metadata
   lastSynced: string | null;
+}
+
+// ============================================================
+// AI Pattern Recognition Types
+// ============================================================
+
+export type ChurnSignalType =
+  | "interval_extended"
+  | "size_declining"
+  | "frequency_dropped"
+  | "pattern_break"
+  | "combined_warning";
+
+export type ChurnRiskLevel = "critical" | "high" | "medium" | "low";
+
+export interface ChurnSignal {
+  type: ChurnSignalType;
+  severity: "critical" | "warning" | "watch";
+  description: string;
+  evidence: string;
+}
+
+export interface ChurnPrediction {
+  ns_customer_id: number;
+  company_name: string;
+  segment: CustomerSegment;
+  churnRiskScore: number;
+  riskLevel: ChurnRiskLevel;
+  signals: ChurnSignal[];
+  narrative: string;
+  revenueAtRisk: number;
+  recommendedAction: string;
+  confidenceLevel: number;
+}
+
+export interface PatternInsightsResponse {
+  predictions: ChurnPrediction[];
+  summary: {
+    totalAnalyzed: number;
+    criticalRisk: number;
+    highRisk: number;
+    mediumRisk: number;
+    lowRisk: number;
+    totalRevenueAtRisk: number;
+    avgConfidence: number;
+  };
+  patternStats: {
+    avgOrderInterval: number;
+    avgOrderSize: number;
+    customersWithConsistentPatterns: number;
+    customersWithSeasonalPatterns: number;
+    customersWithSizeTrend: number;
+  };
+  topSignals: {
+    intervalExtended: number;
+    sizeDeclining: number;
+    frequencyDropped: number;
+    patternBreak: number;
+    combinedWarning: number;
+  };
+  lastAnalyzed: string;
 }

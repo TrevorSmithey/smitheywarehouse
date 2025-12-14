@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Building2,
@@ -55,7 +55,9 @@ import type {
   WholesaleTransaction,
   WholesaleSkuStats,
   WholesaleSegmentDistribution,
+  WholesaleNewCustomerAcquisition,
 } from "@/lib/types";
+import type { ChurnPrediction, PatternInsightsResponse } from "@/lib/types";
 
 type SortField = "revenue" | "orders" | "last_order" | "company";
 type SortDirection = "asc" | "desc";
@@ -332,7 +334,7 @@ function CustomerRow({ customer, rank }: { customer: WholesaleCustomer; rank: nu
 
       <td className="py-3.5 px-3 text-right">
         <div className="text-sm text-text-primary tabular-nums">
-          {customer.order_count}
+          {customer.order_count.toLocaleString()}
         </div>
       </td>
 
@@ -738,14 +740,26 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
 }
 
 // ============================================================================
-// NEW CUSTOMERS - First-time buyers in last 90 days
+// NEW CUSTOMERS - First-time buyers in last 90 days + YoY Comparison
 // ============================================================================
 
-function NewCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
+function NewCustomersSection({
+  customers,
+  acquisition,
+}: {
+  customers: WholesaleCustomer[];
+  acquisition: WholesaleNewCustomerAcquisition | null;
+}) {
+  const [showOutliers, setShowOutliers] = useState(false);
+
   if (!customers || customers.length === 0) return null;
 
+  // Determine if we should show adjusted comparison
+  const hasOutliers = acquisition?.outliers && acquisition.outliers.length > 0;
+  const showAdjusted = hasOutliers && acquisition;
+
   return (
-    <div className="bg-bg-secondary rounded-xl border border-status-good/30 overflow-hidden h-full">
+    <div className="bg-bg-secondary rounded-xl border border-status-good/30 overflow-hidden h-full flex flex-col">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-status-good/5">
         <div className="flex items-center gap-2">
           <UserPlus className="w-4 h-4 text-status-good" />
@@ -758,7 +772,110 @@ function NewCustomersSection({ customers }: { customers: WholesaleCustomer[] }) 
         </span>
       </div>
 
-      <div className="max-h-[450px] overflow-y-auto">
+      {/* YoY Comparison Header */}
+      {acquisition && (
+        <div className="px-5 py-4 border-b border-border/10 bg-bg-tertiary/30">
+          <div className="grid grid-cols-3 gap-4">
+            {/* Current YTD */}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
+                {new Date().getFullYear()} YTD
+              </div>
+              <div className="text-lg font-bold text-text-primary tabular-nums">
+                {acquisition.currentPeriod.newCustomerCount.toLocaleString()}
+              </div>
+              <div className="text-xs text-status-good tabular-nums">
+                {formatCurrencyFull(acquisition.currentPeriod.totalRevenue)}
+              </div>
+            </div>
+
+            {/* Prior YTD */}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
+                {new Date().getFullYear() - 1} YTD
+              </div>
+              <div className="text-lg font-bold text-text-secondary tabular-nums">
+                {acquisition.priorPeriod.newCustomerCount.toLocaleString()}
+              </div>
+              <div className="text-xs text-text-tertiary tabular-nums">
+                {formatCurrencyFull(acquisition.priorPeriod.totalRevenue)}
+              </div>
+            </div>
+
+            {/* YoY Change */}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
+                YoY Change
+              </div>
+              <div className={`text-lg font-bold tabular-nums ${
+                acquisition.yoyComparison.revenueDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {acquisition.yoyComparison.revenueDeltaPct >= 0 ? "+" : ""}
+                {acquisition.yoyComparison.revenueDeltaPct.toFixed(1)}%
+              </div>
+              <div className={`text-xs tabular-nums ${
+                acquisition.yoyComparison.customerCountDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
+              }`}>
+                {acquisition.yoyComparison.customerCountDeltaPct >= 0 ? "+" : ""}
+                {acquisition.yoyComparison.customerCountDelta} customers
+              </div>
+            </div>
+          </div>
+
+          {/* Outlier warning + adjusted comparison */}
+          {showAdjusted && (
+            <div className="mt-3 pt-3 border-t border-border/10">
+              <button
+                onClick={() => setShowOutliers(!showOutliers)}
+                className="flex items-center gap-2 text-[10px] text-status-warning hover:text-status-warning/80 transition-colors"
+              >
+                <AlertTriangle className="w-3 h-3" />
+                <span>
+                  {acquisition.outliers.length} outlier{acquisition.outliers.length !== 1 ? "s" : ""} detected
+                </span>
+                {showOutliers ? (
+                  <ChevronUp className="w-3 h-3" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
+              </button>
+
+              {showOutliers && (
+                <div className="mt-2 space-y-1">
+                  {acquisition.outliers.map((outlier, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-[10px] text-text-tertiary px-2 py-1 bg-status-warning/5 rounded"
+                    >
+                      <span className="truncate flex-1">
+                        {outlier.company_name}
+                        <span className="text-text-muted ml-1">
+                          ({outlier.period === "current" ? new Date().getFullYear() : new Date().getFullYear() - 1})
+                        </span>
+                      </span>
+                      <span className="text-status-warning font-medium tabular-nums ml-2">
+                        {formatCurrencyFull(outlier.revenue)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-2 flex items-center justify-between text-[10px]">
+                <span className="text-text-muted">Adjusted (excl. outliers):</span>
+                <span className={`font-semibold tabular-nums ${
+                  acquisition.adjustedComparison.revenueDeltaPct >= 0 ? "text-status-good" : "text-status-bad"
+                }`}>
+                  {acquisition.adjustedComparison.revenueDeltaPct >= 0 ? "+" : ""}
+                  {acquisition.adjustedComparison.revenueDeltaPct.toFixed(1)}% YoY
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="max-h-[350px] overflow-y-auto flex-1">
         {customers.map((customer, idx) => (
           <div
             key={customer.ns_customer_id}
@@ -773,7 +890,7 @@ function NewCustomersSection({ customers }: { customers: WholesaleCustomer[] }) 
                 <div className="flex items-center gap-2 mt-0.5">
                   <SegmentBadge segment={customer.segment} />
                   <span className="text-[10px] text-text-muted">
-                    {customer.order_count} order{customer.order_count !== 1 ? "s" : ""}
+                    {customer.order_count.toLocaleString()} order{customer.order_count !== 1 ? "s" : ""}
                   </span>
                 </div>
               </div>
@@ -833,7 +950,7 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
               <div className="flex items-center gap-2 mt-0.5">
                 <SegmentBadge segment={customer.segment} />
                 <span className="text-[10px] text-text-muted">
-                  {customer.order_count} lifetime orders
+                  {customer.order_count.toLocaleString()} lifetime orders
                 </span>
               </div>
             </div>
@@ -924,7 +1041,7 @@ function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly })
         <div className="flex items-center justify-between">
           <span className="text-text-muted">Total orders</span>
           <span className="font-medium text-text-primary tabular-nums">
-            {anomaly.order_count}
+            {anomaly.order_count.toLocaleString()}
           </span>
         </div>
         <div className="flex items-center justify-between pt-1 border-t border-border/20">
@@ -1062,7 +1179,7 @@ function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
                   <span className="text-sm font-semibold text-status-good tabular-nums">{formatCurrency(sku.total_revenue)}</span>
                 </td>
                 <td className="py-2.5 px-4 text-right">
-                  <span className="text-sm text-text-secondary tabular-nums">{sku.order_count}</span>
+                  <span className="text-sm text-text-secondary tabular-nums">{sku.order_count.toLocaleString()}</span>
                 </td>
               </tr>
             ))}
@@ -1131,9 +1248,14 @@ interface SegmentIntelligenceProps {
   distribution: WholesaleSegmentDistribution;
   healthDistribution: Record<CustomerHealthStatus, number>;
   topCustomers: WholesaleCustomer[];
+  aiInsights: PatternInsightsResponse | null;
+  aiLoading: boolean;
 }
 
-function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomers }: SegmentIntelligenceProps) {
+function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomers, aiInsights, aiLoading }: SegmentIntelligenceProps) {
+  // State for expanded AI insight
+  const [expandedPrediction, setExpandedPrediction] = useState<number | null>(null);
+
   // Calculate total accounts
   const total = distribution.major + distribution.large + distribution.mid +
                 distribution.small + distribution.starter + distribution.minimal;
@@ -1360,93 +1482,257 @@ function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomer
             )}
           </div>
 
-          {/* Column 3: Action Items */}
+          {/* Column 3: AI Pattern Insights */}
           <div className="space-y-3">
-            <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-3">
-              Recommended Actions
+            <div className="flex items-center gap-2 mb-3">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold">
+                Pattern Detection
+              </div>
+              {aiInsights && (
+                <span className="text-[9px] text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded">
+                  {aiInsights.summary.criticalRisk + aiInsights.summary.highRisk} alerts
+                </span>
+              )}
             </div>
 
-            {/* Action 1: Upgrade Mid to Large */}
-            {midUpgradePotential > 0 && (
-              <div className="p-3 rounded-lg border border-status-good/30 bg-status-good/5">
-                <div className="flex items-start gap-2">
-                  <TrendingUp className="w-4 h-4 text-status-good mt-0.5 flex-shrink-0" />
-                  <div>
-                    <div className="text-xs font-semibold text-text-primary">
-                      Upgrade {midUpgradePotential} Mid accounts
-                    </div>
-                    <p className="text-[10px] text-text-muted mt-0.5">
-                      Potential +{formatCurrency(midUpgradeRevenue)} if converted to Large tier
-                    </p>
-                  </div>
-                </div>
+            {aiLoading && (
+              <div className="p-4 rounded-lg border border-border/30 bg-bg-tertiary/30 text-center">
+                <div className="text-[10px] text-text-muted animate-pulse">Analyzing patterns...</div>
               </div>
             )}
 
-            {/* Action 2: Protect Top Customers */}
-            {atRiskTopCustomers.length > 0 && (
-              <div className="p-3 rounded-lg border border-status-bad/30 bg-status-bad/5">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-status-bad mt-0.5 flex-shrink-0" />
-                  <div>
-                    <div className="text-xs font-semibold text-text-primary">
-                      Re-engage {atRiskTopCustomers.length} top accounts
-                    </div>
-                    <p className="text-[10px] text-text-muted mt-0.5">
-                      {formatCurrency(atRiskRevenue)} at risk from declining/at-risk customers
-                    </p>
-                    <div className="mt-2 max-h-16 overflow-y-auto space-y-1">
-                      {atRiskTopCustomers.slice(0, 3).map(c => (
-                        <div key={c.ns_customer_id} className="text-[10px] text-status-bad truncate">
-                          • {c.company_name} ({formatCurrency(c.total_revenue)})
+            {!aiLoading && aiInsights && aiInsights.predictions.length > 0 && (
+              <>
+                {/* Summary */}
+                <div className="p-3 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] text-text-secondary">Revenue at Risk</span>
+                    <span className="text-sm font-bold text-status-bad tabular-nums">
+                      {formatCurrency(aiInsights.summary.totalRevenueAtRisk)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px]">
+                    <span className="text-status-bad">{aiInsights.summary.criticalRisk} critical</span>
+                    <span className="text-status-warning">{aiInsights.summary.highRisk} high</span>
+                    <span className="text-text-muted">{aiInsights.summary.mediumRisk} medium</span>
+                  </div>
+                </div>
+
+                {/* Clickable at-risk accounts */}
+                <div className="max-h-[280px] overflow-y-auto space-y-2 pr-1">
+                  {aiInsights.predictions.slice(0, 5).map((prediction) => {
+                    const isExpanded = expandedPrediction === prediction.ns_customer_id;
+                    const borderColor = prediction.riskLevel === "critical"
+                      ? "border-status-bad/40"
+                      : prediction.riskLevel === "high"
+                      ? "border-status-warning/40"
+                      : "border-border/30";
+                    const bgColor = prediction.riskLevel === "critical"
+                      ? "bg-status-bad/5"
+                      : prediction.riskLevel === "high"
+                      ? "bg-status-warning/5"
+                      : "bg-bg-tertiary/30";
+                    const glowColor = prediction.riskLevel === "critical"
+                      ? "hover:shadow-[0_0_20px_-5px_rgba(220,38,38,0.3)]"
+                      : prediction.riskLevel === "high"
+                      ? "hover:shadow-[0_0_20px_-5px_rgba(245,158,11,0.2)]"
+                      : "";
+
+                    return (
+                      <div
+                        key={prediction.ns_customer_id}
+                        onClick={() => setExpandedPrediction(isExpanded ? null : prediction.ns_customer_id)}
+                        className={`
+                          p-2.5 rounded-lg border ${borderColor} ${bgColor}
+                          cursor-pointer select-none
+                          transition-all duration-200 ease-out
+                          hover:border-opacity-80 hover:translate-y-[-1px]
+                          ${glowColor}
+                          ${isExpanded ? "ring-1 ring-purple-500/30" : ""}
+                        `}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <ChevronDown className={`w-3 h-3 text-text-tertiary flex-shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
+                            <div className="text-xs font-medium text-text-primary truncate">
+                              {prediction.company_name}
+                            </div>
+                          </div>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                            prediction.riskLevel === "critical" ? "bg-status-bad/20 text-status-bad" :
+                            prediction.riskLevel === "high" ? "bg-status-warning/20 text-status-warning" :
+                            "bg-text-muted/20 text-text-secondary"
+                          }`}>
+                            {prediction.churnRiskScore}
+                          </span>
                         </div>
-                      ))}
-                      {atRiskTopCustomers.length > 3 && (
-                        <div className="text-[10px] text-text-muted">
-                          +{atRiskTopCustomers.length - 3} more
+                        <p className="text-[10px] text-text-muted leading-relaxed line-clamp-2 pl-5">
+                          {prediction.signals[0]?.description || prediction.narrative.slice(0, 100)}
+                        </p>
+                        <div className="mt-1.5 text-[9px] text-text-tertiary pl-5 flex items-center gap-2">
+                          <span>{formatCurrency(prediction.revenueAtRisk)} at risk</span>
+                          <span className="text-purple-400/60">Click for details</span>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              </>
             )}
 
-            {/* Action 3: Activate Small accounts */}
-            {smallUpgradePotential > 5 && (
-              <div className="p-3 rounded-lg border border-accent-blue/30 bg-accent-blue/5">
-                <div className="flex items-start gap-2">
-                  <Target className="w-4 h-4 text-accent-blue mt-0.5 flex-shrink-0" />
-                  <div>
-                    <div className="text-xs font-semibold text-text-primary">
-                      Activate {smallUpgradePotential} Small accounts
-                    </div>
-                    <p className="text-[10px] text-text-muted mt-0.5">
-                      Focus campaigns on converting to Mid tier (+{formatCurrency(smallUpgradeRevenue)})
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Action 4: Revenue concentration warning */}
-            {revenueConcentration < 50 && (
-              <div className="p-3 rounded-lg border border-status-warning/30 bg-status-warning/5">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-status-warning mt-0.5 flex-shrink-0" />
-                  <div>
-                    <div className="text-xs font-semibold text-text-primary">
-                      Build top-tier base
-                    </div>
-                    <p className="text-[10px] text-text-muted mt-0.5">
-                      Revenue too spread across small accounts. Focus on Major/Large growth.
-                    </p>
-                  </div>
-                </div>
+            {!aiLoading && (!aiInsights || aiInsights.predictions.length === 0) && (
+              <div className="p-4 rounded-lg border border-status-good/30 bg-status-good/5 text-center">
+                <div className="text-xs text-status-good font-medium">No pattern anomalies detected</div>
+                <div className="text-[10px] text-text-muted mt-1">All active customers on track</div>
               </div>
             )}
           </div>
         </div>
+
+        {/* Expanded Detail Panel - Full Width Below Grid */}
+        {expandedPrediction && aiInsights && (() => {
+          const prediction = aiInsights.predictions.find(p => p.ns_customer_id === expandedPrediction);
+          if (!prediction) return null;
+
+          const riskGradient = prediction.riskLevel === "critical"
+            ? "from-status-bad/10 via-status-bad/5 to-transparent"
+            : prediction.riskLevel === "high"
+            ? "from-status-warning/10 via-status-warning/5 to-transparent"
+            : "from-purple-500/10 via-purple-500/5 to-transparent";
+
+          return (
+            <div className="mt-6 pt-6 border-t border-border/30 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className={`rounded-xl border border-border/30 bg-gradient-to-br ${riskGradient} overflow-hidden`}>
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-border/20 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      prediction.riskLevel === "critical" ? "bg-status-bad/20" :
+                      prediction.riskLevel === "high" ? "bg-status-warning/20" :
+                      "bg-purple-500/20"
+                    }`}>
+                      <AlertTriangle className={`w-5 h-5 ${
+                        prediction.riskLevel === "critical" ? "text-status-bad" :
+                        prediction.riskLevel === "high" ? "text-status-warning" :
+                        "text-purple-400"
+                      }`} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-text-primary">{prediction.company_name}</h4>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className="text-[10px] text-text-muted uppercase tracking-wider">{prediction.segment} Account</span>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          prediction.riskLevel === "critical" ? "bg-status-bad/20 text-status-bad" :
+                          prediction.riskLevel === "high" ? "bg-status-warning/20 text-status-warning" :
+                          "bg-purple-500/20 text-purple-400"
+                        }`}>
+                          {prediction.riskLevel.toUpperCase()} RISK
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setExpandedPrediction(null); }}
+                    className="p-2 rounded-lg hover:bg-bg-tertiary transition-colors"
+                  >
+                    <ChevronUp className="w-4 h-4 text-text-muted" />
+                  </button>
+                </div>
+
+                {/* Content Grid */}
+                <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Column 1: Narrative */}
+                  <div className="lg:col-span-2 space-y-4">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-2">
+                        Pattern Analysis
+                      </div>
+                      <p className="text-sm text-text-secondary leading-relaxed">
+                        {prediction.narrative}
+                      </p>
+                    </div>
+
+                    {/* Warning Signals */}
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-3">
+                        Warning Signals ({prediction.signals.length})
+                      </div>
+                      <div className="space-y-2">
+                        {prediction.signals.map((signal, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-lg border ${
+                              signal.severity === "critical" ? "border-status-bad/30 bg-status-bad/5" :
+                              signal.severity === "warning" ? "border-status-warning/30 bg-status-warning/5" :
+                              "border-border/30 bg-bg-tertiary/30"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
+                                signal.severity === "critical" ? "bg-status-bad" :
+                                signal.severity === "warning" ? "bg-status-warning" :
+                                "bg-text-muted"
+                              }`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-text-primary font-medium">{signal.description}</p>
+                                <p className="text-[10px] text-text-tertiary mt-1">{signal.evidence}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 2: Stats & Action */}
+                  <div className="space-y-4">
+                    {/* Key Metrics */}
+                    <div className="p-4 rounded-lg border border-border/30 bg-bg-tertiary/30">
+                      <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-3">
+                        Risk Assessment
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-text-secondary">Risk Score</span>
+                          <span className={`text-lg font-bold tabular-nums ${
+                            prediction.churnRiskScore >= 70 ? "text-status-bad" :
+                            prediction.churnRiskScore >= 50 ? "text-status-warning" :
+                            "text-purple-400"
+                          }`}>
+                            {prediction.churnRiskScore}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              prediction.churnRiskScore >= 70 ? "bg-status-bad" :
+                              prediction.churnRiskScore >= 50 ? "bg-status-warning" :
+                              "bg-purple-500"
+                            }`}
+                            style={{ width: `${prediction.churnRiskScore}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-border/20">
+                          <span className="text-[11px] text-text-secondary">Revenue at Risk</span>
+                          <span className="text-sm font-bold text-status-bad tabular-nums">
+                            {formatCurrency(prediction.revenueAtRisk)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-text-secondary">Confidence</span>
+                          <span className="text-sm font-medium text-text-primary tabular-nums">
+                            {prediction.confidenceLevel}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -1508,8 +1794,33 @@ export function WholesaleDashboard({
   const [showAllCustomers, setShowAllCustomers] = useState(false);
   const [showAllAtRisk, setShowAllAtRisk] = useState(false);
   const [hideChurned, setHideChurned] = useState(true); // Hide churned by default
+  const [selectedHealthFilter, setSelectedHealthFilter] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("revenue");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [aiInsights, setAiInsights] = useState<PatternInsightsResponse | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // Fetch AI pattern insights
+  useEffect(() => {
+    if (!data) return;
+
+    const fetchInsights = async () => {
+      setAiLoading(true);
+      try {
+        const res = await fetch("/api/wholesale/insights");
+        if (res.ok) {
+          const insights = await res.json();
+          setAiInsights(insights);
+        }
+      } catch (error) {
+        console.error("Failed to fetch AI insights:", error);
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    fetchInsights();
+  }, [data]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1697,68 +2008,161 @@ export function WholesaleDashboard({
       </div>
 
       {/* ================================================================
-          CUSTOMER HEALTH SUMMARY
+          CUSTOMER HEALTH - Minimal inline display
           ================================================================ */}
-      <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-text-tertiary" />
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-              CUSTOMER HEALTH SUMMARY
-            </h3>
-          </div>
+      <div className="px-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "churning" ? null : "churning")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "churning" ? "underline" : ""}`}
+          >
+            <span className="text-status-bad font-medium">Churning ({stats.health_distribution.churning})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "at_risk" ? null : "at_risk")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "at_risk" ? "underline" : ""}`}
+          >
+            <span className="text-orange-400 font-medium">At Risk ({stats.health_distribution.at_risk})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "declining" ? null : "declining")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "declining" ? "underline" : ""}`}
+          >
+            <span className="text-status-warning font-medium">Declining ({stats.health_distribution.declining})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "thriving" ? null : "thriving")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "thriving" ? "underline" : ""}`}
+          >
+            <span className="text-status-good font-medium">Thriving ({stats.health_distribution.thriving})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "stable" ? null : "stable")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "stable" ? "underline" : ""}`}
+          >
+            <span className="text-accent-blue font-medium">Stable ({stats.health_distribution.stable})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "new" ? null : "new")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "new" ? "underline" : ""}`}
+          >
+            <span className="text-purple-400 font-medium">New ({stats.health_distribution.new})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "one_time" ? null : "one_time")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "one_time" ? "underline" : ""}`}
+          >
+            <span className="text-text-tertiary font-medium">One-Time ({stats.health_distribution.one_time})</span>
+          </button>
+          <span className="text-text-muted/30">•</span>
+          <button
+            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "churned" ? null : "churned")}
+            className={`hover:underline transition-colors ${selectedHealthFilter === "churned" ? "underline" : ""}`}
+          >
+            <span className="text-text-muted font-medium">Churned ({stats.health_distribution.churned})</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <InfoTooltip content="Growing revenue, ordering more frequently than usual" position="bottom">
-            <div className="text-center cursor-help">
-              <div className="text-2xl font-bold text-status-good tabular-nums">
-                {stats.health_distribution.thriving}
+        {/* Expandable Customer List */}
+        {selectedHealthFilter && (
+          <div className="mt-4 pt-4 border-t border-border/20">
+            {/* Clickable header to collapse */}
+            <button
+              onClick={() => setSelectedHealthFilter(null)}
+              className="w-full flex items-center justify-between mb-2 group cursor-pointer hover:bg-white/[0.02] -mx-2 px-2 py-1 rounded transition-colors"
+            >
+              <h4 className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-medium">
+                {selectedHealthFilter.replace("_", " ")} customers
+              </h4>
+              <div className="flex items-center gap-2 text-text-muted group-hover:text-accent-blue transition-colors">
+                <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
+                  Click to close
+                </span>
+                <ChevronUp className="w-4 h-4" />
               </div>
-              <div className="text-[10px] text-text-muted">Thriving</div>
+            </button>
+
+            <div className="max-h-[400px] overflow-y-auto rounded-lg border border-border/20 animate-in fade-in slide-in-from-top-2 duration-200">
+              {(() => {
+                // Use the new customersByHealth field which has ALL customers for each status
+                const healthKey = selectedHealthFilter as keyof typeof data.customersByHealth;
+                const filteredCustomers = data.customersByHealth?.[healthKey] || [];
+
+                if (filteredCustomers.length === 0) {
+                  return (
+                    <div className="p-4 text-center text-text-muted text-sm">
+                      No customers with this status
+                    </div>
+                  );
+                }
+
+                return (
+                  <table className="w-full">
+                    <thead className="sticky top-0 z-10 bg-bg-tertiary/98 backdrop-blur-sm">
+                      <tr className="border-b border-border/20">
+                        <th className="py-2 px-3 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                          Customer
+                        </th>
+                        <th className="py-2 px-3 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                          Revenue
+                        </th>
+                        <th className="py-2 px-3 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                          Orders
+                        </th>
+                        <th className="py-2 px-3 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                          Last Order
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCustomers.map((customer) => (
+                        <tr
+                          key={customer.ns_customer_id}
+                          className="border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+                        >
+                          <td className="py-2 px-3">
+                            <div className="text-sm text-text-primary truncate max-w-[200px]">
+                              {customer.company_name}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <span className="text-sm text-status-good tabular-nums">
+                              {formatCurrencyFull(customer.total_revenue)}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <span className="text-sm text-text-secondary tabular-nums">
+                              {customer.order_count.toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <span className={`text-sm tabular-nums ${
+                              customer.days_since_last_order === null
+                                ? "text-text-muted"
+                                : customer.days_since_last_order > 180
+                                ? "text-status-bad"
+                                : customer.days_since_last_order > 90
+                                ? "text-status-warning"
+                                : "text-text-secondary"
+                            }`}>
+                              {customer.days_since_last_order !== null ? `${customer.days_since_last_order}d` : "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
-          </InfoTooltip>
-          <InfoTooltip content="Consistent ordering pattern, on track" position="bottom">
-            <div className="text-center cursor-help">
-              <div className="text-2xl font-bold text-accent-blue tabular-nums">
-                {stats.health_distribution.stable}
-              </div>
-              <div className="text-[10px] text-text-muted">Stable</div>
-            </div>
-          </InfoTooltip>
-          <InfoTooltip content="Ordering less often than their typical pattern" position="bottom">
-            <div className="text-center cursor-help">
-              <div className="text-2xl font-bold text-status-warning tabular-nums">
-                {stats.health_distribution.declining}
-              </div>
-              <div className="text-[10px] text-text-muted">Declining</div>
-            </div>
-          </InfoTooltip>
-          <InfoTooltip content="90-120 days since last order, needs outreach" position="bottom">
-            <div className="text-center cursor-help">
-              <div className="text-2xl font-bold text-status-warning tabular-nums">
-                {stats.health_distribution.at_risk}
-              </div>
-              <div className="text-[10px] text-text-muted">At Risk</div>
-            </div>
-          </InfoTooltip>
-          <InfoTooltip content="First order within the last 90 days" position="bottom">
-            <div className="text-center cursor-help">
-              <div className="text-2xl font-bold text-purple-400 tabular-nums">
-                {stats.health_distribution.new}
-              </div>
-              <div className="text-[10px] text-text-muted">New</div>
-            </div>
-          </InfoTooltip>
-          <InfoTooltip content="365+ days since last order, inactive" position="bottom">
-            <div className="text-center cursor-help">
-              <div className="text-2xl font-bold text-text-muted tabular-nums">
-                {stats.health_distribution.churned}
-              </div>
-              <div className="text-[10px] text-text-muted">Churned</div>
-            </div>
-          </InfoTooltip>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ================================================================
@@ -1902,7 +2306,7 @@ export function WholesaleDashboard({
                         </td>
                         <td className="py-3 px-3 text-right">
                           <div className="text-sm text-text-primary tabular-nums">
-                            {customer.order_count}
+                            {customer.order_count.toLocaleString()}
                           </div>
                         </td>
                       </tr>
@@ -1941,7 +2345,10 @@ export function WholesaleDashboard({
 
         {/* NEW CUSTOMERS (Right Half) */}
         {data.newCustomers && data.newCustomers.length > 0 ? (
-          <NewCustomersSection customers={data.newCustomers} />
+          <NewCustomersSection
+            customers={data.newCustomers}
+            acquisition={data.newCustomerAcquisition}
+          />
         ) : (
           <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
             <div className="text-center text-text-muted">
@@ -1989,6 +2396,8 @@ export function WholesaleDashboard({
           distribution={stats.segment_distribution}
           healthDistribution={stats.health_distribution}
           topCustomers={data.topCustomers || []}
+          aiInsights={aiInsights}
+          aiLoading={aiLoading}
         />
       )}
 

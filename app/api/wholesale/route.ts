@@ -17,6 +17,7 @@ import type {
   WholesaleTransaction,
   WholesaleSkuStats,
   WholesaleStats,
+  WholesaleNewCustomerAcquisition,
   CustomerHealthStatus,
   CustomerSegment,
 } from "@/lib/types";
@@ -483,6 +484,18 @@ export async function GET(request: Request) {
       never_ordered: customers.filter((c) => c.health_status === "never_ordered").length,
     };
 
+    // Customers grouped by health status for drill-down views (sorted by revenue)
+    const customersByHealth = {
+      thriving: customers.filter((c) => c.health_status === "thriving").sort((a, b) => b.total_revenue - a.total_revenue),
+      stable: customers.filter((c) => c.health_status === "stable").sort((a, b) => b.total_revenue - a.total_revenue),
+      declining: customers.filter((c) => c.health_status === "declining").sort((a, b) => b.total_revenue - a.total_revenue),
+      at_risk: customers.filter((c) => c.health_status === "at_risk").sort((a, b) => b.total_revenue - a.total_revenue),
+      churning: customers.filter((c) => c.health_status === "churning").sort((a, b) => b.total_revenue - a.total_revenue),
+      churned: customers.filter((c) => c.health_status === "churned").sort((a, b) => b.total_revenue - a.total_revenue),
+      new: customers.filter((c) => c.health_status === "new").sort((a, b) => b.total_revenue - a.total_revenue),
+      one_time: customers.filter((c) => c.health_status === "one_time").sort((a, b) => b.total_revenue - a.total_revenue),
+    };
+
     // Segment distribution
     const segmentDistribution = {
       major: customers.filter((c) => c.segment === "major").length,
@@ -544,6 +557,196 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total_revenue - a.total_revenue) // Highest value first - these are win-back opportunities
       .slice(0, 30);
 
+    // ========================================================================
+    // NEW CUSTOMER ACQUISITION YoY COMPARISON
+    // Compare new customers acquired YTD vs same period last year
+    // Includes outlier detection for large orders that skew the comparison
+    // ========================================================================
+    let newCustomerAcquisition: WholesaleNewCustomerAcquisition | null = null;
+
+    try {
+      // Current YTD period
+      const currentYearStart = new Date(now.getFullYear(), 0, 1);
+      const currentYearEnd = now;
+
+      // Same period last year (Jan 1 to same day/month last year)
+      const priorYearStart = new Date(now.getFullYear() - 1, 0, 1);
+      const priorYearEnd = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+
+      // Get first-time customers in current YTD
+      const currentNewCustomers = customers.filter((c) => {
+        if (!c.first_sale_date || c.order_count === 0) return false;
+        const firstOrder = new Date(c.first_sale_date);
+        return firstOrder >= currentYearStart && firstOrder <= currentYearEnd;
+      });
+
+      // Build lookup map for current new customers
+      const currentCustomerIds = currentNewCustomers.map(c => c.ns_customer_id);
+      const currentCustomerNames = new Map<number, string>();
+      for (const c of currentNewCustomers) {
+        currentCustomerNames.set(c.ns_customer_id, c.company_name || `Customer ${c.ns_customer_id}`);
+      }
+
+      // Get first transactions for current year new customers
+      const { data: currentFirstTxns } = await supabase
+        .from("ns_wholesale_transactions")
+        .select("ns_customer_id, foreign_total, tran_date")
+        .in("ns_customer_id", currentCustomerIds.length > 0 ? currentCustomerIds : [0])
+        .gte("tran_date", formatDate(currentYearStart))
+        .lte("tran_date", formatDate(currentYearEnd))
+        .order("tran_date", { ascending: true });
+
+      // Get first transaction per customer (their first order)
+      const currentFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
+      for (const txn of currentFirstTxns || []) {
+        if (!currentFirstOrderByCustomer.has(txn.ns_customer_id)) {
+          currentFirstOrderByCustomer.set(txn.ns_customer_id, {
+            revenue: parseFloat(txn.foreign_total) || 0,
+            date: txn.tran_date,
+            companyName: currentCustomerNames.get(txn.ns_customer_id) || `Customer ${txn.ns_customer_id}`,
+          });
+        }
+      }
+
+      const currentTotalRevenue = Array.from(currentFirstOrderByCustomer.values())
+        .reduce((sum, o) => sum + o.revenue, 0);
+      const currentAvgOrderValue = currentNewCustomers.length > 0
+        ? currentTotalRevenue / currentNewCustomers.length
+        : 0;
+
+      // Query for prior year new customers (first order in prior YTD period)
+      const { data: priorYearCustomers } = await supabase
+        .from("ns_wholesale_customers")
+        .select("ns_customer_id, company_name, first_order_date")
+        .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
+        .gte("first_order_date", formatDate(priorYearStart))
+        .lte("first_order_date", formatDate(priorYearEnd));
+
+      // Build lookup map for prior year customers
+      const priorCustomerIds = (priorYearCustomers || []).map(c => parseInt(c.ns_customer_id));
+      const priorCustomerNames = new Map<number, string>();
+      for (const c of priorYearCustomers || []) {
+        priorCustomerNames.set(parseInt(c.ns_customer_id), c.company_name || `Customer ${c.ns_customer_id}`);
+      }
+
+      // Get first transactions for prior year new customers
+      const { data: priorFirstTxns } = await supabase
+        .from("ns_wholesale_transactions")
+        .select("ns_customer_id, foreign_total, tran_date")
+        .in("ns_customer_id", priorCustomerIds.length > 0 ? priorCustomerIds : [0])
+        .gte("tran_date", formatDate(priorYearStart))
+        .lte("tran_date", formatDate(priorYearEnd))
+        .order("tran_date", { ascending: true });
+
+      // Get first transaction per customer for prior year
+      const priorFirstOrderByCustomer = new Map<number, { revenue: number; date: string; companyName: string }>();
+      for (const txn of priorFirstTxns || []) {
+        if (!priorFirstOrderByCustomer.has(txn.ns_customer_id)) {
+          priorFirstOrderByCustomer.set(txn.ns_customer_id, {
+            revenue: parseFloat(txn.foreign_total) || 0,
+            date: txn.tran_date,
+            companyName: priorCustomerNames.get(txn.ns_customer_id) || `Customer ${txn.ns_customer_id}`,
+          });
+        }
+      }
+
+      const priorTotalRevenue = Array.from(priorFirstOrderByCustomer.values())
+        .reduce((sum, o) => sum + o.revenue, 0);
+      const priorNewCustomerCount = priorYearCustomers?.length || 0;
+      const priorAvgOrderValue = priorNewCustomerCount > 0
+        ? priorTotalRevenue / priorNewCustomerCount
+        : 0;
+
+      // Detect outliers: orders > 3x the combined average
+      const combinedAvg = (currentTotalRevenue + priorTotalRevenue) /
+        Math.max(1, currentNewCustomers.length + priorNewCustomerCount);
+      const outlierThreshold = combinedAvg * 3;
+
+      const outliers: WholesaleNewCustomerAcquisition["outliers"] = [];
+      let currentAdjustedRevenue = currentTotalRevenue;
+      let priorAdjustedRevenue = priorTotalRevenue;
+
+      // Find current period outliers
+      for (const [customerId, order] of currentFirstOrderByCustomer) {
+        if (order.revenue > outlierThreshold && outlierThreshold > 0) {
+          outliers.push({
+            ns_customer_id: customerId,
+            company_name: order.companyName,
+            revenue: order.revenue,
+            orderDate: order.date,
+            period: "current",
+            reason: `>${Math.round(order.revenue / combinedAvg)}x average first order ($${combinedAvg.toLocaleString("en-US", { maximumFractionDigits: 0 })} avg)`,
+          });
+          currentAdjustedRevenue -= order.revenue;
+        }
+      }
+
+      // Find prior period outliers
+      for (const [customerId, order] of priorFirstOrderByCustomer) {
+        if (order.revenue > outlierThreshold && outlierThreshold > 0) {
+          outliers.push({
+            ns_customer_id: customerId,
+            company_name: order.companyName,
+            revenue: order.revenue,
+            orderDate: order.date,
+            period: "prior",
+            reason: `>${Math.round(order.revenue / combinedAvg)}x average first order ($${combinedAvg.toLocaleString("en-US", { maximumFractionDigits: 0 })} avg)`,
+          });
+          priorAdjustedRevenue -= order.revenue;
+        }
+      }
+
+      // Calculate YoY comparison
+      const customerCountDelta = currentNewCustomers.length - priorNewCustomerCount;
+      const customerCountDeltaPct = priorNewCustomerCount > 0
+        ? (customerCountDelta / priorNewCustomerCount) * 100
+        : currentNewCustomers.length > 0 ? 100 : 0;
+      const revenueDelta = currentTotalRevenue - priorTotalRevenue;
+      const revenueDeltaPct = priorTotalRevenue > 0
+        ? (revenueDelta / priorTotalRevenue) * 100
+        : currentTotalRevenue > 0 ? 100 : 0;
+
+      // Adjusted comparison (excluding outliers)
+      const adjustedRevenueDelta = currentAdjustedRevenue - priorAdjustedRevenue;
+      const adjustedRevenueDeltaPct = priorAdjustedRevenue > 0
+        ? (adjustedRevenueDelta / priorAdjustedRevenue) * 100
+        : currentAdjustedRevenue > 0 ? 100 : 0;
+
+      newCustomerAcquisition = {
+        currentPeriod: {
+          startDate: formatDate(currentYearStart),
+          endDate: formatDate(currentYearEnd),
+          newCustomerCount: currentNewCustomers.length,
+          totalRevenue: Math.round(currentTotalRevenue),
+          avgOrderValue: Math.round(currentAvgOrderValue),
+        },
+        priorPeriod: {
+          startDate: formatDate(priorYearStart),
+          endDate: formatDate(priorYearEnd),
+          newCustomerCount: priorNewCustomerCount,
+          totalRevenue: Math.round(priorTotalRevenue),
+          avgOrderValue: Math.round(priorAvgOrderValue),
+        },
+        yoyComparison: {
+          customerCountDelta,
+          customerCountDeltaPct: Math.round(customerCountDeltaPct * 10) / 10,
+          revenueDelta: Math.round(revenueDelta),
+          revenueDeltaPct: Math.round(revenueDeltaPct * 10) / 10,
+        },
+        outliers: outliers.sort((a, b) => b.revenue - a.revenue),
+        adjustedComparison: {
+          currentRevenue: Math.round(currentAdjustedRevenue),
+          priorRevenue: Math.round(priorAdjustedRevenue),
+          revenueDelta: Math.round(adjustedRevenueDelta),
+          revenueDeltaPct: Math.round(adjustedRevenueDeltaPct * 10) / 10,
+          outliersExcluded: outliers.length,
+        },
+      };
+    } catch (error) {
+      console.error("[WHOLESALE API] Error calculating new customer acquisition:", error);
+      // newCustomerAcquisition remains null on error
+    }
+
     // Build response
     const response: WholesaleResponse = {
       monthly: monthly.sort((a, b) => a.month.localeCompare(b.month)),
@@ -557,6 +760,8 @@ export async function GET(request: Request) {
       churnedCustomers,
       recentTransactions,
       topSkus,
+      newCustomerAcquisition,
+      customersByHealth,
       lastSynced: new Date().toISOString(),
     };
 
