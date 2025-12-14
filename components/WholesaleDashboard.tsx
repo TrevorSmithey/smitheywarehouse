@@ -23,6 +23,8 @@ import {
   RefreshCw,
   UserPlus,
   UserMinus,
+  Package,
+  Receipt,
 } from "lucide-react";
 import {
   AreaChart,
@@ -50,6 +52,9 @@ import type {
   WholesalePeriod,
   CustomerHealthStatus,
   CustomerSegment,
+  WholesaleTransaction,
+  WholesaleSkuStats,
+  WholesaleSegmentDistribution,
 } from "@/lib/types";
 
 type SortField = "revenue" | "orders" | "last_order" | "company";
@@ -1005,6 +1010,448 @@ function OrderingAnomaliesSection({
 }
 
 
+
+// ============================================================================
+// TOP SKUS - What's selling in wholesale
+// ============================================================================
+
+function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
+  if (!skus || skus.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Package className="w-4 h-4 text-text-tertiary" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
+            TOP WHOLESALE SKUS
+          </h3>
+        </div>
+        <span className="text-[10px] text-text-muted">
+          {skus.length} SKUs
+        </span>
+      </div>
+
+      <div className="max-h-[350px] overflow-y-auto">
+        <table className="w-full">
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b border-border/20 bg-bg-tertiary/95 backdrop-blur-sm">
+              <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">SKU</th>
+              <th className="py-2 px-3 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">Units</th>
+              <th className="py-2 px-3 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">Revenue</th>
+              <th className="py-2 px-4 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">Orders</th>
+            </tr>
+          </thead>
+          <tbody>
+            {skus.slice(0, 10).map((sku, idx) => (
+              <tr key={sku.sku} className="border-b border-border/10 hover:bg-white/[0.02] transition-colors">
+                <td className="py-2.5 px-4">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold tabular-nums ${idx < 3 ? "text-status-good" : "text-text-muted"}`}>
+                      {idx + 1}
+                    </span>
+                    <span className="text-sm text-text-primary font-medium truncate max-w-[200px]">
+                      {sku.sku}
+                    </span>
+                  </div>
+                </td>
+                <td className="py-2.5 px-3 text-right">
+                  <span className="text-sm text-text-primary tabular-nums">{sku.total_units.toLocaleString()}</span>
+                </td>
+                <td className="py-2.5 px-3 text-right">
+                  <span className="text-sm font-semibold text-status-good tabular-nums">{formatCurrency(sku.total_revenue)}</span>
+                </td>
+                <td className="py-2.5 px-4 text-right">
+                  <span className="text-sm text-text-secondary tabular-nums">{sku.order_count}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// RECENT TRANSACTIONS - Live pulse of activity
+// ============================================================================
+
+function RecentTransactionsSection({ transactions }: { transactions: WholesaleTransaction[] }) {
+  if (!transactions || transactions.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Receipt className="w-4 h-4 text-text-tertiary" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
+            RECENT TRANSACTIONS
+          </h3>
+        </div>
+        <span className="text-[10px] text-text-muted">
+          Last {transactions.length} orders
+        </span>
+      </div>
+
+      <div className="max-h-[350px] overflow-y-auto">
+        {transactions.slice(0, 15).map((txn) => (
+          <div
+            key={txn.ns_transaction_id}
+            className="flex items-center justify-between px-5 py-2.5 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-text-primary truncate font-medium">
+                {txn.company_name}
+              </div>
+              <div className="text-[10px] text-text-muted">
+                {txn.tran_id} • {format(new Date(txn.tran_date), "MMM d")}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-semibold text-status-good tabular-nums">
+                {formatCurrencyFull(txn.foreign_total)}
+              </div>
+              <div className="text-[10px] text-text-muted">
+                {txn.transaction_type === "CashSale" ? "Cash Sale" : "Invoice"}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SEGMENT INTELLIGENCE - Actionable Business Intelligence
+// ============================================================================
+
+interface SegmentIntelligenceProps {
+  distribution: WholesaleSegmentDistribution;
+  healthDistribution: Record<CustomerHealthStatus, number>;
+  topCustomers: WholesaleCustomer[];
+}
+
+function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomers }: SegmentIntelligenceProps) {
+  // Calculate total accounts
+  const total = distribution.major + distribution.large + distribution.mid +
+                distribution.small + distribution.starter + distribution.minimal;
+
+  // Segment revenue estimates (based on tier midpoints)
+  // Major: $25K+, Large: $10-25K, Mid: $5-10K, Small: $1-5K, Starter: $500-1K, Minimal: <$500
+  const segmentRevenue = {
+    major: distribution.major * 35000,  // ~$35K avg for major
+    large: distribution.large * 17500,   // ~$17.5K avg for large
+    mid: distribution.mid * 7500,        // ~$7.5K avg for mid
+    small: distribution.small * 3000,    // ~$3K avg for small
+    starter: distribution.starter * 750, // ~$750 avg for starter
+    minimal: distribution.minimal * 250, // ~$250 avg for minimal
+  };
+  const totalEstRevenue = Object.values(segmentRevenue).reduce((a, b) => a + b, 0);
+
+  // Revenue concentration - what % comes from top tiers
+  const topTierRevenue = segmentRevenue.major + segmentRevenue.large;
+  const revenueConcentration = totalEstRevenue > 0 ? (topTierRevenue / totalEstRevenue) * 100 : 0;
+
+  // Customers in top tiers
+  const topTierCount = distribution.major + distribution.large;
+  const topTierPct = total > 0 ? (topTierCount / total) * 100 : 0;
+
+  // Segment upgrade potential - Mid customers that could become Large
+  const midUpgradePotential = distribution.mid;
+  const midUpgradeRevenue = midUpgradePotential * 10000; // $10K additional if upgraded
+
+  // Small to Mid upgrade potential
+  const smallUpgradePotential = distribution.small;
+  const smallUpgradeRevenue = smallUpgradePotential * 4500; // $4.5K additional if upgraded
+
+  // At-risk revenue calculation (at_risk + declining customers in valuable segments)
+  // Count how many top customers are at risk or declining
+  const atRiskTopCustomers = topCustomers.filter(c =>
+    (c.segment === "major" || c.segment === "large" || c.segment === "mid") &&
+    (c.health_status === "at_risk" || c.health_status === "declining" || c.health_status === "churning")
+  );
+  const atRiskRevenue = atRiskTopCustomers.reduce((sum, c) => sum + c.total_revenue, 0);
+
+  // Find customers close to tier upgrade (within 20% of next tier)
+  const nearUpgrade = topCustomers.filter(c => {
+    if (c.segment === "mid" && c.total_revenue >= 8000) return true; // Near Large
+    if (c.segment === "small" && c.total_revenue >= 4000) return true; // Near Mid
+    if (c.segment === "starter" && c.total_revenue >= 800) return true; // Near Small
+    return false;
+  });
+
+  // Healthy percentage
+  const healthyCount = healthDistribution.thriving + healthDistribution.stable;
+  const totalHealth = Object.values(healthDistribution).reduce((a, b) => a + b, 0);
+  const healthyPct = totalHealth > 0 ? (healthyCount / totalHealth) * 100 : 0;
+
+  // Risk score (0-100, lower is better)
+  const riskScore = Math.min(100, Math.round(
+    (100 - healthyPct) * 0.4 + // Health factor
+    (100 - revenueConcentration) * 0.3 + // Concentration factor (lower concentration = more risk)
+    (atRiskTopCustomers.length / Math.max(1, topTierCount)) * 100 * 0.3 // At-risk top customers
+  ));
+
+  // Segment data for visualization
+  const segments = [
+    { name: "Major", value: distribution.major, color: "#10B981", revenue: segmentRevenue.major, threshold: "$25K+" },
+    { name: "Large", value: distribution.large, color: "#0EA5E9", revenue: segmentRevenue.large, threshold: "$10-25K" },
+    { name: "Mid", value: distribution.mid, color: "#A855F7", revenue: segmentRevenue.mid, threshold: "$5-10K" },
+    { name: "Small", value: distribution.small, color: "#F59E0B", revenue: segmentRevenue.small, threshold: "$1-5K" },
+    { name: "Starter", value: distribution.starter, color: "#64748B", revenue: segmentRevenue.starter, threshold: "$500-1K" },
+    { name: "Minimal", value: distribution.minimal, color: "#475569", revenue: segmentRevenue.minimal, threshold: "<$500" },
+  ].filter(d => d.value > 0);
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-border/20 bg-gradient-to-r from-purple-500/5 to-accent-blue/5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-purple-500/10">
+              <BarChart3 className="w-5 h-5 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">SEGMENT INTELLIGENCE</h3>
+              <p className="text-[10px] text-text-muted mt-0.5">Portfolio composition & growth opportunities</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            {/* Portfolio Health Score */}
+            <div className="text-right">
+              <div className={`text-2xl font-bold tabular-nums ${
+                riskScore < 30 ? "text-status-good" :
+                riskScore < 50 ? "text-status-warning" :
+                "text-status-bad"
+              }`}>
+                {100 - riskScore}
+              </div>
+              <div className="text-[9px] text-text-muted">Portfolio Score</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Column 1: Segment Breakdown */}
+          <div className="space-y-4">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-3">
+              Account Distribution
+            </div>
+
+            {/* Visual bar chart */}
+            <div className="space-y-2">
+              {segments.map((seg) => {
+                const pct = total > 0 ? (seg.value / total) * 100 : 0;
+                const revPct = totalEstRevenue > 0 ? (seg.revenue / totalEstRevenue) * 100 : 0;
+                return (
+                  <div key={seg.name} className="group">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: seg.color }} />
+                        <span className="text-xs font-medium text-text-secondary">{seg.name}</span>
+                        <span className="text-[9px] text-text-muted">({seg.threshold})</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-bold text-text-primary tabular-nums">{seg.value}</span>
+                        <span className="text-[10px] text-text-muted tabular-nums w-8 text-right">
+                          {pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    {/* Progress bar showing both account % and revenue % */}
+                    <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: seg.color }}
+                      />
+                    </div>
+                    {/* Revenue contribution on hover */}
+                    <div className="text-[9px] text-text-muted mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      ~{formatCurrency(seg.revenue)} est. revenue ({revPct.toFixed(0)}% of total)
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t border-border/20 text-[10px] text-text-muted">
+              {total} total accounts
+            </div>
+          </div>
+
+          {/* Column 2: Key Insights */}
+          <div className="space-y-3">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-3">
+              Key Insights
+            </div>
+
+            {/* Revenue Concentration */}
+            <div className={`p-3 rounded-lg border ${
+              revenueConcentration >= 70 ? "border-status-good/30 bg-status-good/5" :
+              revenueConcentration >= 50 ? "border-accent-blue/30 bg-accent-blue/5" :
+              "border-status-warning/30 bg-status-warning/5"
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-text-secondary">Revenue Concentration</span>
+                <span className={`text-sm font-bold tabular-nums ${
+                  revenueConcentration >= 70 ? "text-status-good" :
+                  revenueConcentration >= 50 ? "text-accent-blue" :
+                  "text-status-warning"
+                }`}>
+                  {revenueConcentration.toFixed(0)}%
+                </span>
+              </div>
+              <p className="text-[10px] text-text-muted mt-1">
+                {topTierPct.toFixed(0)}% of accounts (Major+Large) drive {revenueConcentration.toFixed(0)}% of revenue
+              </p>
+            </div>
+
+            {/* At-Risk Revenue */}
+            {atRiskRevenue > 0 && (
+              <div className="p-3 rounded-lg border border-status-bad/30 bg-status-bad/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-text-secondary">At-Risk Revenue</span>
+                  <span className="text-sm font-bold text-status-bad tabular-nums">
+                    {formatCurrency(atRiskRevenue)}
+                  </span>
+                </div>
+                <p className="text-[10px] text-text-muted mt-1">
+                  {atRiskTopCustomers.length} valuable accounts showing warning signs
+                </p>
+              </div>
+            )}
+
+            {/* Portfolio Health */}
+            <div className="p-3 rounded-lg border border-border/30 bg-bg-tertiary/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-text-secondary">Portfolio Health</span>
+                <span className={`text-sm font-bold tabular-nums ${
+                  healthyPct >= 60 ? "text-status-good" :
+                  healthyPct >= 40 ? "text-status-warning" :
+                  "text-status-bad"
+                }`}>
+                  {healthyPct.toFixed(0)}%
+                </span>
+              </div>
+              <p className="text-[10px] text-text-muted mt-1">
+                {healthyCount} accounts thriving or stable
+              </p>
+            </div>
+
+            {/* Near Upgrade */}
+            {nearUpgrade.length > 0 && (
+              <div className="p-3 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-text-secondary">Near Tier Upgrade</span>
+                  <span className="text-sm font-bold text-purple-400 tabular-nums">
+                    {nearUpgrade.length}
+                  </span>
+                </div>
+                <p className="text-[10px] text-text-muted mt-1">
+                  Accounts within 20% of next tier threshold
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Column 3: Action Items */}
+          <div className="space-y-3">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold mb-3">
+              Recommended Actions
+            </div>
+
+            {/* Action 1: Upgrade Mid to Large */}
+            {midUpgradePotential > 0 && (
+              <div className="p-3 rounded-lg border border-status-good/30 bg-status-good/5">
+                <div className="flex items-start gap-2">
+                  <TrendingUp className="w-4 h-4 text-status-good mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-text-primary">
+                      Upgrade {midUpgradePotential} Mid accounts
+                    </div>
+                    <p className="text-[10px] text-text-muted mt-0.5">
+                      Potential +{formatCurrency(midUpgradeRevenue)} if converted to Large tier
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action 2: Protect Top Customers */}
+            {atRiskTopCustomers.length > 0 && (
+              <div className="p-3 rounded-lg border border-status-bad/30 bg-status-bad/5">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-status-bad mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-text-primary">
+                      Re-engage {atRiskTopCustomers.length} top accounts
+                    </div>
+                    <p className="text-[10px] text-text-muted mt-0.5">
+                      {formatCurrency(atRiskRevenue)} at risk from declining/at-risk customers
+                    </p>
+                    <div className="mt-2 max-h-16 overflow-y-auto space-y-1">
+                      {atRiskTopCustomers.slice(0, 3).map(c => (
+                        <div key={c.ns_customer_id} className="text-[10px] text-status-bad truncate">
+                          • {c.company_name} ({formatCurrency(c.total_revenue)})
+                        </div>
+                      ))}
+                      {atRiskTopCustomers.length > 3 && (
+                        <div className="text-[10px] text-text-muted">
+                          +{atRiskTopCustomers.length - 3} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action 3: Activate Small accounts */}
+            {smallUpgradePotential > 5 && (
+              <div className="p-3 rounded-lg border border-accent-blue/30 bg-accent-blue/5">
+                <div className="flex items-start gap-2">
+                  <Target className="w-4 h-4 text-accent-blue mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-text-primary">
+                      Activate {smallUpgradePotential} Small accounts
+                    </div>
+                    <p className="text-[10px] text-text-muted mt-0.5">
+                      Focus campaigns on converting to Mid tier (+{formatCurrency(smallUpgradeRevenue)})
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action 4: Revenue concentration warning */}
+            {revenueConcentration < 50 && (
+              <div className="p-3 rounded-lg border border-status-warning/30 bg-status-warning/5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-status-warning mt-0.5 flex-shrink-0" />
+                  <div>
+                    <div className="text-xs font-semibold text-text-primary">
+                      Build top-tier base
+                    </div>
+                    <p className="text-[10px] text-text-muted mt-0.5">
+                      Revenue too spread across small accounts. Focus on Major/Large growth.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // SORTABLE TABLE HEADER
 // ============================================================================
@@ -1236,7 +1683,10 @@ export function WholesaleDashboard({
                 At Risk
               </div>
               <div className="text-2xl font-semibold tracking-tight text-status-warning tabular-nums">
-                {(data.atRiskCustomers?.length || 0) + (data.orderingAnomalies?.length || 0)}
+                {stats.health_distribution.at_risk + stats.health_distribution.churning}
+              </div>
+              <div className="text-[10px] text-text-muted mt-1">
+                {stats.health_distribution.at_risk} at risk • {stats.health_distribution.churning} churning
               </div>
             </div>
             <div className="p-2.5 rounded-lg bg-status-warning/10">
@@ -1440,8 +1890,9 @@ export function WholesaleDashboard({
                           <div className="text-sm text-text-primary truncate max-w-[150px] font-medium">
                             {customer.company_name}
                           </div>
-                          <div className="flex items-center gap-1 mt-0.5">
+                          <div className="flex items-center gap-2 mt-0.5">
                             <SegmentBadge segment={customer.segment} />
+                            <HealthBadge status={customer.health_status} />
                           </div>
                         </td>
                         <td className="py-3 px-3 text-right">
@@ -1529,6 +1980,24 @@ export function WholesaleDashboard({
           </div>
         )}
       </div>
+
+      {/* ================================================================
+          SEGMENT INTELLIGENCE (Full Width - Actionable Insights)
+          ================================================================ */}
+      {stats.segment_distribution && (
+        <SegmentIntelligenceCard
+          distribution={stats.segment_distribution}
+          healthDistribution={stats.health_distribution}
+          topCustomers={data.topCustomers || []}
+        />
+      )}
+
+      {/* ================================================================
+          RECENT TRANSACTIONS (Full Width)
+          ================================================================ */}
+      {data.recentTransactions && data.recentTransactions.length > 0 && (
+        <RecentTransactionsSection transactions={data.recentTransactions} />
+      )}
     </div>
   );
 }
