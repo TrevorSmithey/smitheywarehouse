@@ -324,94 +324,16 @@ export async function fetchWholesaleLineItems(
 
 /**
  * Fetch wholesale customers (business entities)
- * Includes all available customer fields for future use
+ * Uses SELECT * to get all available fields dynamically
  */
 export async function fetchWholesaleCustomers(
   offset = 0,
   limit = 1000
 ): Promise<NSCustomer[]> {
+  // Use SELECT * - simpler and more robust than listing all fields
+  // NetSuite returns all fields that exist for each customer
   const query = `
-    SELECT
-      c.id,
-      c.entityid,
-      c.entitynumber,
-      c.entitytitle,
-      c.externalid,
-      c.companyname,
-      c.altname,
-      c.fullname,
-      c.email,
-      c.phone,
-      c.altphone,
-      c.fax,
-      c.url,
-      c.datecreated,
-      c.dateclosed,
-      c.lastmodifieddate,
-      c.firstsaledate,
-      c.lastsaledate,
-      c.firstorderdate,
-      c.lastorderdate,
-      c.firstsaleperiod,
-      c.lastsaleperiod,
-      c.isinactive,
-      c.isperson,
-      c.isjob,
-      c.isbudgetapproved,
-      c.duplicate,
-      c.weblead,
-      c.giveaccess,
-      c.unsubscribe,
-      c.parent,
-      c.toplevelparent,
-      BUILTIN.DF(c.terms) as terms,
-      BUILTIN.DF(c.category) as category,
-      BUILTIN.DF(c.entitystatus) as entitystatus,
-      BUILTIN.DF(c.salesrep) as salesrep,
-      BUILTIN.DF(c.territory) as territory,
-      c.searchstage,
-      c.probability,
-      BUILTIN.DF(c.currency) as currency,
-      c.displaysymbol,
-      c.symbolplacement,
-      c.overridecurrencyformat,
-      c.creditlimit,
-      c.balance,
-      c.overduebalance,
-      c.consolbalance,
-      c.unbilledorders,
-      c.depositbalance,
-      c.receivablesaccount,
-      c.creditholdoverride,
-      c.oncredithold,
-      c.daysoverduesearch,
-      c.billaddress,
-      c.shipaddress,
-      c.defaultbillingaddress,
-      c.defaultshippingaddress,
-      c.emailpreference,
-      c.emailtransactions,
-      c.faxtransactions,
-      c.printtransactions,
-      c.globalsubscriptionstatus,
-      c.shipcomplete,
-      c.shippingcarrier,
-      c.alcoholrecipienttype,
-      c.taxable,
-      c.custentity1,
-      c.custentity_2663_customer_refund,
-      c.custentity_2663_direct_debit,
-      c.custentity_alf_cust_hide_service_periods,
-      c.custentity_alf_customer_hide_total_vat,
-      c.custentity_alf_customer_store_pdf,
-      c.custentity_bdc_lastupdatedbyimport,
-      c.custentity_bdc_shortname,
-      c.custentity_bdc_sync_exclude,
-      c.custentity_celigo_etail_cust_exported,
-      c.custentity_celigo_is_updated_via_shp,
-      c.custentity_mhi_customer_type,
-      c.custentity_mhi_intsagramfacebook,
-      c.custentity_naw_trans_need_approval
+    SELECT *
     FROM customer c
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)
