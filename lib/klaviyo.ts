@@ -143,33 +143,46 @@ export class KlaviyoClient {
   }
 
   /**
-   * Make authenticated request to Klaviyo API
+   * Make authenticated request to Klaviyo API with retry on rate limit
    */
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retries = 3
   ): Promise<T> {
     const url = `${KLAVIYO_API_BASE}${endpoint}`;
 
-    console.log(`[KLAVIYO] Request: ${url}`);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      console.log(`[KLAVIYO] Request: ${url}${attempt > 0 ? ` (retry ${attempt})` : ""}`);
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Klaviyo-API-Key ${this.privateKey}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        revision: KLAVIYO_REVISION,
-        ...options.headers,
-      },
-    });
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          Authorization: `Klaviyo-API-Key ${this.privateKey}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          revision: KLAVIYO_REVISION,
+          ...options.headers,
+        },
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Klaviyo API error ${response.status}: ${errorText}`);
+      // Handle rate limiting with exponential backoff
+      if (response.status === 429 && attempt < retries) {
+        const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+        console.log(`[KLAVIYO] Rate limited, waiting ${waitTime}ms...`);
+        await new Promise((r) => setTimeout(r, waitTime));
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Klaviyo API error ${response.status}: ${errorText}`);
+      }
+
+      return response.json();
     }
 
-    return response.json();
+    throw new Error(`Klaviyo API request failed after ${retries} retries`);
   }
 
   /**
