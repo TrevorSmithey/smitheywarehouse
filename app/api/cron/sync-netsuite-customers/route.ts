@@ -20,21 +20,29 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
+  console.log("[NETSUITE] Route handler started");
+
   if (!verifyCronSecret(request)) {
+    console.log("[NETSUITE] Auth failed");
     return unauthorizedResponse();
   }
 
+  console.log("[NETSUITE] Auth passed, initializing...");
   const startTime = Date.now();
   const supabase = createServiceClient();
+  console.log(`[NETSUITE] Supabase client created at ${Date.now() - startTime}ms`);
 
   try {
     if (!hasNetSuiteCredentials()) {
+      console.log("[NETSUITE] Missing credentials");
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    console.log("[NETSUITE] Starting customers sync...");
+    console.log(`[NETSUITE] Credentials OK at ${Date.now() - startTime}ms, testing connection...`);
 
     const connected = await testConnection();
+    console.log(`[NETSUITE] Connection test result: ${connected} at ${Date.now() - startTime}ms`);
+
     if (!connected) {
       throw new Error("Failed to connect to NetSuite API");
     }
@@ -45,7 +53,10 @@ export async function GET(request: Request) {
     let totalUpserted = 0;
 
     while (true) {
+      console.log(`[NETSUITE] Fetching batch at offset ${offset} at ${Date.now() - startTime}ms`);
       const customers = await fetchWholesaleCustomers(offset, limit);
+      console.log(`[NETSUITE] Got ${customers.length} customers at ${Date.now() - startTime}ms`);
+
       if (customers.length === 0) break;
       totalFetched += customers.length;
 
