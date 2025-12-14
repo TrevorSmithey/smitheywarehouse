@@ -350,16 +350,17 @@ export async function fetchWholesaleLineItems(
 
 /**
  * Fetch wholesale customers (business entities)
- * Optimized for Vercel serverless - removed:
+ * Optimized for Vercel serverless - removed problematic fields:
  * - BUILTIN.DF calls (cause timeouts)
  * - Calculated balance fields (balance, overduebalance, consolbalance, unbilledorders, depositbalance)
- *   These are computed fields that cause 30+ second query times from Vercel
+ * - Address fields (billaddress, shipaddress, defaultbillingaddress, defaultshippingaddress)
+ *   These fields cause 30+ second query times from Vercel serverless
  */
 export async function fetchWholesaleCustomers(
   offset = 0,
   limit = 200
 ): Promise<NSCustomer[]> {
-  // Core customer fields only - no calculated/computed fields
+  // Core customer fields only - no address or balance fields
   const query = `
     SELECT
       c.id,
@@ -383,12 +384,7 @@ export async function fetchWholesaleCustomers(
       c.entitystatus,
       c.salesrep,
       c.territory,
-      c.currency,
-      c.creditlimit,
-      c.billaddress,
-      c.shipaddress,
-      c.defaultbillingaddress,
-      c.defaultshippingaddress
+      c.currency
     FROM customer c
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)

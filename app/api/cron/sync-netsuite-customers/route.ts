@@ -49,8 +49,7 @@ export async function GET(request: Request) {
       if (customers.length === 0) break;
       totalFetched += customers.length;
 
-      // Note: balance fields (balance, overduebalance, etc.) removed from query
-      // because they're calculated fields that cause 30+ second timeouts from Vercel
+      // Note: balance/address fields removed from query - they cause 30+ second timeouts from Vercel
       const records = customers.map((c: NSCustomer) => ({
         ns_customer_id: c.id,
         entity_id: c.entityid,
@@ -74,12 +73,9 @@ export async function GET(request: Request) {
         sales_rep: c.salesrep,
         territory: c.territory,
         currency: c.currency,
-        credit_limit: c.creditlimit ? parseFloat(c.creditlimit) : null,
-        // Balance fields not synced - they cause NetSuite query timeouts
-        bill_address: c.billaddress,
-        ship_address: c.shipaddress,
-        default_billing_address: c.defaultbillingaddress,
-        default_shipping_address: c.defaultshippingaddress,
+        // Removed fields that cause NetSuite query timeouts:
+        // - creditlimit, balance, overduebalance, consolbalance, unbilledorders, depositbalance
+        // - billaddress, shipaddress, defaultbillingaddress, defaultshippingaddress
         synced_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));
