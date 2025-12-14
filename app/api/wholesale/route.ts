@@ -323,6 +323,7 @@ export async function GET(request: Request) {
         first_sale_date: c.first_order_date,
         last_sale_date: c.last_order_date,
         total_revenue: totalRevenue,
+        ytd_revenue: parseFloat(c.ytd_revenue) || 0,
         order_count: orderCount,
         health_status: healthStatus,
         segment: segment,
@@ -709,7 +710,7 @@ export async function GET(request: Request) {
     // Sorted by YTD revenue descending
     const corporateCustomers: WholesaleCustomer[] = customers
       .filter((c) => c.is_corporate_gifting)
-      .sort((a, b) => b.total_revenue - a.total_revenue);
+      .sort((a, b) => b.ytd_revenue - a.ytd_revenue);
 
     // Churned customers - 365+ days since last order, excludes major/corporate accounts
     const churnedCustomers: WholesaleCustomer[] = customers

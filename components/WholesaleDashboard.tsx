@@ -1298,8 +1298,8 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
 // ============================================================================
 
 function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer[] }) {
-  // Calculate totals (show 0 if empty)
-  const totalRevenue = customers.reduce((sum, c) => sum + c.total_revenue, 0);
+  // Calculate YTD totals (show 0 if empty)
+  const ytdRevenue = customers.reduce((sum, c) => sum + c.ytd_revenue, 0);
   const totalOrders = customers.reduce((sum, c) => sum + c.order_count, 0);
 
   return (
@@ -1319,9 +1319,9 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
       {/* Summary Stats */}
       <div className="px-5 py-3 border-b border-border/10 bg-bg-tertiary/30 grid grid-cols-2 gap-4">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-text-muted">Total Revenue</div>
+          <div className="text-[10px] uppercase tracking-wider text-text-muted">YTD Revenue</div>
           <div className="text-sm font-semibold text-text-primary tabular-nums">
-            {formatCurrencyFull(totalRevenue)}
+            {formatCurrencyFull(ytdRevenue)}
           </div>
         </div>
         <div>
@@ -1357,9 +1357,9 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
               </div>
               <div className="text-right">
                 <div className={`text-sm font-semibold tabular-nums ${
-                  customer.total_revenue > 0 ? "text-status-good" : "text-text-tertiary"
+                  customer.ytd_revenue > 0 ? "text-status-good" : "text-text-tertiary"
                 }`}>
-                  {customer.total_revenue > 0 ? formatCurrencyFull(customer.total_revenue) : "$0"}
+                  {customer.ytd_revenue > 0 ? formatCurrencyFull(customer.ytd_revenue) : "$0"}
                 </div>
                 {customer.last_sale_date && (
                   <div className="text-[10px] text-text-muted">
@@ -2008,8 +2008,6 @@ export function WholesaleDashboard({
 
   // Loading state with progress indicator
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingStartTime] = useState(() => loading ? Date.now() : 0);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
     if (loading && !data) {
@@ -2024,20 +2022,13 @@ export function WholesaleDashboard({
         });
       }, 200);
 
-      // Elapsed time counter
-      const timeInterval = setInterval(() => {
-        setElapsedSeconds(Math.floor((Date.now() - loadingStartTime) / 1000));
-      }, 1000);
-
       return () => {
         clearInterval(progressInterval);
-        clearInterval(timeInterval);
       };
     } else {
       setLoadingProgress(0);
-      setElapsedSeconds(0);
     }
-  }, [loading, data, loadingStartTime]);
+  }, [loading, data]);
 
   if (loading && !data) {
     return (
@@ -2073,11 +2064,6 @@ export function WholesaleDashboard({
               {loadingProgress >= 60 && loadingProgress < 85 && "Calculating analytics..."}
               {loadingProgress >= 85 && "Almost there..."}
             </p>
-            {elapsedSeconds > 2 && (
-              <p className="text-xs text-text-muted/70 font-mono">
-                {elapsedSeconds}s elapsed
-              </p>
-            )}
           </div>
         </div>
       </div>

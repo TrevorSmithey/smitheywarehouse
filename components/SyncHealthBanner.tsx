@@ -54,11 +54,18 @@ export function SyncHealthBanner() {
     }
   }, []);
 
-  // Fetch on mount and every 5 minutes
+  // Delay 30 seconds before first fetch to let main content load first
+  // Then fetch every 5 minutes
   useEffect(() => {
-    fetchHealth();
+    const initialDelay = setTimeout(() => {
+      fetchHealth();
+    }, 30 * 1000);
+
     const interval = setInterval(fetchHealth, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialDelay);
+      clearInterval(interval);
+    };
   }, [fetchHealth]);
 
   // Still loading initial data - show nothing (prevents flash of error during page load)

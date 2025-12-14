@@ -902,6 +902,7 @@ export interface WholesaleCustomer {
   first_sale_date: string | null;
   last_sale_date: string | null;
   total_revenue: number;
+  ytd_revenue: number;
   order_count: number;
   // Calculated health metrics
   health_status: CustomerHealthStatus;

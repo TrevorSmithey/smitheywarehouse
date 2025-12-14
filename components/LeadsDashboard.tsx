@@ -222,12 +222,6 @@ function PipelineHeader({ data }: { data: LeadsResponse }) {
                 </div>
               );
             })}
-            {funnel.ai_score_distribution.pending > 0 && (
-              <div className="text-[10px] text-text-muted mt-1 flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                {funnel.ai_score_distribution.pending} pending analysis
-              </div>
-            )}
           </div>
         ) : (
           <div className="text-xs text-text-muted">No score data</div>
