@@ -165,6 +165,9 @@ export interface NSCustomer {
   companyname: string;
   email: string | null;
   phone: string | null;
+  altphone: string | null;
+  fax: string | null;
+  url: string | null;
   firstsaledate: string | null;
   lastsaledate: string | null;
   firstorderdate: string | null;
@@ -176,6 +179,19 @@ export interface NSCustomer {
   terms: string | null;
   category: string | null;
   entitystatus: string | null;
+  salesrep: string | null;
+  territory: string | null;
+  currency: string | null;
+  creditlimit: string | null;
+  balance: string | null;
+  overduebalance: string | null;
+  consolbalance: string | null;
+  unbilledorders: string | null;
+  depositbalance: string | null;
+  billaddress: string | null;
+  shipaddress: string | null;
+  defaultbillingaddress: string | null;
+  defaultshippingaddress: string | null;
 }
 
 /**
@@ -241,6 +257,7 @@ export async function fetchWholesaleLineItems(
 
 /**
  * Fetch wholesale customers (business entities)
+ * Includes all available customer fields for future use
  */
 export async function fetchWholesaleCustomers(
   offset = 0,
@@ -253,6 +270,9 @@ export async function fetchWholesaleCustomers(
       c.companyname,
       c.email,
       c.phone,
+      c.altphone,
+      c.fax,
+      c.url,
       c.firstsaledate,
       c.lastsaledate,
       c.firstorderdate,
@@ -263,7 +283,20 @@ export async function fetchWholesaleCustomers(
       c.parent,
       BUILTIN.DF(c.terms) as terms,
       BUILTIN.DF(c.category) as category,
-      BUILTIN.DF(c.entitystatus) as entitystatus
+      BUILTIN.DF(c.entitystatus) as entitystatus,
+      BUILTIN.DF(c.salesrep) as salesrep,
+      BUILTIN.DF(c.territory) as territory,
+      BUILTIN.DF(c.currency) as currency,
+      c.creditlimit,
+      c.balance,
+      c.overduebalance,
+      c.consolbalance,
+      c.unbilledorders,
+      c.depositbalance,
+      c.billaddress,
+      c.shipaddress,
+      c.defaultbillingaddress,
+      c.defaultshippingaddress
     FROM customer c
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)

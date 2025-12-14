@@ -53,25 +53,42 @@ async function syncCustomers(
     if (customers.length === 0) break;
     totalFetched += customers.length;
 
-    // Transform to Supabase format
+    // Transform to Supabase format - sync all raw NetSuite fields
     const records = customers.map((c: NSCustomer) => ({
       ns_customer_id: c.id,
       entity_id: c.entityid,
       company_name: c.companyname || "Unknown",
       email: c.email,
       phone: c.phone,
+      alt_phone: c.altphone,
+      fax: c.fax,
+      url: c.url,
       first_sale_date: c.firstsaledate,
       last_sale_date: c.lastsaledate,
       first_order_date: c.firstorderdate,
       last_order_date: c.lastorderdate,
-      date_created: c.datecreated,
+      date_created: c.datecreated ? new Date(c.datecreated).toISOString().split("T")[0] : null,
       last_modified: c.lastmodifieddate,
       is_inactive: c.isinactive === "T",
       parent_id: c.parent,
       terms: c.terms,
       category: c.category,
       entity_status: c.entitystatus,
+      sales_rep: c.salesrep,
+      territory: c.territory,
+      currency: c.currency,
+      credit_limit: c.creditlimit ? parseFloat(c.creditlimit) : null,
+      balance: c.balance ? parseFloat(c.balance) : null,
+      overdue_balance: c.overduebalance ? parseFloat(c.overduebalance) : null,
+      consol_balance: c.consolbalance ? parseFloat(c.consolbalance) : null,
+      unbilled_orders: c.unbilledorders ? parseFloat(c.unbilledorders) : null,
+      deposit_balance: c.depositbalance ? parseFloat(c.depositbalance) : null,
+      bill_address: c.billaddress,
+      ship_address: c.shipaddress,
+      default_billing_address: c.defaultbillingaddress,
+      default_shipping_address: c.defaultshippingaddress,
       synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }));
 
     // Batch upsert
