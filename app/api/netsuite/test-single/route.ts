@@ -100,17 +100,31 @@ export async function GET(request: Request) {
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 100 ROWS ONLY
     `},
-    "13": { name: "50 customers same fields", query: `
+    "13": { name: "50 customers no address fields", query: `
       SELECT
         c.id, c.entityid, c.companyname, c.email, c.phone, c.altphone, c.fax, c.url,
         c.datecreated, c.lastmodifieddate, c.firstsaledate, c.lastsaledate,
         c.firstorderdate, c.lastorderdate, c.isinactive, c.parent,
-        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency,
-        c.billaddress, c.shipaddress,
-        c.defaultbillingaddress, c.defaultshippingaddress
+        c.terms, c.category, c.entitystatus, c.salesrep, c.territory, c.currency
       FROM customer c
       WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
       ORDER BY c.id FETCH FIRST 50 ROWS ONLY
+    `},
+    "14": { name: "50 customers core + dates only", query: `
+      SELECT
+        c.id, c.entityid, c.companyname, c.email, c.phone,
+        c.datecreated, c.lastmodifieddate, c.isinactive
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 50 ROWS ONLY
+    `},
+    "15": { name: "200 customers core + dates only", query: `
+      SELECT
+        c.id, c.entityid, c.companyname, c.email, c.phone,
+        c.datecreated, c.lastmodifieddate, c.isinactive
+      FROM customer c
+      WHERE c.isperson = 'F' AND c.id NOT IN (493, 2501)
+      ORDER BY c.id FETCH FIRST 200 ROWS ONLY
     `},
   };
 
