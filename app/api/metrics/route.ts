@@ -119,32 +119,24 @@ export async function GET(request: Request) {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+    // CONSOLIDATED QUERY: Replace 20 individual count queries with 1 SQL query
+    // This dramatically reduces DB round-trips and improves performance
+    const consolidatedCountsQuery = supabase.rpc("get_order_counts", {
+      p_today_start: `${todayEST}T00:00:00`,
+      p_today_end: `${todayEST}T23:59:59`,
+      p_seven_days_ago: sevenDaysAgo.toISOString(),
+      p_thirty_days_ago: thirtyDaysAgo.toISOString(),
+      p_prev_range_start: prevRangeStart.toISOString(),
+      p_prev_range_end: prevRangeEnd.toISOString(),
+      p_range_start: rangeStart.toISOString(),
+      p_range_end: rangeEnd.toISOString(),
+      p_one_day_ago: oneDayAgo.toISOString(),
+      p_three_days_ago: threeDaysAgo.toISOString(),
+    });
 
-    // Run count queries in parallel (using exact counts, no row limit)
+    // Run consolidated count query + data queries in parallel
     const [
-      // Unfulfilled counts by warehouse
-      unfulfilledSmitheyCount,
-      unfulfilledSeleryCount,
-      partialSmitheyCount,
-      partialSeleryCount,
-      fulfilledTodaySmitheyCount,
-      fulfilledTodaySeleryCount,
-      fulfilled7dSmitheyCount,
-      fulfilled7dSeleryCount,
-      fulfilled30dSmitheyCount,
-      fulfilled30dSeleryCount,
-      prevPeriodSmitheyCount,
-      prevPeriodSeleryCount,
-      // Fulfilled in selected date range (for "SHIPPED" metric that changes with filter)
-      fulfilledInRangeSmitheyCount,
-      fulfilledInRangeSeleryCount,
-      // Queue aging counts
-      waiting1dSmithey,
-      waiting1dSelery,
-      waiting3dSmithey,
-      waiting3dSelery,
-      waiting7dSmithey,
-      waiting7dSelery,
+      consolidatedCounts,
       // Data queries (with limits)
       dailyResult,
       oldestSmitheyResult,
@@ -157,181 +149,7 @@ export async function GET(request: Request) {
       engravingQueueResult,
       agingDataResult,
     ] = await Promise.all([
-      // Unfulfilled Smithey (excluding restoration orders)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("is_restoration", false)
-        .eq("warehouse", "smithey"),
-
-      // Unfulfilled Selery (excluding restoration orders)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("is_restoration", false)
-        .eq("warehouse", "selery"),
-
-      // Partial Smithey (excluding restoration orders)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("fulfillment_status", "partial")
-        .eq("canceled", false)
-        .eq("is_restoration", false)
-        .eq("warehouse", "smithey"),
-
-      // Partial Selery (excluding restoration orders)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("fulfillment_status", "partial")
-        .eq("canceled", false)
-        .eq("is_restoration", false)
-        .eq("warehouse", "selery"),
-
-      // Fulfilled TODAY - Smithey (fixed to today, independent of date range)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", `${todayEST}T00:00:00`)
-        .lte("fulfilled_at", `${todayEST}T23:59:59`)
-        .eq("canceled", false)
-        .eq("warehouse", "smithey"),
-
-      // Fulfilled TODAY - Selery (fixed to today, independent of date range)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", `${todayEST}T00:00:00`)
-        .lte("fulfilled_at", `${todayEST}T23:59:59`)
-        .eq("canceled", false)
-        .eq("warehouse", "selery"),
-
-      // Fulfilled 7d Smithey
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", sevenDaysAgo.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "smithey"),
-
-      // Fulfilled 7d Selery
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", sevenDaysAgo.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "selery"),
-
-      // Fulfilled 30d Smithey
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", thirtyDaysAgo.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "smithey"),
-
-      // Fulfilled 30d Selery
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", thirtyDaysAgo.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "selery"),
-
-      // Previous period Smithey (for period-over-period comparison)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", prevRangeStart.toISOString())
-        .lte("fulfilled_at", prevRangeEnd.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "smithey"),
-
-      // Previous period Selery
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", prevRangeStart.toISOString())
-        .lte("fulfilled_at", prevRangeEnd.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "selery"),
-
-      // Fulfilled in selected date range - Smithey (for "SHIPPED" that respects date filter)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", rangeStart.toISOString())
-        .lte("fulfilled_at", rangeEnd.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "smithey"),
-
-      // Fulfilled in selected date range - Selery (for "SHIPPED" that respects date filter)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .gte("fulfilled_at", rangeStart.toISOString())
-        .lte("fulfilled_at", rangeEnd.toISOString())
-        .eq("canceled", false)
-        .eq("warehouse", "selery"),
-
-      // Queue aging: unfulfilled orders older than 1 day (Smithey)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("warehouse", "smithey")
-        .lt("created_at", oneDayAgo.toISOString()),
-
-      // Queue aging: unfulfilled orders older than 1 day (Selery)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("warehouse", "selery")
-        .lt("created_at", oneDayAgo.toISOString()),
-
-      // Queue aging: unfulfilled orders older than 3 days (Smithey)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("warehouse", "smithey")
-        .lt("created_at", threeDaysAgo.toISOString()),
-
-      // Queue aging: unfulfilled orders older than 3 days (Selery)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("warehouse", "selery")
-        .lt("created_at", threeDaysAgo.toISOString()),
-
-      // Queue aging: unfulfilled orders older than 7 days (Smithey)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("warehouse", "smithey")
-        .lt("created_at", sevenDaysAgo.toISOString()),
-
-      // Queue aging: unfulfilled orders older than 7 days (Selery)
-      supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .is("fulfillment_status", null)
-        .eq("canceled", false)
-        .eq("warehouse", "selery")
-        .lt("created_at", sevenDaysAgo.toISOString()),
+      consolidatedCountsQuery,
 
       // Daily fulfillments for chart - filtered by selected date range
       // Limit increased to handle high volume periods (1500/day × 30 days = 45k)
@@ -484,38 +302,51 @@ export async function GET(request: Request) {
     checkQueryLimit(engravingQueueResult.data?.length || 0, QUERY_LIMITS.ENGRAVING_QUEUE, "engraving_queue");
     checkQueryLimit(agingDataResult.data?.length || 0, QUERY_LIMITS.AGING_DATA, "aging_data");
 
-    // Fail fast if critical count queries error - these are essential for ops dashboard
-    // Using head:true means error is in .error, count is in .count
-    // Critical: unfulfilled (queue size), partial (affects queue), fulfilled_today (daily progress)
-    const criticalCounts = [
-      { name: "unfulfilledSmithey", result: unfulfilledSmitheyCount },
-      { name: "unfulfilledSelery", result: unfulfilledSeleryCount },
-      { name: "partialSmithey", result: partialSmitheyCount },
-      { name: "partialSelery", result: partialSeleryCount },
-      { name: "fulfilledTodaySmithey", result: fulfilledTodaySmitheyCount },
-      { name: "fulfilledTodaySelery", result: fulfilledTodaySeleryCount },
-    ];
-    for (const { name, result } of criticalCounts) {
-      if (result.error) {
-        throw new Error(`Critical count query failed (${name}): ${result.error.message}`);
-      }
+    // Fail fast if consolidated count query errors
+    if (consolidatedCounts.error) {
+      throw new Error(`Consolidated count query failed: ${consolidatedCounts.error.message}`);
     }
 
-    // Build warehouse metrics from count queries
-    const smitheyUnfulfilled = unfulfilledSmitheyCount.count || 0;
-    const seleryUnfulfilled = unfulfilledSeleryCount.count || 0;
-    const smitheyPartial = partialSmitheyCount.count || 0;
-    const seleryPartial = partialSeleryCount.count || 0;
-    const smitheyToday = fulfilledTodaySmitheyCount.count || 0;
-    const seleryToday = fulfilledTodaySeleryCount.count || 0;
-    const smithey7d = fulfilled7dSmitheyCount.count || 0;
-    const selery7d = fulfilled7dSeleryCount.count || 0;
-    const smithey30d = fulfilled30dSmitheyCount.count || 0;
-    const selery30d = fulfilled30dSeleryCount.count || 0;
-    const smitheyPrevPeriod = prevPeriodSmitheyCount.count || 0;
-    const smitheyInRange = fulfilledInRangeSmitheyCount.count || 0;
-    const seleryInRange = fulfilledInRangeSeleryCount.count || 0;
-    const seleryPrevPeriod = prevPeriodSeleryCount.count || 0;
+    // Extract counts from consolidated query result
+    // The RPC returns an array with one row per warehouse
+    type CountRow = {
+      warehouse: string;
+      unfulfilled: number;
+      partial: number;
+      fulfilled_today: number;
+      fulfilled_7d: number;
+      fulfilled_30d: number;
+      prev_period: number;
+      in_range: number;
+      waiting_1d: number;
+      waiting_3d: number;
+      waiting_7d: number;
+    };
+    const counts = (consolidatedCounts.data as CountRow[]) || [];
+    const smitheyCounts = counts.find((r) => r.warehouse === "smithey") || {
+      unfulfilled: 0, partial: 0, fulfilled_today: 0, fulfilled_7d: 0, fulfilled_30d: 0,
+      prev_period: 0, in_range: 0, waiting_1d: 0, waiting_3d: 0, waiting_7d: 0,
+    };
+    const seleryCounts = counts.find((r) => r.warehouse === "selery") || {
+      unfulfilled: 0, partial: 0, fulfilled_today: 0, fulfilled_7d: 0, fulfilled_30d: 0,
+      prev_period: 0, in_range: 0, waiting_1d: 0, waiting_3d: 0, waiting_7d: 0,
+    };
+
+    // Build warehouse metrics from consolidated counts
+    const smitheyUnfulfilled = smitheyCounts.unfulfilled;
+    const seleryUnfulfilled = seleryCounts.unfulfilled;
+    const smitheyPartial = smitheyCounts.partial;
+    const seleryPartial = seleryCounts.partial;
+    const smitheyToday = smitheyCounts.fulfilled_today;
+    const seleryToday = seleryCounts.fulfilled_today;
+    const smithey7d = smitheyCounts.fulfilled_7d;
+    const selery7d = seleryCounts.fulfilled_7d;
+    const smithey30d = smitheyCounts.fulfilled_30d;
+    const selery30d = seleryCounts.fulfilled_30d;
+    const smitheyPrevPeriod = smitheyCounts.prev_period;
+    const smitheyInRange = smitheyCounts.in_range;
+    const seleryInRange = seleryCounts.in_range;
+    const seleryPrevPeriod = seleryCounts.prev_period;
 
     // Period-over-period change (current range vs previous period of same duration)
     const smitheyPeriodChange = smitheyPrevPeriod > 0
