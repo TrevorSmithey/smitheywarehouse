@@ -1015,9 +1015,10 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
         {nonCorporateCustomers.map((customer) => {
           const churnedRecently = isChurnedThisYear(customer);
           return (
-            <div
+            <Link
               key={customer.ns_customer_id}
-              className={`flex items-center justify-between px-5 py-3 border-b border-border/10 transition-colors ${
+              href={`/sales/customer/${customer.ns_customer_id}`}
+              className={`flex items-center justify-between px-5 py-3 border-b border-border/10 transition-colors cursor-pointer ${
                 churnedRecently
                   ? "bg-status-bad/5 hover:bg-status-bad/10 border-l-2 border-l-status-bad"
                   : "hover:bg-white/[0.02]"
@@ -1051,7 +1052,7 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
                   </div>
                 )}
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>
@@ -1382,12 +1383,13 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
           </div>
         ) : (
           customers.map((customer) => (
-            <div
+            <Link
               key={customer.ns_customer_id}
-              className="flex items-center justify-between px-5 py-2.5 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+              href={`/sales/customer/${customer.ns_customer_id}`}
+              className="flex items-center justify-between px-5 py-2.5 border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer"
             >
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-text-primary truncate font-medium">
+                <div className="text-sm text-text-primary truncate font-medium hover:text-accent-blue transition-colors">
                   {customer.company_name}
                 </div>
                 <div className="text-[10px] text-text-muted">
@@ -1408,7 +1410,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
                   </div>
                 )}
               </div>
-            </div>
+            </Link>
           ))
         )}
       </div>
@@ -2399,10 +2401,11 @@ export function WholesaleDashboard({
                       {filteredCustomers.map((customer) => (
                         <tr
                           key={customer.ns_customer_id}
-                          className="border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+                          className="border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                          onClick={() => window.location.href = `/sales/customer/${customer.ns_customer_id}`}
                         >
                           <td className="py-2 px-3">
-                            <div className="text-sm text-text-primary truncate max-w-[200px]">
+                            <div className="text-sm text-text-primary truncate max-w-[200px] hover:text-accent-blue transition-colors">
                               {customer.company_name}
                             </div>
                           </td>
@@ -2557,7 +2560,11 @@ export function WholesaleDashboard({
                   </thead>
                   <tbody>
                     {displayedCustomers.map((customer, idx) => (
-                      <tr key={customer.ns_customer_id} className="group border-b border-border/10 hover:bg-white/[0.02] transition-colors">
+                      <tr
+                        key={customer.ns_customer_id}
+                        className="group border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer"
+                        onClick={() => window.location.href = `/sales/customer/${customer.ns_customer_id}`}
+                      >
                         <td className="py-3 pl-4 pr-2 w-10">
                           <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold tabular-nums ${
                             idx < 3 ? "bg-status-good/20 text-status-good" : "text-text-muted"
