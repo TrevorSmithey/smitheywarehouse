@@ -44,21 +44,26 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
 }
 
 // Helper to determine health status based on activity
-// NOTE: This is a fallback function. The database now computes health_status directly
-// from transactions via the migration (recalculate_customer_metrics_from_transactions_v2)
+// daysSinceFirstOrder is used to identify "new" customers (first order within 90 days)
 function getHealthStatus(
   daysSinceLastOrder: number | null,
+  daysSinceFirstOrder: number | null,
   orderCount: number,
   revenueTrend: number
 ): CustomerHealthStatus {
-  // Never placed an order - now classified as 'churned' with lifetime_orders=0
+  // Never placed an order
   if (orderCount === 0) return "churned";
-  // Has orders but no last_sale_date is a data issue, treat as new
-  if (daysSinceLastOrder === null) return "new";
+  // Has orders but no last_sale_date is a data issue
+  if (daysSinceLastOrder === null) return "churned";
+  // New customer: first order within last 90 days
+  if (daysSinceFirstOrder !== null && daysSinceFirstOrder <= 90) return "new";
+  // Only one order ever (and not new)
   if (orderCount === 1) return "one_time";
+  // Churn/risk based on recency
   if (daysSinceLastOrder > 365) return "churned";
   if (daysSinceLastOrder > 180) return "churning";
   if (daysSinceLastOrder > 120) return "at_risk";
+  // Trend-based for active customers
   if (revenueTrend < -0.2) return "declining";
   if (revenueTrend > 0.1) return "thriving";
   return "stable";
@@ -314,9 +319,15 @@ export async function GET(request: Request) {
         ? Math.floor((Date.now() - lastSaleDate.getTime()) / (1000 * 60 * 60 * 24))
         : null;
 
-      // Compute health_status dynamically from current data (daysSinceLastOrder uses last_sale_date)
+      // Use first_sale_date to identify "new" customers (first order within 90 days)
+      const firstSaleDate = c.first_sale_date ? new Date(c.first_sale_date) : null;
+      const daysSinceFirstOrder = firstSaleDate
+        ? Math.floor((Date.now() - firstSaleDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      // Compute health_status dynamically from current data
       // DB-stored health_status is stale - it was computed from old last_order_date column
-      const healthStatus = getHealthStatus(daysSinceLastOrder, orderCount, yoyChange);
+      const healthStatus = getHealthStatus(daysSinceLastOrder, daysSinceFirstOrder, orderCount, yoyChange);
 
       // Use DB-computed segment or compute if not present
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
