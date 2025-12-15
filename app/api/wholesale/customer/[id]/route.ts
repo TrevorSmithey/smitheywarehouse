@@ -172,35 +172,42 @@ export async function GET(
       expected_order_date: expectedOrderDate,
     };
 
-    // Get YTD revenue for current and prior year
-    const currentYear = now.getFullYear();
-    const priorYear = currentYear - 1;
+    // Get T12 revenue (trailing 12 months) and prior T12 (13-24 months ago)
+    // This is always current regardless of where we are in the calendar year
+    const t12StartDate = new Date(now);
+    t12StartDate.setFullYear(t12StartDate.getFullYear() - 1);
+    const t12StartStr = t12StartDate.toISOString().split("T")[0];
 
-    const { data: ytdTransactions } = await supabase
+    const priorT12StartDate = new Date(now);
+    priorT12StartDate.setFullYear(priorT12StartDate.getFullYear() - 2);
+    const priorT12StartStr = priorT12StartDate.toISOString().split("T")[0];
+    const priorT12EndStr = t12StartStr; // Prior T12 ends where current T12 starts
+
+    const { data: t12Transactions } = await supabase
       .from("ns_wholesale_transactions")
       .select("tran_date, foreign_total")
       .eq("ns_customer_id", customerId)
-      .gte("tran_date", `${currentYear}-01-01`)
+      .gte("tran_date", t12StartStr)
       .lte("tran_date", now.toISOString().split("T")[0]);
 
-    const { data: priorYtdTransactions } = await supabase
+    const { data: priorT12Transactions } = await supabase
       .from("ns_wholesale_transactions")
       .select("tran_date, foreign_total")
       .eq("ns_customer_id", customerId)
-      .gte("tran_date", `${priorYear}-01-01`)
-      .lte("tran_date", `${priorYear}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`);
+      .gte("tran_date", priorT12StartStr)
+      .lt("tran_date", priorT12EndStr);
 
-    const ytdRevenue = (ytdTransactions || []).reduce(
+    const t12Revenue = (t12Transactions || []).reduce(
       (sum, t) => sum + (t.foreign_total || 0),
       0
     );
-    const priorYtdRevenue = (priorYtdTransactions || []).reduce(
+    const priorT12Revenue = (priorT12Transactions || []).reduce(
       (sum, t) => sum + (t.foreign_total || 0),
       0
     );
 
-    const yoyChangePct = priorYtdRevenue > 0
-      ? Math.round(((ytdRevenue - priorYtdRevenue) / priorYtdRevenue) * 100)
+    const yoyChangePct = priorT12Revenue > 0
+      ? Math.round(((t12Revenue - priorT12Revenue) / priorT12Revenue) * 100)
       : null;
 
     const orderCount = customerData.lifetime_orders || 0;
@@ -208,8 +215,8 @@ export async function GET(
     const avgOrderValue = orderCount > 0 ? Math.round(totalRevenue / orderCount) : null;
 
     const revenueTrend: CustomerRevenueTrend = {
-      ytd_revenue: ytdRevenue,
-      prior_ytd_revenue: priorYtdRevenue,
+      t12_revenue: t12Revenue,
+      prior_t12_revenue: priorT12Revenue,
       yoy_change_pct: yoyChangePct,
       avg_order_value: avgOrderValue,
       total_revenue: totalRevenue,
@@ -312,7 +319,7 @@ export async function GET(
       first_sale_date: customerData.first_sale_date,
       last_sale_date: customerData.last_sale_date,
       total_revenue: totalRevenue,
-      ytd_revenue: ytdRevenue,
+      ytd_revenue: t12Revenue, // Using T12 for this field (used in dashboard sorting)
       order_count: orderCount,
       health_status: healthStatus,
       segment,

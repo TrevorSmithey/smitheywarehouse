@@ -1400,8 +1400,8 @@ export interface CustomerOrderingPattern {
 }
 
 export interface CustomerRevenueTrend {
-  ytd_revenue: number;
-  prior_ytd_revenue: number;
+  t12_revenue: number;       // Trailing 12 months
+  prior_t12_revenue: number; // Prior trailing 12 months (13-24 months ago)
   yoy_change_pct: number | null;
   avg_order_value: number | null;
   total_revenue: number;

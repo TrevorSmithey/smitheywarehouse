@@ -751,8 +751,8 @@ export default function CustomerDetailPage() {
               }
             />
             <StatCard
-              label="YTD Revenue"
-              value={formatCurrency(revenueTrend.ytd_revenue)}
+              label="T12 Revenue"
+              value={formatCurrency(revenueTrend.t12_revenue)}
               trend={revenueTrend.yoy_change_pct}
             />
           </div>
@@ -803,22 +803,22 @@ export default function CustomerDetailPage() {
             </h2>
           </div>
 
-          {/* YTD Comparison */}
+          {/* T12 Comparison */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-                YTD {new Date().getFullYear()}
+                Last 12 Mo
               </div>
               <div className="text-2xl font-bold text-text-primary tabular-nums">
-                {formatCurrency(revenueTrend.ytd_revenue)}
+                {formatCurrency(revenueTrend.t12_revenue)}
               </div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-                YTD {new Date().getFullYear() - 1}
+                Prior 12 Mo
               </div>
               <div className="text-2xl font-bold text-text-secondary tabular-nums">
-                {formatCurrency(revenueTrend.prior_ytd_revenue)}
+                {formatCurrency(revenueTrend.prior_t12_revenue)}
               </div>
             </div>
             <div>
