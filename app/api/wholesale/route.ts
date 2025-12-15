@@ -307,18 +307,19 @@ export async function GET(request: Request) {
       const totalRevenue = parseFloat(c.lifetime_revenue) || 0;
       const yoyChange = c.yoy_revenue_change_pct ? parseFloat(c.yoy_revenue_change_pct) / 100 : 0;
 
-      // Use DB-computed health_status directly - migration handles all cases
-      // Customers with 0 orders are classified as 'churned' with lifetime_orders=0
-      const healthStatus = c.health_status as CustomerHealthStatus;
+      // Use last_sale_date (current from transaction sync) NOT last_order_date (stale)
+      // last_sale_date is computed from transactions, last_order_date is from old customer sync
+      const lastSaleDate = c.last_sale_date ? new Date(c.last_sale_date) : null;
+      const daysSinceLastOrder = lastSaleDate
+        ? Math.floor((Date.now() - lastSaleDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      // Compute health_status dynamically from current data (daysSinceLastOrder uses last_sale_date)
+      // DB-stored health_status is stale - it was computed from old last_order_date column
+      const healthStatus = getHealthStatus(daysSinceLastOrder, orderCount, yoyChange);
 
       // Use DB-computed segment or compute if not present
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
-
-      // Compute days_since_last_order dynamically from last_order_date (the stored column is stale)
-      const lastOrderDate = c.last_order_date ? new Date(c.last_order_date) : null;
-      const daysSinceLastOrder = lastOrderDate
-        ? Math.floor((Date.now() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24))
-        : null;
 
       return {
         ns_customer_id: parseInt(c.ns_customer_id) || 0,
@@ -326,8 +327,8 @@ export async function GET(request: Request) {
         company_name: c.company_name || `Customer ${c.ns_customer_id}`,
         email: null, // Not in current schema
         phone: null, // Not in current schema
-        first_sale_date: c.first_order_date,
-        last_sale_date: c.last_order_date,
+        first_sale_date: c.first_sale_date || c.first_order_date, // Prefer transaction-derived date
+        last_sale_date: c.last_sale_date, // Use current transaction-derived date
         total_revenue: totalRevenue,
         ytd_revenue: parseFloat(c.ytd_revenue) || 0,
         order_count: orderCount,
