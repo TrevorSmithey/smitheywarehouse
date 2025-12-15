@@ -695,14 +695,14 @@ export async function GET(request: Request) {
       .sort((a, b) => b.ytd_revenue - a.ytd_revenue);
 
     // Churned customers - 365+ days since last order, excludes major/corporate accounts
+    // Returns ALL churned customers (no limit) - UI handles scrolling
     const churnedCustomers: WholesaleCustomer[] = customers
       .filter((c) =>
         c.health_status === "churned" &&
         c.segment !== "major" && // Exclude corporate accounts like Crate & Barrel
         c.order_count > 0 // Must have ordered at some point
       )
-      .sort((a, b) => b.total_revenue - a.total_revenue) // Highest value first - these are win-back opportunities
-      .slice(0, 30);
+      .sort((a, b) => b.total_revenue - a.total_revenue); // Highest value first - these are win-back opportunities
 
     // ========================================================================
     // NEW CUSTOMER ACQUISITION YoY COMPARISON

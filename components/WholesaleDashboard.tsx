@@ -969,6 +969,21 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
 
   if (!nonCorporateCustomers || nonCorporateCustomers.length === 0) return null;
 
+  // Determine current year for "churned this year" highlighting
+  const currentYear = new Date().getFullYear();
+
+  // Check if customer churned this year (last sale was in current year, meaning they crossed 365 days recently)
+  const isChurnedThisYear = (customer: WholesaleCustomer) => {
+    if (!customer.last_sale_date) return false;
+    const lastSaleYear = new Date(customer.last_sale_date).getFullYear();
+    // Churned this year = their last sale was in the previous year (so they crossed 365d threshold in current year)
+    // OR their days_since_last_order is between 365-730 (churned within the last year)
+    return lastSaleYear === currentYear - 1 ||
+      (customer.days_since_last_order !== null && customer.days_since_last_order >= 365 && customer.days_since_last_order < 730);
+  };
+
+  const churnedThisYearCount = nonCorporateCustomers.filter(isChurnedThisYear).length;
+
   return (
     <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-text-muted/5">
@@ -978,44 +993,65 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
             CHURNED CUSTOMERS
           </h3>
         </div>
-        <span className="text-[10px] text-text-muted font-medium">
-          {nonCorporateCustomers.length} accounts • 365+ days inactive
-        </span>
+        <div className="flex items-center gap-3">
+          {churnedThisYearCount > 0 && (
+            <span className="text-[10px] text-status-bad font-semibold bg-status-bad/10 px-2 py-0.5 rounded">
+              {churnedThisYearCount} this year
+            </span>
+          )}
+          <span className="text-[10px] text-text-muted font-medium">
+            {nonCorporateCustomers.length} total • 365+ days inactive
+          </span>
+        </div>
       </div>
 
       <p className="px-5 py-3 text-xs text-text-tertiary border-b border-border/10">
         Former customers who haven&apos;t ordered in over a year. Excludes corporate accounts.
       </p>
 
-      <div className="max-h-[400px] overflow-y-auto">
-        {nonCorporateCustomers.map((customer) => (
-          <div
-            key={customer.ns_customer_id}
-            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-text-primary truncate font-medium">
-                {customer.company_name}
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
-                <span className="text-[10px] text-text-muted">
-                  {customer.order_count.toLocaleString()} lifetime orders
-                </span>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm font-medium text-text-secondary tabular-nums">
-                {formatCurrencyFull(customer.total_revenue)}
-              </div>
-              {customer.days_since_last_order !== null && (
-                <div className="text-[10px] text-text-muted tabular-nums">
-                  {customer.days_since_last_order}d ago
+      <div className="max-h-[500px] overflow-y-auto">
+        {nonCorporateCustomers.map((customer) => {
+          const churnedRecently = isChurnedThisYear(customer);
+          return (
+            <div
+              key={customer.ns_customer_id}
+              className={`flex items-center justify-between px-5 py-3 border-b border-border/10 transition-colors ${
+                churnedRecently
+                  ? "bg-status-bad/5 hover:bg-status-bad/10 border-l-2 border-l-status-bad"
+                  : "hover:bg-white/[0.02]"
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm truncate font-medium ${churnedRecently ? "text-text-primary" : "text-text-secondary"}`}>
+                    {customer.company_name}
+                  </span>
+                  {churnedRecently && (
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-status-bad/20 text-status-bad uppercase tracking-wider">
+                      Recent
+                    </span>
+                  )}
                 </div>
-              )}
+                <div className="flex items-center gap-2 mt-0.5">
+                  <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
+                  <span className="text-[10px] text-text-muted">
+                    {customer.order_count.toLocaleString()} lifetime orders
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={`text-sm font-medium tabular-nums ${churnedRecently ? "text-text-primary" : "text-text-secondary"}`}>
+                  {formatCurrencyFull(customer.total_revenue)}
+                </div>
+                {customer.days_since_last_order !== null && (
+                  <div className={`text-[10px] tabular-nums ${churnedRecently ? "text-status-bad" : "text-text-muted"}`}>
+                    {customer.days_since_last_order}d ago
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
