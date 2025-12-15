@@ -455,6 +455,11 @@ export async function GET(request: Request) {
         continue;
       }
 
+      // Skip manually churned customers - user has explicitly marked them as churned
+      if (c.is_manually_churned === true) {
+        continue;
+      }
+
       // Skip customers without enough data
       if (orderCount < 4 || !firstOrderDate || !lastOrderDate || daysSinceLastOrder === null) {
         continue;

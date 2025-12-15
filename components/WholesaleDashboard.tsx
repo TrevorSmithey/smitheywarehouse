@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Building2,
@@ -314,7 +315,7 @@ function CustomerRow({ customer, rank }: { customer: WholesaleCustomer; rank: nu
   };
 
   return (
-    <tr className="group border-b border-border/10 hover:bg-white/[0.02] transition-colors">
+    <tr className="group border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => window.location.href = `/sales/customer/${customer.ns_customer_id}`}>
       <td className="py-3.5 pl-4 pr-2 w-10">
         <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold tabular-nums ${
           isTopPerformer
@@ -327,9 +328,9 @@ function CustomerRow({ customer, rank }: { customer: WholesaleCustomer; rank: nu
 
       <td className="py-3.5 px-3">
         <div className="max-w-[250px]">
-          <div className="text-sm text-text-primary truncate group-hover:text-accent-blue transition-colors font-medium">
+          <Link href={`/sales/customer/${customer.ns_customer_id}`} className="text-sm text-text-primary truncate group-hover:text-accent-blue transition-colors font-medium block">
             {customer.company_name}
-          </div>
+          </Link>
           <div className="flex items-center gap-2 mt-1">
             <SegmentBadge segment={customer.segment} isCorporate={customer.is_corporate_gifting} />
             <HealthBadge status={customer.health_status} isCorporate={customer.is_corporate_gifting} />
@@ -393,10 +394,13 @@ function AtRiskCustomerCard({ customer }: { customer: WholesaleAtRiskCustomer })
     "border-border/30 bg-bg-secondary";
 
   return (
-    <div className={`rounded-lg border p-4 ${daysColor}`}>
+    <Link
+      href={`/sales/customer/${customer.ns_customer_id}`}
+      className={`block rounded-lg border p-4 ${daysColor} cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg`}
+    >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="text-sm font-medium text-text-primary truncate max-w-[200px]">
+          <div className="text-sm font-medium text-text-primary truncate max-w-[200px] hover:text-accent-blue transition-colors">
             {customer.company_name}
           </div>
           <div className="flex items-center gap-2 mt-1">
@@ -414,7 +418,7 @@ function AtRiskCustomerCard({ customer }: { customer: WholesaleAtRiskCustomer })
           {formatCurrencyFull(customer.total_revenue)}
         </span>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -746,12 +750,13 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
 
       <div className="max-h-[400px] overflow-y-auto">
         {customers.map((customer) => (
-          <div
+          <Link
             key={customer.ns_customer_id}
-            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+            href={`/sales/customer/${customer.ns_customer_id}`}
+            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer"
           >
             <div className="flex-1 min-w-0">
-              <div className="text-sm text-text-primary truncate font-medium">
+              <div className="text-sm text-text-primary truncate font-medium hover:text-accent-blue transition-colors">
                 {customer.company_name}
               </div>
               <div className="flex items-center gap-2 text-[10px] text-text-muted">
@@ -775,7 +780,7 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
                 </div>
               )}
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
@@ -920,14 +925,15 @@ function NewCustomersSection({
 
       <div className="max-h-[350px] overflow-y-auto flex-1">
         {customers.map((customer, idx) => (
-          <div
+          <Link
             key={customer.ns_customer_id}
-            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+            href={`/sales/customer/${customer.ns_customer_id}`}
+            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <span className="text-[10px] text-text-muted tabular-nums w-5">{idx + 1}</span>
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-text-primary truncate font-medium">
+                <div className="text-sm text-text-primary truncate font-medium hover:text-accent-blue transition-colors">
                   {customer.company_name}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -948,7 +954,7 @@ function NewCustomersSection({
                 </div>
               )}
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
@@ -1079,7 +1085,10 @@ function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly })
     "border-accent-blue/30 bg-accent-blue/5";
 
   return (
-    <div className={`rounded-lg border p-4 ${borderColor}`}>
+    <Link
+      href={`/sales/customer/${anomaly.ns_customer_id}`}
+      className={`block rounded-lg border p-4 ${borderColor} cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-blue/50`}
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0 mr-3">
           <div className="text-sm font-medium text-text-primary truncate">
@@ -1133,7 +1142,7 @@ function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly })
           </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

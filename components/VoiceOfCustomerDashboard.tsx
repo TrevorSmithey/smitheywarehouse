@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MetricLabel } from "@/components/MetricLabel";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ExternalLink,
@@ -572,7 +573,9 @@ export function VoiceOfCustomerDashboard({
         <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-border/20">
           {/* TOR */}
           <div className="flex items-center gap-3">
-            <span className="text-[10px] uppercase tracking-wider text-text-muted">TOR</span>
+            <span className="text-[10px] uppercase tracking-wider text-text-muted">
+              <MetricLabel label="TOR" tooltip="Tickets per 100 orders (lower is better)" />
+            </span>
             <span className="text-lg font-semibold text-text-primary tabular-nums">
               {formatPct(tor)}
             </span>
@@ -619,7 +622,9 @@ export function VoiceOfCustomerDashboard({
           {csat && (
             <>
               <div className="flex items-center gap-3">
-                <span className="text-[10px] uppercase tracking-wider text-text-muted">CSAT</span>
+                <span className="text-[10px] uppercase tracking-wider text-text-muted">
+                  <MetricLabel label="CSAT" tooltip="Customer satisfaction score from surveys" />
+                </span>
                 <span className={`text-lg font-semibold tabular-nums ${
                   csat.satisfactionRate >= 90 ? "text-status-good" :
                   csat.satisfactionRate >= 70 ? "text-text-primary" :

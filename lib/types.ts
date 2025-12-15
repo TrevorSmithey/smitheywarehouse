@@ -913,6 +913,8 @@ export interface WholesaleCustomer {
   order_trend: number; // % change vs prior period
   // Corporate customer flag - replaces segment badge display when true
   is_corporate_gifting: boolean;
+  // Manual churn flag - excludes from ordering anomaly alerts
+  is_manually_churned?: boolean;
 }
 
 export interface WholesaleTransaction {
@@ -1380,4 +1382,57 @@ export interface LeadsResponse {
   pending_review: TypeformLead[];
   // Metadata
   lastSynced: string | null;
+}
+
+// ============================================================
+// Customer Detail View Types (Sales Tab)
+// ============================================================
+
+export interface CustomerOrderingPattern {
+  avg_order_interval_days: number | null;  // Median days between orders (user-facing "Typical interval")
+  interval_range_high: number | null;  // P75 - used internally for overdue detection (more conservative than median)
+  days_since_last_order: number | null;
+  last_order_date: string | null;
+  first_order_date: string | null;
+  customer_tenure_years: number | null;
+  overdue_ratio: number | null;  // days_since_last / p75_interval
+  expected_order_date: string | null;
+}
+
+export interface CustomerRevenueTrend {
+  ytd_revenue: number;
+  prior_ytd_revenue: number;
+  yoy_change_pct: number | null;
+  avg_order_value: number | null;
+  total_revenue: number;
+  order_count: number;
+}
+
+export interface CustomerProductMix {
+  sku: string;
+  item_type: string | null;
+  total_units: number;
+  total_revenue: number;
+  last_purchased: string | null;
+}
+
+export interface CustomerOrderHistory {
+  ns_transaction_id: number;
+  tran_id: string;
+  tran_date: string;
+  foreign_total: number;
+  status: string | null;
+}
+
+export interface CustomerDetailResponse {
+  // Core customer data
+  customer: WholesaleCustomer;
+  // Ordering pattern metrics
+  orderingPattern: CustomerOrderingPattern;
+  // Revenue trend
+  revenueTrend: CustomerRevenueTrend;
+  // Product mix (top SKUs purchased)
+  productMix: CustomerProductMix[];
+  // Order history
+  orderHistory: CustomerOrderHistory[];
 }

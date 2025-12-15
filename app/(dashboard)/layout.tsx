@@ -51,7 +51,7 @@ export function useDashboard() {
  */
 const NAV_TABS = [
   { href: "/inventory", label: "INVENTORY", icon: BarChart3 },
-  { href: "/voc", label: "VOC", icon: MessageCircle },
+  { href: "/voc", label: "CUSTOMER SERVICE", icon: MessageCircle },
   { href: "/budget", label: "BUDGET V ACTUAL", icon: Target },
   { href: "/production", label: "PRODUCTION", icon: Hammer },
   { href: "/fulfillment", label: "FULFILLMENT", icon: Package },

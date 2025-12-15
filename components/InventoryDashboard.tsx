@@ -1,10 +1,11 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, Info } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { InventoryResponse, ProductInventory } from "@/lib/types";
 import { SAFETY_STOCK } from "@/lib/shiphero";
 import { formatNumber } from "@/lib/dashboard-utils";
+import { MetricLabel } from "@/components/MetricLabel";
 
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -353,14 +354,22 @@ export function InventoryDashboard({
                     <thead>
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
                         <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-amber-400">Hobson</th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-cyan-400">Selery</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-amber-400">
+                          <MetricLabel label="Hobson" tooltip="Charleston warehouse" />
+                        </th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-cyan-400">
+                          <MetricLabel label="Selery" tooltip="3PL fulfillment partner" />
+                        </th>
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium">Total</th>
                         {cat.showDoi && (
-                          <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">DOI</th>
+                          <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">
+                            <MetricLabel label="DOI" tooltip="Days of inventory on hand" />
+                          </th>
                         )}
                         {cat.showVelocity && (
-                          <th className="hidden sm:table-cell text-right py-2.5 px-4 font-medium text-cyan-400">Vel</th>
+                          <th className="hidden sm:table-cell text-right py-2.5 px-4 font-medium text-cyan-400">
+                            <MetricLabel label="Vel" tooltip="3-day moving average of units sold" />
+                          </th>
                         )}
                       </tr>
                     </thead>
@@ -372,19 +381,15 @@ export function InventoryDashboard({
                         const hasWarehouseNegative = product.hobson < 0 || product.selery < 0;
                         const safetyStock = SAFETY_STOCK[product.sku];
                         const isBelowSafetyStock = safetyStock && product.total < safetyStock;
-                        // Build tooltip with budget % and velocity
+                        // Build tooltip: safety stock + 3-day moving avg
                         const tooltipParts: string[] = [];
-                        if (product.monthPct !== undefined) {
-                          tooltipParts.push(`MTD: ${product.monthSold}/${product.monthBudget} (${product.monthPct}%)`);
+                        if (safetyStock) {
+                          tooltipParts.push(`Safety stock: ${safetyStock}`);
                         }
                         if (velocity) {
-                          const deltaStr = velocity.delta >= 0 ? `+${velocity.delta}%` : `${velocity.delta}%`;
-                          tooltipParts.push(`Velocity: ${velocity.avg}/day (${deltaStr} vs prior)`);
+                          tooltipParts.push(`3-day avg: ${velocity.avg}/day`);
                         }
-                        if (product.stockoutWeek && product.stockoutYear) {
-                          tooltipParts.push(`Stockout: Wk ${product.stockoutWeek}, ${product.stockoutYear}`);
-                        }
-                        const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" | ") : undefined;
+                        const tooltip = tooltipParts.length > 0 ? tooltipParts.join(" · ") : undefined;
 
                         // Row background priority: negative (solid red) > SS violation (pulsing amber) > zebra
                         const rowBg = isNegative || hasWarehouseNegative
@@ -403,7 +408,7 @@ export function InventoryDashboard({
                             key={product.sku}
                             className={`border-b border-border/20 ${isPulsing ? "" : "transition-colors"} ${rowBg} ${!hasHighlight ? "hover:bg-bg-tertiary/40" : ""}`}
                           >
-                            <td className="py-3 px-2 sm:px-3" title={tooltip}>
+                            <td className="py-3 px-2 sm:px-3">
                               <div className="flex items-center gap-2">
                                 {cat.showDoi && (
                                   <div
@@ -417,6 +422,27 @@ export function InventoryDashboard({
                                 {SAFETY_STOCK[product.sku] && (
                                   <span className="text-[10px] text-text-muted tabular-nums">
                                     ss:{SAFETY_STOCK[product.sku]}
+                                  </span>
+                                )}
+                                {/* Info icon with tooltip for MTD/Velocity/Stockout */}
+                                {tooltip && (
+                                  <span className="relative group cursor-help flex-shrink-0 ml-1">
+                                    <Info className="w-3 h-3 text-text-muted/40 group-hover:text-accent-blue transition-colors" />
+                                    <span className="
+                                      absolute top-full left-0 mt-1.5
+                                      px-3 py-2 rounded
+                                      bg-[#1a1a1a] text-[11px] text-white/90 font-normal leading-relaxed
+                                      opacity-0 group-hover:opacity-100
+                                      translate-y-1 group-hover:translate-y-0
+                                      transition-all duration-200 ease-out
+                                      pointer-events-none whitespace-nowrap z-[100]
+                                      shadow-[0_4px_20px_rgba(0,0,0,0.5)]
+                                      border border-white/5
+                                    ">
+                                      {tooltip}
+                                      {/* Arrow pointing up */}
+                                      <span className="absolute bottom-full left-3 border-[5px] border-transparent border-b-[#1a1a1a]" />
+                                    </span>
                                   </span>
                                 )}
                               </div>
