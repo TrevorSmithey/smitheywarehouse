@@ -43,49 +43,13 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
   return "minimal";
 }
 
-// Helper to determine health status based on activity
-// daysSinceFirstOrder is used to identify "new" customers (first order within 90 days)
-function getHealthStatus(
-  daysSinceLastOrder: number | null,
-  daysSinceFirstOrder: number | null,
-  orderCount: number,
-  revenueTrend: number
-): CustomerHealthStatus {
-  // IMPORTANT: Check "new" status FIRST, before orderCount === 0
-  // lifetime_orders can be stale (0) even when customer has transactions
-  // If first_sale_date exists and is within 90 days, customer IS new (they have at least 1 order)
-  if (daysSinceFirstOrder !== null && daysSinceFirstOrder <= 90) return "new";
-
-  // Never placed an order - but only if we have no first_sale_date evidence
-  // (daysSinceFirstOrder === null means no first_sale_date, so no transactions)
-  if (orderCount === 0 && daysSinceFirstOrder === null) return "churned";
-
-  // Has first_sale_date but no last_sale_date is a data anomaly - treat as having orders
-  if (daysSinceLastOrder === null && daysSinceFirstOrder !== null) {
-    // They have a first order but no last order date - use first order recency
-    if (daysSinceFirstOrder > 365) return "churned";
-    if (daysSinceFirstOrder > 180) return "churning";
-    if (daysSinceFirstOrder > 120) return "at_risk";
-    return "stable";
-  }
-
-  // No sale dates at all is a data issue - treat as churned
-  if (daysSinceLastOrder === null) return "churned";
-
-  // Only one order ever (and not new) - use actual count or infer from dates
-  // If orderCount is 0 but we have first_sale_date, they have at least 1 order
-  const effectiveOrderCount = orderCount > 0 ? orderCount : (daysSinceFirstOrder !== null ? 1 : 0);
-  if (effectiveOrderCount === 1) return "one_time";
-
-  // Churn/risk based on recency
-  if (daysSinceLastOrder > 365) return "churned";
-  if (daysSinceLastOrder > 180) return "churning";
-  if (daysSinceLastOrder > 120) return "at_risk";
-  // Trend-based for active customers
-  if (revenueTrend < -0.2) return "declining";
-  if (revenueTrend > 0.1) return "thriving";
-  return "stable";
-}
+// NOTE: health_status is now computed directly in the database by compute_customer_metrics()
+// The RPC correctly aggregates transaction data and computes health status based on:
+// - first_sale_date (from transactions)
+// - lifetime_orders (computed from transactions)
+// - days_since_last_order (computed from last_sale_date)
+// - ytd_revenue and prior_year_revenue (for trend analysis)
+// This eliminates API-side workarounds and ensures single source of truth.
 
 export async function GET(request: Request) {
   // Rate limiting
@@ -342,14 +306,12 @@ export async function GET(request: Request) {
         ? Math.floor((Date.now() - firstSaleDate.getTime()) / (1000 * 60 * 60 * 24))
         : null;
 
-      // IMPORTANT: lifetime_orders can be stale (0) even when customer has transactions
-      // If first_sale_date exists, customer has at least 1 order - use that as minimum
-      const storedOrderCount = c.lifetime_orders || 0;
-      const orderCount = storedOrderCount > 0 ? storedOrderCount : (firstSaleDate ? 1 : 0);
+      // Use DB-computed values - compute_customer_metrics() now correctly computes these from transactions
+      const orderCount = c.lifetime_orders || 0;
 
-      // Compute health_status dynamically from current data
-      // DB-stored health_status is stale - it was computed from old last_order_date column
-      const healthStatus = getHealthStatus(daysSinceLastOrder, daysSinceFirstOrder, orderCount, yoyChange);
+      // Use DB-computed health_status directly - compute_customer_metrics() computes this correctly
+      // from aggregated transaction data (lifetime_orders, ytd_revenue, etc.)
+      const healthStatus = (c.health_status as CustomerHealthStatus) || "churned";
 
       // Use DB-computed segment or compute if not present
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
@@ -558,10 +520,9 @@ export async function GET(request: Request) {
     // These are accounts in NetSuite that have never placed an order
     // DB schema: date_created is the NetSuite creation date (when customer was created in NS)
     // Excludes corporate gifting customers - they're one-time buyers, not B2B prospects
-    // IMPORTANT: Check BOTH lifetime_orders AND first_sale_date to handle stale data
-    // A customer with first_sale_date means they HAVE ordered (even if lifetime_orders is 0)
+    // lifetime_orders is now correctly computed from transactions by compute_customer_metrics()
     const neverOrderedCustomers: WholesaleNeverOrderedCustomer[] = (customersResult.data || [])
-      .filter((c) => (c.lifetime_orders || 0) === 0 && !c.first_sale_date && c.is_corporate !== true)
+      .filter((c) => (c.lifetime_orders || 0) === 0 && c.is_corporate !== true)
       .sort((a, b) => {
         // Sort by date_created (newest first) - these are the hottest leads
         const aDate = a.date_created ? new Date(a.date_created).getTime() : 0;
