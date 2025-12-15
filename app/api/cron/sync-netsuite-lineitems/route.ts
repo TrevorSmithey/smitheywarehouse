@@ -14,8 +14,6 @@ import {
   fetchWholesaleLineItems,
   type NSLineItem,
 } from "@/lib/netsuite";
-import { BATCH_SIZES } from "@/lib/constants";
-
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -23,6 +21,8 @@ export const maxDuration = 300;
 const DEFAULT_SYNC_DAYS = 7;
 // Time limit for full sync processing (leave 60s buffer for cleanup)
 const PROCESSING_TIME_LIMIT_MS = 240000; // 4 minutes
+// Smaller batch size for line items to avoid statement timeouts
+const LINE_ITEM_BATCH_SIZE = 100;
 
 export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
@@ -98,16 +98,30 @@ export async function GET(request: Request) {
         synced_at: new Date().toISOString(),
       }));
 
-      for (let i = 0; i < records.length; i += BATCH_SIZES.DEFAULT) {
-        const batch = records.slice(i, i + BATCH_SIZES.DEFAULT);
-        const { error } = await supabase
-          .from("ns_wholesale_line_items")
-          .upsert(batch, { onConflict: "ns_transaction_id,ns_line_id" });
+      // Use smaller batch size to avoid Supabase statement timeouts
+      for (let i = 0; i < records.length; i += LINE_ITEM_BATCH_SIZE) {
+        const batch = records.slice(i, i + LINE_ITEM_BATCH_SIZE);
 
-        if (error) {
-          console.error("[NETSUITE] Line item upsert error:", error);
-        } else {
-          totalUpserted += batch.length;
+        // Retry logic for transient failures
+        let retries = 3;
+        let success = false;
+        while (retries > 0 && !success) {
+          const { error } = await supabase
+            .from("ns_wholesale_line_items")
+            .upsert(batch, { onConflict: "ns_transaction_id,ns_line_id" });
+
+          if (error) {
+            retries--;
+            if (retries > 0) {
+              console.warn(`[NETSUITE] Line item upsert retry (${3 - retries}/3): ${error.message}`);
+              await new Promise((r) => setTimeout(r, 1000)); // Wait 1s before retry
+            } else {
+              console.error("[NETSUITE] Line item upsert failed after 3 retries:", error);
+            }
+          } else {
+            totalUpserted += batch.length;
+            success = true;
+          }
         }
       }
 
