@@ -441,9 +441,14 @@ export async function GET(request: Request) {
     for (const c of customersResult.data || []) {
       const orderCount = c.lifetime_orders || 0;
       const totalRevenue = parseFloat(c.lifetime_revenue) || 0;
-      const daysSinceLastOrder = c.days_since_last_order;
-      const firstOrderDate = c.first_order_date ? new Date(c.first_order_date) : null;
-      const lastOrderDate = c.last_order_date ? new Date(c.last_order_date) : null;
+      // Use last_sale_date (current from transaction sync) NOT last_order_date (stale from customer sync)
+      const lastSaleDate = c.last_sale_date ? new Date(c.last_sale_date) : null;
+      const daysSinceLastOrder = lastSaleDate
+        ? Math.floor((now.getTime() - lastSaleDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      // Use first_sale_date (current from transaction sync) NOT first_order_date (stale)
+      const firstOrderDate = c.first_sale_date ? new Date(c.first_sale_date) : null;
+      const lastOrderDate = lastSaleDate; // Use the current date for interval calculations
       const isCorporate = c.is_corporate === true; // Uses DB computed column
       const customerId = parseInt(c.ns_customer_id) || 0;
 
@@ -507,7 +512,7 @@ export async function GET(request: Request) {
         total_revenue: totalRevenue,
         order_count: orderCount,
         avg_order_interval_days: Math.round(medianInterval),
-        last_order_date: c.last_order_date,
+        last_order_date: c.last_sale_date, // Use current data from transaction sync
         days_since_last_order: daysSinceLastOrder,
         expected_order_date: expectedOrderDate.toISOString().split("T")[0],
         days_overdue: daysOverdue,
