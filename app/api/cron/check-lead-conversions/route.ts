@@ -58,11 +58,12 @@ export async function GET(request: Request) {
 
     // 3. Find first orders for these customers from transactions
     // We look for the earliest transaction after the lead submission date
+    // Table uses tran_date and foreign_total (not transaction_date/total_amount)
     const { data: transactions, error: txError } = await supabase
       .from("ns_wholesale_transactions")
-      .select("ns_customer_id, ns_transaction_id, transaction_date, total_amount")
+      .select("ns_customer_id, ns_transaction_id, tran_date, foreign_total")
       .in("ns_customer_id", customerIds)
-      .order("transaction_date", { ascending: true });
+      .order("tran_date", { ascending: true });
 
     if (txError) {
       console.error("[LEAD-CONVERSION] Error fetching transactions:", txError);
@@ -72,16 +73,16 @@ export async function GET(request: Request) {
     // 4. Group first transaction by customer
     const firstOrderByCustomer = new Map<number, {
       transaction_id: number;
-      transaction_date: string;
-      total_amount: number;
+      tran_date: string;
+      foreign_total: number;
     }>();
 
     for (const tx of transactions || []) {
       if (!firstOrderByCustomer.has(tx.ns_customer_id)) {
         firstOrderByCustomer.set(tx.ns_customer_id, {
           transaction_id: tx.ns_transaction_id,
-          transaction_date: tx.transaction_date,
-          total_amount: tx.total_amount,
+          tran_date: tx.tran_date,
+          foreign_total: tx.foreign_total,
         });
       }
     }
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
 
       // Check if order is after lead submission
       const leadDate = new Date(lead.submitted_at);
-      const orderDate = new Date(firstOrder.transaction_date);
+      const orderDate = new Date(firstOrder.tran_date);
 
       if (orderDate >= leadDate) {
         // Calculate days to conversion
@@ -116,10 +117,10 @@ export async function GET(request: Request) {
 
         updates.push({
           id: lead.id,
-          converted_at: firstOrder.transaction_date,
+          converted_at: firstOrder.tran_date,
           first_order_id: firstOrder.transaction_id,
-          first_order_date: firstOrder.transaction_date,
-          first_order_amount: firstOrder.total_amount,
+          first_order_date: firstOrder.tran_date,
+          first_order_amount: firstOrder.foreign_total,
           days_to_conversion: daysToConversion,
           status: "converted",
         });
