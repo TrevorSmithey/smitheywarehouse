@@ -955,12 +955,11 @@ export async function GET(request: Request) {
       // newCustomerAcquisition remains null on error
     }
 
-    // New customers - first-time buyers in current YTD (derived from YoY calculation above) - B2B ONLY
+    // New customers - first order within 90 days (matches health_status = 'new' from DB)
     // Uses transaction-based first order date (source of truth), excludes corporate
     // Also excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
-    // If YoY calculation failed, ytdNewCustomerIds will be empty → empty table
     const newCustomers: WholesaleCustomer[] = b2bCustomers
-      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.total_revenue || 0) > 0)
+      .filter((c) => c.health_status === "new" && (c.total_revenue || 0) > 0)
       .sort((a, b) => {
         // Sort by first order date (most recent first)
         const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
@@ -968,11 +967,10 @@ export async function GET(request: Request) {
         return bDate - aDate;
       });
 
-    // NOTE: health_status "new" (first order within 90 days) is DIFFERENT from
-    // YTD new customers (first order in current calendar year). These are two different metrics:
-    // - healthDistribution.new = ~58 customers with first order within last 90 days
-    // - ytdNewCustomerIds.size = ~162 customers acquired this year (for YoY comparison)
-    // Do NOT override health distribution with YTD count - they measure different things.
+    // NOTE: ytdNewCustomerIds (first order in current calendar year) is used for YoY comparison
+    // in the New Customer Acquisition card, which is separate from the NEW CUSTOMERS table.
+    // - newCustomers array = customers with health_status 'new' (first order within 90 days)
+    // - ytdNewCustomerIds = customers acquired this year (for YoY customer acquisition metrics)
 
     // Build response
     const response: WholesaleResponse = {
