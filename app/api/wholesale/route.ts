@@ -942,6 +942,12 @@ export async function GET(request: Request) {
         return bDate - aDate;
       });
 
+    // CRITICAL: Override "new" counts to use transaction-based data (source of truth)
+    // The customers table has stale health_status that shows ~323 "new" but only 162 have actual transactions
+    // ytdNewCustomerIds is derived from transactions, not the customers table metadata
+    healthDistribution.new = ytdNewCustomerIds.size;
+    customersByHealth.new = newCustomers;
+
     // Build response
     const response: WholesaleResponse = {
       monthly: monthly.sort((a, b) => a.month.localeCompare(b.month)),

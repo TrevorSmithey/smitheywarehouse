@@ -815,7 +815,7 @@ function NewCustomersSection({
           </h3>
         </div>
         <span className="text-[10px] text-status-good font-medium">
-          {customers.length} in last 90 days
+          {customers.length} in {new Date().getFullYear()}
         </span>
       </div>
 
