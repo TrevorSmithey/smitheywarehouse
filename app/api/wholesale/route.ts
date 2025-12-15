@@ -981,22 +981,17 @@ export async function GET(request: Request) {
       // newCustomerAcquisition remains null on error
     }
 
-    // New customers - first order within 90 days (matches health_status = 'new' from DB)
-    // Uses transaction-based first order date (source of truth), excludes corporate
-    // Also excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
+    // New customers - all customers acquired in the current calendar year (YTD)
+    // Uses ytdNewCustomerIds which identifies customers whose first-ever order was this year
+    // Excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
     const newCustomers: WholesaleCustomer[] = b2bCustomers
-      .filter((c) => c.health_status === "new" && (c.total_revenue || 0) > 0)
+      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.total_revenue || 0) > 0)
       .sort((a, b) => {
         // Sort by first order date (most recent first)
         const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
         const bDate = b.first_sale_date ? new Date(b.first_sale_date).getTime() : 0;
         return bDate - aDate;
       });
-
-    // NOTE: ytdNewCustomerIds (first order in current calendar year) is used for YoY comparison
-    // in the New Customer Acquisition card, which is separate from the NEW CUSTOMERS table.
-    // - newCustomers array = customers with health_status 'new' (first order within 90 days)
-    // - ytdNewCustomerIds = customers acquired this year (for YoY customer acquisition metrics)
 
     // Build response
     const response: WholesaleResponse = {
