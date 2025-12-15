@@ -335,14 +335,18 @@ export async function GET(request: Request) {
       };
     });
 
+    // B2B customers only (excludes corporate gifting)
+    // Corporate gifting customers are one-time buyers and shouldn't be mixed with recurring B2B accounts
+    const b2bCustomers = customers.filter((c) => !c.is_corporate_gifting);
+
     // Top customers (active in period)
     const topCustomers = customers
       .filter((c) => c.total_revenue > 0)
       .sort((a, b) => b.total_revenue - a.total_revenue)
       .slice(0, 25);
 
-    // At-risk customers (includes churned - UI can filter them)
-    const atRiskCustomers: WholesaleAtRiskCustomer[] = customers
+    // At-risk customers (includes churned - UI can filter them) - B2B ONLY
+    const atRiskCustomers: WholesaleAtRiskCustomer[] = b2bCustomers
       .filter((c) => c.health_status === "at_risk" || c.health_status === "churning" || c.health_status === "churned")
       .sort((a, b) => b.total_revenue - a.total_revenue)
       .slice(0, 30)
@@ -361,8 +365,8 @@ export async function GET(request: Request) {
         is_corporate_gifting: c.is_corporate_gifting,
       }));
 
-    // Growth opportunities (customers with positive trends)
-    const growthOpportunities: WholesaleGrowthOpportunity[] = customers
+    // Growth opportunities (customers with positive trends) - B2B ONLY
+    const growthOpportunities: WholesaleGrowthOpportunity[] = b2bCustomers
       .filter(
         (c) =>
           c.revenue_trend > 0.1 &&
@@ -501,11 +505,12 @@ export async function GET(request: Request) {
       return b.total_revenue - a.total_revenue;
     });
 
-    // Never ordered customers - sales opportunities
+    // Never ordered customers - B2B sales opportunities only
     // These are accounts in NetSuite that have never placed an order
     // DB schema: date_created is the NetSuite creation date (when customer was created in NS)
+    // Excludes corporate gifting customers - they're one-time buyers, not B2B prospects
     const neverOrderedCustomers: WholesaleNeverOrderedCustomer[] = (customersResult.data || [])
-      .filter((c) => (c.lifetime_orders || 0) === 0)
+      .filter((c) => (c.lifetime_orders || 0) === 0 && c.is_corporate !== true)
       .sort((a, b) => {
         // Sort by date_created (newest first) - these are the hottest leads
         const aDate = a.date_created ? new Date(a.date_created).getTime() : 0;
@@ -573,39 +578,40 @@ export async function GET(request: Request) {
     const currentPeriodOrders = (transactionsResult.data || []).length;
     const prevPeriodOrders = (prevTransactionsResult.data || []).length;
 
-    // Health distribution
+    // Health distribution - B2B ONLY (excludes corporate gifting)
+    // Corporate gifting customers inflate "new" and "one_time" categories incorrectly
     const healthDistribution = {
-      thriving: customers.filter((c) => c.health_status === "thriving").length,
-      stable: customers.filter((c) => c.health_status === "stable").length,
-      declining: customers.filter((c) => c.health_status === "declining").length,
-      at_risk: customers.filter((c) => c.health_status === "at_risk").length,
-      churning: customers.filter((c) => c.health_status === "churning").length,
-      churned: customers.filter((c) => c.health_status === "churned").length,
-      new: customers.filter((c) => c.health_status === "new").length,
-      one_time: customers.filter((c) => c.health_status === "one_time").length,
-      never_ordered: customers.filter((c) => c.health_status === "never_ordered").length,
+      thriving: b2bCustomers.filter((c) => c.health_status === "thriving").length,
+      stable: b2bCustomers.filter((c) => c.health_status === "stable").length,
+      declining: b2bCustomers.filter((c) => c.health_status === "declining").length,
+      at_risk: b2bCustomers.filter((c) => c.health_status === "at_risk").length,
+      churning: b2bCustomers.filter((c) => c.health_status === "churning").length,
+      churned: b2bCustomers.filter((c) => c.health_status === "churned").length,
+      new: b2bCustomers.filter((c) => c.health_status === "new").length,
+      one_time: b2bCustomers.filter((c) => c.health_status === "one_time").length,
+      never_ordered: b2bCustomers.filter((c) => c.health_status === "never_ordered").length,
     };
 
-    // Customers grouped by health status for drill-down views (sorted by revenue)
+    // Customers grouped by health status for drill-down views (sorted by revenue) - B2B ONLY
     const customersByHealth = {
-      thriving: customers.filter((c) => c.health_status === "thriving").sort((a, b) => b.total_revenue - a.total_revenue),
-      stable: customers.filter((c) => c.health_status === "stable").sort((a, b) => b.total_revenue - a.total_revenue),
-      declining: customers.filter((c) => c.health_status === "declining").sort((a, b) => b.total_revenue - a.total_revenue),
-      at_risk: customers.filter((c) => c.health_status === "at_risk").sort((a, b) => b.total_revenue - a.total_revenue),
-      churning: customers.filter((c) => c.health_status === "churning").sort((a, b) => b.total_revenue - a.total_revenue),
-      churned: customers.filter((c) => c.health_status === "churned").sort((a, b) => b.total_revenue - a.total_revenue),
-      new: customers.filter((c) => c.health_status === "new").sort((a, b) => b.total_revenue - a.total_revenue),
-      one_time: customers.filter((c) => c.health_status === "one_time").sort((a, b) => b.total_revenue - a.total_revenue),
+      thriving: b2bCustomers.filter((c) => c.health_status === "thriving").sort((a, b) => b.total_revenue - a.total_revenue),
+      stable: b2bCustomers.filter((c) => c.health_status === "stable").sort((a, b) => b.total_revenue - a.total_revenue),
+      declining: b2bCustomers.filter((c) => c.health_status === "declining").sort((a, b) => b.total_revenue - a.total_revenue),
+      at_risk: b2bCustomers.filter((c) => c.health_status === "at_risk").sort((a, b) => b.total_revenue - a.total_revenue),
+      churning: b2bCustomers.filter((c) => c.health_status === "churning").sort((a, b) => b.total_revenue - a.total_revenue),
+      churned: b2bCustomers.filter((c) => c.health_status === "churned").sort((a, b) => b.total_revenue - a.total_revenue),
+      new: b2bCustomers.filter((c) => c.health_status === "new").sort((a, b) => b.total_revenue - a.total_revenue),
+      one_time: b2bCustomers.filter((c) => c.health_status === "one_time").sort((a, b) => b.total_revenue - a.total_revenue),
     };
 
-    // Segment distribution
+    // Segment distribution - B2B ONLY
     const segmentDistribution = {
-      major: customers.filter((c) => c.segment === "major").length,
-      large: customers.filter((c) => c.segment === "large").length,
-      mid: customers.filter((c) => c.segment === "mid").length,
-      small: customers.filter((c) => c.segment === "small").length,
-      starter: customers.filter((c) => c.segment === "starter").length,
-      minimal: customers.filter((c) => c.segment === "minimal").length,
+      major: b2bCustomers.filter((c) => c.segment === "major").length,
+      large: b2bCustomers.filter((c) => c.segment === "large").length,
+      mid: b2bCustomers.filter((c) => c.segment === "mid").length,
+      small: b2bCustomers.filter((c) => c.segment === "small").length,
+      starter: b2bCustomers.filter((c) => c.segment === "starter").length,
+      minimal: b2bCustomers.filter((c) => c.segment === "minimal").length,
     };
 
     // ========================================================================
@@ -665,7 +671,7 @@ export async function GET(request: Request) {
     const stats: WholesaleStats = {
       total_revenue: currentPeriodRevenue,
       total_orders: currentPeriodOrders,
-      total_customers: customers.length,
+      total_customers: b2bCustomers.length, // B2B only, excludes corporate gifting
       active_customers: currentPeriodCustomers,
       avg_order_value: currentPeriodOrders > 0 ? currentPeriodRevenue / currentPeriodOrders : 0,
       revenue_delta: currentPeriodRevenue - prevPeriodRevenue,
@@ -694,12 +700,12 @@ export async function GET(request: Request) {
       .filter((c) => c.is_corporate_gifting) // Uses DB computed column
       .sort((a, b) => b.ytd_revenue - a.ytd_revenue);
 
-    // Churned customers - 365+ days since last order, excludes major/corporate accounts
+    // Churned customers - 365+ days since last order - B2B ONLY
     // Returns ALL churned customers (no limit) - UI handles scrolling
-    const churnedCustomers: WholesaleCustomer[] = customers
+    const churnedCustomers: WholesaleCustomer[] = b2bCustomers
       .filter((c) =>
         c.health_status === "churned" &&
-        c.segment !== "major" && // Exclude corporate accounts like Crate & Barrel
+        c.segment !== "major" && // Exclude major accounts like Crate & Barrel
         c.order_count > 0 // Must have ordered at some point
       )
       .sort((a, b) => b.total_revenue - a.total_revenue); // Highest value first - these are win-back opportunities
@@ -924,10 +930,10 @@ export async function GET(request: Request) {
       // newCustomerAcquisition remains null on error
     }
 
-    // New customers - first-time buyers in current YTD (derived from YoY calculation above)
+    // New customers - first-time buyers in current YTD (derived from YoY calculation above) - B2B ONLY
     // Uses transaction-based first order date (source of truth), excludes corporate
     // If YoY calculation failed, ytdNewCustomerIds will be empty → empty table
-    const newCustomers: WholesaleCustomer[] = customers
+    const newCustomers: WholesaleCustomer[] = b2bCustomers
       .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id))
       .sort((a, b) => {
         // Sort by first order date (most recent first)
