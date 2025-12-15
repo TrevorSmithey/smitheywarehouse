@@ -37,7 +37,9 @@ const STALE_THRESHOLDS: Record<string, number> = {
 // Sync types to exclude from health monitoring
 // These are disabled/unconfigured syncs that shouldn't trigger alerts
 const EXCLUDED_SYNC_TYPES = new Set<string>([
-  "netsuite", // Replaced by chunked sync: netsuite_customers, netsuite_transactions, netsuite_lineitems
+  "netsuite",                  // Replaced by chunked sync: netsuite_customers, netsuite_transactions, netsuite_lineitems
+  "netsuite_customers_debug",  // Debug sync, not used in production
+  "netsuite_lineitems_cursor", // Internal cursor tracking, not a real sync
 ]);
 
 export async function GET() {
