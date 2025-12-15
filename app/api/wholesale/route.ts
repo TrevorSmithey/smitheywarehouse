@@ -314,6 +314,12 @@ export async function GET(request: Request) {
       // Use DB-computed segment or compute if not present
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
 
+      // Compute days_since_last_order dynamically from last_order_date (the stored column is stale)
+      const lastOrderDate = c.last_order_date ? new Date(c.last_order_date) : null;
+      const daysSinceLastOrder = lastOrderDate
+        ? Math.floor((Date.now() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
       return {
         ns_customer_id: parseInt(c.ns_customer_id) || 0,
         entity_id: c.ns_customer_id?.toString() || "",
@@ -328,7 +334,7 @@ export async function GET(request: Request) {
         health_status: healthStatus,
         segment: segment,
         avg_order_value: parseFloat(c.avg_order_value) || 0,
-        days_since_last_order: c.days_since_last_order,
+        days_since_last_order: daysSinceLastOrder, // Computed dynamically, not from stale DB column
         revenue_trend: yoyChange,
         order_trend: 0, // Not computed in DB
         is_corporate_gifting: c.is_corporate === true, // Uses DB computed column
