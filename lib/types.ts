@@ -880,10 +880,9 @@ export type CustomerHealthStatus =
   | "declining"     // Decreasing order frequency/value
   | "at_risk"       // Significant decline, needs attention
   | "churning"      // No orders in 6+ months after previous activity
-  | "churned"       // No orders in 12+ months
+  | "churned"       // No orders in 12+ months (includes accounts that never ordered)
   | "new"           // First order within last 90 days
-  | "one_time"      // Only one order ever
-  | "never_ordered"; // Account exists but has never placed an order - sales opportunity
+  | "one_time";     // Only one order ever
 
 export type CustomerSegment =
   | "major"       // $50K+ lifetime revenue
@@ -971,7 +970,6 @@ export interface WholesaleHealthDistribution {
   churned: number;
   new: number;
   one_time: number;
-  never_ordered: number;
 }
 
 export interface WholesaleSegmentDistribution {

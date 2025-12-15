@@ -44,13 +44,15 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
 }
 
 // Helper to determine health status based on activity
+// NOTE: This is a fallback function. The database now computes health_status directly
+// from transactions via the migration (recalculate_customer_metrics_from_transactions_v2)
 function getHealthStatus(
   daysSinceLastOrder: number | null,
   orderCount: number,
   revenueTrend: number
 ): CustomerHealthStatus {
-  // Never placed an order - sales opportunity
-  if (orderCount === 0) return "never_ordered";
+  // Never placed an order - now classified as 'churned' with lifetime_orders=0
+  if (orderCount === 0) return "churned";
   // Has orders but no last_sale_date is a data issue, treat as new
   if (daysSinceLastOrder === null) return "new";
   if (orderCount === 1) return "one_time";
@@ -305,11 +307,9 @@ export async function GET(request: Request) {
       const totalRevenue = parseFloat(c.lifetime_revenue) || 0;
       const yoyChange = c.yoy_revenue_change_pct ? parseFloat(c.yoy_revenue_change_pct) / 100 : 0;
 
-      // Use DB-computed health_status but handle never_ordered case
-      let healthStatus = c.health_status as CustomerHealthStatus;
-      if (orderCount === 0) {
-        healthStatus = "never_ordered";
-      }
+      // Use DB-computed health_status directly - migration handles all cases
+      // Customers with 0 orders are classified as 'churned' with lifetime_orders=0
+      const healthStatus = c.health_status as CustomerHealthStatus;
 
       // Use DB-computed segment or compute if not present
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
@@ -335,9 +335,10 @@ export async function GET(request: Request) {
       };
     });
 
-    // B2B customers only (excludes corporate gifting)
+    // B2B customers only (excludes corporate gifting AND never-ordered accounts)
     // Corporate gifting customers are one-time buyers and shouldn't be mixed with recurring B2B accounts
-    const b2bCustomers = customers.filter((c) => !c.is_corporate_gifting);
+    // Never-ordered accounts (order_count=0) are sales opportunities, not customers - they're shown separately
+    const b2bCustomers = customers.filter((c) => !c.is_corporate_gifting && c.order_count > 0);
 
     // Top customers (active in period)
     const topCustomers = customers
@@ -589,7 +590,6 @@ export async function GET(request: Request) {
       churned: b2bCustomers.filter((c) => c.health_status === "churned").length,
       new: b2bCustomers.filter((c) => c.health_status === "new").length,
       one_time: b2bCustomers.filter((c) => c.health_status === "one_time").length,
-      never_ordered: b2bCustomers.filter((c) => c.health_status === "never_ordered").length,
     };
 
     // Customers grouped by health status for drill-down views (sorted by revenue) - B2B ONLY
@@ -942,11 +942,16 @@ export async function GET(request: Request) {
         return bDate - aDate;
       });
 
-    // CRITICAL: Override "new" counts to use transaction-based data (source of truth)
-    // The customers table has stale health_status that shows ~323 "new" but only 162 have actual transactions
-    // ytdNewCustomerIds is derived from transactions, not the customers table metadata
-    healthDistribution.new = ytdNewCustomerIds.size;
-    customersByHealth.new = newCustomers;
+    // Safety check: Ensure "new" counts match transaction-derived data
+    // DB health_status was fixed via migration (recalculate_customer_metrics_from_transactions_v2)
+    // Both should now be 77, but keep this as verification during transition
+    if (healthDistribution.new !== ytdNewCustomerIds.size) {
+      console.warn(
+        `[WHOLESALE API] Health mismatch: DB says ${healthDistribution.new} new, transactions say ${ytdNewCustomerIds.size}. Using transaction data.`
+      );
+      healthDistribution.new = ytdNewCustomerIds.size;
+      customersByHealth.new = newCustomers;
+    }
 
     // Build response
     const response: WholesaleResponse = {

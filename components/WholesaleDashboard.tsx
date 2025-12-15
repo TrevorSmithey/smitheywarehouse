@@ -226,7 +226,6 @@ function HealthBadge({ status, isCorporate }: { status: CustomerHealthStatus; is
     churned: { label: "Churned", color: "text-text-muted", icon: <Clock className="w-3 h-3" /> },
     new: { label: "New", color: "text-purple-400", icon: <Sparkles className="w-3 h-3" /> },
     one_time: { label: "One-Time", color: "text-text-tertiary", icon: <Target className="w-3 h-3" /> },
-    never_ordered: { label: "Never Ordered", color: "text-amber-400", icon: <Users className="w-3 h-3" /> },
   };
   const { label, color, icon } = config[status];
   return (
@@ -719,9 +718,6 @@ function HealthDistributionCard({ distribution }: { distribution: Record<Custome
 
       <div className="text-[10px] text-text-muted pt-3 border-t border-border/20">
         {distribution.thriving + distribution.stable} healthy • {distribution.at_risk + distribution.churning} at risk
-        {distribution.never_ordered > 0 && (
-          <span className="text-amber-400"> • {distribution.never_ordered} never ordered</span>
-        )}
       </div>
     </div>
   );
@@ -2347,8 +2343,7 @@ export function WholesaleDashboard({
                   {selectedHealthFilter === "stable" && "Consistent ordering patterns"}
                   {selectedHealthFilter === "new" && "First order within 90 days"}
                   {selectedHealthFilter === "one_time" && "Only placed 1 order ever"}
-                  {selectedHealthFilter === "churned" && "No orders in 180+ days"}
-                  {selectedHealthFilter === "never_ordered" && "No orders on record"}
+                  {selectedHealthFilter === "churned" && "No orders in 12+ months"}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-text-muted group-hover:text-accent-blue transition-colors">
