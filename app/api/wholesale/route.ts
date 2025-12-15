@@ -27,11 +27,22 @@ import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-lim
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Customer IDs to exclude from wholesale analytics
+// Hardcoded customer IDs to exclude from wholesale analytics
 // These are D2C/retail aggregates that pollute B2B data
-const EXCLUDED_CUSTOMER_IDS = [
+const HARDCODED_EXCLUDED_IDS = [
   2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
 ];
+
+// Helper to build exclusion list combining hardcoded IDs and DB-flagged test accounts
+async function getExcludedCustomerIds(supabase: ReturnType<typeof createServiceClient>): Promise<number[]> {
+  const { data: excludedFromDB } = await supabase
+    .from("ns_wholesale_customers")
+    .select("ns_customer_id")
+    .eq("is_excluded", true);
+
+  const dbExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
+  return [...new Set([...HARDCODED_EXCLUDED_IDS, ...dbExcludedIds])];
+}
 
 // Helper to determine customer segment based on revenue
 function getCustomerSegment(totalRevenue: number): CustomerSegment {
@@ -121,6 +132,9 @@ export async function GET(request: Request) {
 
     // Format dates for SQL
     const formatDate = (d: Date) => d.toISOString().split("T")[0];
+
+    // Build exclusion list (combines hardcoded IDs + DB-flagged test accounts)
+    const EXCLUDED_CUSTOMER_IDS = await getExcludedCustomerIds(supabase);
 
     // Execute all queries in parallel
     const [
@@ -946,7 +960,7 @@ export async function GET(request: Request) {
     // Also excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
     // If YoY calculation failed, ytdNewCustomerIds will be empty → empty table
     const newCustomers: WholesaleCustomer[] = b2bCustomers
-      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.lifetime_revenue || 0) > 0)
+      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.total_revenue || 0) > 0)
       .sort((a, b) => {
         // Sort by first order date (most recent first)
         const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
