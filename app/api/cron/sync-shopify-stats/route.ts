@@ -175,15 +175,17 @@ export async function GET(request: Request) {
     console.log(`[SHOPIFY STATS] Complete in ${duration}ms:`, stats);
 
     // Log success to sync_logs
+    // Note: records_expected = days we intended to sync (7)
+    // records_synced = days actually updated (may be less if some days had no orders)
     try {
       await supabase.from("sync_logs").insert({
         sync_type: "shopify_stats",
         started_at: new Date(startTime).toISOString(),
         completed_at: new Date().toISOString(),
         status: "success",
-        records_expected: stats.ordersProcessed,
+        records_expected: 7, // We always sync last 7 days
         records_synced: stats.daysUpdated,
-        details: stats,
+        details: { ...stats, ordersProcessed: stats.ordersProcessed },
         duration_ms: duration,
       });
     } catch (logError) {
