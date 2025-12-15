@@ -673,6 +673,24 @@ export async function GET(request: Request) {
       }
     }
 
+    // Calculate previous period B2B-only metrics for AOV YoY comparison
+    // EXCLUDES corporate gifting - same logic as current period
+    let prevStandardB2BRevenue = 0;
+    let prevStandardB2BOrderCount = 0;
+    for (const t of prevTransactionsResult.data || []) {
+      const category = customerCategoryMap.get(t.ns_customer_id);
+      const revenue = parseFloat(t.foreign_total) || 0;
+      // Skip corporate customers
+      if (category !== "Corporate" && category !== "4") {
+        prevStandardB2BRevenue += revenue;
+        prevStandardB2BOrderCount++;
+      }
+    }
+
+    // Calculate B2B-only AOV (excludes corporate)
+    const currentB2BAOV = standardB2BOrderCount > 0 ? standardB2BRevenue / standardB2BOrderCount : 0;
+    const prevB2BAOV = prevStandardB2BOrderCount > 0 ? prevStandardB2BRevenue / prevStandardB2BOrderCount : 0;
+
     const totalRevenueForPct = corporateRevenue + standardB2BRevenue;
     const revenueByType: WholesaleRevenueByType = {
       corporate: {
@@ -698,7 +716,8 @@ export async function GET(request: Request) {
       total_orders: currentPeriodOrders,
       total_customers: allB2BAccounts.length, // All approved B2B accounts (excludes corporate)
       active_customers: currentPeriodCustomers,
-      avg_order_value: currentPeriodOrders > 0 ? currentPeriodRevenue / currentPeriodOrders : 0,
+      // AOV uses B2B-only data (excludes corporate) for accurate comparison
+      avg_order_value: currentB2BAOV,
       revenue_delta: currentPeriodRevenue - prevPeriodRevenue,
       revenue_delta_pct:
         prevPeriodRevenue > 0
@@ -714,6 +733,13 @@ export async function GET(request: Request) {
         prevPeriodCustomers > 0
           ? ((currentPeriodCustomers - prevPeriodCustomers) / prevPeriodCustomers) * 100
           : 0,
+      // AOV YoY comparison (B2B-only, excludes corporate)
+      avg_order_value_delta: currentB2BAOV - prevB2BAOV,
+      avg_order_value_delta_pct:
+        prevB2BAOV > 0
+          ? ((currentB2BAOV - prevB2BAOV) / prevB2BAOV) * 100
+          : 0,
+      prev_avg_order_value: prevB2BAOV,
       health_distribution: healthDistribution,
       segment_distribution: segmentDistribution,
       revenue_by_type: revenueByType,

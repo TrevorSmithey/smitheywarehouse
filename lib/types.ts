@@ -1011,6 +1011,9 @@ export interface WholesaleStats {
   orders_delta_pct: number;
   customers_delta: number;
   customers_delta_pct: number;
+  avg_order_value_delta: number;
+  avg_order_value_delta_pct: number;
+  prev_avg_order_value: number;
   // Customer breakdown
   health_distribution: WholesaleHealthDistribution;
   segment_distribution: WholesaleSegmentDistribution;

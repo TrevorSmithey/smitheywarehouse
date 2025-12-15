@@ -811,7 +811,7 @@ function NewCustomersSection({
           </h3>
         </div>
         <span className="text-[10px] text-status-good font-medium">
-          {customers.length} in {new Date().getFullYear()}
+          {acquisition?.currentPeriod.newCustomerCount ?? customers.length} in {new Date().getFullYear()}
         </span>
       </div>
 
