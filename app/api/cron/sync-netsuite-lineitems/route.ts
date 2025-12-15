@@ -68,9 +68,9 @@ export async function GET(request: Request) {
     let batchCount = 0;
     let isComplete = false;
 
-    // For incremental: simple loop, no time limit needed (small dataset)
-    // For full sync: time limit to handle 250K+ rows across multiple runs
-    const useTimeLimit = isFullSync;
+    // Always use time limit to ensure we complete and log within Vercel's 300s limit
+    // Even incremental sync can have many records (7 days of line items)
+    const useTimeLimit = true;
 
     while (hasMore && (!useTimeLimit || (Date.now() - startTime) < PROCESSING_TIME_LIMIT_MS)) {
       batchCount++;
