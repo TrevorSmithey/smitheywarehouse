@@ -51,14 +51,32 @@ function getHealthStatus(
   orderCount: number,
   revenueTrend: number
 ): CustomerHealthStatus {
-  // Never placed an order
-  if (orderCount === 0) return "churned";
-  // Has orders but no last_sale_date is a data issue
-  if (daysSinceLastOrder === null) return "churned";
-  // New customer: first order within last 90 days
+  // IMPORTANT: Check "new" status FIRST, before orderCount === 0
+  // lifetime_orders can be stale (0) even when customer has transactions
+  // If first_sale_date exists and is within 90 days, customer IS new (they have at least 1 order)
   if (daysSinceFirstOrder !== null && daysSinceFirstOrder <= 90) return "new";
-  // Only one order ever (and not new)
-  if (orderCount === 1) return "one_time";
+
+  // Never placed an order - but only if we have no first_sale_date evidence
+  // (daysSinceFirstOrder === null means no first_sale_date, so no transactions)
+  if (orderCount === 0 && daysSinceFirstOrder === null) return "churned";
+
+  // Has first_sale_date but no last_sale_date is a data anomaly - treat as having orders
+  if (daysSinceLastOrder === null && daysSinceFirstOrder !== null) {
+    // They have a first order but no last order date - use first order recency
+    if (daysSinceFirstOrder > 365) return "churned";
+    if (daysSinceFirstOrder > 180) return "churning";
+    if (daysSinceFirstOrder > 120) return "at_risk";
+    return "stable";
+  }
+
+  // No sale dates at all is a data issue - treat as churned
+  if (daysSinceLastOrder === null) return "churned";
+
+  // Only one order ever (and not new) - use actual count or infer from dates
+  // If orderCount is 0 but we have first_sale_date, they have at least 1 order
+  const effectiveOrderCount = orderCount > 0 ? orderCount : (daysSinceFirstOrder !== null ? 1 : 0);
+  if (effectiveOrderCount === 1) return "one_time";
+
   // Churn/risk based on recency
   if (daysSinceLastOrder > 365) return "churned";
   if (daysSinceLastOrder > 180) return "churning";
@@ -308,7 +326,6 @@ export async function GET(request: Request) {
       //            first_order_date, last_order_date, days_since_last_order,
       //            segment, health_status, yoy_revenue_change_pct, is_at_risk, etc.
 
-      const orderCount = c.lifetime_orders || 0;
       const totalRevenue = parseFloat(c.lifetime_revenue) || 0;
       const yoyChange = c.yoy_revenue_change_pct ? parseFloat(c.yoy_revenue_change_pct) / 100 : 0;
 
@@ -324,6 +341,11 @@ export async function GET(request: Request) {
       const daysSinceFirstOrder = firstSaleDate
         ? Math.floor((Date.now() - firstSaleDate.getTime()) / (1000 * 60 * 60 * 24))
         : null;
+
+      // IMPORTANT: lifetime_orders can be stale (0) even when customer has transactions
+      // If first_sale_date exists, customer has at least 1 order - use that as minimum
+      const storedOrderCount = c.lifetime_orders || 0;
+      const orderCount = storedOrderCount > 0 ? storedOrderCount : (firstSaleDate ? 1 : 0);
 
       // Compute health_status dynamically from current data
       // DB-stored health_status is stale - it was computed from old last_order_date column
@@ -536,8 +558,10 @@ export async function GET(request: Request) {
     // These are accounts in NetSuite that have never placed an order
     // DB schema: date_created is the NetSuite creation date (when customer was created in NS)
     // Excludes corporate gifting customers - they're one-time buyers, not B2B prospects
+    // IMPORTANT: Check BOTH lifetime_orders AND first_sale_date to handle stale data
+    // A customer with first_sale_date means they HAVE ordered (even if lifetime_orders is 0)
     const neverOrderedCustomers: WholesaleNeverOrderedCustomer[] = (customersResult.data || [])
-      .filter((c) => (c.lifetime_orders || 0) === 0 && c.is_corporate !== true)
+      .filter((c) => (c.lifetime_orders || 0) === 0 && !c.first_sale_date && c.is_corporate !== true)
       .sort((a, b) => {
         // Sort by date_created (newest first) - these are the hottest leads
         const aDate = a.date_created ? new Date(a.date_created).getTime() : 0;
