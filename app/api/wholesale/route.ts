@@ -335,10 +335,13 @@ export async function GET(request: Request) {
       };
     });
 
-    // B2B customers only (excludes corporate gifting AND never-ordered accounts)
-    // Corporate gifting customers are one-time buyers and shouldn't be mixed with recurring B2B accounts
-    // Never-ordered accounts (order_count=0) are sales opportunities, not customers - they're shown separately
-    const b2bCustomers = customers.filter((c) => !c.is_corporate_gifting && c.order_count > 0);
+    // All B2B accounts (excludes corporate gifting only)
+    // This is our full recurring book of business - ALL approved B2B accounts
+    const allB2BAccounts = customers.filter((c) => !c.is_corporate_gifting);
+
+    // B2B customers with orders (for health metrics, at-risk, growth, etc.)
+    // Never-ordered accounts (order_count=0) are sales opportunities shown separately
+    const b2bCustomers = allB2BAccounts.filter((c) => c.order_count > 0);
 
     // Top customers (active in period)
     const topCustomers = customers
@@ -671,7 +674,7 @@ export async function GET(request: Request) {
     const stats: WholesaleStats = {
       total_revenue: currentPeriodRevenue,
       total_orders: currentPeriodOrders,
-      total_customers: b2bCustomers.length, // B2B only, excludes corporate gifting
+      total_customers: allB2BAccounts.length, // All approved B2B accounts (excludes corporate)
       active_customers: currentPeriodCustomers,
       avg_order_value: currentPeriodOrders > 0 ? currentPeriodRevenue / currentPeriodOrders : 0,
       revenue_delta: currentPeriodRevenue - prevPeriodRevenue,
