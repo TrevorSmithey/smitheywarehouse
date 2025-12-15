@@ -18,7 +18,10 @@ import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
 import { RATE_LIMIT_DELAYS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // 1 minute - must be literal for Next.js static analysis
+export const maxDuration = 300; // 5 minutes - Vercel Pro allows up to 300s for cron jobs
+
+// How many days to look back when syncing (includes today)
+const SYNC_LOOKBACK_DAYS = 7;
 
 interface ShopifyOrdersResponse {
   orders: Array<{
@@ -114,10 +117,10 @@ export async function GET(request: Request) {
 
     const supabase = createServiceClient();
 
-    // Sync last 7 days (to catch any late updates)
+    // Sync last N days (to catch any late updates)
     const now = new Date();
     const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - 7);
+    startDate.setDate(startDate.getDate() - SYNC_LOOKBACK_DAYS);
     startDate.setHours(0, 0, 0, 0);
 
     const endDate = new Date(now);
@@ -183,7 +186,7 @@ export async function GET(request: Request) {
         started_at: new Date(startTime).toISOString(),
         completed_at: new Date().toISOString(),
         status: "success",
-        records_expected: 7, // We always sync last 7 days
+        records_expected: SYNC_LOOKBACK_DAYS, // Number of days we sync
         records_synced: stats.daysUpdated,
         details: { ...stats, ordersProcessed: stats.ordersProcessed },
         duration_ms: duration,
