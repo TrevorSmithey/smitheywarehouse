@@ -64,17 +64,19 @@ export async function GET(request: Request) {
       sales3DayResult,
       salesPrior3DayResult,
     ] = await Promise.all([
-      // 1. Current month budgets
+      // 1. Current month budgets (use 'total' channel for combined demand)
       supabase
         .from("budgets")
         .select("sku, budget")
         .eq("year", estYear)
-        .eq("month", estMonth),
+        .eq("month", estMonth)
+        .eq("channel", "total"),
 
-      // 2. All budgets for DOI
+      // 2. All budgets for DOI (use 'total' channel for combined retail+wholesale demand)
       supabase
         .from("budgets")
-        .select("sku, year, month, budget"),
+        .select("sku, year, month, budget")
+        .eq("channel", "total"),
 
       // 3. Inventory
       supabase
