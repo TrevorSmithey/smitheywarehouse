@@ -943,9 +943,10 @@ export async function GET(request: Request) {
 
     // New customers - first-time buyers in current YTD (derived from YoY calculation above) - B2B ONLY
     // Uses transaction-based first order date (source of truth), excludes corporate
+    // Also excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
     // If YoY calculation failed, ytdNewCustomerIds will be empty → empty table
     const newCustomers: WholesaleCustomer[] = b2bCustomers
-      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id))
+      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.lifetime_revenue || 0) > 0)
       .sort((a, b) => {
         // Sort by first order date (most recent first)
         const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
