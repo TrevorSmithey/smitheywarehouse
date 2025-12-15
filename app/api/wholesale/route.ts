@@ -963,16 +963,11 @@ export async function GET(request: Request) {
         return bDate - aDate;
       });
 
-    // Safety check: Ensure "new" counts match transaction-derived data
-    // DB health_status was fixed via migration (recalculate_customer_metrics_from_transactions_v2)
-    // Both should now be 77, but keep this as verification during transition
-    if (healthDistribution.new !== ytdNewCustomerIds.size) {
-      console.warn(
-        `[WHOLESALE API] Health mismatch: DB says ${healthDistribution.new} new, transactions say ${ytdNewCustomerIds.size}. Using transaction data.`
-      );
-      healthDistribution.new = ytdNewCustomerIds.size;
-      customersByHealth.new = newCustomers;
-    }
+    // NOTE: health_status "new" (first order within 90 days) is DIFFERENT from
+    // YTD new customers (first order in current calendar year). These are two different metrics:
+    // - healthDistribution.new = ~58 customers with first order within last 90 days
+    // - ytdNewCustomerIds.size = ~162 customers acquired this year (for YoY comparison)
+    // Do NOT override health distribution with YTD count - they measure different things.
 
     // Build response
     const response: WholesaleResponse = {
