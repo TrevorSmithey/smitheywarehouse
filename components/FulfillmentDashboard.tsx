@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
   AreaChart,
@@ -14,7 +14,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { Package, Clock } from "lucide-react";
+import { Package, Clock, Truck } from "lucide-react";
 import type {
   MetricsResponse,
   DailyFulfillment,
@@ -417,6 +417,70 @@ export function FulfillmentDashboard({
   // Today vs 7d average
   const todayFulfilled = (metrics?.warehouses || []).reduce((sum, w) => sum + w.fulfilled_today, 0);
   const todayVsAvg = totals.avg7d > 0 ? ((todayFulfilled - totals.avg7d) / totals.avg7d) * 100 : undefined;
+
+  // Loading state with progress indicator
+  const [loadingProgress, setLoadingProgress] = useState(0);
+
+  useEffect(() => {
+    if (loading && !metrics) {
+      // Simulated progress (actual API doesn't support progress events)
+      const progressInterval = setInterval(() => {
+        setLoadingProgress(prev => {
+          // Slow down as we approach 90% (never reaches 100% until data arrives)
+          if (prev < 30) return prev + 3;
+          if (prev < 60) return prev + 2;
+          if (prev < 85) return prev + 0.5;
+          return Math.min(prev + 0.1, 90);
+        });
+      }, 200);
+
+      return () => {
+        clearInterval(progressInterval);
+      };
+    } else {
+      setLoadingProgress(0);
+    }
+  }, [loading, metrics]);
+
+  if (loading && !metrics) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-6 text-text-tertiary w-80">
+          {/* Animated icon */}
+          <div className="relative">
+            <div className="absolute inset-0 animate-ping opacity-20">
+              <Truck className="w-10 h-10 text-accent-blue" />
+            </div>
+            <Truck className="w-10 h-10 text-accent-blue animate-pulse" />
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full">
+            <div className="flex justify-between text-xs mb-2">
+              <span className="text-text-secondary">Loading fulfillment data...</span>
+              <span className="text-text-muted font-mono">{Math.round(loadingProgress)}%</span>
+            </div>
+            <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-accent-blue to-accent-purple transition-all duration-200 ease-out rounded-full"
+                style={{ width: `${loadingProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Status messages */}
+          <div className="text-center space-y-1">
+            <p className="text-xs text-text-muted">
+              {loadingProgress < 30 && "Fetching warehouse data..."}
+              {loadingProgress >= 30 && loadingProgress < 60 && "Processing shipments..."}
+              {loadingProgress >= 60 && loadingProgress < 85 && "Calculating metrics..."}
+              {loadingProgress >= 85 && "Almost there..."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
