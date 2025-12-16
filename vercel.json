@@ -64,7 +64,7 @@
     },
     {
       "path": "/api/cron/sync-b2b-drafts",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }

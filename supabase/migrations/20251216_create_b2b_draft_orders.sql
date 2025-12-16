@@ -21,6 +21,9 @@ CREATE INDEX IF NOT EXISTS idx_b2b_draft_orders_sku ON b2b_draft_orders(sku);
 -- Index for draft order lookups
 CREATE INDEX IF NOT EXISTS idx_b2b_draft_orders_draft_id ON b2b_draft_orders(draft_order_id);
 
+-- Index for sync freshness queries (useful for detecting stale data)
+CREATE INDEX IF NOT EXISTS idx_b2b_draft_orders_synced_at ON b2b_draft_orders(synced_at DESC);
+
 -- Enable RLS (table is internal, no public access needed)
 ALTER TABLE b2b_draft_orders ENABLE ROW LEVEL SECURITY;
 

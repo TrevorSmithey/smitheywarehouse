@@ -61,7 +61,16 @@ export const BATCH_SIZES = {
   DEFAULT: 500,
   /** Shopify API page size (max 250) */
   SHOPIFY_PAGE: 250,
+  /** Shopify GraphQL page size (max 100 for most endpoints) */
+  SHOPIFY_GRAPHQL_PAGE: 100,
 } as const;
+
+/**
+ * Service SKUs
+ * SKUs that represent services rather than physical products.
+ * These should be excluded from inventory counts and draft order line items.
+ */
+export const SERVICE_SKUS = ["Gift-Note", "Smith-Eng"] as const;
 
 /**
  * API Rate Limiting Delays

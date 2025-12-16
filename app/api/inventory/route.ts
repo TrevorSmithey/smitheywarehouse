@@ -151,9 +151,14 @@ export async function GET(request: Request) {
     if (monthlyB2BError) throw new Error(`Failed to fetch monthly B2B data: ${monthlyB2BError.message}`);
     if (sales3DayError) throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
     if (salesPrior3DayError) throw new Error(`Failed to fetch prior 3-day sales: ${salesPrior3DayError.message}`);
-    // Draft orders are optional - don't fail if table doesn't exist yet
-    if (draftOrdersError && !draftOrdersError.message.includes("does not exist")) {
-      console.warn("Failed to fetch draft orders:", draftOrdersError.message);
+    // Draft orders: gracefully handle missing table, but throw on real errors
+    if (draftOrdersError) {
+      if (draftOrdersError.message.includes("does not exist")) {
+        console.warn("Draft orders table does not exist yet (migration pending)");
+      } else {
+        // Real error - throw it so it doesn't silently return stale data
+        throw new Error(`Failed to fetch draft orders: ${draftOrdersError.message}`);
+      }
     }
 
     // Data truncation warnings - log if we hit limit boundaries

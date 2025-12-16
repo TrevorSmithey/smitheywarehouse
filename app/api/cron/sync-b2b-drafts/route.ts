@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
+import { SERVICE_SKUS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 1 minute - draft orders are quick to sync
@@ -57,9 +58,7 @@ interface DraftOrder {
   id: string; // GID format: gid://shopify/DraftOrder/123456
   name: string;
   createdAt: string;
-  customer?: {
-    displayName: string;
-  };
+  // Note: customer field intentionally omitted - B2B token lacks read_customers scope
   lineItems: {
     edges: Array<{
       node: DraftOrderLineItem;
@@ -116,6 +115,10 @@ async function fetchOpenDraftOrders(): Promise<DraftOrder[]> {
           throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
         }
 
+        if (!data.data) {
+          throw new Error("GraphQL returned empty data");
+        }
+
         return data.data;
       },
       { maxRetries: 3, baseDelayMs: 1000 },
@@ -140,14 +143,13 @@ function extractLineItems(draftOrders: DraftOrder[]): B2BDraftItem[] {
 
   for (const order of draftOrders) {
     const draftOrderId = extractId(order.id);
-    const customerName = order.customer?.displayName || null;
 
     for (const { node: lineItem } of order.lineItems.edges) {
       // Skip items without SKU
       if (!lineItem.sku) continue;
 
-      // Skip service SKUs
-      if (lineItem.sku === "Gift-Note" || lineItem.sku === "Smith-Eng") continue;
+      // Skip service SKUs (uses centralized constant)
+      if (SERVICE_SKUS.includes(lineItem.sku as typeof SERVICE_SKUS[number])) continue;
 
       const price = lineItem.originalUnitPriceSet?.shopMoney?.amount
         ? parseFloat(lineItem.originalUnitPriceSet.shopMoney.amount)
@@ -156,7 +158,7 @@ function extractLineItems(draftOrders: DraftOrder[]): B2BDraftItem[] {
       items.push({
         draft_order_id: draftOrderId,
         draft_order_name: order.name,
-        customer_name: customerName,
+        customer_name: null, // Not available without read_customers scope
         sku: lineItem.sku,
         quantity: lineItem.quantity,
         price: price,
