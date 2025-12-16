@@ -50,6 +50,13 @@ export interface InventoryResponse {
     accessory: SkuSalesVelocity[];
     glass_lid: SkuSalesVelocity[];
   };
+  // B2B Draft Orders - SKUs on open draft orders
+  draftOrderSkus?: B2BDraftOrderSku[];
+  draftOrderTotals?: {
+    totalUnits: number;
+    totalSkus: number;
+    totalOrders: number;
+  };
   lastSynced: string | null;
 }
 
@@ -1435,4 +1442,17 @@ export interface CustomerDetailResponse {
   productMix: CustomerProductMix[];
   // Order history
   orderHistory: CustomerOrderHistory[];
+}
+
+// ============================================================
+// B2B Draft Orders Types (Shopify B2B → Supabase)
+// ============================================================
+
+export interface B2BDraftOrderSku {
+  sku: string;
+  displayName: string;
+  category: InventoryCategory | null;
+  quantity: number;        // Total units across all draft orders
+  orderCount: number;      // Number of draft orders containing this SKU
+  avgPrice: number | null; // Average unit price across orders
 }

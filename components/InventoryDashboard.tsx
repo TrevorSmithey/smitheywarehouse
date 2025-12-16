@@ -2,7 +2,7 @@
 
 import { Download, Info } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import type { InventoryResponse, ProductInventory } from "@/lib/types";
+import type { InventoryResponse, ProductInventory, B2BDraftOrderSku } from "@/lib/types";
 import { SAFETY_STOCK } from "@/lib/shiphero";
 import { formatNumber } from "@/lib/dashboard-utils";
 import { MetricLabel } from "@/components/MetricLabel";
@@ -524,6 +524,104 @@ export function InventoryDashboard({
             </div>
           );
         })}
+
+        {/* B2B Draft Orders Section */}
+        {inventory?.draftOrderSkus && inventory.draftOrderSkus.length > 0 && (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+            {/* Collapsible Header */}
+            <button
+              onClick={() => onToggleCategory("b2b_drafts")}
+              className="w-full text-left hover:bg-bg-tertiary/30 transition-colors"
+            >
+              <div className="px-4 py-3 flex items-center justify-between">
+                {/* Left: Category name as hero */}
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm transition-transform text-text-muted ${expandedCategories.has("b2b_drafts") ? "rotate-90" : ""}`}>
+                    ▶
+                  </span>
+                  <span className="text-base font-bold uppercase tracking-wide text-purple-400">
+                    B2B DRAFT ORDERS
+                  </span>
+                  <span className="text-sm text-text-tertiary">
+                    ({inventory.draftOrderTotals?.totalOrders || 0} orders)
+                  </span>
+                </div>
+
+                {/* Right: Totals */}
+                <div className="hidden sm:flex text-sm tabular-nums items-center gap-1">
+                  <span className="text-purple-400 font-bold">
+                    {formatNumber(inventory.draftOrderTotals?.totalUnits || 0)}
+                  </span>
+                  <span className="text-text-muted/50 mx-1">units</span>
+                  <span className="text-text-muted/50">•</span>
+                  <span className="text-text-secondary ml-1">
+                    {inventory.draftOrderTotals?.totalSkus || 0} SKUs
+                  </span>
+                </div>
+              </div>
+            </button>
+
+            {/* Expanded Table */}
+            {expandedCategories.has("b2b_drafts") && (
+              <div className="border-t border-border">
+                <table className="w-full text-sm table-fixed">
+                  <colgroup>
+                    <col className="w-[45%] sm:w-[40%]" />
+                    <col className="w-[25%] sm:w-[30%]" />
+                    <col className="w-[30%] sm:w-[30%]" />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
+                      <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
+                      <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">
+                        <MetricLabel label="Qty" tooltip="Total units across all draft orders" />
+                      </th>
+                      <th className="text-right py-2.5 px-2 sm:px-4 font-medium">
+                        <MetricLabel label="Orders" tooltip="Number of draft orders containing this SKU" />
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventory.draftOrderSkus.map((item, idx) => (
+                      <tr
+                        key={item.sku}
+                        className={`border-b border-border/20 transition-colors hover:bg-bg-tertiary/40 ${
+                          idx % 2 === 1 ? "bg-bg-tertiary/10" : ""
+                        }`}
+                      >
+                        <td className="py-3 px-2 sm:px-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
+                            <span className="text-sm font-medium truncate text-text-primary">
+                              {item.displayName}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-purple-400">
+                          {formatNumber(item.quantity)}
+                        </td>
+                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] text-text-secondary">
+                          {item.orderCount}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-border bg-bg-tertiary/40">
+                      <td className="py-3 px-2 sm:px-3 text-sm font-bold text-text-primary">TOTAL</td>
+                      <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-purple-400">
+                        {formatNumber(inventory.draftOrderTotals?.totalUnits || 0)}
+                      </td>
+                      <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] text-text-secondary">
+                        {inventory.draftOrderTotals?.totalOrders || 0}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Legend */}

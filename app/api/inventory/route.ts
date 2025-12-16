@@ -5,6 +5,7 @@ import type {
   InventoryCategory,
   InventoryResponse,
   SkuSalesVelocity,
+  B2BDraftOrderSku,
 } from "@/lib/types";
 import { calculateDOI, buildBudgetLookup } from "@/lib/doi";
 import { WAREHOUSE_IDS } from "@/lib/constants";
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
       monthlyB2BResult,
       sales3DayResult,
       salesPrior3DayResult,
+      draftOrdersResult,
     ] = await Promise.all([
       // 1. Current month budgets (use 'total' channel for combined demand)
       supabase
@@ -125,6 +127,11 @@ export async function GET(request: Request) {
         .lt("orders.created_at", threeDayStartEST)
         .eq("orders.canceled", false)
         .limit(1000000),
+
+      // 9. B2B Draft Orders (open draft orders from Shopify B2B)
+      supabase
+        .from("b2b_draft_orders")
+        .select("sku, quantity, price, draft_order_id"),
     ]);
 
     // Extract data and check for errors
@@ -136,6 +143,7 @@ export async function GET(request: Request) {
     const { data: monthlyB2BData, error: monthlyB2BError } = monthlyB2BResult;
     const { data: sales3DayData, error: sales3DayError } = sales3DayResult;
     const { data: salesPrior3DayData, error: salesPrior3DayError } = salesPrior3DayResult;
+    const { data: draftOrdersData, error: draftOrdersError } = draftOrdersResult;
 
     if (inventoryError) throw new Error(`Failed to fetch inventory: ${inventoryError.message}`);
     if (productsError) throw new Error(`Failed to fetch products: ${productsError.message}`);
@@ -143,6 +151,10 @@ export async function GET(request: Request) {
     if (monthlyB2BError) throw new Error(`Failed to fetch monthly B2B data: ${monthlyB2BError.message}`);
     if (sales3DayError) throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
     if (salesPrior3DayError) throw new Error(`Failed to fetch prior 3-day sales: ${salesPrior3DayError.message}`);
+    // Draft orders are optional - don't fail if table doesn't exist yet
+    if (draftOrdersError && !draftOrdersError.message.includes("does not exist")) {
+      console.warn("Failed to fetch draft orders:", draftOrdersError.message);
+    }
 
     // Data truncation warnings - log if we hit limit boundaries
     const MONTHLY_LIMIT = 2000000;
@@ -377,11 +389,78 @@ export async function GET(request: Request) {
       glass_lid: buildVelocity("glass_lid"),
     };
 
+    // Process B2B draft orders - aggregate by SKU
+    let draftOrderSkus: B2BDraftOrderSku[] | undefined;
+    let draftOrderTotals: { totalUnits: number; totalSkus: number; totalOrders: number } | undefined;
+
+    if (draftOrdersData && draftOrdersData.length > 0) {
+      // Aggregate by SKU: sum quantities, count unique draft orders, average price
+      const skuAggregates = new Map<string, {
+        quantity: number;
+        orderIds: Set<number>;
+        totalPrice: number;
+        priceCount: number;
+      }>();
+
+      for (const item of draftOrdersData) {
+        const skuLower = item.sku.toLowerCase();
+        const existing = skuAggregates.get(skuLower) || {
+          quantity: 0,
+          orderIds: new Set<number>(),
+          totalPrice: 0,
+          priceCount: 0,
+        };
+
+        existing.quantity += item.quantity;
+        existing.orderIds.add(item.draft_order_id);
+        if (item.price !== null) {
+          existing.totalPrice += item.price * item.quantity;
+          existing.priceCount += item.quantity;
+        }
+
+        skuAggregates.set(skuLower, existing);
+      }
+
+      // Build draft order SKU list with product info
+      draftOrderSkus = [];
+      let totalUnits = 0;
+      const allOrderIds = new Set<number>();
+
+      for (const [skuLower, agg] of skuAggregates) {
+        const product = productMap.get(skuLower);
+
+        draftOrderSkus.push({
+          sku: skuLower.toUpperCase(), // Normalize to uppercase for display
+          displayName: product?.displayName || skuLower.toUpperCase(),
+          category: (product?.category as InventoryCategory) || null,
+          quantity: agg.quantity,
+          orderCount: agg.orderIds.size,
+          avgPrice: agg.priceCount > 0 ? Math.round((agg.totalPrice / agg.priceCount) * 100) / 100 : null,
+        });
+
+        totalUnits += agg.quantity;
+        for (const orderId of agg.orderIds) {
+          allOrderIds.add(orderId);
+        }
+      }
+
+      // Sort by quantity descending
+      draftOrderSkus.sort((a, b) => b.quantity - a.quantity);
+
+      draftOrderTotals = {
+        totalUnits,
+        totalSkus: draftOrderSkus.length,
+        totalOrders: allOrderIds.size,
+      };
+    }
+
     const response: InventoryResponse = {
       inventory,
       totals,
       byCategory,
       salesVelocity,
+      draftOrderSkus,
+      draftOrderTotals,
       lastSynced,
     };
 
