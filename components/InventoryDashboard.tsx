@@ -408,7 +408,7 @@ export function InventoryDashboard({
                             key={product.sku}
                             className={`border-b border-border/20 ${isPulsing ? "" : "transition-colors"} ${rowBg} ${!hasHighlight ? "hover:bg-bg-tertiary/40" : ""}`}
                           >
-                            <td className="py-3 px-2 sm:px-3">
+                            <td className="py-3 px-2 sm:px-3" title={tooltip}>
                               <div className="flex items-center gap-2">
                                 {cat.showDoi && (
                                   <div
@@ -420,13 +420,13 @@ export function InventoryDashboard({
                                   {product.displayName}
                                 </span>
                                 {SAFETY_STOCK[product.sku] && (
-                                  <span className="text-[10px] text-text-muted tabular-nums">
+                                  <span className="hidden sm:inline text-[10px] text-text-muted tabular-nums">
                                     ss:{SAFETY_STOCK[product.sku]}
                                   </span>
                                 )}
-                                {/* Info icon with tooltip for MTD/Velocity/Stockout */}
+                                {/* Info icon with tooltip - hidden on mobile (hover doesn't work on touch) */}
                                 {tooltip && (
-                                  <span className="relative group cursor-help flex-shrink-0 ml-1">
+                                  <span className="hidden sm:inline-flex relative group cursor-help flex-shrink-0 ml-1">
                                     <Info className="w-3 h-3 text-text-muted/40 group-hover:text-accent-blue transition-colors" />
                                     <span className="
                                       absolute top-full left-0 mt-1.5
