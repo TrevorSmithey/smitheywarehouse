@@ -369,7 +369,7 @@ export function InventoryDashboard({
                         <th className="text-right py-2.5 px-2 sm:px-4 font-semibold text-cyan-400">
                           <MetricLabel label="Selery" tooltip="3PL fulfillment partner" />
                         </th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-semibold">
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-semibold text-text-primary">
                           <MetricLabel label="Total" tooltip="Hobson + Selery + Pipefitter" />
                         </th>
                         {cat.showDoi && (
