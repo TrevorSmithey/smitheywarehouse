@@ -362,29 +362,29 @@ export function InventoryDashboard({
                     </colgroup>
                     <thead>
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
-                        <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-amber-400">
+                        <th className="text-left py-2.5 px-2 sm:px-3 font-semibold">Product</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-semibold text-amber-400">
                           <MetricLabel label="Hobson" tooltip="Charleston warehouse" />
                         </th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-cyan-400">
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-semibold text-cyan-400">
                           <MetricLabel label="Selery" tooltip="3PL fulfillment partner" />
                         </th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium">
-                          <MetricLabel label="Total" tooltip="Hobson + Selery combined" />
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-semibold">
+                          <MetricLabel label="Total" tooltip="Hobson + Selery + Pipefitter" />
                         </th>
                         {cat.showDoi && (
-                          <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">
+                          <th className="text-right py-2.5 px-2 sm:px-4 font-semibold text-purple-400">
                             <MetricLabel label="DOI" tooltip="Days of inventory on hand" />
                           </th>
                         )}
                         {cat.showVelocity && (
-                          <th className="hidden xl:table-cell text-right py-2.5 px-4 font-medium text-sky-400/70 border-l border-dashed border-border/30">
-                            <MetricLabel label="Vel" tooltip="30-day average daily sales velocity" />
+                          <th className="hidden xl:table-cell text-right py-2.5 px-4 font-semibold text-sky-400/70 border-l border-dashed border-border/30">
+                            <MetricLabel label="Vel" tooltip="3-day retail velocity" />
                           </th>
                         )}
                         {cat.showVelocity && (
-                          <th className="hidden xl:table-cell text-right py-2.5 px-4 font-medium text-purple-400/70">
-                            <MetricLabel label="Open" tooltip="Open B2B draft order quantity" />
+                          <th className="hidden xl:table-cell text-right py-2.5 px-4 font-semibold text-purple-400/70">
+                            <MetricLabel label="Draft" tooltip="Open whsl drafts" />
                           </th>
                         )}
                       </tr>
