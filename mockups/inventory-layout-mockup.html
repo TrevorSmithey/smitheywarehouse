@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventory Layout Mockup - Desktop Optimization</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #141414;
+      --bg-tertiary: #1a1a1a;
+      --text-primary: #e5e5e5;
+      --text-secondary: #a3a3a3;
+      --text-tertiary: #737373;
+      --text-muted: #525252;
+      --border: #262626;
+      --amber-400: #fbbf24;
+      --cyan-400: #22d3ee;
+      --purple-400: #c084fc;
+      --emerald-400: #34d399;
+      --red-400: #f87171;
+    }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .bg-bg-secondary { background-color: var(--bg-secondary); }
+    .bg-bg-tertiary { background-color: var(--bg-tertiary); }
+    .text-text-primary { color: var(--text-primary); }
+    .text-text-secondary { color: var(--text-secondary); }
+    .text-text-tertiary { color: var(--text-tertiary); }
+    .text-text-muted { color: var(--text-muted); }
+    .border-border { border-color: var(--border); }
+    .text-amber-400 { color: var(--amber-400); }
+    .text-cyan-400 { color: var(--cyan-400); }
+    .text-purple-400 { color: var(--purple-400); }
+    .text-emerald-400 { color: var(--emerald-400); }
+    .text-red-400 { color: var(--red-400); }
+
+    /* Tier 2 columns styling */
+    .tier-2 {
+      opacity: 0.4;
+    }
+    .tier-2-header {
+      border-left: 1px dashed #333;
+    }
+    .tier-2-cell {
+      border-left: 1px dashed #262626;
+    }
+
+    /* Subtle separator between tier 1 and tier 2 */
+    .tier-separator {
+      position: relative;
+    }
+    .tier-separator::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 8px;
+      bottom: 8px;
+      width: 1px;
+      background: linear-gradient(180deg, transparent, #333, transparent);
+    }
+
+    /* Safety stock violation - pulsing amber */
+    .ss-violation {
+      animation: ss-pulse 2s ease-in-out infinite;
+    }
+    @keyframes ss-pulse {
+      0%, 100% { background-color: rgba(245, 158, 11, 0.1); }
+      50% { background-color: rgba(245, 158, 11, 0.2); }
+    }
+
+    /* Negative inventory - solid red background */
+    .negative-inventory {
+      background-color: rgba(248, 113, 113, 0.15);
+    }
+
+    /* Low stock warning - amber tint on cell */
+    .low-stock-cell {
+      background-color: rgba(245, 158, 11, 0.2);
+    }
+
+    /* Tooltip styling */
+    .tooltip-container {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .tooltip-icon {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid currentColor;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 600;
+      opacity: 0.5;
+      cursor: help;
+    }
+    .tooltip-container:hover .tooltip-icon {
+      opacity: 1;
+    }
+    .tooltip-text {
+      visibility: hidden;
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #262626;
+      color: #e5e5e5;
+      font-size: 11px;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: normal;
+      padding: 6px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+      z-index: 100;
+      margin-bottom: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .tooltip-text::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: #262626;
+    }
+    .tooltip-container:hover .tooltip-text {
+      visibility: visible;
+    }
+  </style>
+</head>
+<body class="p-8">
+
+  <!-- Header -->
+  <div class="max-w-7xl mx-auto mb-8">
+    <h1 class="text-2xl font-bold mb-2">Inventory Layout Mockup</h1>
+    <p class="text-text-tertiary">Desktop optimization - Expanded table with inline draft order data</p>
+  </div>
+
+  <!-- MOCKUP: Expanded Single Table Layout -->
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Option Label -->
+    <div class="flex items-center gap-4 mb-4">
+      <span class="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-sm font-semibold">RECOMMENDED</span>
+      <span class="text-text-secondary">Expanded table with 7 columns + visual tier hierarchy</span>
+    </div>
+
+    <!-- Category Card -->
+    <div class="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+      <!-- Header -->
+      <div class="px-4 py-3 flex items-center justify-between bg-bg-tertiary/30">
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-text-muted">&#9654;</span>
+          <span class="text-base font-bold uppercase tracking-wide text-text-primary">CAST IRON</span>
+          <span class="text-sm text-text-tertiary">(12)</span>
+        </div>
+        <div class="flex text-sm tabular-nums items-center gap-1">
+          <span class="text-amber-400">2,847</span>
+          <span class="text-text-muted/50">/</span>
+          <span class="text-cyan-400">4,123</span>
+          <span class="text-text-muted/50 mx-1">=</span>
+          <span class="text-text-primary font-bold">6,970</span>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="border-t border-border">
+        <table class="w-full text-sm">
+          <colgroup>
+            <col class="w-[24%]"><!-- Product -->
+            <col class="w-[12%]"><!-- Hobson -->
+            <col class="w-[12%]"><!-- Selery -->
+            <col class="w-[12%]"><!-- Total -->
+            <col class="w-[12%]"><!-- DOI -->
+            <col class="w-[14%]"><!-- Vel (Tier 2) -->
+            <col class="w-[14%]"><!-- Open (Tier 2) -->
+          </colgroup>
+          <thead>
+            <tr class="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
+              <th class="text-left py-2.5 px-3 font-medium">Product</th>
+              <th class="text-right py-2.5 px-4 font-medium text-amber-400">
+                <span class="tooltip-container justify-end">
+                  Hobson
+                  <span class="tooltip-icon">i</span>
+                  <span class="tooltip-text">Pipefitter / Hobson warehouse inventory</span>
+                </span>
+              </th>
+              <th class="text-right py-2.5 px-4 font-medium text-cyan-400">
+                <span class="tooltip-container justify-end">
+                  Selery
+                  <span class="tooltip-icon">i</span>
+                  <span class="tooltip-text">Selery Fulfillment warehouse inventory</span>
+                </span>
+              </th>
+              <th class="text-right py-2.5 px-4 font-medium text-text-primary">
+                <span class="tooltip-container justify-end">
+                  Total
+                  <span class="tooltip-icon">i</span>
+                  <span class="tooltip-text">Combined inventory across all warehouses</span>
+                </span>
+              </th>
+              <th class="text-right py-2.5 px-4 font-medium text-purple-400">
+                <span class="tooltip-container justify-end">
+                  DOI
+                  <span class="tooltip-icon">i</span>
+                  <span class="tooltip-text">Days of Inventory based on 30-day velocity</span>
+                </span>
+              </th>
+              <!-- Tier 2 separator -->
+              <th class="text-right py-2.5 px-4 font-medium tier-2-header tier-2">
+                <span class="tooltip-container justify-end text-sky-400/60">
+                  Vel
+                  <span class="tooltip-icon">i</span>
+                  <span class="tooltip-text">30-day average daily sales velocity</span>
+                </span>
+              </th>
+              <th class="text-right py-2.5 px-4 font-medium tier-2">
+                <span class="tooltip-container justify-end text-purple-400/40">
+                  Open
+                  <span class="tooltip-icon">i</span>
+                  <span class="tooltip-text">Open B2B draft order quantity</span>
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Row 1 - Below safety stock (pulsing amber background) -->
+            <tr class="border-b border-border/20 ss-violation">
+              <td class="py-3 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-red-400"></div>
+                  <span class="text-sm font-medium text-text-primary">No. 10 Skillet</span>
+                  <span class="text-[10px] text-text-muted tabular-nums">ss:250</span>
+                </div>
+              </td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-amber-400">124</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-cyan-400">89</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">213</td>
+              <td class="py-3 px-4 text-right">
+                <span class="inline-block text-sm font-bold tabular-nums px-2 py-0.5 rounded bg-red-400/20 text-red-400">5d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2-cell tier-2">
+                <span class="text-sm tabular-nums text-sky-400/40">12/d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2">
+                <span class="text-sm font-semibold tabular-nums text-purple-400/40">24</span>
+              </td>
+            </tr>
+            <!-- Row 2 - Negative inventory (solid red row) -->
+            <tr class="border-b border-border/20 negative-inventory">
+              <td class="py-3 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-red-400"></div>
+                  <span class="text-sm font-medium text-red-400">No. 12 Skillet</span>
+                  <span class="text-[10px] text-text-muted tabular-nums">ss:100</span>
+                </div>
+              </td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-red-400 bg-red-500/10">-12</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-cyan-400">45</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-red-400">33</td>
+              <td class="py-3 px-4 text-right">
+                <span class="text-sm font-bold text-red-400 uppercase">BACKORDER</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2-cell tier-2">
+                <span class="text-sm tabular-nums text-sky-400/40">8/d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2">
+                <span class="text-sm font-semibold tabular-nums text-purple-400/40">18</span>
+              </td>
+            </tr>
+            <!-- Row 3 -->
+            <tr class="border-b border-border/20 hover:bg-bg-tertiary/40">
+              <td class="py-3 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span class="text-sm font-medium text-text-primary">No. 14 Skillet</span>
+                </div>
+              </td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-amber-400">892</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-cyan-400">1,245</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">2,137</td>
+              <td class="py-3 px-4 text-right">
+                <span class="inline-block text-sm font-bold tabular-nums px-2 py-0.5 rounded bg-emerald-400/20 text-emerald-400">87d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2-cell tier-2">
+                <span class="text-sm tabular-nums text-sky-400/40">6/d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2">
+                <span class="text-sm tabular-nums text-text-muted">-</span>
+              </td>
+            </tr>
+            <!-- Row 4 - Low stock on one warehouse (cell highlight) -->
+            <tr class="border-b border-border/20 bg-bg-tertiary/10 hover:bg-bg-tertiary/40">
+              <td class="py-3 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span class="text-sm font-medium text-text-primary">Dutch Oven 5.5qt</span>
+                  <span class="text-[10px] text-text-muted tabular-nums">ss:150</span>
+                </div>
+              </td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-amber-400 low-stock-cell">8</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-cyan-400">834</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">842</td>
+              <td class="py-3 px-4 text-right">
+                <span class="inline-block text-sm font-bold tabular-nums px-2 py-0.5 rounded bg-emerald-400/20 text-emerald-400">92d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2-cell tier-2">
+                <span class="text-sm tabular-nums text-sky-400/40">4/d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2">
+                <span class="text-sm font-semibold tabular-nums text-purple-400/40">6</span>
+              </td>
+            </tr>
+            <!-- Row 5 -->
+            <tr class="border-b border-border/20 hover:bg-bg-tertiary/40">
+              <td class="py-3 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-yellow-400"></div>
+                  <span class="text-sm font-medium text-text-primary">Grill Press</span>
+                </div>
+              </td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-amber-400">234</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-semibold text-cyan-400">456</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">690</td>
+              <td class="py-3 px-4 text-right">
+                <span class="inline-block text-sm font-bold tabular-nums px-2 py-0.5 rounded bg-yellow-400/20 text-yellow-400">45d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2-cell tier-2">
+                <span class="text-sm tabular-nums text-sky-400/40">3/d</span>
+              </td>
+              <td class="py-3 px-4 text-right tier-2">
+                <span class="text-sm font-semibold tabular-nums text-purple-400/40">12</span>
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-border bg-bg-tertiary/40">
+              <td class="py-3 px-3 text-sm font-bold text-text-primary">TOTAL</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-amber-400">2,273</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-cyan-400">2,936</td>
+              <td class="py-3 px-4 text-right tabular-nums text-[15px] font-bold text-text-primary">5,209</td>
+              <td class="py-3 px-4"></td>
+              <td class="py-3 px-4 tier-2-cell tier-2"></td>
+              <td class="py-3 px-4 text-right tier-2">
+                <span class="text-sm font-bold tabular-nums text-purple-400/40">60</span>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Design Notes -->
+    <div class="bg-bg-secondary rounded-xl border border-border/30 p-6 mt-8">
+      <h2 class="text-lg font-bold mb-4 text-text-primary">Design Notes</h2>
+      <div class="grid grid-cols-2 gap-6 text-sm">
+        <div>
+          <h3 class="font-semibold text-cyan-400 mb-2">Tier 1 (Primary)</h3>
+          <ul class="space-y-1 text-text-secondary">
+            <li>Product, Hobson, Selery, Total, DOI</li>
+            <li>Full opacity, bold values</li>
+            <li>These are the operational metrics</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-semibold text-purple-400 mb-2">Tier 2 (Secondary)</h3>
+          <ul class="space-y-1 text-text-secondary">
+            <li>Velocity (<span class="text-sky-400">sky-400/40</span>), Open Orders (<span class="text-purple-400">purple-400/40</span>)</li>
+            <li>40% opacity, lighter weight</li>
+            <li>Dashed separator line</li>
+            <li>Planning/forecasting data</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-6 pt-4 border-t border-border/30">
+        <h3 class="font-semibold text-emerald-400 mb-2">Implementation Changes</h3>
+        <ul class="space-y-1 text-text-secondary text-sm">
+          <li>1. Expand container: <code class="px-1 py-0.5 rounded bg-bg-tertiary text-cyan-400">max-w-4xl</code> to <code class="px-1 py-0.5 rounded bg-bg-tertiary text-cyan-400">max-w-4xl xl:max-w-6xl</code></li>
+          <li>2. Add "Open" column header after "Vel"</li>
+          <li>3. Join b2b_draft_orders by SKU to get open order quantities</li>
+          <li>4. Apply tier-2 styling (opacity, dashed separator) to Vel and Open columns</li>
+          <li>5. Mobile: Hide both Vel and Open columns (<code class="px-1 py-0.5 rounded bg-bg-tertiary text-cyan-400">hidden sm:table-cell</code>)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Width Comparison -->
+    <div class="mt-8 space-y-4">
+      <h2 class="text-lg font-bold text-text-primary">Width Comparison</h2>
+
+      <div class="space-y-3">
+        <!-- Current width -->
+        <div>
+          <div class="text-sm text-text-tertiary mb-1">Current: max-w-4xl (896px)</div>
+          <div class="h-8 bg-amber-400/20 border border-amber-400/40 rounded" style="width: 896px; max-width: 100%"></div>
+        </div>
+
+        <!-- Proposed width -->
+        <div>
+          <div class="text-sm text-text-tertiary mb-1">Proposed: max-w-6xl (1152px) - 29% wider</div>
+          <div class="h-8 bg-emerald-400/20 border border-emerald-400/40 rounded" style="width: 1152px; max-width: 100%"></div>
+        </div>
+
+        <!-- Container width reference -->
+        <div>
+          <div class="text-sm text-text-tertiary mb-1">max-w-7xl (1280px) - reference</div>
+          <div class="h-8 bg-purple-400/20 border border-purple-400/40 rounded" style="width: 1280px; max-width: 100%"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="max-w-7xl mx-auto mt-12 pt-6 border-t border-border/30 text-text-tertiary text-sm">
+    <p>Open this file in browser: <code>open mockups/inventory-layout-mockup.html</code></p>
+  </div>
+
+</body>
+</html>
