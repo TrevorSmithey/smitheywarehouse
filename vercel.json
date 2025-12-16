@@ -61,6 +61,10 @@
     {
       "path": "/api/cron/analyze-leads",
       "schedule": "30 7,13,19 * * *"
+    },
+    {
+      "path": "/api/cron/sync-b2b-drafts",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
