@@ -156,6 +156,14 @@ export function InventoryDashboard({
     }
   }
 
+  // Build draft order lookup for inline display (SKU → quantity)
+  const draftOrdersBySku = new Map<string, number>();
+  if (inventory?.draftOrderSkus) {
+    for (const item of inventory.draftOrderSkus) {
+      draftOrdersBySku.set(item.sku.toLowerCase(), item.quantity);
+    }
+  }
+
   // Get products for a category, sorted by DOI ascending (lowest first = most urgent)
   const getProductsForCategory = (cat: InventoryCategoryTab): ProductInventory[] => {
     let products: ProductInventory[] = [];
@@ -247,7 +255,7 @@ export function InventoryDashboard({
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl xl:max-w-6xl mx-auto space-y-6">
       {/* Header with Health Status + Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         {/* Health Summary + Last Synced */}
@@ -344,12 +352,13 @@ export function InventoryDashboard({
                 <div className="border-t border-border">
                   <table className="w-full text-sm table-fixed">
                     <colgroup>
-                      <col className="w-[32%] sm:w-[26%]" />
-                      <col className="w-[20%] sm:w-[16%]" />
-                      <col className="w-[20%] sm:w-[16%]" />
-                      <col className="w-[28%] sm:w-[16%]" />
-                      {cat.showDoi && <col className="sm:w-[13%]" />}
-                      {cat.showVelocity && <col className="hidden sm:table-column w-[13%]" />}
+                      <col className="w-[32%] sm:w-[24%]" />
+                      <col className="w-[20%] sm:w-[14%]" />
+                      <col className="w-[20%] sm:w-[14%]" />
+                      <col className="w-[28%] sm:w-[14%]" />
+                      {cat.showDoi && <col className="sm:w-[12%]" />}
+                      {cat.showVelocity && <col className="hidden xl:table-column xl:w-[11%]" />}
+                      {cat.showVelocity && <col className="hidden xl:table-column xl:w-[11%]" />}
                     </colgroup>
                     <thead>
                       <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
@@ -360,15 +369,22 @@ export function InventoryDashboard({
                         <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-cyan-400">
                           <MetricLabel label="Selery" tooltip="3PL fulfillment partner" />
                         </th>
-                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium">Total</th>
+                        <th className="text-right py-2.5 px-2 sm:px-4 font-medium">
+                          <MetricLabel label="Total" tooltip="Hobson + Selery combined" />
+                        </th>
                         {cat.showDoi && (
                           <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">
                             <MetricLabel label="DOI" tooltip="Days of inventory on hand" />
                           </th>
                         )}
                         {cat.showVelocity && (
-                          <th className="hidden sm:table-cell text-right py-2.5 px-4 font-medium text-cyan-400">
-                            <MetricLabel label="Vel" tooltip="3-day moving average of units sold" />
+                          <th className="hidden xl:table-cell text-right py-2.5 px-4 font-medium text-sky-400/70 border-l border-dashed border-border/30">
+                            <MetricLabel label="Vel" tooltip="30-day average daily sales velocity" />
+                          </th>
+                        )}
+                        {cat.showVelocity && (
+                          <th className="hidden xl:table-cell text-right py-2.5 px-4 font-medium text-purple-400/70">
+                            <MetricLabel label="Open" tooltip="Open B2B draft order quantity" />
                           </th>
                         )}
                       </tr>
@@ -483,18 +499,24 @@ export function InventoryDashboard({
                               </td>
                             )}
                             {cat.showVelocity && (
-                              <td className="hidden sm:table-cell py-3 px-4 text-right">
+                              <td className="hidden xl:table-cell py-3 px-4 text-right border-l border-dashed border-border/30">
                                 {velocity ? (
-                                  <span className={`text-sm font-bold tabular-nums ${
-                                    velocity.avg >= 10 ? "text-emerald-400" :
-                                    velocity.avg >= 5 ? "text-cyan-400" :
-                                    velocity.avg > 0 ? "text-text-secondary" :
-                                    "text-text-muted"
-                                  }`}>
+                                  <span className="text-sm tabular-nums text-sky-400/70">
                                     {velocity.avg}/d
                                   </span>
                                 ) : (
-                                  <span className="text-text-muted/50">—</span>
+                                  <span className="text-text-muted/30">—</span>
+                                )}
+                              </td>
+                            )}
+                            {cat.showVelocity && (
+                              <td className="hidden xl:table-cell py-3 px-4 text-right">
+                                {draftOrdersBySku.get(product.sku.toLowerCase()) ? (
+                                  <span className="text-sm font-semibold tabular-nums text-purple-400/70">
+                                    {formatNumber(draftOrdersBySku.get(product.sku.toLowerCase())!)}
+                                  </span>
+                                ) : (
+                                  <span className="text-text-muted/30">—</span>
                                 )}
                               </td>
                             )}
@@ -515,7 +537,8 @@ export function InventoryDashboard({
                           {formatNumber(totals.total)}
                         </td>
                         {cat.showDoi && <td className="py-3 px-2 sm:px-4" />}
-                        {cat.showVelocity && <td className="hidden sm:table-cell py-3 px-4" />}
+                        {cat.showVelocity && <td className="hidden xl:table-cell py-3 px-4 border-l border-dashed border-border/30" />}
+                        {cat.showVelocity && <td className="hidden xl:table-cell py-3 px-4" />}
                       </tr>
                     </tfoot>
                   </table>
@@ -525,103 +548,6 @@ export function InventoryDashboard({
           );
         })}
 
-        {/* B2B Draft Orders Section */}
-        {inventory?.draftOrderSkus && inventory.draftOrderSkus.length > 0 && (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-            {/* Collapsible Header */}
-            <button
-              onClick={() => onToggleCategory("b2b_drafts")}
-              className="w-full text-left hover:bg-bg-tertiary/30 transition-colors"
-            >
-              <div className="px-4 py-3 flex items-center justify-between">
-                {/* Left: Category name as hero */}
-                <div className="flex items-center gap-3">
-                  <span className={`text-sm transition-transform text-text-muted ${expandedCategories.has("b2b_drafts") ? "rotate-90" : ""}`}>
-                    ▶
-                  </span>
-                  <span className="text-base font-bold uppercase tracking-wide text-purple-400">
-                    B2B DRAFT ORDERS
-                  </span>
-                  <span className="text-sm text-text-tertiary">
-                    ({inventory.draftOrderTotals?.totalOrders || 0} orders)
-                  </span>
-                </div>
-
-                {/* Right: Totals */}
-                <div className="hidden sm:flex text-sm tabular-nums items-center gap-1">
-                  <span className="text-purple-400 font-bold">
-                    {formatNumber(inventory.draftOrderTotals?.totalUnits || 0)}
-                  </span>
-                  <span className="text-text-muted/50 mx-1">units</span>
-                  <span className="text-text-muted/50">•</span>
-                  <span className="text-text-secondary ml-1">
-                    {inventory.draftOrderTotals?.totalSkus || 0} SKUs
-                  </span>
-                </div>
-              </div>
-            </button>
-
-            {/* Expanded Table */}
-            {expandedCategories.has("b2b_drafts") && (
-              <div className="border-t border-border">
-                <table className="w-full text-sm table-fixed">
-                  <colgroup>
-                    <col className="w-[45%] sm:w-[40%]" />
-                    <col className="w-[25%] sm:w-[30%]" />
-                    <col className="w-[30%] sm:w-[30%]" />
-                  </colgroup>
-                  <thead>
-                    <tr className="border-b border-border/50 text-text-muted text-[11px] uppercase tracking-wider bg-bg-tertiary/30">
-                      <th className="text-left py-2.5 px-2 sm:px-3 font-medium">Product</th>
-                      <th className="text-right py-2.5 px-2 sm:px-4 font-medium text-purple-400">
-                        <MetricLabel label="Qty" tooltip="Total units across all draft orders" />
-                      </th>
-                      <th className="text-right py-2.5 px-2 sm:px-4 font-medium">
-                        <MetricLabel label="Orders" tooltip="Number of draft orders containing this SKU" />
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventory.draftOrderSkus.map((item, idx) => (
-                      <tr
-                        key={item.sku}
-                        className={`border-b border-border/20 transition-colors hover:bg-bg-tertiary/40 ${
-                          idx % 2 === 1 ? "bg-bg-tertiary/10" : ""
-                        }`}
-                      >
-                        <td className="py-3 px-2 sm:px-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
-                            <span className="text-sm font-medium truncate text-text-primary">
-                              {item.displayName}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-purple-400">
-                          {formatNumber(item.quantity)}
-                        </td>
-                        <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] text-text-secondary">
-                          {item.orderCount}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-border bg-bg-tertiary/40">
-                      <td className="py-3 px-2 sm:px-3 text-sm font-bold text-text-primary">TOTAL</td>
-                      <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] font-bold text-purple-400">
-                        {formatNumber(inventory.draftOrderTotals?.totalUnits || 0)}
-                      </td>
-                      <td className="py-3 px-2 sm:px-4 text-right tabular-nums text-[15px] text-text-secondary">
-                        {inventory.draftOrderTotals?.totalOrders || 0}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Legend */}
