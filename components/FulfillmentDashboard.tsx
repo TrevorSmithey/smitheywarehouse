@@ -414,10 +414,6 @@ export function FulfillmentDashboard({
     avg7d: (metrics?.warehouses || []).reduce((sum, w) => sum + w.avg_per_day_7d, 0),
   };
 
-  // Today vs 7d average
-  const todayFulfilled = (metrics?.warehouses || []).reduce((sum, w) => sum + w.fulfilled_today, 0);
-  const todayVsAvg = totals.avg7d > 0 ? ((todayFulfilled - totals.avg7d) / totals.avg7d) * 100 : undefined;
-
   // Loading state with progress indicator
   const [loadingProgress, setLoadingProgress] = useState(0);
 
@@ -489,8 +485,8 @@ export function FulfillmentDashboard({
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <h2 className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">FULFILLMENT OVERVIEW</h2>
           <div className="flex items-center gap-1">
-            {(["today", "3days", "7days", "30days"] as const).map((option) => {
-              const labels = { today: "Today", "3days": "3D", "7days": "7D", "30days": "30D" };
+            {(["today", "yesterday", "3days", "7days", "30days"] as const).map((option) => {
+              const labels = { today: "Today", yesterday: "Yesterday", "3days": "3D", "7days": "7D", "30days": "30D" };
               return (
                 <button
                   key={option}
@@ -547,19 +543,28 @@ export function FulfillmentDashboard({
           })()}
 
           {/* 4. Total Shipped */}
-          <div>
-            <div className="text-4xl font-bold tabular-nums text-status-good">
-              {loading ? "—" : formatNumber(totals.today)}
-            </div>
-            <div className="text-xs mt-1">
-              <span className="text-text-muted">SHIPPED</span>
-              {dateRangeOption === "today" && todayVsAvg !== undefined && todayVsAvg !== 0 && !loading && (
-                <span className={`ml-2 ${todayVsAvg > 0 ? "text-status-good" : "text-status-bad"}`}>
-                  {todayVsAvg > 0 ? "↑" : "↓"}{Math.abs(todayVsAvg).toFixed(0)}% vs 7d avg
-                </span>
-              )}
-            </div>
-          </div>
+          {(() => {
+            // Calculate comparison for single-day views (today or yesterday)
+            const shippedInRange = totals.today;
+            const vsAvg = totals.avg7d > 0 ? ((shippedInRange - totals.avg7d) / totals.avg7d) * 100 : undefined;
+            const showComparison = (dateRangeOption === "today" || dateRangeOption === "yesterday") && vsAvg !== undefined && vsAvg !== 0;
+
+            return (
+              <div>
+                <div className="text-4xl font-bold tabular-nums text-status-good">
+                  {loading ? "—" : formatNumber(shippedInRange)}
+                </div>
+                <div className="text-xs mt-1">
+                  <span className="text-text-muted">SHIPPED</span>
+                  {showComparison && !loading && (
+                    <span className={`ml-2 ${vsAvg > 0 ? "text-status-good" : "text-status-bad"}`}>
+                      {vsAvg > 0 ? "↑" : "↓"}{Math.abs(vsAvg).toFixed(0)}% vs 7d avg
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 5. Engraving */}
           <div>
