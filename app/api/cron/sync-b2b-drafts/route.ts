@@ -11,6 +11,7 @@ const SHOPIFY_B2B_STORE = process.env.SHOPIFY_B2B_STORE_URL;
 const SHOPIFY_B2B_TOKEN = process.env.SHOPIFY_B2B_ADMIN_TOKEN;
 
 // GraphQL query for open draft orders
+// Note: customer field removed - B2B token doesn't have read_customers scope
 const DRAFT_ORDERS_QUERY = `
   query DraftOrders($cursor: String) {
     draftOrders(first: 100, query: "status:open", after: $cursor) {
@@ -19,9 +20,6 @@ const DRAFT_ORDERS_QUERY = `
           id
           name
           createdAt
-          customer {
-            displayName
-          }
           lineItems(first: 100) {
             edges {
               node {
