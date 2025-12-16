@@ -112,6 +112,16 @@ When returning customer arrays with metrics, always include:
 - `ns_transactions` - Order/invoice history
 - `sync_logs` - Cron job execution history
 - `typeform_leads` - Lead tracking from forms
+- `b2b_draft_orders` - Open B2B draft orders from Shopify (synced hourly, full resync approach)
+
+### Inventory Dashboard
+- **Data Priority Tiers**:
+  - Tier 1 (Primary): Product, Hobson, Selery, Total, DOI - full opacity
+  - Tier 2 (Secondary): Vel, Draft - 70% opacity (`text-sky-400/70`, `text-purple-400/70`)
+- **Velocity**: 3-day moving average, retail-only (from `line_items` + `orders`, NOT `b2b_fulfilled`)
+- **Draft column**: Open wholesale draft orders from `b2b_draft_orders` table
+- **MetricLabel component**: Tooltip-on-hover for column headers, no visible icons
+- **Desktop columns**: Vel and Draft only show on `xl:` breakpoint (hidden on mobile)
 
 ---
 
