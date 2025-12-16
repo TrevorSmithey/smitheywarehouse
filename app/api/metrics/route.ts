@@ -260,27 +260,10 @@ export async function GET(request: Request) {
         .not("warehouse", "is", null)
         .limit(QUERY_LIMITS.LEAD_TIME),
 
-      // Engraving queue - line items with SKU 'Smith-Eng' or 'Smith-Eng2'
-      // Filter for non-canceled orders and unfulfilled/partial orders at DB level
-      // Note: .neq("fulfilled") does NOT include NULL in PostgREST
-      // So we use .or() to match NULL (unfulfilled) OR 'partial'
-      // Restoration orders excluded at query level
-      // Engraving queue - Smithey only (engraving orders only come to Smithey)
-      supabase
-        .from("line_items")
-        .select(`
-          order_id,
-          sku,
-          quantity,
-          fulfilled_quantity,
-          orders!inner(fulfillment_status, canceled, is_restoration, warehouse)
-        `)
-        .or("sku.eq.Smith-Eng,sku.eq.Smith-Eng2")
-        .eq("orders.canceled", false)
-        .eq("orders.is_restoration", false)
-        .eq("orders.warehouse", "smithey")
-        .or("fulfillment_status.is.null,fulfillment_status.eq.partial", { referencedTable: "orders" })
-        .limit(QUERY_LIMITS.ENGRAVING_QUEUE),
+      // Engraving queue - uses RPC for efficient aggregation
+      // RPC handles all filtering: unfulfilled/partial orders, non-canceled, non-restoration, Smithey warehouse
+      // Returns: { total_units: number, order_count: number }
+      supabase.rpc("get_engraving_queue_stats"),
 
       // Unfulfilled orders for aging analysis
       // Restoration orders excluded at query level
@@ -295,16 +278,21 @@ export async function GET(request: Request) {
     ]);
 
     // Check all query limits for potential data truncation
+    // Note: engraving queue uses RPC aggregation, no limit check needed
     checkQueryLimit(dailyResult.data?.length || 0, QUERY_LIMITS.DAILY_FULFILLMENTS, "daily_fulfillments");
     checkQueryLimit(skuQueueResult.data?.length || 0, QUERY_LIMITS.SKU_QUEUE, "sku_queue");
     checkQueryLimit(transitDataResult.data?.length || 0, QUERY_LIMITS.TRANSIT_DATA, "transit_data");
     checkQueryLimit(leadTimeResult.data?.length || 0, QUERY_LIMITS.LEAD_TIME, "lead_time");
-    checkQueryLimit(engravingQueueResult.data?.length || 0, QUERY_LIMITS.ENGRAVING_QUEUE, "engraving_queue");
     checkQueryLimit(agingDataResult.data?.length || 0, QUERY_LIMITS.AGING_DATA, "aging_data");
 
     // Fail fast if consolidated count query errors
     if (consolidatedCounts.error) {
       throw new Error(`Consolidated count query failed: ${consolidatedCounts.error.message}`);
+    }
+
+    // Log engraving queue errors (don't fail, but make them visible)
+    if (engravingQueueResult.error) {
+      console.error("[METRICS] Engraving queue query error:", engravingQueueResult.error);
     }
 
     // Extract counts from consolidated query result
@@ -498,8 +486,17 @@ export async function GET(request: Request) {
     const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
     const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
 
-    // Process engraving queue - restoration already filtered at query level
-    const engravingQueue = processEngravingQueue(engravingQueueResult.data || []);
+    // Process engraving queue from RPC result
+    // RPC returns { total_units: number, order_count: number } directly
+    const engravingRpcData = engravingQueueResult.data as { total_units: number; order_count: number } | null;
+    const engravingQueue: EngravingQueue = engravingRpcData
+      ? {
+          total_units: engravingRpcData.total_units,
+          estimated_days: Math.round((engravingRpcData.total_units / ENGRAVING_DAILY_CAPACITY) * 10) / 10,
+          order_count: engravingRpcData.order_count,
+          smithey_engraving_orders: engravingRpcData.order_count,
+        }
+      : { total_units: 0, estimated_days: 0, order_count: 0, smithey_engraving_orders: 0 };
 
     // Process order aging for bar chart - restoration already filtered at query level
     const orderAging = processOrderAging(agingData, now);
