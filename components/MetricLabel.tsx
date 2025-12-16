@@ -17,8 +17,7 @@ interface MetricLabelProps {
 export function MetricLabel({ label, tooltip, className = "" }: MetricLabelProps) {
   return (
     <span className={`inline-flex items-center gap-1 relative group cursor-help ${className}`}>
-      {label}
-      {/* Info icon */}
+      {/* Info icon - on the LEFT of label */}
       <svg
         className="w-3 h-3 text-text-muted/50 group-hover:text-text-muted transition-colors flex-shrink-0"
         fill="none"
@@ -29,6 +28,7 @@ export function MetricLabel({ label, tooltip, className = "" }: MetricLabelProps
         <circle cx="12" cy="12" r="10" />
         <path d="M12 16v-4M12 8h.01" />
       </svg>
+      {label}
       {/* Tooltip */}
       <span className="
         absolute bottom-full left-1/2 -translate-x-1/2 mb-2
