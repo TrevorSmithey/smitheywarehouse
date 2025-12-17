@@ -925,13 +925,9 @@ function NewCustomersSection({
 
       <div className="max-h-[350px] overflow-y-auto flex-1">
         {customers.map((customer, idx) => {
-          // Highlight customers whose first order is this year but revenue < $4k (need nurturing)
-          const currentYear = new Date().getFullYear();
-          const firstOrderThisYear = customer.first_sale_date
-            ? new Date(customer.first_sale_date).getFullYear() === currentYear
-            : false;
-          const lowRevenue = customer.total_revenue < 4000;
-          const needsAttention = firstOrderThisYear && lowRevenue;
+          // Highlight new customers with revenue < $4k (need nurturing)
+          // All customers in this section are already 2025 first-time buyers by definition
+          const needsAttention = customer.total_revenue < 4000;
 
           return (
           <Link
