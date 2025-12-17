@@ -183,7 +183,7 @@ function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCo
   if (isCorporate) {
     return (
       <InfoTooltip content="Corporate Gifting Customer">
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help bg-amber-500/20 text-amber-400">
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
           CORP
         </span>
       </InfoTooltip>
@@ -201,7 +201,7 @@ function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCo
   const { label, color, tooltip } = config[segment];
   return (
     <InfoTooltip content={tooltip}>
-      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded cursor-help ${color}`}>
+      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
         {label}
       </span>
     </InfoTooltip>

@@ -442,22 +442,11 @@ export function InventoryDashboard({
                                 )}
                                 {/* Info icon with tooltip - hidden on mobile (hover doesn't work on touch) */}
                                 {tooltip && (
-                                  <span className="hidden sm:inline-flex relative group cursor-help flex-shrink-0 ml-1">
-                                    <Info className="w-3 h-3 text-text-muted/40 group-hover:text-accent-blue transition-colors" />
-                                    <span className="
-                                      absolute top-full left-0 mt-1.5
-                                      px-3 py-2 rounded
-                                      bg-[#1a1a1a] text-[11px] text-white/90 font-normal leading-relaxed
-                                      opacity-0 group-hover:opacity-100
-                                      translate-y-1 group-hover:translate-y-0
-                                      transition-all duration-200 ease-out
-                                      pointer-events-none whitespace-nowrap z-[100]
-                                      shadow-[0_4px_20px_rgba(0,0,0,0.5)]
-                                      border border-white/5
-                                    ">
+                                  <span className="hidden sm:inline-flex tooltip-trigger ml-1">
+                                    <Info className="tooltip-icon" />
+                                    <span className="tooltip-content tooltip-bottom">
                                       {tooltip}
-                                      {/* Arrow pointing up */}
-                                      <span className="absolute bottom-full left-3 border-[5px] border-transparent border-b-[#1a1a1a]" />
+                                      <span className="tooltip-arrow" />
                                     </span>
                                   </span>
                                 )}

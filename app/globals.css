@@ -195,3 +195,109 @@ body {
 tr.ss-violation:hover {
   animation: ss-pulse 4s ease-in-out infinite;
 }
+
+/* ========================================
+   GLOBAL TOOLTIP SYSTEM
+   ========================================
+   Usage: Wrap trigger element in .tooltip-trigger,
+   add .tooltip-content to the popup.
+
+   Example:
+   <span class="tooltip-trigger">
+     <Info class="tooltip-icon" />
+     <span class="tooltip-content tooltip-bottom">
+       Tooltip text here
+       <span class="tooltip-arrow"></span>
+     </span>
+   </span>
+   ======================================== */
+
+/* Trigger container - uses group hover, NO cursor change */
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Icon styling - subtle, highlights on hover */
+.tooltip-icon {
+  width: 0.75rem;  /* w-3 */
+  height: 0.75rem;
+  color: var(--color-text-muted);
+  opacity: 0.4;
+  transition: color 150ms ease, opacity 150ms ease;
+  flex-shrink: 0;
+}
+
+.tooltip-trigger:hover .tooltip-icon {
+  color: var(--color-accent-blue);
+  opacity: 1;
+}
+
+/* Tooltip popup - hidden by default */
+.tooltip-content {
+  position: absolute;
+  z-index: 100;
+  padding: 0.5rem 0.625rem;  /* py-2 px-2.5 */
+  border-radius: 0.375rem;  /* rounded-md */
+  background-color: #1a1a1a;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+
+  /* Hidden state */
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+/* Show on hover */
+.tooltip-trigger:hover .tooltip-content {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Position variants */
+.tooltip-top {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) scale(0.95);
+  margin-bottom: 0.5rem;
+}
+
+.tooltip-trigger:hover .tooltip-top {
+  transform: translateX(-50%) scale(1);
+}
+
+.tooltip-bottom {
+  top: 100%;
+  left: 0;
+  margin-top: 0.375rem;
+}
+
+/* Arrow styling */
+.tooltip-arrow {
+  position: absolute;
+  border: 5px solid transparent;
+}
+
+/* Arrow for top-positioned tooltip (points down) */
+.tooltip-top .tooltip-arrow {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-top-color: #1a1a1a;
+  margin-top: -1px;
+}
+
+/* Arrow for bottom-positioned tooltip (points up) */
+.tooltip-bottom .tooltip-arrow {
+  bottom: 100%;
+  left: 0.75rem;
+  border-bottom-color: #1a1a1a;
+}
