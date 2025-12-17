@@ -408,3 +408,318 @@ export async function fetchWholesaleCustomers(
 
   return executeSuiteQL<NSCustomer>(query);
 }
+
+// ============================================================================
+// P&L Data Types and Functions
+// ============================================================================
+
+export interface NSPLByItem {
+  year_month: string;
+  item_name: string;
+  class_id: string;
+  total: string;
+}
+
+export interface NSPLByAccount {
+  year_month: string;
+  class_id: string;
+  account_number: string;
+  account_name: string;
+  total: string;
+}
+
+/**
+ * Categorize item SKU into product category
+ */
+export function categorizeItem(sku: string | null): string {
+  if (!sku) return "Other";
+  const upper = sku.toUpperCase();
+
+  // Cast Iron patterns
+  if (upper.startsWith("SMITH-CI-") || upper.includes("-CI-")) return "Cast Iron";
+
+  // Carbon Steel patterns
+  if (upper.startsWith("SMITH-CS-") || upper.includes("-CS-")) return "Carbon Steel";
+
+  // Glass Lids (these are Smith-AC-Glid*)
+  if (upper.includes("SMITH-AC-GLID") || upper.includes("-GLID")) return "Glass Lids";
+
+  // Accessories (spatulas, towels, aprons, etc.) - but not glass lids
+  if (
+    (upper.startsWith("SMITH-AC-") && !upper.includes("GLID")) ||
+    upper.startsWith("SMITH-BK-") ||
+    upper.includes("SPAT") ||
+    upper.includes("TOWEL") ||
+    upper.includes("APRON") ||
+    upper.includes("MITT") ||
+    upper.includes("SCRUB") ||
+    upper.includes("CARE")
+  )
+    return "Accessories";
+
+  // Engraving
+  if (upper.includes("SMITH-ENG") || upper === "SMITH-ENG") return "Engraving";
+
+  // Services
+  if (upper.includes("SERVICE") || upper.includes("REPAIR") || upper.includes("RESTORATION"))
+    return "Services";
+
+  return "Other";
+}
+
+/**
+ * Get channel name from NS class ID
+ */
+export function getChannelFromClassId(classId: string | null): string {
+  if (classId === "4") return "Web";
+  if (classId === "5") return "Wholesale";
+  return "Other";
+}
+
+/**
+ * P&L Aggregated Data Type
+ * Pre-aggregated by month, channel, and category in NetSuite query
+ */
+export interface NSPLAggregated {
+  year_month: string;
+  channel: string;
+  category: string;
+  total: string;
+}
+
+/**
+ * Fetch P&L data from income accounts (the source of truth for P&L)
+ * Uses transactionaccountingline to get accurate accounting amounts
+ * Returns data by account, channel, and month
+ *
+ * EXCLUDES account 40000 "Sales" which contains "Historical Tax" entries,
+ * not actual product revenue. This matches how Fathom calculates P&L.
+ *
+ * IMPORTANT: Uses SUM(amount * -1) for revenue accounts because:
+ * - Income account credits are negative (e.g., -$1000 for $1000 sale)
+ * - Discount account debits are positive (e.g., +$100 for $100 discount)
+ * - Multiplying by -1 converts credits to positive revenue
+ * - Discounts stay positive (they reduce net revenue separately)
+ */
+export async function fetchPLFromAccounts(
+  startDate: string, // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
+): Promise<NSPLAggregated[]> {
+  // Query income accounts by class (channel) - this is how Fathom gets data
+  // IMPORTANT: Exclude account 40000 which is "Historical Tax (sales history only)"
+  // Use SUM(amount * -1) to convert credit amounts to positive revenue
+  const query = `
+    SELECT
+      TO_CHAR(t.trandate, 'YYYY-MM') as year_month,
+      CASE
+        WHEN tl.class = 4 THEN 'Web'
+        WHEN tl.class = 5 THEN 'Wholesale'
+        ELSE 'Other'
+      END as channel,
+      CASE
+        WHEN a.acctnumber = '40200' THEN 'Cookware'
+        WHEN a.acctnumber = '40100' THEN 'Accessories'
+        WHEN a.acctnumber LIKE '403%' THEN 'Services'
+        WHEN a.acctnumber LIKE '404%' THEN 'Shipping Income'
+        WHEN a.acctnumber LIKE '405%' THEN 'Discounts'
+        ELSE 'Other'
+      END as category,
+      SUM(tal.amount * -1) as total
+    FROM transactionaccountingline tal
+    JOIN transaction t ON tal.transaction = t.id
+    JOIN account a ON tal.account = a.id
+    LEFT JOIN transactionline tl ON tal.transactionline = tl.id AND tal.transaction = tl.transaction
+    WHERE t.posting = 'T'
+    AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
+    AND t.trandate <= TO_DATE('${endDate}', 'YYYY-MM-DD')
+    AND a.accttype = 'Income'
+    AND a.acctnumber != '40000'
+    GROUP BY
+      TO_CHAR(t.trandate, 'YYYY-MM'),
+      CASE
+        WHEN tl.class = 4 THEN 'Web'
+        WHEN tl.class = 5 THEN 'Wholesale'
+        ELSE 'Other'
+      END,
+      CASE
+        WHEN a.acctnumber = '40200' THEN 'Cookware'
+        WHEN a.acctnumber = '40100' THEN 'Accessories'
+        WHEN a.acctnumber LIKE '403%' THEN 'Services'
+        WHEN a.acctnumber LIKE '404%' THEN 'Shipping Income'
+        WHEN a.acctnumber LIKE '405%' THEN 'Discounts'
+        ELSE 'Other'
+      END
+    ORDER BY year_month, channel, category
+  `;
+
+  console.log(`[PL-FETCH] Fetching P&L from income accounts...`);
+  const results = await executeSuiteQL<NSPLAggregated>(query);
+  console.log(`[PL-FETCH] Got ${results.length} account-level rows`);
+  return results;
+}
+
+/**
+ * Fetch cookware breakdown (Cast Iron, Carbon Steel, Glass Lids)
+ * Uses account 40200 with item categorization
+ * Uses SUM(amount * -1) to convert credit amounts to positive revenue
+ */
+export async function fetchPLCookwareBreakdown(
+  startDate: string, // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
+): Promise<NSPLAggregated[]> {
+  // Break down account 40200 (Cookware) by SKU pattern
+  // Use SUM(amount * -1) since income credits are negative
+  const query = `
+    SELECT
+      TO_CHAR(t.trandate, 'YYYY-MM') as year_month,
+      CASE
+        WHEN tl.class = 4 THEN 'Web'
+        WHEN tl.class = 5 THEN 'Wholesale'
+        ELSE 'Other'
+      END as channel,
+      CASE
+        WHEN UPPER(BUILTIN.DF(tl.item)) LIKE '%CI-%' THEN 'Cast Iron'
+        WHEN UPPER(BUILTIN.DF(tl.item)) LIKE '%CS-%' THEN 'Carbon Steel'
+        WHEN UPPER(BUILTIN.DF(tl.item)) LIKE '%GLID%' THEN 'Glass Lids'
+        ELSE 'Other Cookware'
+      END as category,
+      SUM(tal.amount * -1) as total
+    FROM transactionaccountingline tal
+    JOIN transaction t ON tal.transaction = t.id
+    JOIN account a ON tal.account = a.id
+    JOIN transactionline tl ON tal.transactionline = tl.id AND tal.transaction = tl.transaction
+    WHERE t.posting = 'T'
+    AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
+    AND t.trandate <= TO_DATE('${endDate}', 'YYYY-MM-DD')
+    AND a.acctnumber = '40200'
+    GROUP BY
+      TO_CHAR(t.trandate, 'YYYY-MM'),
+      CASE
+        WHEN tl.class = 4 THEN 'Web'
+        WHEN tl.class = 5 THEN 'Wholesale'
+        ELSE 'Other'
+      END,
+      CASE
+        WHEN UPPER(BUILTIN.DF(tl.item)) LIKE '%CI-%' THEN 'Cast Iron'
+        WHEN UPPER(BUILTIN.DF(tl.item)) LIKE '%CS-%' THEN 'Carbon Steel'
+        WHEN UPPER(BUILTIN.DF(tl.item)) LIKE '%GLID%' THEN 'Glass Lids'
+        ELSE 'Other Cookware'
+      END
+    ORDER BY year_month, channel, category
+  `;
+
+  console.log(`[PL-FETCH] Fetching cookware breakdown...`);
+  const results = await executeSuiteQL<NSPLAggregated>(query);
+  console.log(`[PL-FETCH] Got ${results.length} cookware breakdown rows`);
+  return results;
+}
+
+/**
+ * @deprecated Use fetchPLFromAccounts + fetchPLCookwareBreakdown instead
+ */
+export async function fetchPLCookware(
+  startDate: string,
+  endDate: string
+): Promise<NSPLAggregated[]> {
+  console.warn(`[PL-FETCH] fetchPLCookware is deprecated. Use fetchPLFromAccounts + fetchPLCookwareBreakdown.`);
+  return [];
+}
+
+/**
+ * Fetch P&L data for non-product income accounts
+ * Services (40300), Shipping (40400), Discounts (40505)
+ * Pre-aggregated by account, month, and channel
+ */
+export async function fetchPLAccounts(
+  startDate: string, // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
+): Promise<NSPLAggregated[]> {
+  // Query income accounts directly from transactionaccountingline
+  // Only get Services, Shipping, and Discounts (not Cookware/Accessories which come from items)
+  const query = `
+    SELECT
+      TO_CHAR(t.trandate, 'YYYY-MM') as year_month,
+      CASE
+        WHEN tl.class = 4 THEN 'Web'
+        WHEN tl.class = 5 THEN 'Wholesale'
+        ELSE 'Other'
+      END as channel,
+      CASE
+        WHEN a.acctnumber LIKE '403%' THEN 'Services'
+        WHEN a.acctnumber LIKE '404%' THEN 'Shipping Income'
+        WHEN a.acctnumber = '40505' THEN 'Discounts'
+        ELSE 'Other'
+      END as category,
+      SUM(tal.amount) as total
+    FROM transactionaccountingline tal
+    JOIN transaction t ON tal.transaction = t.id
+    JOIN transactionline tl ON tal.transactionline = tl.id AND tal.transaction = tl.transaction
+    JOIN account a ON tal.account = a.id
+    WHERE t.posting = 'T'
+    AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
+    AND t.trandate <= TO_DATE('${endDate}', 'YYYY-MM-DD')
+    AND a.accttype = 'Income'
+    AND (a.acctnumber LIKE '403%' OR a.acctnumber LIKE '404%' OR a.acctnumber = '40505')
+    GROUP BY
+      TO_CHAR(t.trandate, 'YYYY-MM'),
+      CASE
+        WHEN tl.class = 4 THEN 'Web'
+        WHEN tl.class = 5 THEN 'Wholesale'
+        ELSE 'Other'
+      END,
+      CASE
+        WHEN a.acctnumber LIKE '403%' THEN 'Services'
+        WHEN a.acctnumber LIKE '404%' THEN 'Shipping Income'
+        WHEN a.acctnumber = '40505' THEN 'Discounts'
+        ELSE 'Other'
+      END
+    ORDER BY year_month, channel, category
+  `;
+
+  console.log(`[PL-FETCH] Fetching aggregated account data...`);
+  const results = await executeSuiteQL<NSPLAggregated>(query);
+  console.log(`[PL-FETCH] Got ${results.length} aggregated account rows`);
+  return results;
+}
+
+/**
+ * @deprecated Use fetchPLCookware + fetchPLAccounts instead
+ * Fetch P&L data by item for a date range (OLD - inefficient pagination)
+ */
+export async function fetchPLByItem(
+  startDate: string,
+  endDate: string
+): Promise<NSPLByItem[]> {
+  console.warn(`[PL-FETCH] fetchPLByItem is deprecated. Use fetchPLCookware + fetchPLAccounts.`);
+  // Return empty - this function shouldn't be used anymore
+  return [];
+}
+
+/**
+ * Fetch P&L data by income account for a date range
+ * Returns revenue grouped by month, account, and class (channel)
+ */
+export async function fetchPLByAccount(
+  startDate: string, // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
+): Promise<NSPLByAccount[]> {
+  const query = `
+    SELECT
+      TO_CHAR(t.trandate, 'YYYY-MM') as year_month,
+      tl.class as class_id,
+      a.acctnumber as account_number,
+      a.accountsearchdisplayname as account_name,
+      SUM(tal.amount) as total
+    FROM transactionaccountingline tal
+    JOIN transaction t ON tal.transaction = t.id
+    JOIN transactionline tl ON tal.transactionline = tl.id AND tal.transaction = tl.transaction
+    JOIN account a ON tal.account = a.id
+    WHERE t.posting = 'T'
+    AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
+    AND t.trandate <= TO_DATE('${endDate}', 'YYYY-MM-DD')
+    AND a.accttype = 'Income'
+    GROUP BY TO_CHAR(t.trandate, 'YYYY-MM'), tl.class, a.acctnumber, a.accountsearchdisplayname
+  `;
+
+  return executeSuiteQL<NSPLByAccount>(query);
+}
