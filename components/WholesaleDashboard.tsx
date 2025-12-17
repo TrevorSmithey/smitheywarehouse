@@ -924,11 +924,20 @@ function NewCustomersSection({
       )}
 
       <div className="max-h-[350px] overflow-y-auto flex-1">
-        {customers.map((customer, idx) => (
+        {customers.map((customer, idx) => {
+          // Highlight customers whose first order is this year but revenue < $4k (need nurturing)
+          const currentYear = new Date().getFullYear();
+          const firstOrderThisYear = customer.first_sale_date
+            ? new Date(customer.first_sale_date).getFullYear() === currentYear
+            : false;
+          const lowRevenue = customer.total_revenue < 4000;
+          const needsAttention = firstOrderThisYear && lowRevenue;
+
+          return (
           <Link
             key={customer.ns_customer_id}
             href={`/sales/customer/${customer.ns_customer_id}`}
-            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors cursor-pointer"
+            className={`flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] cursor-pointer ${needsAttention ? "ss-violation" : "transition-colors"}`}
           >
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <span className="text-[10px] text-text-muted tabular-nums w-5">{idx + 1}</span>
@@ -955,7 +964,8 @@ function NewCustomersSection({
               )}
             </div>
           </Link>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
