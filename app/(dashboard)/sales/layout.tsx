@@ -14,9 +14,11 @@ interface SalesContextType {
   // Wholesale data
   wholesaleData: WholesaleResponse | null;
   wholesaleLoading: boolean;
+  wholesaleError: string | null;
   // Leads data
   leadsData: LeadsResponse | null;
   leadsLoading: boolean;
+  leadsError: string | null;
   // Period selector (shared for wholesale)
   period: WholesalePeriod;
   setPeriod: (period: WholesalePeriod) => void;
@@ -51,24 +53,32 @@ export default function SalesLayout({
   // Wholesale state
   const [wholesaleData, setWholesaleData] = useState<WholesaleResponse | null>(null);
   const [wholesaleLoading, setWholesaleLoading] = useState(false);
+  const [wholesaleError, setWholesaleError] = useState<string | null>(null);
   const [period, setPeriod] = useState<WholesalePeriod>("ytd");
 
   // Leads state
   const [leadsData, setLeadsData] = useState<LeadsResponse | null>(null);
   const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState<string | null>(null);
 
   // Fetch wholesale data
   const fetchWholesale = useCallback(async () => {
     try {
       setWholesaleLoading(true);
+      setWholesaleError(null);
       setIsRefreshing(true);
       const res = await fetch(`/api/wholesale?period=${period}`);
-      if (!res.ok) throw new Error("Failed to fetch wholesale data");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch wholesale data (${res.status})`);
+      }
       const result: WholesaleResponse = await res.json();
       setWholesaleData(result);
       setLastRefresh(new Date());
     } catch (err) {
-      console.error("Wholesale fetch error:", err);
+      const message = err instanceof Error ? err.message : "Unknown error loading wholesale data";
+      console.error("Wholesale fetch error:", message);
+      setWholesaleError(message);
     } finally {
       setWholesaleLoading(false);
       setIsRefreshing(false);
@@ -79,14 +89,20 @@ export default function SalesLayout({
   const fetchLeads = useCallback(async () => {
     try {
       setLeadsLoading(true);
+      setLeadsError(null);
       setIsRefreshing(true);
       const res = await fetch("/api/leads");
-      if (!res.ok) throw new Error("Failed to fetch leads data");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch leads data (${res.status})`);
+      }
       const result: LeadsResponse = await res.json();
       setLeadsData(result);
       setLastRefresh(new Date());
     } catch (err) {
-      console.error("Leads fetch error:", err);
+      const message = err instanceof Error ? err.message : "Unknown error loading leads data";
+      console.error("Leads fetch error:", message);
+      setLeadsError(message);
     } finally {
       setLeadsLoading(false);
       setIsRefreshing(false);
@@ -129,8 +145,10 @@ export default function SalesLayout({
   const contextValue: SalesContextType = {
     wholesaleData,
     wholesaleLoading,
+    wholesaleError,
     leadsData,
     leadsLoading,
+    leadsError,
     period,
     setPeriod,
     refreshWholesale: fetchWholesale,

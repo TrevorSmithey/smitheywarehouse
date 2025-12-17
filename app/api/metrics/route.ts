@@ -47,7 +47,12 @@ async function fetchAllPaginated<T>(
 
     if (error) {
       console.error(`[PAGINATION ERROR] Table ${table} at offset ${offset}:`, error);
-      // Throw instead of silently returning partial data
+      // Return partial data instead of failing completely - more resilient during transient errors
+      if (allData.length > 0) {
+        console.warn(`[PAGINATION] Returning ${allData.length} rows fetched before error for ${table}`);
+        break;
+      }
+      // Only throw if we have no data at all
       throw new Error(`Pagination failed for ${table}: ${error.message}`);
     }
 

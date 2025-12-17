@@ -117,12 +117,24 @@ function calculateYTD(monthlyData: Record<string, MonthlyData>, throughMonth?: n
 
 function yoyPercent(current: number, prior: number): number {
   if (prior === 0) return current > 0 ? 100 : 0;
-  return ((current - prior) / Math.abs(prior)) * 100;
+  const pct = ((current - prior) / Math.abs(prior)) * 100;
+  // Cap at ±1000% to prevent UI issues with extreme outliers
+  return Math.min(Math.max(pct, -1000), 1000);
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const year = parseInt(url.searchParams.get("year") || new Date().getFullYear().toString());
+  const yearParam = parseInt(url.searchParams.get("year") || new Date().getFullYear().toString());
+
+  // Validate year parameter to prevent invalid queries
+  const currentYear = new Date().getFullYear();
+  if (isNaN(yearParam) || yearParam < 2020 || yearParam > currentYear + 5) {
+    return NextResponse.json(
+      { error: `Invalid year. Must be between 2020 and ${currentYear + 5}` },
+      { status: 400 }
+    );
+  }
+  const year = yearParam;
 
   const supabase = createServiceClient();
 

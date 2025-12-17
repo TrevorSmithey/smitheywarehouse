@@ -67,6 +67,7 @@ type SortDirection = "asc" | "desc";
 interface WholesaleDashboardProps {
   data: WholesaleResponse | null;
   loading: boolean;
+  error?: string | null;
   period: WholesalePeriod;
   onPeriodChange: (period: WholesalePeriod) => void;
   onRefresh: () => void;
@@ -1973,6 +1974,7 @@ function SortableHeader({
 export function WholesaleDashboard({
   data,
   loading,
+  error,
   period,
   onPeriodChange,
   onRefresh,
@@ -2080,6 +2082,28 @@ export function WholesaleDashboard({
       setLoadingProgress(0);
     }
   }, [loading, data]);
+
+  // Error state
+  if (error && !data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-6">
+        <div className="p-6 rounded-full bg-status-error/10">
+          <AlertCircle className="w-12 h-12 text-status-error" />
+        </div>
+        <div className="text-center max-w-md">
+          <p className="text-lg text-text-secondary mb-2">Failed to load wholesale data</p>
+          <p className="text-sm text-text-muted mb-4">{error}</p>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="flex items-center gap-2 px-5 py-2.5 bg-accent-blue text-white text-sm font-medium rounded-lg hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   if (loading && !data) {
     return (

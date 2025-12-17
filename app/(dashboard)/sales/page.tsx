@@ -7,6 +7,7 @@ export default function SalesPage() {
   const {
     wholesaleData,
     wholesaleLoading,
+    wholesaleError,
     period,
     setPeriod,
     refreshWholesale,
@@ -16,6 +17,7 @@ export default function SalesPage() {
     <WholesaleDashboard
       data={wholesaleData}
       loading={wholesaleLoading}
+      error={wholesaleError}
       period={period}
       onPeriodChange={setPeriod}
       onRefresh={refreshWholesale}

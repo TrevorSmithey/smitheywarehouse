@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
 import { SERVICE_SKUS } from "@/lib/constants";
+
+const LOCK_NAME = "sync-b2b-drafts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 1 minute - draft orders are quick to sync
@@ -74,6 +77,7 @@ interface B2BDraftItem {
   quantity: number;
   price: number | null;
   created_at: string;
+  sync_batch_id?: string; // Added for atomic sync
 }
 
 // Extract numeric ID from Shopify GID
@@ -174,19 +178,11 @@ async function syncDraftOrders(
   supabase: ReturnType<typeof createServiceClient>,
   items: B2BDraftItem[]
 ): Promise<number> {
-  // Full resync: truncate and insert fresh data
-  // This ensures we don't keep stale draft orders that have been completed/deleted
-  const { error: truncateError } = await supabase
-    .from("b2b_draft_orders")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000"); // Delete all rows
-
-  if (truncateError) {
-    console.error("Failed to truncate b2b_draft_orders:", truncateError);
-    throw truncateError;
-  }
-
-  if (items.length === 0) return 0;
+  // Atomic sync using batch ID approach:
+  // 1. Insert new data with unique batch ID
+  // 2. Delete old data (different batch ID)
+  // This ensures we never have an empty table state - if insert fails, old data remains
+  const batchId = new Date().toISOString();
 
   // Dedupe items by draft_order_id + sku (combine quantities if same SKU appears multiple times)
   const deduped = new Map<string, B2BDraftItem>();
@@ -196,19 +192,34 @@ async function syncDraftOrders(
     if (existing) {
       existing.quantity += item.quantity;
     } else {
-      deduped.set(key, { ...item });
+      deduped.set(key, { ...item, sync_batch_id: batchId });
     }
   }
   const uniqueItems = Array.from(deduped.values());
 
-  // Insert all items
-  const { error: insertError } = await supabase
-    .from("b2b_draft_orders")
-    .insert(uniqueItems);
+  // Step 1: Insert new items with batch ID (even if empty - marks this batch as complete)
+  if (uniqueItems.length > 0) {
+    const { error: insertError } = await supabase
+      .from("b2b_draft_orders")
+      .insert(uniqueItems);
 
-  if (insertError) {
-    console.error("Failed to insert draft orders:", insertError);
-    throw insertError;
+    if (insertError) {
+      console.error("Failed to insert draft orders:", insertError);
+      throw insertError;
+    }
+  }
+
+  // Step 2: Delete old items (different batch ID OR null) - only after insert succeeds
+  // This ensures we always have data in the table
+  // Note: neq() doesn't match NULL values, so we need to explicitly include them
+  const { error: deleteError } = await supabase
+    .from("b2b_draft_orders")
+    .delete()
+    .or(`sync_batch_id.neq.${batchId},sync_batch_id.is.null`);
+
+  if (deleteError) {
+    // Log but don't fail - old data will be cleaned up next sync
+    console.warn("Failed to clean up old draft orders:", deleteError);
   }
 
   return uniqueItems.length;
@@ -223,6 +234,16 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const supabase = createServiceClient();
 
+  // Acquire lock to prevent concurrent runs
+  const lock = await acquireCronLock(supabase, LOCK_NAME);
+  if (!lock.acquired) {
+    console.warn(`[B2B DRAFTS] Skipping - another sync is in progress`);
+    return NextResponse.json(
+      { success: false, error: "Another sync is already in progress", skipped: true },
+      { status: 409 }
+    );
+  }
+
   try {
     if (!SHOPIFY_B2B_STORE || !SHOPIFY_B2B_TOKEN) {
       return NextResponse.json(
@@ -231,7 +252,7 @@ export async function GET(request: Request) {
       );
     }
 
-    console.log("Starting B2B draft orders sync...");
+    console.log("[B2B DRAFTS] Starting sync...");
 
     // Fetch open draft orders from Shopify
     const draftOrders = await fetchOpenDraftOrders();
@@ -314,6 +335,9 @@ export async function GET(request: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    // Always release the lock, even on error
+    await releaseCronLock(supabase, LOCK_NAME);
   }
 }
 

@@ -9,12 +9,15 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import {
   hasNetSuiteCredentials,
   fetchWholesaleCustomers,
   type NSCustomer,
 } from "@/lib/netsuite";
 import { BATCH_SIZES } from "@/lib/constants";
+
+const LOCK_NAME = "sync-netsuite-customers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -82,6 +85,16 @@ export async function GET(request: Request) {
   }
 
   const supabase = createServiceClient();
+
+  // Acquire lock to prevent concurrent runs
+  const lock = await acquireCronLock(supabase, LOCK_NAME);
+  if (!lock.acquired) {
+    console.warn(`[NETSUITE] Skipping customers sync - another sync is in progress`);
+    return NextResponse.json(
+      { success: false, error: "Another sync is already in progress", skipped: true },
+      { status: 409 }
+    );
+  }
 
   try {
     if (!hasNetSuiteCredentials()) {
@@ -163,6 +176,8 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
+  } finally {
+    await releaseCronLock(supabase, LOCK_NAME);
   }
 }
 
