@@ -63,7 +63,7 @@ const NAV_TABS = [
 
 // Hidden tab - only shown when secret code is entered
 const HIDDEN_TABS = [
-  { href: "/pl", label: "P&L", icon: DollarSign, code: "5555" },
+  { href: "/pl", label: "SALES REPORT", icon: DollarSign, code: "5555" },
 ] as const;
 
 // Secret code to unlock hidden tabs
@@ -104,8 +104,13 @@ export default function DashboardLayout({
         setKeySequence((prev) => {
           const newSeq = (prev + e.key).slice(-4); // Keep last 4 digits
           if (newSeq === SECRET_CODE) {
-            setShowHiddenTabs(true);
-            localStorage.setItem("smithey_pl_unlocked", "true");
+            // Toggle visibility
+            setShowHiddenTabs((current) => {
+              const newValue = !current;
+              localStorage.setItem("smithey_pl_unlocked", newValue ? "true" : "false");
+              return newValue;
+            });
+            return ""; // Clear sequence after toggle
           }
           return newSeq;
         });
