@@ -990,6 +990,15 @@ export async function GET(request: Request) {
       // newCustomerAcquisition remains null on error
     }
 
+    // Warn if transaction-derived first order dates are unavailable
+    // This means we'll fall back to potentially stale/null DB values for first_sale_date
+    if (ytdNewCustomerFirstOrders.size === 0 && ytdNewCustomerIds.size > 0) {
+      console.warn(
+        `[WHOLESALE API] Transaction-derived first order dates unavailable for ${ytdNewCustomerIds.size} new customers. ` +
+        `Falling back to DB first_sale_date values (may be null/stale). Check YoY calculation errors above.`
+      );
+    }
+
     // New customers - all customers acquired in the current calendar year (YTD)
     // Uses ytdNewCustomerIds which identifies customers whose first-ever order was this year
     // Excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)

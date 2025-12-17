@@ -59,6 +59,7 @@ import type {
   WholesaleNewCustomerAcquisition,
 } from "@/lib/types";
 import type { ChurnPrediction, PatternInsightsResponse } from "@/lib/types";
+import { WHOLESALE_THRESHOLDS } from "@/lib/constants";
 
 type SortField = "revenue" | "orders" | "last_order" | "company";
 type SortDirection = "asc" | "desc";
@@ -925,15 +926,16 @@ function NewCustomersSection({
 
       <div className="max-h-[350px] overflow-y-auto flex-1">
         {customers.map((customer, idx) => {
-          // Highlight new customers with revenue < $4k (need nurturing)
-          // All customers in this section are already 2025 first-time buyers by definition
-          const needsAttention = customer.total_revenue < 4000;
+          // Flag new customers with low YTD revenue for proactive sales outreach
+          // All customers in this section are already first-time buyers this year by definition
+          // Visual: pulsing amber background (ss-violation class) to draw attention
+          const needsNurturing = customer.total_revenue < WHOLESALE_THRESHOLDS.NEW_CUSTOMER_NURTURING;
 
           return (
           <Link
             key={customer.ns_customer_id}
             href={`/sales/customer/${customer.ns_customer_id}`}
-            className={`flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] cursor-pointer ${needsAttention ? "ss-violation" : "transition-colors"}`}
+            className={`flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] cursor-pointer transition-colors ${needsNurturing ? "ss-violation" : ""}`}
           >
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <span className="text-[10px] text-text-muted tabular-nums w-5">{idx + 1}</span>

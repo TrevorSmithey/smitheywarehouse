@@ -154,3 +154,22 @@ export function safeArrayAccess<T>(arr: T[] | null | undefined, index: number): 
   }
   return arr[index];
 }
+
+/**
+ * Wholesale Customer Thresholds
+ *
+ * Business logic thresholds for wholesale customer analysis.
+ * These determine visual flags, health status, and sales team actions.
+ */
+export const WHOLESALE_THRESHOLDS = {
+  /**
+   * New customer nurturing threshold ($4,000 YTD revenue)
+   *
+   * New customers (first order this year) with YTD revenue below this
+   * threshold are flagged for proactive sales outreach. Rationale:
+   * - Customers spending < $4k in their first year often need onboarding support
+   * - Historical data shows customers > $4k first-year revenue have higher retention
+   * - Visual indicator: pulsing amber highlight (ss-violation class)
+   */
+  NEW_CUSTOMER_NURTURING: 4000,
+} as const;
