@@ -1078,6 +1078,22 @@ export default function PLPage() {
                                     <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
                                   </linearGradient>
                                 </defs>
+                                <XAxis dataKey="month" hide />
+                                <Tooltip
+                                  content={({ active, payload }) => {
+                                    if (!active || !payload?.[0]) return null;
+                                    const data = payload[0].payload;
+                                    const yoy = data.web;
+                                    return (
+                                      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-lg px-2.5 py-1.5 shadow-lg">
+                                        <div className="text-[10px] text-text-tertiary font-medium">{data.month}</div>
+                                        <div className={`text-sm font-bold ${yoy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                          {yoy >= 0 ? "+" : ""}{yoy.toFixed(1)}%
+                                        </div>
+                                      </div>
+                                    );
+                                  }}
+                                />
                                 <ReferenceLine y={0} stroke="#374151" strokeWidth={0.5} />
                                 <Area
                                   type="monotone"
@@ -1086,6 +1102,7 @@ export default function PLPage() {
                                   strokeWidth={1.5}
                                   fill="url(#webSparkGradient)"
                                   dot={false}
+                                  activeDot={{ r: 3, fill: "#3B82F6", stroke: "#fff", strokeWidth: 1 }}
                                 />
                               </AreaChart>
                             </ResponsiveContainer>
@@ -1145,6 +1162,22 @@ export default function PLPage() {
                                     <stop offset="100%" stopColor="#F97316" stopOpacity={0} />
                                   </linearGradient>
                                 </defs>
+                                <XAxis dataKey="month" hide />
+                                <Tooltip
+                                  content={({ active, payload }) => {
+                                    if (!active || !payload?.[0]) return null;
+                                    const data = payload[0].payload;
+                                    const yoy = data.wholesale;
+                                    return (
+                                      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-lg px-2.5 py-1.5 shadow-lg">
+                                        <div className="text-[10px] text-text-tertiary font-medium">{data.month}</div>
+                                        <div className={`text-sm font-bold ${yoy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                          {yoy >= 0 ? "+" : ""}{yoy.toFixed(1)}%
+                                        </div>
+                                      </div>
+                                    );
+                                  }}
+                                />
                                 <ReferenceLine y={0} stroke="#374151" strokeWidth={0.5} />
                                 <Area
                                   type="monotone"
@@ -1153,6 +1186,7 @@ export default function PLPage() {
                                   strokeWidth={1.5}
                                   fill="url(#wholesaleSparkGradient)"
                                   dot={false}
+                                  activeDot={{ r: 3, fill: "#F97316", stroke: "#fff", strokeWidth: 1 }}
                                 />
                               </AreaChart>
                             </ResponsiveContainer>
