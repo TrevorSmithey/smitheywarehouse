@@ -1021,10 +1021,14 @@ export default function PLPage() {
                           content={({ active, payload, label }) => {
                             if (!active || !payload || payload.length < 1) return null;
                             const val = payload[0]?.value as number;
+                            const isNegative = val < 0;
                             return (
-                              <div className="bg-gray-900/95 backdrop-blur border border-emerald-500/20 rounded-lg px-3 py-2 shadow-xl">
-                                <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label} {year}</div>
-                                <div className={`text-lg font-bold ${val >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                              <div className={`bg-gray-900/95 backdrop-blur rounded-lg px-3 py-2 shadow-xl border ${isNegative ? "border-red-500/40" : "border-emerald-500/20"}`}>
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <div className={`w-1.5 h-1.5 rounded-full ${isNegative ? "bg-red-400" : "bg-emerald-400"}`} />
+                                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">{label} {year}</span>
+                                </div>
+                                <div className={`text-lg font-bold ${isNegative ? "text-red-400" : "text-emerald-400"}`}>
                                   {val >= 0 ? "+" : ""}{val?.toFixed(1)}%
                                 </div>
                               </div>
@@ -1084,10 +1088,14 @@ export default function PLPage() {
                                     if (!active || !payload?.[0]) return null;
                                     const data = payload[0].payload;
                                     const yoy = data.web;
+                                    const isNegative = yoy < 0;
                                     return (
-                                      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-lg px-2.5 py-1.5 shadow-lg">
-                                        <div className="text-[10px] text-text-tertiary font-medium">{data.month}</div>
-                                        <div className={`text-sm font-bold ${yoy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                      <div className={`bg-bg-primary/95 backdrop-blur rounded-lg px-2.5 py-1.5 shadow-lg border ${isNegative ? "border-red-500/40" : "border-border"}`}>
+                                        <div className="flex items-center gap-1">
+                                          <div className={`w-1.5 h-1.5 rounded-full ${isNegative ? "bg-red-400" : "bg-emerald-400"}`} />
+                                          <span className="text-[10px] text-text-tertiary font-medium">{data.month}</span>
+                                        </div>
+                                        <div className={`text-sm font-bold ${isNegative ? "text-red-400" : "text-emerald-400"}`}>
                                           {yoy >= 0 ? "+" : ""}{yoy.toFixed(1)}%
                                         </div>
                                       </div>
@@ -1168,10 +1176,14 @@ export default function PLPage() {
                                     if (!active || !payload?.[0]) return null;
                                     const data = payload[0].payload;
                                     const yoy = data.wholesale;
+                                    const isNegative = yoy < 0;
                                     return (
-                                      <div className="bg-bg-primary/95 backdrop-blur border border-border rounded-lg px-2.5 py-1.5 shadow-lg">
-                                        <div className="text-[10px] text-text-tertiary font-medium">{data.month}</div>
-                                        <div className={`text-sm font-bold ${yoy >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                      <div className={`bg-bg-primary/95 backdrop-blur rounded-lg px-2.5 py-1.5 shadow-lg border ${isNegative ? "border-red-500/40" : "border-border"}`}>
+                                        <div className="flex items-center gap-1">
+                                          <div className={`w-1.5 h-1.5 rounded-full ${isNegative ? "bg-red-400" : "bg-emerald-400"}`} />
+                                          <span className="text-[10px] text-text-tertiary font-medium">{data.month}</span>
+                                        </div>
+                                        <div className={`text-sm font-bold ${isNegative ? "text-red-400" : "text-emerald-400"}`}>
                                           {yoy >= 0 ? "+" : ""}{yoy.toFixed(1)}%
                                         </div>
                                       </div>
