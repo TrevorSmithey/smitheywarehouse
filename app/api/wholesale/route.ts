@@ -777,6 +777,9 @@ export async function GET(request: Request) {
     const partialErrors: { section: string; message: string }[] = [];
     // Set to track YTD new customer IDs (populated inside try block, used for table after)
     const ytdNewCustomerIds = new Set<number>();
+    // Map to store transaction-derived first order dates for new customers
+    // This ensures we use ACTUAL first order dates, not stale/null DB values
+    const ytdNewCustomerFirstOrders = new Map<number, string>();
 
     // Build set of corporate customer IDs to exclude from YoY calculation
     // Uses DB computed column `is_corporate` (non-recurring gifting accounts, not part of B2B book)
@@ -859,8 +862,9 @@ export async function GET(request: Request) {
             firstOrderDate: firstTxn.date,
             companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
-          // Populate external Set for newCustomers table (outside try block)
+          // Populate external Set/Map for newCustomers table (outside try block)
           ytdNewCustomerIds.add(customerId);
+          ytdNewCustomerFirstOrders.set(customerId, firstTxn.date);
         }
       }
 
@@ -989,10 +993,16 @@ export async function GET(request: Request) {
     // New customers - all customers acquired in the current calendar year (YTD)
     // Uses ytdNewCustomerIds which identifies customers whose first-ever order was this year
     // Excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
+    // IMPORTANT: Override first_sale_date with transaction-derived date (DB value may be null/stale)
     const newCustomers: WholesaleCustomer[] = b2bCustomers
       .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.total_revenue || 0) > 0)
+      .map((c) => ({
+        ...c,
+        // Use transaction-derived first order date, falling back to DB value
+        first_sale_date: ytdNewCustomerFirstOrders.get(c.ns_customer_id) || c.first_sale_date,
+      }))
       .sort((a, b) => {
-        // Sort by first order date (most recent first)
+        // Sort by first order date (most recent first) - now guaranteed to have data
         const aDate = a.first_sale_date ? new Date(a.first_sale_date).getTime() : 0;
         const bDate = b.first_sale_date ? new Date(b.first_sale_date).getTime() : 0;
         return bDate - aDate;
