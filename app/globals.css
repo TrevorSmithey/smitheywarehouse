@@ -197,30 +197,30 @@ tr.ss-violation:hover {
 }
 
 /* ========================================
-   GLOBAL TOOLTIP SYSTEM
+   INFO TOOLTIP SYSTEM
    ========================================
-   Usage: Wrap trigger element in .tooltip-trigger,
-   add .tooltip-content to the popup.
+   Prefixed with "info-" to avoid conflicts with
+   third-party libraries (Recharts, etc).
 
-   Example:
-   <span class="tooltip-trigger">
-     <Info class="tooltip-icon" />
-     <span class="tooltip-content tooltip-bottom">
+   Usage:
+   <span class="info-tip">
+     <Info class="info-tip-icon" />
+     <span class="info-tip-popup info-tip-bottom">
        Tooltip text here
-       <span class="tooltip-arrow"></span>
+       <span class="info-tip-arrow"></span>
      </span>
    </span>
    ======================================== */
 
 /* Trigger container - uses group hover, NO cursor change */
-.tooltip-trigger {
+.info-tip {
   position: relative;
   display: inline-flex;
   align-items: center;
 }
 
 /* Icon styling - subtle, highlights on hover */
-.tooltip-icon {
+.info-tip-icon {
   width: 0.75rem;  /* w-3 */
   height: 0.75rem;
   color: var(--color-text-muted);
@@ -229,13 +229,13 @@ tr.ss-violation:hover {
   flex-shrink: 0;
 }
 
-.tooltip-trigger:hover .tooltip-icon {
+.info-tip:hover .info-tip-icon {
   color: var(--color-accent-blue);
   opacity: 1;
 }
 
 /* Tooltip popup - hidden by default */
-.tooltip-content {
+.info-tip-popup {
   position: absolute;
   z-index: 100;
   padding: 0.5rem 0.625rem;  /* py-2 px-2.5 */
@@ -257,37 +257,37 @@ tr.ss-violation:hover {
 }
 
 /* Show on hover */
-.tooltip-trigger:hover .tooltip-content {
+.info-tip:hover .info-tip-popup {
   opacity: 1;
   transform: scale(1);
 }
 
 /* Position variants */
-.tooltip-top {
+.info-tip-top {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%) scale(0.95);
   margin-bottom: 0.5rem;
 }
 
-.tooltip-trigger:hover .tooltip-top {
+.info-tip:hover .info-tip-top {
   transform: translateX(-50%) scale(1);
 }
 
-.tooltip-bottom {
+.info-tip-bottom {
   top: 100%;
   left: 0;
   margin-top: 0.375rem;
 }
 
 /* Arrow styling */
-.tooltip-arrow {
+.info-tip-arrow {
   position: absolute;
   border: 5px solid transparent;
 }
 
 /* Arrow for top-positioned tooltip (points down) */
-.tooltip-top .tooltip-arrow {
+.info-tip-top .info-tip-arrow {
   top: 100%;
   left: 50%;
   transform: translateX(-50%);
@@ -296,7 +296,7 @@ tr.ss-violation:hover {
 }
 
 /* Arrow for bottom-positioned tooltip (points up) */
-.tooltip-bottom .tooltip-arrow {
+.info-tip-bottom .info-tip-arrow {
   bottom: 100%;
   left: 0.75rem;
   border-bottom-color: #1a1a1a;

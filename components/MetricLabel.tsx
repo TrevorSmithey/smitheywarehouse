@@ -19,12 +19,12 @@ interface MetricLabelProps {
 
 export function MetricLabel({ label, tooltip, className = "" }: MetricLabelProps) {
   return (
-    <span className={`tooltip-trigger gap-1 ${className}`}>
-      <Info className="tooltip-icon" />
+    <span className={`info-tip gap-1 ${className}`}>
+      <Info className="info-tip-icon" />
       {label}
-      <span className="tooltip-content tooltip-top">
+      <span className="info-tip-popup info-tip-top">
         {tooltip}
-        <span className="tooltip-arrow" />
+        <span className="info-tip-arrow" />
       </span>
     </span>
   );

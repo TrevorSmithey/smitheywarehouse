@@ -442,11 +442,11 @@ export function InventoryDashboard({
                                 )}
                                 {/* Info icon with tooltip - hidden on mobile (hover doesn't work on touch) */}
                                 {tooltip && (
-                                  <span className="hidden sm:inline-flex tooltip-trigger ml-1">
-                                    <Info className="tooltip-icon" />
-                                    <span className="tooltip-content tooltip-bottom">
+                                  <span className="hidden sm:inline-flex info-tip ml-1">
+                                    <Info className="info-tip-icon" />
+                                    <span className="info-tip-popup info-tip-bottom">
                                       {tooltip}
-                                      <span className="tooltip-arrow" />
+                                      <span className="info-tip-arrow" />
                                     </span>
                                   </span>
                                 )}
