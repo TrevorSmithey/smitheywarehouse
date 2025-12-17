@@ -994,20 +994,28 @@ export default function PLPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={channelGrowthData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                         <defs>
-                          {/* Gradient for line stroke - green above zero, red below */}
+                          {/* Thermal gradient for line stroke: green → yellow → red
+                              Domain [-20, 60], zero at 75% from top */}
                           <linearGradient id="growthLineGradient" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#22C55E" />
-                            <stop offset="74%" stopColor="#22C55E" />
-                            <stop offset="76%" stopColor="#EF4444" />
-                            <stop offset="100%" stopColor="#EF4444" />
+                            <stop offset="25%" stopColor="#22C55E" />
+                            <stop offset="50%" stopColor="#84CC16" />
+                            <stop offset="65%" stopColor="#EAB308" />
+                            <stop offset="75%" stopColor="#F59E0B" />
+                            <stop offset="82%" stopColor="#F97316" />
+                            <stop offset="92%" stopColor="#EF4444" />
+                            <stop offset="100%" stopColor="#DC2626" />
                           </linearGradient>
-                          {/* Gradient for fill area - green above zero, red below */}
+                          {/* Thermal gradient for fill area with transparency */}
                           <linearGradient id="growthFillGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#22C55E" stopOpacity={0.25} />
-                            <stop offset="50%" stopColor="#22C55E" stopOpacity={0.08} />
-                            <stop offset="74%" stopColor="#22C55E" stopOpacity={0.03} />
-                            <stop offset="76%" stopColor="#EF4444" stopOpacity={0.15} />
-                            <stop offset="100%" stopColor="#EF4444" stopOpacity={0.25} />
+                            <stop offset="0%" stopColor="#22C55E" stopOpacity={0.20} />
+                            <stop offset="35%" stopColor="#22C55E" stopOpacity={0.12} />
+                            <stop offset="55%" stopColor="#84CC16" stopOpacity={0.08} />
+                            <stop offset="70%" stopColor="#EAB308" stopOpacity={0.06} />
+                            <stop offset="75%" stopColor="#F59E0B" stopOpacity={0.04} />
+                            <stop offset="80%" stopColor="#F97316" stopOpacity={0.10} />
+                            <stop offset="90%" stopColor="#EF4444" stopOpacity={0.18} />
+                            <stop offset="100%" stopColor="#DC2626" stopOpacity={0.25} />
                           </linearGradient>
                         </defs>
                         <XAxis
@@ -1026,19 +1034,28 @@ export default function PLPage() {
                           domain={[-20, 60]}
                           ticks={[-20, 0, 20, 40, 60]}
                         />
-                        <ReferenceLine y={0} stroke="#374151" strokeWidth={1} />
+                        <ReferenceLine y={0} stroke="#374151" strokeWidth={1} strokeDasharray="4 4" />
                         <Tooltip
                           content={({ active, payload, label }) => {
                             if (!active || !payload || payload.length < 1) return null;
                             const val = payload[0]?.value as number;
-                            const isNegative = val < 0;
+                            // Thermal color based on value
+                            const getColor = (v: number) => {
+                              if (v >= 30) return "#22C55E";
+                              if (v >= 15) return "#84CC16";
+                              if (v >= 5) return "#EAB308";
+                              if (v >= 0) return "#F59E0B";
+                              if (v >= -10) return "#F97316";
+                              return "#EF4444";
+                            };
+                            const color = getColor(val);
                             return (
-                              <div className={`bg-gray-900/95 backdrop-blur rounded-lg px-3 py-2 shadow-xl border ${isNegative ? "border-red-500/40" : "border-emerald-500/20"}`}>
+                              <div className="bg-gray-900/95 backdrop-blur rounded-lg px-3 py-2 shadow-xl border border-white/10">
                                 <div className="flex items-center gap-1.5 mb-0.5">
-                                  <div className={`w-1.5 h-1.5 rounded-full ${isNegative ? "bg-red-400" : "bg-emerald-400"}`} />
+                                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
                                   <span className="text-[10px] text-gray-500 uppercase tracking-wider">{label} {year}</span>
                                 </div>
-                                <div className={`text-lg font-bold ${isNegative ? "text-red-400" : "text-emerald-400"}`}>
+                                <div className="text-lg font-bold" style={{ color }}>
                                   {val >= 0 ? "+" : ""}{val?.toFixed(1)}%
                                 </div>
                               </div>
@@ -1054,14 +1071,23 @@ export default function PLPage() {
                           dot={(props) => {
                             const { cx, cy, payload } = props as { cx?: number; cy?: number; payload?: { combined: number } };
                             if (cx === undefined || cy === undefined || !payload) return null;
-                            const isNeg = payload.combined < 0;
+                            const v = payload.combined;
+                            // Thermal color based on value
+                            const getColor = (val: number) => {
+                              if (val >= 30) return "#22C55E";
+                              if (val >= 15) return "#84CC16";
+                              if (val >= 5) return "#EAB308";
+                              if (val >= 0) return "#F59E0B";
+                              if (val >= -10) return "#F97316";
+                              return "#EF4444";
+                            };
                             return (
                               <circle
                                 key={`dot-${cx}`}
                                 cx={cx}
                                 cy={cy}
                                 r={3}
-                                fill={isNeg ? "#EF4444" : "#22C55E"}
+                                fill={getColor(v)}
                                 strokeWidth={0}
                               />
                             );
@@ -1069,14 +1095,22 @@ export default function PLPage() {
                           activeDot={(props) => {
                             const { cx, cy, payload } = props as { cx?: number; cy?: number; payload?: { combined: number } };
                             if (cx === undefined || cy === undefined || !payload) return null;
-                            const isNeg = payload.combined < 0;
+                            const v = payload.combined;
+                            const getColor = (val: number) => {
+                              if (val >= 30) return "#22C55E";
+                              if (val >= 15) return "#84CC16";
+                              if (val >= 5) return "#EAB308";
+                              if (val >= 0) return "#F59E0B";
+                              if (val >= -10) return "#F97316";
+                              return "#EF4444";
+                            };
                             return (
                               <circle
                                 key={`active-dot-${cx}`}
                                 cx={cx}
                                 cy={cy}
                                 r={5}
-                                fill={isNeg ? "#EF4444" : "#22C55E"}
+                                fill={getColor(v)}
                                 stroke="#fff"
                                 strokeWidth={2}
                               />
