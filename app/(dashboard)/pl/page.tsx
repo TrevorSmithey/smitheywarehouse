@@ -994,10 +994,20 @@ export default function PLPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={channelGrowthData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                         <defs>
-                          <linearGradient id="growthGradient" x1="0" y1="0" x2="0" y2="1">
+                          {/* Gradient for line stroke - green above zero, red below */}
+                          <linearGradient id="growthLineGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#22C55E" />
+                            <stop offset="74%" stopColor="#22C55E" />
+                            <stop offset="76%" stopColor="#EF4444" />
+                            <stop offset="100%" stopColor="#EF4444" />
+                          </linearGradient>
+                          {/* Gradient for fill area - green above zero, red below */}
+                          <linearGradient id="growthFillGradient" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#22C55E" stopOpacity={0.25} />
                             <stop offset="50%" stopColor="#22C55E" stopOpacity={0.08} />
-                            <stop offset="100%" stopColor="#22C55E" stopOpacity={0} />
+                            <stop offset="74%" stopColor="#22C55E" stopOpacity={0.03} />
+                            <stop offset="76%" stopColor="#EF4444" stopOpacity={0.15} />
+                            <stop offset="100%" stopColor="#EF4444" stopOpacity={0.25} />
                           </linearGradient>
                         </defs>
                         <XAxis
@@ -1038,11 +1048,40 @@ export default function PLPage() {
                         <Area
                           type="monotone"
                           dataKey="combined"
-                          stroke="#22C55E"
+                          stroke="url(#growthLineGradient)"
                           strokeWidth={2.5}
-                          fill="url(#growthGradient)"
-                          dot={{ fill: "#22C55E", strokeWidth: 0, r: 3 }}
-                          activeDot={{ r: 5, fill: "#22C55E", stroke: "#fff", strokeWidth: 2 }}
+                          fill="url(#growthFillGradient)"
+                          dot={(props) => {
+                            const { cx, cy, payload } = props as { cx?: number; cy?: number; payload?: { combined: number } };
+                            if (cx === undefined || cy === undefined || !payload) return null;
+                            const isNeg = payload.combined < 0;
+                            return (
+                              <circle
+                                key={`dot-${cx}`}
+                                cx={cx}
+                                cy={cy}
+                                r={3}
+                                fill={isNeg ? "#EF4444" : "#22C55E"}
+                                strokeWidth={0}
+                              />
+                            );
+                          }}
+                          activeDot={(props) => {
+                            const { cx, cy, payload } = props as { cx?: number; cy?: number; payload?: { combined: number } };
+                            if (cx === undefined || cy === undefined || !payload) return null;
+                            const isNeg = payload.combined < 0;
+                            return (
+                              <circle
+                                key={`active-dot-${cx}`}
+                                cx={cx}
+                                cy={cy}
+                                r={5}
+                                fill={isNeg ? "#EF4444" : "#22C55E"}
+                                stroke="#fff"
+                                strokeWidth={2}
+                              />
+                            );
+                          }}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
