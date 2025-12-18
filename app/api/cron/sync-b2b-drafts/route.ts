@@ -246,13 +246,17 @@ export async function GET(request: Request) {
 
   try {
     if (!SHOPIFY_B2B_STORE || !SHOPIFY_B2B_TOKEN) {
+      console.error("[B2B DRAFTS] Missing credentials:", {
+        hasStore: !!SHOPIFY_B2B_STORE,
+        hasToken: !!SHOPIFY_B2B_TOKEN,
+      });
       return NextResponse.json(
         { error: "Missing B2B Shopify credentials" },
         { status: 500 }
       );
     }
 
-    console.log("[B2B DRAFTS] Starting sync...");
+    console.log("[B2B DRAFTS] Starting sync...", { store: SHOPIFY_B2B_STORE });
 
     // Fetch open draft orders from Shopify
     const draftOrders = await fetchOpenDraftOrders();
@@ -301,7 +305,15 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("B2B draft orders sync failed:", error);
 
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    // Better error extraction for non-Error objects
+    let errorMessage = "Unknown error";
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === "string") {
+      errorMessage = error;
+    } else if (error && typeof error === "object") {
+      errorMessage = JSON.stringify(error);
+    }
 
     // Send email alert
     await sendSyncFailureAlert({
