@@ -197,15 +197,15 @@ async function syncDraftOrders(
   }
   const uniqueItems = Array.from(deduped.values());
 
-  // Step 1: Insert new items with batch ID (even if empty - marks this batch as complete)
+  // Step 1: Upsert new items with batch ID (handles duplicates gracefully)
   if (uniqueItems.length > 0) {
-    const { error: insertError } = await supabase
+    const { error: upsertError } = await supabase
       .from("b2b_draft_orders")
-      .insert(uniqueItems);
+      .upsert(uniqueItems, { onConflict: "draft_order_id,sku" });
 
-    if (insertError) {
-      console.error("Failed to insert draft orders:", insertError);
-      throw insertError;
+    if (upsertError) {
+      console.error("Failed to upsert draft orders:", upsertError);
+      throw upsertError;
     }
   }
 
