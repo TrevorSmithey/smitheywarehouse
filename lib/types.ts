@@ -191,6 +191,41 @@ export interface ShopifyOrder {
   fulfillment_status: string | null; // null, 'partial', 'fulfilled'
   fulfillments: ShopifyFulfillment[];
   line_items: ShopifyLineItem[];
+  // Enhanced fields for ecommerce analytics
+  customer?: {
+    id: number;
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    orders_count?: number;
+  } | null;
+  total_price?: string;
+  subtotal_price?: string;
+  total_discounts?: string;
+  total_tax?: string;
+  total_shipping_price_set?: {
+    shop_money?: {
+      amount: string;
+    };
+  };
+  discount_codes?: Array<{
+    code: string;
+    amount: string;
+    type: string;
+  }>;
+  referring_site?: string | null;
+  source_name?: string | null;
+  landing_site?: string | null;
+  financial_status?: string | null;
+  payment_gateway_names?: string[];
+  shipping_address?: {
+    city?: string | null;
+    province?: string | null;
+    province_code?: string | null;
+    country?: string | null;
+    country_code?: string | null;
+    zip?: string | null;
+  } | null;
 }
 
 export interface ShopifyFulfillment {
