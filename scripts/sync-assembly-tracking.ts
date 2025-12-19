@@ -103,10 +103,10 @@ async function syncSkuDailyData(workbook: XLSX.WorkBook): Promise<number> {
   const rows: SkuDailyRow[] = [];
 
   for (const raw of rawData as Record<string, unknown>[]) {
-    // Raw_Data has columns: Date, Item, Sum of Quantity
+    // Raw_Data has columns: Date, Item, Quantity
     const date = parseExcelDate(raw["Date"]);
     const sku = parseString(raw["Item"]);
-    const qty = parseNumber(raw["Sum of Quantity"]);
+    const qty = parseNumber(raw["Quantity"]);
 
     // Skip invalid rows
     if (!date || !sku || qty === 0) continue;

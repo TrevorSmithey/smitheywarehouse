@@ -7,6 +7,16 @@ import {
 } from "@/lib/shopify";
 import type { ShopifyOrder } from "@/lib/types";
 
+// Shopify fulfillments/create webhook payload
+interface ShopifyFulfillmentWebhook {
+  id: number;
+  order_id: number;
+  created_at: string;
+  tracking_number: string | null;
+  tracking_numbers: string[];
+  tracking_company: string | null;
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
@@ -34,6 +44,12 @@ export async function POST(request: NextRequest) {
 
       case "orders/cancelled":
         await markOrderCanceled(supabase, order.id);
+        break;
+
+      case "fulfillments/create":
+        // Fulfillment payload has order_id at top level
+        const fulfillment = JSON.parse(body) as ShopifyFulfillmentWebhook;
+        await upsertFulfillmentShipment(supabase, fulfillment);
         break;
 
       default:
@@ -223,4 +239,55 @@ async function markOrderCanceled(supabase: ReturnType<typeof createServiceClient
   }
 
   console.log(`Marked order ${orderId} as canceled`);
+}
+
+/**
+ * Handle fulfillments/create webhook - upsert shipment tracking directly
+ * This is redundant with orders/updated but provides belt-and-suspenders coverage
+ */
+async function upsertFulfillmentShipment(
+  supabase: ReturnType<typeof createServiceClient>,
+  fulfillment: ShopifyFulfillmentWebhook
+) {
+  const trackingNumbers = fulfillment.tracking_numbers ||
+    (fulfillment.tracking_number ? [fulfillment.tracking_number] : []);
+
+  if (trackingNumbers.length === 0) {
+    console.log(`Fulfillment ${fulfillment.id} has no tracking numbers, skipping`);
+    return;
+  }
+
+  const shipmentErrors: Array<{ trackingNumber: string; error: string }> = [];
+
+  for (const trackingNumber of trackingNumbers) {
+    if (!trackingNumber) continue;
+
+    const { error: shipmentError } = await supabase.from("shipments").upsert(
+      {
+        order_id: fulfillment.order_id,
+        tracking_number: trackingNumber,
+        carrier: fulfillment.tracking_company || null,
+        shipped_at: fulfillment.created_at,
+        status: "in_transit",
+      },
+      { onConflict: "order_id,tracking_number" }
+    );
+
+    if (shipmentError) {
+      shipmentErrors.push({
+        trackingNumber,
+        error: shipmentError.message || String(shipmentError),
+      });
+    }
+  }
+
+  if (shipmentErrors.length > 0) {
+    const errorMsg = `[FULFILLMENT SHIPMENT ERROR] Order ${fulfillment.order_id}: ` +
+      `Failed to upsert ${shipmentErrors.length} shipment(s): ` +
+      shipmentErrors.map(e => `${e.trackingNumber}: ${e.error}`).join("; ");
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Processed fulfillment ${fulfillment.id} for order ${fulfillment.order_id}`);
 }
