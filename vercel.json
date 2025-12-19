@@ -11,6 +11,9 @@
     },
     "app/api/cron/sync-klaviyo/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/sync-shopify-customers/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -41,6 +44,10 @@
     {
       "path": "/api/cron/sync-shopify-stats",
       "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/cron/sync-shopify-customers",
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/sync-netsuite-customers",

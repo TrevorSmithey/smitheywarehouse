@@ -22,6 +22,9 @@ import {
 } from "@/lib/klaviyo";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+
+const LOCK_NAME = "sync-klaviyo";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
@@ -54,6 +57,18 @@ export async function GET(request: Request) {
   }
 
   const startTime = Date.now();
+  const supabase = createServiceClient();
+
+  // Acquire lock to prevent concurrent runs
+  const lock = await acquireCronLock(supabase, LOCK_NAME);
+  if (!lock.acquired) {
+    console.warn(`[KLAVIYO] Skipping sync - another sync is in progress`);
+    return NextResponse.json(
+      { success: false, error: "Another sync is already in progress", skipped: true },
+      { status: 409 }
+    );
+  }
+
   const stats = {
     campaignsSynced: 0,
     scheduledSynced: 0,
@@ -69,9 +84,6 @@ export async function GET(request: Request) {
 
   try {
     console.log("[KLAVIYO SYNC] Starting sync...");
-
-    // Initialize clients
-    const supabase = createServiceClient();
 
     // Check for required env var
     const privateKey = process.env.KLAVIYO_PRIVATE_API_KEY;
@@ -604,7 +616,6 @@ export async function GET(request: Request) {
     });
 
     // Log to sync_logs
-    const supabase = createServiceClient();
     try {
       await supabase.from("sync_logs").insert({
         sync_type: "klaviyo",
@@ -627,6 +638,9 @@ export async function GET(request: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    // Always release the lock
+    await releaseCronLock(supabase, LOCK_NAME);
   }
 }
 

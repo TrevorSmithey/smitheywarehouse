@@ -105,7 +105,15 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     (item) => item.sku && item.sku.toLowerCase().includes("-rest-")
   );
 
-  // Upsert order
+  // Determine if this is the customer's first order
+  const isFirstOrder = order.customer?.orders_count === 1;
+
+  // Extract shipping cost from nested structure
+  const totalShipping = order.total_shipping_price_set?.shop_money?.amount
+    ? parseFloat(order.total_shipping_price_set.shop_money.amount)
+    : null;
+
+  // Upsert order with enhanced analytics fields
   const { error: orderError } = await supabase.from("orders").upsert(
     {
       id: order.id,
@@ -117,6 +125,29 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
       fulfilled_at: fulfilledAt,
       is_restoration: isRestoration,
       updated_at: new Date().toISOString(),
+      // Enhanced fields for ecommerce analytics
+      shopify_customer_id: order.customer?.id || null,
+      total_price: order.total_price ? parseFloat(order.total_price) : null,
+      subtotal_price: order.subtotal_price ? parseFloat(order.subtotal_price) : null,
+      total_discounts: order.total_discounts ? parseFloat(order.total_discounts) : 0,
+      total_tax: order.total_tax ? parseFloat(order.total_tax) : null,
+      total_shipping: totalShipping,
+      discount_codes: order.discount_codes && order.discount_codes.length > 0
+        ? order.discount_codes
+        : null,
+      referring_site: order.referring_site || null,
+      source_name: order.source_name || null,
+      landing_site: order.landing_site || null,
+      financial_status: order.financial_status || null,
+      payment_gateway: order.payment_gateway_names?.[0] || null,
+      shipping_city: order.shipping_address?.city || null,
+      shipping_province: order.shipping_address?.province || null,
+      shipping_province_code: order.shipping_address?.province_code || null,
+      shipping_country: order.shipping_address?.country || null,
+      shipping_country_code: order.shipping_address?.country_code || null,
+      shipping_zip: order.shipping_address?.zip || null,
+      is_first_order: isFirstOrder,
+      order_sequence: order.customer?.orders_count || null,
     },
     { onConflict: "id" }
   );

@@ -58,6 +58,8 @@ export async function GET(request: Request) {
 
     let offset = 0;
     const initialOffset = 0;
+    // Track last successfully committed offset to prevent data gaps on partial failures
+    let lastCommittedOffset = 0;
 
     // For full sync, use cursor to handle 250K+ rows across multiple runs
     if (isFullSync) {
@@ -71,6 +73,7 @@ export async function GET(request: Request) {
 
       const details = cursorData?.details as { next_offset?: number } | null;
       offset = details?.next_offset || 0;
+      lastCommittedOffset = offset; // Initialize to starting offset
     }
 
     console.log(`[NETSUITE] Starting line items sync (${isFullSync ? `FULL from offset ${offset}` : `last ${DEFAULT_SYNC_DAYS} days`})...`);
@@ -81,6 +84,7 @@ export async function GET(request: Request) {
     let hasMore = true;
     let batchCount = 0;
     let isComplete = false;
+    let hadUpsertFailures = false;
 
     // Always use time limit to ensure we complete and log within Vercel's 300s limit
     // Even incremental sync can have many records (7 days of line items)
@@ -113,6 +117,9 @@ export async function GET(request: Request) {
       }));
 
       // Use smaller batch size to avoid Supabase statement timeouts
+      // Track if ALL sub-batches in this fetch succeed
+      let allBatchesSucceeded = true;
+
       for (let i = 0; i < records.length; i += LINE_ITEM_BATCH_SIZE) {
         const batch = records.slice(i, i + LINE_ITEM_BATCH_SIZE);
 
@@ -131,6 +138,8 @@ export async function GET(request: Request) {
               await new Promise((r) => setTimeout(r, 1000)); // Wait 1s before retry
             } else {
               console.error("[NETSUITE] Line item upsert failed after 3 retries:", error);
+              allBatchesSucceeded = false;
+              hadUpsertFailures = true;
             }
           } else {
             totalUpserted += batch.length;
@@ -140,6 +149,19 @@ export async function GET(request: Request) {
       }
 
       hasMore = lineItems.length === limit;
+
+      // Only advance lastCommittedOffset if ALL sub-batches succeeded
+      // This prevents cursor corruption - next run will re-fetch failed batches
+      if (allBatchesSucceeded) {
+        lastCommittedOffset = offset + limit;
+      } else {
+        console.warn(`[NETSUITE] Some batches failed at offset ${offset} - cursor will not advance past this point`);
+        // Don't advance offset further - stop processing to prevent gaps
+        if (isFullSync) {
+          console.warn(`[NETSUITE] Stopping full sync early to prevent data gaps. Will resume from offset ${lastCommittedOffset}`);
+          break;
+        }
+      }
 
       if (batchCount % 10 === 0) {
         console.log(`[NETSUITE] Line items batch ${batchCount}: ${totalFetched} fetched, ${totalUpserted} upserted`);
@@ -156,32 +178,45 @@ export async function GET(request: Request) {
 
     // Only save cursor for full sync (not needed for incremental)
     if (isFullSync) {
-      const nextOffset = isComplete ? 0 : offset;
+      // Use lastCommittedOffset (not offset) to prevent data gaps
+      // If sync is complete, reset to 0 for next full sync
+      // Otherwise, resume from lastCommittedOffset to re-fetch any failed batches
+      const nextOffset = isComplete ? 0 : lastCommittedOffset;
       await supabase.from("sync_logs").insert({
         sync_type: "netsuite_lineitems_cursor",
         started_at: new Date(startTime).toISOString(),
         completed_at: new Date().toISOString(),
-        status: "success",
+        status: hadUpsertFailures ? "partial" : "success",
         records_expected: 0,
         records_synced: 0,
         duration_ms: 0,
-        details: { next_offset: nextOffset, last_processed_offset: offset },
+        details: {
+          next_offset: nextOffset,
+          last_committed_offset: lastCommittedOffset,
+          last_attempted_offset: offset,
+          had_failures: hadUpsertFailures,
+        },
       });
     }
 
     // Log the actual sync progress
+    // Status: "success" if complete with no failures
+    //         "partial" if either incomplete (timed out) OR had upsert failures
+    const syncStatus = isComplete && !hadUpsertFailures ? "success" : "partial";
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_lineitems",
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
-      status: isComplete ? "success" : "partial",
+      status: syncStatus,
       records_expected: totalFetched,
       records_synced: totalUpserted,
       duration_ms: elapsed,
       details: {
         start_offset: initialOffset,
         end_offset: offset,
+        last_committed_offset: lastCommittedOffset,
         is_complete: isComplete,
+        had_failures: hadUpsertFailures,
         batches: batchCount,
       },
     });

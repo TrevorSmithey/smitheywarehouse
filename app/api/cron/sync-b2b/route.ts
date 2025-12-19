@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
+import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { BATCH_SIZES, SYNC_WINDOWS, RATE_LIMIT_DELAYS } from "@/lib/constants";
 import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
+
+const LOCK_NAME = "sync-b2b";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
@@ -182,6 +185,16 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const supabase = createServiceClient();
 
+  // Acquire lock to prevent concurrent runs
+  const lock = await acquireCronLock(supabase, LOCK_NAME);
+  if (!lock.acquired) {
+    console.warn(`[B2B] Skipping sync - another sync is in progress`);
+    return NextResponse.json(
+      { success: false, error: "Another sync is already in progress", skipped: true },
+      { status: 409 }
+    );
+  }
+
   try {
     if (!SHOPIFY_B2B_STORE || !SHOPIFY_B2B_TOKEN) {
       return NextResponse.json(
@@ -291,5 +304,8 @@ export async function GET(request: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    // Always release the lock
+    await releaseCronLock(supabase, LOCK_NAME);
   }
 }
