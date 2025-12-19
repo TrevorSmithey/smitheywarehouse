@@ -40,28 +40,8 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled webhook topic: ${topic}`);
     }
 
-    // Log successful D2C webhook processing for health tracking
-    const elapsed = Date.now() - startTime;
-    try {
-      await supabase.from("sync_logs").insert({
-        sync_type: "d2c",
-        started_at: new Date(startTime).toISOString(),
-        completed_at: new Date().toISOString(),
-        status: "success",
-        records_expected: 1,
-        records_synced: 1,
-        details: {
-          topic,
-          orderId: order.id,
-          orderName: order.name,
-        },
-        duration_ms: elapsed,
-      });
-    } catch (logError) {
-      // Don't fail the webhook if logging fails
-      console.error("Failed to log D2C webhook health:", logError);
-    }
-
+    // Success - no need to log every webhook (was creating 34K rows/day)
+    // Failures are still logged below for debugging
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Webhook processing error:", error);
