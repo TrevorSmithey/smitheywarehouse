@@ -11,7 +11,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { RefreshCw, Calendar, TrendingUp, Package } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 import type { HolidayResponse } from "@/lib/types";
 
 interface HolidayDashboardProps {
@@ -193,11 +193,7 @@ export function HolidayDashboard({ data, loading, onRefresh }: HolidayDashboardP
               {fmt.delta(summary.revenueGrowth)} Revenue
             </span>
           </div>
-          {data.lastSynced && (
-            <span className="text-[10px] text-text-muted">
-              Synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-            </span>
-          )}
+          <StaleTimestamp date={data.lastSynced} />
         </div>
         <span className="text-xs font-semibold text-text-secondary tabular-nums">
           {92 - currentDay} DAYS LEFT

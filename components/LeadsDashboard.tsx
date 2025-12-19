@@ -31,6 +31,7 @@ import type {
   TypeformLead,
   LeadFormType,
 } from "@/lib/types";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 
 // ============================================================================
 // COMPONENT PROPS
@@ -785,11 +786,9 @@ export function LeadsDashboard({ data, loading, error, onRefresh }: LeadsDashboa
       <LeadsTable leads={data.leads} totalCount={data.total_count} />
 
       {/* Last Synced */}
-      {data.lastSynced && (
-        <div className="text-xs text-text-muted text-center">
-          Last synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-        </div>
-      )}
+      <div className="flex justify-center">
+        <StaleTimestamp date={data.lastSynced} prefix="Last synced" />
+      </div>
     </div>
   );
 }

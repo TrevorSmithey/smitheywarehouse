@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { parseLocalDate } from "@/lib/dashboard-utils";
 import type { AssemblyResponse } from "@/lib/types";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 
 interface AssemblyDashboardProps {
   data: AssemblyResponse | null;
@@ -142,13 +143,9 @@ export function AssemblyDashboard({
   return (
     <div className="space-y-6">
       {/* Sync Status */}
-      {data.lastSynced && (
-        <div className="flex justify-end">
-          <span className="text-[10px] text-text-muted">
-            Synced {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-          </span>
-        </div>
-      )}
+      <div className="flex justify-end">
+        <StaleTimestamp date={data.lastSynced} />
+      </div>
 
       {/* Production Stats Row */}
       {(() => {

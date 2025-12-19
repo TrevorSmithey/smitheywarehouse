@@ -60,6 +60,7 @@ import type {
 } from "@/lib/types";
 import type { ChurnPrediction, PatternInsightsResponse } from "@/lib/types";
 import { WHOLESALE_THRESHOLDS } from "@/lib/constants";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 
 type SortField = "revenue" | "orders" | "last_order" | "company";
 type SortDirection = "asc" | "desc";
@@ -2197,14 +2198,8 @@ export function WholesaleDashboard({
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-text-tertiary">{getPeriodLabel(period)}</span>
-            {data.lastSynced && (
-              <>
-                <span className="text-text-muted">•</span>
-                <span className="text-[10px] text-text-muted">
-                  Updated {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-                </span>
-              </>
-            )}
+            {data.lastSynced && <span className="text-text-muted">•</span>}
+            <StaleTimestamp date={data.lastSynced} prefix="Updated" />
           </div>
         </div>
 

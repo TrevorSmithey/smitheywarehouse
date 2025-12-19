@@ -47,6 +47,7 @@ import type {
   FlowBreakdown,
 } from "@/lib/types";
 import { formatNumber, formatNumberCompact } from "@/lib/dashboard-utils";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
 type SortField = "date" | "revenue" | "recipients" | "open_rate" | "click_rate" | "conversions";
@@ -1342,14 +1343,8 @@ export function KlaviyoDashboard({
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-text-tertiary">{getPeriodLabel(period)}</span>
-            {data.lastSynced && (
-              <>
-                <span className="text-text-muted">•</span>
-                <span className="text-[10px] text-text-muted">
-                  Updated {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-                </span>
-              </>
-            )}
+            {data.lastSynced && <span className="text-text-muted">•</span>}
+            <StaleTimestamp date={data.lastSynced} prefix="Updated" />
           </div>
         </div>
 

@@ -6,6 +6,7 @@ import type { InventoryResponse, ProductInventory, B2BDraftOrderSku } from "@/li
 import { SAFETY_STOCK } from "@/lib/shiphero";
 import { formatNumber } from "@/lib/dashboard-utils";
 import { MetricLabel } from "@/components/MetricLabel";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -290,11 +291,7 @@ export function InventoryDashboard({
             )}
           </div>
           {/* Last Synced Timestamp */}
-          {inventory?.lastSynced && (
-            <span className="text-[10px] text-text-muted">
-              Synced {formatDistanceToNow(new Date(inventory.lastSynced), { addSuffix: true })}
-            </span>
-          )}
+          <StaleTimestamp date={inventory?.lastSynced} />
         </div>
 
         {/* Actions */}

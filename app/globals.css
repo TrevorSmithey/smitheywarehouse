@@ -301,3 +301,18 @@ tr.ss-violation:hover {
   left: 0.75rem;
   border-bottom-color: #1a1a1a;
 }
+
+/* ========================================
+   RECHARTS FIX
+   ========================================
+   Prevents "width(-1) and height(-1)" console warnings
+   during initial render/hydration.
+
+   ResponsiveContainer needs measured dimensions from its
+   parent. This ensures the wrapper always has positive
+   dimensions during the initial layout phase.
+   ======================================== */
+.recharts-responsive-container {
+  min-width: 1px;
+  min-height: 1px;
+}

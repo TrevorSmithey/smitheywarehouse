@@ -50,17 +50,25 @@ export function useDashboard() {
 /**
  * Navigation tabs configuration
  * Each tab maps to a route and has an icon
+ *
+ * Groups:
+ * - Operations: warehouse/production activities
+ * - Analytics: performance tracking
+ * - Engagement: customer-facing channels
  */
 const NAV_TABS = [
-  { href: "/inventory", label: "INVENTORY", icon: BarChart3 },
-  { href: "/voc", label: "CUSTOMER SERVICE", icon: MessageCircle },
-  { href: "/budget", label: "BUDGET V ACTUAL", icon: Target },
-  { href: "/production", label: "PRODUCTION", icon: Hammer },
-  { href: "/fulfillment", label: "FULFILLMENT", icon: Package },
-  { href: "/holiday", label: "Q4 PACE", icon: Gift },
-  { href: "/marketing", label: "MARKETING", icon: Mail },
-  { href: "/sales", label: "SALES", icon: TrendingUp },
-  { href: "/ecommerce", label: "ECOMMERCE", icon: ShoppingCart },
+  // Operations group
+  { href: "/inventory", label: "INVENTORY", icon: BarChart3, group: "operations" },
+  { href: "/fulfillment", label: "FULFILLMENT", icon: Package, group: "operations" },
+  { href: "/production", label: "PRODUCTION", icon: Hammer, group: "operations" },
+  // Analytics group
+  { href: "/budget", label: "BUDGET V ACTUAL", icon: Target, group: "analytics" },
+  { href: "/holiday", label: "Q4 PACE", icon: Gift, group: "analytics" },
+  // Engagement group
+  { href: "/voc", label: "CUSTOMER SERVICE", icon: MessageCircle, group: "engagement" },
+  { href: "/marketing", label: "MARKETING", icon: Mail, group: "engagement" },
+  { href: "/sales", label: "SALES", icon: TrendingUp, group: "engagement" },
+  { href: "/ecommerce", label: "ECOMMERCE", icon: ShoppingCart, group: "engagement" },
 ] as const;
 
 // Hidden tab - only shown when secret code is entered
@@ -173,23 +181,30 @@ export default function DashboardLayout({
 
           {/* Primary Tab Navigation */}
           <nav className="flex gap-1 mt-4 border-b border-border overflow-x-auto touch-pan-x">
-            {NAV_TABS.map((tab) => {
+            {NAV_TABS.map((tab, index) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.href;
+              const prevTab = index > 0 ? NAV_TABS[index - 1] : null;
+              const isNewGroup = prevTab && prevTab.group !== tab.group;
 
               return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
-                    isActive
-                      ? "text-accent-blue border-accent-blue"
-                      : "text-text-tertiary border-transparent hover:text-text-secondary"
-                  }`}
-                >
-                  <Icon className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
-                  {tab.label}
-                </Link>
+                <div key={tab.href} className="flex items-center">
+                  {/* Group separator - subtle vertical divider */}
+                  {isNewGroup && (
+                    <div className="w-px h-4 bg-border/50 mx-2 flex-shrink-0" />
+                  )}
+                  <Link
+                    href={tab.href}
+                    className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+                      isActive
+                        ? "text-accent-blue border-accent-blue"
+                        : "text-text-tertiary border-transparent hover:text-text-secondary"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+                    {tab.label}
+                  </Link>
+                </div>
               );
             })}
 

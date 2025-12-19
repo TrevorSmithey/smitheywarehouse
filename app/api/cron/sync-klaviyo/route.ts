@@ -339,6 +339,31 @@ export async function GET(request: Request) {
     const mtdFlowRevenue = flowReports.totalRevenue;
     const mtdFlowConversions = flowReports.totalConversions;
 
+    // Get lifetime flow revenue for per-flow breakdown
+    // Using last_365_days as proxy for lifetime (Klaviyo doesn't have true all_time)
+    const lifetimeFlowReports = await klaviyo.getFlowReports("last_365_days");
+    console.log(`[KLAVIYO SYNC] Got per-flow metrics for ${lifetimeFlowReports.byFlow.size} flows`);
+
+    // Update each flow with its per-flow revenue
+    for (const [flowId, stats] of lifetimeFlowReports.byFlow) {
+      try {
+        const { error } = await supabase
+          .from("klaviyo_flows")
+          .update({
+            total_revenue: stats.conversion_value || 0,
+            total_conversions: stats.conversions || 0,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("klaviyo_id", flowId);
+
+        if (error) {
+          console.error(`[KLAVIYO SYNC] Error updating flow metrics for ${flowId}:`, error);
+        }
+      } catch (err) {
+        console.error(`[KLAVIYO SYNC] Error updating flow metrics for ${flowId}:`, err);
+      }
+    }
+
     // Get subscriber counts (current)
     const subscriberCounts = await klaviyo.getSubscriberCounts();
 

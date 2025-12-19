@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MetricLabel } from "@/components/MetricLabel";
+import { StaleTimestamp } from "@/components/StaleTimestamp";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ExternalLink,
@@ -36,6 +37,33 @@ import type {
   TORTrendPoint,
 } from "@/lib/types";
 import { formatNumber } from "@/lib/dashboard-utils";
+
+/**
+ * AI Slop Words Filter
+ *
+ * These are meta-words that AI summarization often produces when analyzing
+ * customer tickets. They describe the process of communication rather than
+ * actual customer concerns, and pollute the word cloud with noise.
+ *
+ * Categories:
+ * - Communication meta-words: describe how something was said, not what
+ * - Vague descriptors: words AI uses when it can't extract specifics
+ * - Process words: describe the ticket handling, not the issue
+ */
+const AI_SLOP_WORDS = new Set([
+  // Communication meta-words
+  "unclear", "intent", "context", "provided", "mentioned", "stated",
+  "indicated", "requested", "regarding", "concerning", "inquired",
+  "expressed", "noted", "informed", "advised", "explained",
+  // Vague descriptors
+  "specific", "details", "additional", "information", "particular",
+  "general", "various", "certain", "multiple", "several",
+  // Process words
+  "message", "response", "reply", "follow-up", "update", "status",
+  "resolution", "assistance", "support", "inquiry", "request",
+  // Common AI filler
+  "customer", "order", "issue", "problem", "question", "help",
+]);
 
 interface VoiceOfCustomerDashboardProps {
   data: TicketsResponse | null;
@@ -491,7 +519,10 @@ export function VoiceOfCustomerDashboard({
   const sentiment = data?.sentimentBreakdown;
   const categoryCounts = data?.categoryCounts || [];
   const insights = data?.insights || [];
-  const wordCloud = data?.wordCloud || [];
+  // Filter out AI slop words that pollute the word cloud with meta-language
+  const wordCloud = (data?.wordCloud || []).filter(
+    (word) => !AI_SLOP_WORDS.has(word.text.toLowerCase())
+  );
   const csat = data?.csat;
   const tickets = data?.tickets || [];
   const totalTickets = data?.totalCount || 0;
@@ -530,11 +561,7 @@ export function VoiceOfCustomerDashboard({
             <h2 className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-1">
               VOICE OF THE CUSTOMER
             </h2>
-            {data?.lastSynced && (
-              <p className="text-[10px] text-text-muted">
-                Updated {formatDistanceToNow(new Date(data.lastSynced), { addSuffix: true })}
-              </p>
-            )}
+            <StaleTimestamp date={data?.lastSynced} prefix="Updated" />
           </div>
 
           <div className="flex items-center gap-3">
