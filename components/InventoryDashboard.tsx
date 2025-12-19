@@ -500,13 +500,16 @@ export function InventoryDashboard({
                             )}
                             {cat.showVelocity && (
                               <td className="hidden xl:table-cell py-3 px-4 text-right">
-                                {draftOrdersBySku.get(product.sku.toLowerCase()) ? (
-                                  <span className="text-sm font-semibold tabular-nums text-purple-400/70">
-                                    {formatNumber(draftOrdersBySku.get(product.sku.toLowerCase())!)}
-                                  </span>
-                                ) : (
-                                  <span className="text-text-muted/30">—</span>
-                                )}
+                                {(() => {
+                                  const draftQty = draftOrdersBySku.get(product.sku.toLowerCase());
+                                  return draftQty ? (
+                                    <span className="text-sm font-semibold tabular-nums text-purple-400/70">
+                                      {formatNumber(draftQty)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-text-muted/30">—</span>
+                                  );
+                                })()}
                               </td>
                             )}
                           </tr>

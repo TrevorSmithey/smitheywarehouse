@@ -15,6 +15,8 @@ import {
   Mail,
   MapPin,
   Calendar,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   AreaChart,
@@ -37,6 +39,7 @@ import type {
 interface LeadsDashboardProps {
   data: LeadsResponse | null;
   loading: boolean;
+  error?: string | null;
   onRefresh: () => void;
 }
 
@@ -715,7 +718,29 @@ function LeadsTable({ leads, totalCount }: { leads: TypeformLead[]; totalCount: 
 // MAIN COMPONENT
 // ============================================================================
 
-export function LeadsDashboard({ data, loading, onRefresh }: LeadsDashboardProps) {
+export function LeadsDashboard({ data, loading, error, onRefresh }: LeadsDashboardProps) {
+  // Error state - show error with retry button
+  if (error && !data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-6">
+        <div className="p-6 rounded-full bg-status-bad/10">
+          <AlertCircle className="w-12 h-12 text-status-bad" />
+        </div>
+        <div className="text-center max-w-md">
+          <p className="text-lg text-text-secondary mb-2">Failed to load leads data</p>
+          <p className="text-sm text-text-muted mb-4">{error}</p>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="flex items-center gap-2 px-5 py-2.5 bg-accent-blue text-white text-sm font-medium rounded-lg hover:bg-accent-blue/90 transition-all shadow-lg shadow-accent-blue/20"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   if (loading && !data) {
     return (
       <div className="space-y-6">

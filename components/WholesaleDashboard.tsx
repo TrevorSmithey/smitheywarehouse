@@ -2485,12 +2485,22 @@ export function WholesaleDashboard({
       {/* ================================================================
           ORDERING ANOMALIES - Always visible (intelligent at-risk detection)
           ================================================================ */}
-      {data.orderingAnomalies && data.orderingAnomalies.length > 0 && (
+      {data.orderingAnomalies && data.orderingAnomalies.length > 0 ? (
         <OrderingAnomaliesSection
           anomalies={data.orderingAnomalies}
           hideChurned={hideChurned}
           onToggleChurned={() => setHideChurned(!hideChurned)}
         />
+      ) : (
+        <div className="bg-bg-secondary rounded-xl border border-border/30 p-8 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <CheckCircle className="w-10 h-10 text-status-good/50" />
+            <div>
+              <p className="text-sm font-medium text-text-primary">No ordering anomalies detected</p>
+              <p className="text-xs text-text-muted mt-1">All customers are ordering on schedule</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ================================================================
@@ -2530,11 +2540,20 @@ export function WholesaleDashboard({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {filteredAtRisk.map((customer) => (
-                <AtRiskCustomerCard key={customer.ns_customer_id} customer={customer} />
-              ))}
-            </div>
+            {filteredAtRisk.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {filteredAtRisk.map((customer) => (
+                  <AtRiskCustomerCard key={customer.ns_customer_id} customer={customer} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <CheckCircle className="w-10 h-10 text-text-muted/30 mb-3" />
+                <p className="text-sm text-text-muted">
+                  {hideChurned ? "All at-risk customers have churned. Toggle above to show them." : "No at-risk customers"}
+                </p>
+              </div>
+            )}
           </div>
         );
       })()}

@@ -1,144 +1,124 @@
 /**
  * Cron Job Locking Utility
  *
- * Prevents duplicate concurrent runs of cron jobs using PostgreSQL advisory locks.
- * Locks are automatically released when the database connection closes, providing
- * safety even if the job crashes without calling release.
- *
- * Usage:
- *   const lock = await acquireCronLock(supabase, 'sync-netsuite-customers');
- *   if (!lock.acquired) {
- *     return NextResponse.json({ error: 'Another sync in progress' }, { status: 409 });
- *   }
- *   try {
- *     // ... do sync work ...
- *   } finally {
- *     await releaseCronLock(supabase, 'sync-netsuite-customers');
- *   }
+ * Prevents duplicate cron job runs using PostgreSQL advisory locks.
+ * If a job is already running, subsequent invocations will be rejected.
  */
 
 import { SupabaseClient } from "@supabase/supabase-js";
 
-export interface LockResult {
+// Lock names for each cron job
+export const CRON_LOCKS = {
+  SYNC_NETSUITE_CUSTOMERS: "cron_sync_netsuite_customers",
+  SYNC_NETSUITE_TRANSACTIONS: "cron_sync_netsuite_transactions",
+  SYNC_NETSUITE_LINEITEMS: "cron_sync_netsuite_lineitems",
+  SYNC_B2B: "cron_sync_b2b",
+  SYNC_B2B_DRAFTS: "cron_sync_b2b_drafts",
+  SYNC_INVENTORY: "cron_sync_inventory",
+  SYNC_KLAVIYO: "cron_sync_klaviyo",
+  SYNC_REAMAZE: "cron_sync_reamaze",
+  SYNC_SHOPIFY_STATS: "cron_sync_shopify_stats",
+  SYNC_SHOPIFY_CUSTOMERS: "cron_sync_shopify_customers",
+  SYNC_ABANDONED_CHECKOUTS: "cron_sync_abandoned_checkouts",
+} as const;
+
+export type CronLockName = (typeof CRON_LOCKS)[keyof typeof CRON_LOCKS];
+
+export interface CronLockResult {
   acquired: boolean;
   error?: string;
 }
 
 /**
  * Attempt to acquire an advisory lock for a cron job.
- * Non-blocking - returns immediately if lock is held by another process.
+ * Returns an object with `acquired: true` if lock acquired.
  *
- * @param supabase - Supabase client with service role
- * @param lockName - Unique identifier for the cron job (e.g., 'sync-netsuite-customers')
- * @returns LockResult with acquired=true if lock obtained
+ * @param supabase - Supabase client
+ * @param lockName - Unique name for this cron job
+ * @returns { acquired: boolean, error?: string }
  */
 export async function acquireCronLock(
   supabase: SupabaseClient,
-  lockName: string
-): Promise<LockResult> {
+  lockName: CronLockName | string
+): Promise<CronLockResult> {
   try {
-    const { data, error } = await supabase.rpc("acquire_sync_lock", {
+    const { data, error } = await supabase.rpc("acquire_cron_lock", {
       lock_name: lockName,
     });
 
     if (error) {
-      console.error(`[CRON LOCK] Failed to acquire lock '${lockName}':`, error.message);
-      // If RPC doesn't exist yet, allow the job to run (graceful degradation)
-      if (error.message.includes("function") && error.message.includes("does not exist")) {
-        console.warn(`[CRON LOCK] Lock function not deployed yet - allowing job to proceed`);
-        return { acquired: true };
-      }
+      console.error(`[CRON LOCK] Failed to acquire lock ${lockName}:`, error);
+      // On error, assume we can't get the lock (fail safe)
       return { acquired: false, error: error.message };
     }
 
-    if (data === true) {
-      console.log(`[CRON LOCK] Acquired lock '${lockName}'`);
-      return { acquired: true };
+    const acquired = data === true;
+    if (acquired) {
+      console.log(`[CRON LOCK] Acquired lock: ${lockName}`);
     } else {
-      console.warn(`[CRON LOCK] Lock '${lockName}' already held by another process`);
-      return { acquired: false, error: "Lock held by another process" };
+      console.warn(`[CRON LOCK] Lock busy: ${lockName}`);
     }
+
+    return { acquired };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[CRON LOCK] Exception acquiring lock '${lockName}':`, message);
-    // On unexpected errors, allow job to proceed (fail open for availability)
-    return { acquired: true };
+    console.error(`[CRON LOCK] Exception acquiring lock ${lockName}:`, err);
+    return { acquired: false, error: String(err) };
   }
 }
 
 /**
  * Release an advisory lock for a cron job.
- * Should always be called in a finally block.
+ * Should be called in a finally block to ensure cleanup.
  *
- * @param supabase - Supabase client with service role
- * @param lockName - Same identifier used when acquiring
+ * @param supabase - Supabase client
+ * @param lockName - Unique name for this cron job
  */
 export async function releaseCronLock(
   supabase: SupabaseClient,
-  lockName: string
+  lockName: CronLockName | string
 ): Promise<void> {
   try {
-    const { error } = await supabase.rpc("release_sync_lock", {
+    const { error } = await supabase.rpc("release_cron_lock", {
       lock_name: lockName,
     });
 
     if (error) {
-      // Log but don't throw - lock will auto-release on connection close
-      console.error(`[CRON LOCK] Failed to release lock '${lockName}':`, error.message);
+      console.error(`[CRON LOCK] Failed to release lock ${lockName}:`, error);
     } else {
-      console.log(`[CRON LOCK] Released lock '${lockName}'`);
+      console.log(`[CRON LOCK] Released lock: ${lockName}`);
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[CRON LOCK] Exception releasing lock '${lockName}':`, message);
+    console.error(`[CRON LOCK] Exception releasing lock ${lockName}:`, err);
   }
 }
 
 /**
- * Higher-order function that wraps a cron job handler with lock acquisition/release.
- * Provides cleaner syntax for protecting cron jobs.
+ * Higher-order function that wraps a cron job handler with locking.
+ * Automatically acquires lock before running and releases after.
  *
- * Usage:
- *   export const GET = withCronLock('sync-netsuite-customers', async (request, supabase) => {
- *     // ... sync logic ...
- *     return NextResponse.json({ success: true });
- *   });
+ * @param lockName - Unique name for this cron job
+ * @param handler - The actual cron job logic
+ * @returns Wrapped handler with locking
  */
-export function withCronLock(
-  lockName: string,
-  handler: (request: Request, supabase: SupabaseClient) => Promise<Response>
-): (request: Request) => Promise<Response> {
-  return async (request: Request) => {
-    // Import here to avoid circular dependencies
-    const { createServiceClient } = await import("@/lib/supabase/server");
-    const { verifyCronSecret, unauthorizedResponse } = await import("@/lib/cron-auth");
-    const { NextResponse } = await import("next/server");
+export function withCronLock<T>(
+  lockName: CronLockName | string,
+  handler: (supabase: SupabaseClient) => Promise<T>
+): (supabase: SupabaseClient) => Promise<{ success: boolean; data?: T; error?: string }> {
+  return async (supabase: SupabaseClient) => {
+    const lockResult = await acquireCronLock(supabase, lockName);
 
-    // Verify cron auth first
-    if (!verifyCronSecret(request)) {
-      return unauthorizedResponse();
-    }
-
-    const supabase = createServiceClient();
-
-    // Try to acquire lock
-    const lock = await acquireCronLock(supabase, lockName);
-    if (!lock.acquired) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Another sync is already in progress",
-          lockName,
-        },
-        { status: 409 }
-      );
+    if (!lockResult.acquired) {
+      console.warn(`[CRON LOCK] ${lockName} is already running - skipping this invocation`);
+      return {
+        success: false,
+        error: lockResult.error || "Another instance is already running",
+      };
     }
 
     try {
-      // Run the actual handler
-      return await handler(request, supabase);
+      const result = await handler(supabase);
+      return { success: true, data: result };
     } finally {
-      // Always release the lock
       await releaseCronLock(supabase, lockName);
     }
   };

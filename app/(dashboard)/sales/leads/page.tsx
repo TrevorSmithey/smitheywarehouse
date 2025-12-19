@@ -7,6 +7,7 @@ export default function LeadsPage() {
   const {
     leadsData,
     leadsLoading,
+    leadsError,
     refreshLeads,
   } = useSales();
 
@@ -14,6 +15,7 @@ export default function LeadsPage() {
     <LeadsDashboard
       data={leadsData}
       loading={leadsLoading}
+      error={leadsError}
       onRefresh={refreshLeads}
     />
   );

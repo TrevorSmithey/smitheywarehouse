@@ -14,6 +14,7 @@ import {
   Mail,
   TrendingUp,
   DollarSign,
+  ShoppingCart,
 } from "lucide-react";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 
@@ -59,6 +60,7 @@ const NAV_TABS = [
   { href: "/holiday", label: "Q4 PACE", icon: Gift },
   { href: "/marketing", label: "MARKETING", icon: Mail },
   { href: "/sales", label: "SALES", icon: TrendingUp },
+  { href: "/ecommerce", label: "ECOMMERCE", icon: ShoppingCart },
 ] as const;
 
 // Hidden tab - only shown when secret code is entered
