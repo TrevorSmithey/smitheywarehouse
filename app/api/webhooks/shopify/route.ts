@@ -64,7 +64,11 @@ export async function POST(request: NextRequest) {
 
     // Log failed D2C webhook for health tracking
     const elapsed = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage = error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : JSON.stringify(error) || "Unknown error";
     try {
       const supabase = createServiceClient();
       await supabase.from("sync_logs").insert({

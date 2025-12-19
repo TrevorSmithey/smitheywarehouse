@@ -8,7 +8,7 @@ import type {
   B2BDraftOrderSku,
 } from "@/lib/types";
 import { calculateDOI, buildBudgetLookup } from "@/lib/doi";
-import { WAREHOUSE_IDS } from "@/lib/constants";
+import { WAREHOUSE_IDS, QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
 import { checkRateLimit, rateLimitedResponse, addRateLimitHeaders, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
         .gte("orders.created_at", monthStart)
         .lte("orders.created_at", monthEnd)
         .eq("orders.canceled", false)
-        .limit(2000000),
+        .limit(QUERY_LIMITS.INVENTORY_RETAIL_SALES),
 
       // 6. Monthly B2B (filter out cancelled orders using soft-delete column)
       supabase
@@ -108,7 +108,7 @@ export async function GET(request: Request) {
         .gte("fulfilled_at", monthStart)
         .lte("fulfilled_at", monthEnd)
         .is("cancelled_at", null)
-        .limit(1000000),
+        .limit(QUERY_LIMITS.INVENTORY_B2B_SALES),
 
       // 7. 3-day sales
       supabase
@@ -117,7 +117,7 @@ export async function GET(request: Request) {
         .gte("orders.created_at", threeDayStartEST)
         .lt("orders.created_at", todayEST)
         .eq("orders.canceled", false)
-        .limit(1000000),
+        .limit(QUERY_LIMITS.INVENTORY_VELOCITY),
 
       // 8. Prior 3-day sales
       supabase
@@ -126,7 +126,7 @@ export async function GET(request: Request) {
         .gte("orders.created_at", sixDayStartEST)
         .lt("orders.created_at", threeDayStartEST)
         .eq("orders.canceled", false)
-        .limit(1000000),
+        .limit(QUERY_LIMITS.INVENTORY_VELOCITY),
 
       // 9. B2B Draft Orders (open draft orders from Shopify B2B)
       supabase
@@ -162,20 +162,10 @@ export async function GET(request: Request) {
     }
 
     // Data truncation warnings - log if we hit limit boundaries
-    const MONTHLY_LIMIT = 2000000;
-    const OTHER_LIMIT = 1000000;
-    if (monthlySalesData && monthlySalesData.length >= MONTHLY_LIMIT) {
-      console.error(`[INVENTORY API] WARNING: Monthly sales data truncated at ${MONTHLY_LIMIT} rows. Data may be incomplete.`);
-    }
-    if (monthlyB2BData && monthlyB2BData.length >= OTHER_LIMIT) {
-      console.error(`[INVENTORY API] WARNING: Monthly B2B data truncated at ${OTHER_LIMIT} rows. Data may be incomplete.`);
-    }
-    if (sales3DayData && sales3DayData.length >= OTHER_LIMIT) {
-      console.error(`[INVENTORY API] WARNING: 3-day sales data truncated at ${OTHER_LIMIT} rows. Data may be incomplete.`);
-    }
-    if (salesPrior3DayData && salesPrior3DayData.length >= OTHER_LIMIT) {
-      console.error(`[INVENTORY API] WARNING: Prior 3-day sales data truncated at ${OTHER_LIMIT} rows. Data may be incomplete.`);
-    }
+    checkQueryLimit(monthlySalesData?.length || 0, QUERY_LIMITS.INVENTORY_RETAIL_SALES, "inventory_monthly_retail");
+    checkQueryLimit(monthlyB2BData?.length || 0, QUERY_LIMITS.INVENTORY_B2B_SALES, "inventory_monthly_b2b");
+    checkQueryLimit(sales3DayData?.length || 0, QUERY_LIMITS.INVENTORY_VELOCITY, "inventory_3day_velocity");
+    checkQueryLimit(salesPrior3DayData?.length || 0, QUERY_LIMITS.INVENTORY_VELOCITY, "inventory_prior_3day_velocity");
 
     // Create current month budget lookup (for display)
     const budgetBySku = new Map<string, number>();

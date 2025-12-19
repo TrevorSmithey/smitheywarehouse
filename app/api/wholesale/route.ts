@@ -1051,53 +1051,6 @@ export async function GET(request: Request) {
   }
 }
 
-// Helper to calculate risk score (0-100)
-function calculateRiskScore(customer: WholesaleCustomer): number {
-  let score = 0;
-
-  // Days since last order (max 40 points)
-  if (customer.days_since_last_order !== null) {
-    if (customer.days_since_last_order > 365) score += 40;
-    else if (customer.days_since_last_order > 180) score += 30;
-    else if (customer.days_since_last_order > 120) score += 20;
-    else if (customer.days_since_last_order > 90) score += 10;
-  }
-
-  // Revenue trend (max 30 points)
-  if (customer.revenue_trend < -0.5) score += 30;
-  else if (customer.revenue_trend < -0.3) score += 20;
-  else if (customer.revenue_trend < -0.1) score += 10;
-
-  // Order trend (max 20 points)
-  if (customer.order_trend < -0.5) score += 20;
-  else if (customer.order_trend < -0.3) score += 15;
-  else if (customer.order_trend < -0.1) score += 10;
-
-  // Value at risk based on segment (max 10 points)
-  if (customer.segment === "major") score += 10;
-  else if (customer.segment === "large") score += 8;
-  else if (customer.segment === "mid") score += 6;
-
-  return Math.min(100, score);
-}
-
-// Helper to get recommended action for at-risk customers
-function getRecommendedAction(customer: WholesaleCustomer): string {
-  if (customer.days_since_last_order && customer.days_since_last_order > 365) {
-    return "Win-back campaign - offer special pricing";
-  }
-  if (customer.days_since_last_order && customer.days_since_last_order > 180) {
-    return "Direct outreach from sales rep";
-  }
-  if (customer.revenue_trend < -0.3) {
-    return "Review account - check for competitor activity";
-  }
-  if (customer.order_trend < -0.3) {
-    return "Schedule check-in call to understand needs";
-  }
-  return "Monitor closely for next order";
-}
-
 // Helper to determine opportunity type
 function getOpportunityType(
   customer: WholesaleCustomer

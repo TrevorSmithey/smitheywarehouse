@@ -31,46 +31,6 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
   return "minimal";
 }
 
-// Helper to compute health status dynamically
-function getHealthStatus(
-  daysSinceLastOrder: number | null,
-  orderCount: number,
-  yoyChange: number | null,
-  firstSaleDate: string | null
-): CustomerHealthStatus {
-  // If no orders ever
-  if (!firstSaleDate || orderCount === 0) return "churned";
-
-  // New customer (first order within 90 days)
-  if (firstSaleDate) {
-    const daysSinceFirst = Math.floor(
-      (Date.now() - new Date(firstSaleDate).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    if (daysSinceFirst <= 90) return "new";
-  }
-
-  // One-time buyer
-  if (orderCount === 1) return "one_time";
-
-  // No orders for 365+ days
-  if (daysSinceLastOrder !== null && daysSinceLastOrder >= 365) return "churned";
-
-  // No orders for 180-365 days
-  if (daysSinceLastOrder !== null && daysSinceLastOrder >= 180) return "churning";
-
-  // Based on YoY trend
-  if (yoyChange !== null) {
-    if (yoyChange >= 20) return "thriving";
-    if (yoyChange >= -10) return "stable";
-    if (yoyChange >= -30) return "declining";
-    return "at_risk";
-  }
-
-  // Default based on recency
-  if (daysSinceLastOrder !== null && daysSinceLastOrder <= 90) return "stable";
-  return "declining";
-}
-
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -300,13 +260,9 @@ export async function GET(
       status: t.status,
     }));
 
-    // Build customer object with computed fields
-    const healthStatus = getHealthStatus(
-      daysSinceLastOrder,
-      orderCount,
-      yoyChangePct,
-      customerData.first_sale_date
-    );
+    // Use DB-computed health_status for consistency with wholesale dashboard
+    // The compute_customer_metrics() RPC computes this correctly
+    const healthStatus = (customerData.health_status as CustomerHealthStatus) || "churned";
 
     const segment = getCustomerSegment(totalRevenue);
 

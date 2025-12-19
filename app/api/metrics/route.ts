@@ -456,14 +456,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Process SKU queue - filter out restoration SKUs directly
-    const topSkusInQueue = processSkuQueue(
-      (skuQueueResult.data || []).filter(
-        (row: { sku: string | null }) => !row.sku?.includes("-Rest-")
-      )
-    );
+    // Process SKU queue - restoration orders already filtered at query level via is_restoration flag
+    const topSkusInQueue = processSkuQueue(skuQueueResult.data || []);
 
-    // Process stuck shipments - filter out restoration orders
     // Process stuck shipments - restoration already filtered at query level
     const stuckShipments = processStuckShipments(stuckShipmentsResult.data || [], now);
 

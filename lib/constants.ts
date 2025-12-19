@@ -123,6 +123,11 @@ export const QUERY_LIMITS = {
 
   // Support Tickets API
   SUPPORT_TICKETS: 50000,
+
+  // Inventory API - line items and B2B fulfilled
+  INVENTORY_RETAIL_SALES: 500000,
+  INVENTORY_B2B_SALES: 100000,
+  INVENTORY_VELOCITY: 100000,
 } as const;
 
 /**
