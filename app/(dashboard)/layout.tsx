@@ -13,7 +13,6 @@ import {
   Gift,
   Mail,
   TrendingUp,
-  DollarSign,
   ShoppingCart,
   Calculator,
 } from "lucide-react";
@@ -73,9 +72,8 @@ const NAV_TABS = [
 ] as const;
 
 // Hidden tabs - only shown when secret code is entered
-// Typing 4444 or 5555 anywhere on the page toggles visibility
+// Typing 4444 anywhere on the page toggles visibility
 const HIDDEN_TABS = [
-  { href: "/pl", label: "SALES REPORT", icon: DollarSign },
   { href: "/production-planning", label: "PLANNING", icon: Calculator },
 ] as const;
 
