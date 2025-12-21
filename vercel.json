@@ -72,6 +72,10 @@
     {
       "path": "/api/cron/sync-b2b-drafts",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-netsuite-pl",
+      "schedule": "0 8 * * *"
     }
   ]
 }

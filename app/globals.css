@@ -311,8 +311,20 @@ tr.ss-violation:hover {
    ResponsiveContainer needs measured dimensions from its
    parent. This ensures the wrapper always has positive
    dimensions during the initial layout phase.
+
+   Also removes browser focus outlines from chart elements
+   that can appear when tabbing or interacting with charts.
    ======================================== */
 .recharts-responsive-container {
   min-width: 1px;
   min-height: 1px;
+}
+
+.recharts-responsive-container,
+.recharts-responsive-container *,
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface * {
+  outline: none !important;
 }

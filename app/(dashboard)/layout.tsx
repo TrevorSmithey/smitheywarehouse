@@ -15,6 +15,7 @@ import {
   TrendingUp,
   DollarSign,
   ShoppingCart,
+  Calculator,
 } from "lucide-react";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 
@@ -71,13 +72,15 @@ const NAV_TABS = [
   { href: "/ecommerce", label: "ECOMMERCE", icon: ShoppingCart, group: "engagement" },
 ] as const;
 
-// Hidden tab - only shown when secret code is entered
+// Hidden tabs - only shown when secret code is entered
+// Typing 4444 or 5555 anywhere on the page toggles visibility
 const HIDDEN_TABS = [
-  { href: "/pl", label: "SALES REPORT", icon: DollarSign, code: "5555" },
+  { href: "/pl", label: "SALES REPORT", icon: DollarSign },
+  { href: "/production-planning", label: "PLANNING", icon: Calculator },
 ] as const;
 
-// Secret code to unlock hidden tabs
-const SECRET_CODE = "5555";
+// Secret codes to unlock hidden tabs (any of these will toggle visibility)
+const SECRET_CODES = ["4444", "5555"];
 
 export default function DashboardLayout({
   children,
@@ -95,7 +98,7 @@ export default function DashboardLayout({
 
   // Check localStorage on mount for hidden tab state
   useEffect(() => {
-    const saved = localStorage.getItem("smithey_pl_unlocked");
+    const saved = localStorage.getItem("smithey_hidden_unlocked");
     if (saved === "true") {
       setShowHiddenTabs(true);
     }
@@ -113,11 +116,11 @@ export default function DashboardLayout({
       if (e.key >= "0" && e.key <= "9") {
         setKeySequence((prev) => {
           const newSeq = (prev + e.key).slice(-4); // Keep last 4 digits
-          if (newSeq === SECRET_CODE) {
+          if (SECRET_CODES.includes(newSeq)) {
             // Toggle visibility
             setShowHiddenTabs((current) => {
               const newValue = !current;
-              localStorage.setItem("smithey_pl_unlocked", newValue ? "true" : "false");
+              localStorage.setItem("smithey_hidden_unlocked", newValue ? "true" : "false");
               return newValue;
             });
             return ""; // Clear sequence after toggle
