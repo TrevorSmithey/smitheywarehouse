@@ -1,10 +1,30 @@
 /**
+ * @deprecated This script is DEPRECATED as of December 2025.
+ *
+ * Assembly data now syncs directly from NetSuite via:
+ *   /api/cron/sync-netsuite-assembly
+ *
+ * The cron endpoint pulls Assembly Build transactions from NetSuite,
+ * eliminating the need for manual Excel exports.
+ *
+ * To backfill: curl -H "Authorization: Bearer $CRON_SECRET" \
+ *   "https://smitheywarehouse.vercel.app/api/cron/sync-netsuite-assembly?full=true"
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * OLD DESCRIPTION (for reference):
  * Sync Assembly Tracking data from Excel to Supabase
  * Reads the Cookware Assembly Tracking Excel and upserts to assembly tables
  *
  * Usage:
  *   npm run sync-assembly      # Sync from OneDrive Excel
  */
+
+console.error("⚠️  DEPRECATED: This script has been replaced by NetSuite sync.");
+console.error("   Use the API endpoint instead: /api/cron/sync-netsuite-assembly");
+console.error("   For full backfill: add ?full=true");
+process.exit(1);
+
+/* DEPRECATED CODE BELOW - kept for reference */
 
 import { config } from "dotenv";
 config({ path: ".env.local" });
