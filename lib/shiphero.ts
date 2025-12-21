@@ -388,3 +388,52 @@ export function getDisplayName(sku: string): string | null {
   const canonical = getCanonicalSku(sku);
   return canonical ? SKU_DISPLAY_NAMES[canonical] : null;
 }
+
+/**
+ * Reverse mapping: Display Name → ShipHero SKU
+ * Used to convert production target short codes to full SKUs for matching assembly data
+ *
+ * Example: "10Trad" → "Smith-CI-Skil10"
+ */
+export const DISPLAY_NAME_TO_SKU: Record<string, string> = Object.fromEntries(
+  Object.entries(SKU_DISPLAY_NAMES)
+    .filter(([sku]) => !sku.endsWith("-D")) // Exclude demo units
+    .map(([sku, displayName]) => [displayName.toLowerCase(), sku])
+);
+
+/**
+ * Get the ShipHero SKU from a display name or short code
+ * Handles case-insensitive matching
+ *
+ * @param displayNameOrSku - Either "10Trad" or "Smith-CI-Skil10"
+ * @returns The canonical ShipHero SKU or the input if already in correct format
+ */
+export function getShipHeroSku(displayNameOrSku: string): string {
+  // If it already starts with Smith-, it's probably a ShipHero SKU
+  if (displayNameOrSku.startsWith("Smith-")) {
+    return getCanonicalSku(displayNameOrSku) || displayNameOrSku;
+  }
+
+  // Try to find it in the reverse mapping
+  const lower = displayNameOrSku.toLowerCase();
+  if (DISPLAY_NAME_TO_SKU[lower]) {
+    return DISPLAY_NAME_TO_SKU[lower];
+  }
+
+  // Return as-is if not found
+  return displayNameOrSku;
+}
+
+/**
+ * Normalize a SKU for matching - always returns lowercase ShipHero format
+ * This is the key function for matching assembly data to production targets
+ *
+ * @param sku - Any format: "10Trad", "Smith-CI-Skil10", "SMITH-CI-SKIL10"
+ * @returns Lowercase ShipHero SKU: "smith-ci-skil10"
+ */
+export function normalizeToShipHeroSku(sku: string): string {
+  // First, convert display name to ShipHero format if needed
+  const shipHeroSku = getShipHeroSku(sku);
+  // Then lowercase for matching
+  return shipHeroSku.toLowerCase();
+}

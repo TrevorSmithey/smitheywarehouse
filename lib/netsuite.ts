@@ -723,3 +723,78 @@ export async function fetchPLByAccount(
 
   return executeSuiteQL<NSPLByAccount>(query);
 }
+
+// ============================================================================
+// Assembly Build Data Types and Functions
+// ============================================================================
+
+export interface NSAssemblyBuild {
+  trandate: string;      // Date of assembly
+  item_sku: string;      // SKU (e.g., Smith-CI-Skil12)
+  quantity: string;      // Total quantity built that day
+}
+
+/**
+ * Fetch Assembly Build transactions from NetSuite
+ * Replicates the "Assembled By Day and Item Search" saved search
+ * (customsearchsi_assemblies_by_day)
+ *
+ * Returns daily assembly totals grouped by date and item SKU
+ *
+ * @param startDate - Start date in YYYY-MM-DD format
+ * @param endDate - End date in YYYY-MM-DD format (defaults to today)
+ */
+export async function fetchAssemblyBuilds(
+  startDate: string,
+  endDate?: string
+): Promise<NSAssemblyBuild[]> {
+  const end = endDate || new Date().toISOString().split("T")[0];
+
+  // Query Assembly Build transactions grouped by date and item
+  // This replicates the saved search: customsearchsi_assemblies_by_day
+  // - Type: Assembly Build (AssyBld)
+  // - Main Line: true (to get the built item, not components)
+  // - Grouped by date and item with SUM of quantity
+  const query = `
+    SELECT
+      TO_CHAR(t.trandate, 'YYYY-MM-DD') as trandate,
+      BUILTIN.DF(tl.item) as item_sku,
+      SUM(tl.quantity) as quantity
+    FROM transaction t
+    JOIN transactionline tl ON tl.transaction = t.id
+    WHERE t.type = 'AssyBld'
+    AND tl.mainline = 'T'
+    AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
+    AND t.trandate <= TO_DATE('${end}', 'YYYY-MM-DD')
+    GROUP BY TO_CHAR(t.trandate, 'YYYY-MM-DD'), BUILTIN.DF(tl.item)
+    ORDER BY trandate, item_sku
+  `;
+
+  console.log(`[NETSUITE] Fetching assembly builds from ${startDate} to ${end}...`);
+  const results = await executeSuiteQL<NSAssemblyBuild>(query);
+  console.log(`[NETSUITE] Got ${results.length} assembly build records`);
+  return results;
+}
+
+/**
+ * Fetch Assembly Builds for the current year (optimized for production planning)
+ * Returns all assembly builds from Jan 1 of the current year to today
+ */
+export async function fetchAssemblyBuildsYTD(): Promise<NSAssemblyBuild[]> {
+  const year = new Date().getFullYear();
+  const startDate = `${year}-01-01`;
+  return fetchAssemblyBuilds(startDate);
+}
+
+/**
+ * Fetch Assembly Builds for a specific month
+ */
+export async function fetchAssemblyBuildsForMonth(
+  year: number,
+  month: number
+): Promise<NSAssemblyBuild[]> {
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+  return fetchAssemblyBuilds(startDate, endDate);
+}
