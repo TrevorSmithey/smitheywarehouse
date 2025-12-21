@@ -162,6 +162,52 @@ export async function GET(request: Request) {
       duration_ms: elapsed,
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // Compute and upsert assembly_daily aggregates
+    // This replaces the "Daily_Aggregation" sheet from the old Excel
+    // ─────────────────────────────────────────────────────────────
+    const dailyTotals = new Map<string, number>();
+    for (const r of records) {
+      dailyTotals.set(r.date, (dailyTotals.get(r.date) || 0) + r.quantity);
+    }
+
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+    // Helper to get ISO week number
+    function getWeekNumber(date: Date): number {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    }
+
+    const dailyAggregates = Array.from(dailyTotals.entries()).map(([dateStr, total]) => {
+      const date = new Date(dateStr + "T12:00:00Z"); // Noon UTC to avoid timezone issues
+      return {
+        date: dateStr,
+        daily_total: total,
+        day_of_week: dayNames[date.getUTCDay()],
+        week_num: getWeekNumber(date),
+        month: date.getUTCMonth() + 1,
+        year: date.getUTCFullYear(),
+      };
+    });
+
+    let dailyUpserted = 0;
+    if (dailyAggregates.length > 0) {
+      const { error: dailyError } = await supabase
+        .from("assembly_daily")
+        .upsert(dailyAggregates, { onConflict: "date" });
+
+      if (dailyError) {
+        console.error("[ASSEMBLY] Daily aggregates upsert error:", dailyError);
+      } else {
+        dailyUpserted = dailyAggregates.length;
+        console.log(`[ASSEMBLY] Upserted ${dailyUpserted} daily aggregate records`);
+      }
+    }
+
     // Get some stats for the response
     const skuCounts = new Map<string, number>();
     for (const r of records) {
@@ -179,8 +225,10 @@ export async function GET(request: Request) {
       dateRange: { start: startDate, end: endDate },
       fetched: assemblyBuilds.length,
       filtered: records.length,
-      upserted: totalUpserted,
+      skuDailyUpserted: totalUpserted,
+      dailyAggregatesUpserted: dailyUpserted,
       uniqueSkus: skuCounts.size,
+      uniqueDays: dailyTotals.size,
       topSkus,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
     });
