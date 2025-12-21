@@ -752,7 +752,7 @@ export async function fetchAssemblyBuilds(
 
   // Query Assembly Build transactions grouped by date and item
   // This replicates the saved search: customsearchsi_assemblies_by_day
-  // - Type: Assembly Build (AssyBld)
+  // - Type: Build (NetSuite internal type for Assembly Builds)
   // - Main Line: true (to get the built item, not components)
   // - Grouped by date and item with SUM of quantity
   const query = `
@@ -762,7 +762,7 @@ export async function fetchAssemblyBuilds(
       SUM(tl.quantity) as quantity
     FROM transaction t
     JOIN transactionline tl ON tl.transaction = t.id
-    WHERE t.type = 'AssyBld'
+    WHERE t.type = 'Build'
     AND tl.mainline = 'T'
     AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
     AND t.trandate <= TO_DATE('${end}', 'YYYY-MM-DD')
