@@ -6,82 +6,67 @@ import { NextResponse } from "next/server";
 import { executeSuiteQL, hasNetSuiteCredentials } from "@/lib/netsuite";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!hasNetSuiteCredentials()) {
     return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
   }
 
+  const url = new URL(request.url);
+  const queryType = url.searchParams.get("q") || "types";
+
   try {
-    // Test 1: Check what transaction types exist
-    const typesQuery = `
-      SELECT DISTINCT t.type, COUNT(*) as cnt
-      FROM transaction t
-      WHERE t.trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
-      GROUP BY t.type
-      ORDER BY cnt DESC
-    `;
+    if (queryType === "types") {
+      // Simple query: list distinct transaction types
+      const query = `
+        SELECT DISTINCT type
+        FROM transaction
+        WHERE trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
+      `;
+      const results = await executeSuiteQL<{ type: string }>(query);
+      return NextResponse.json({ success: true, queryType, results });
+    }
 
-    console.log("[DEBUG] Testing transaction types query...");
-    const types = await executeSuiteQL<{ type: string; cnt: string }>(typesQuery);
+    if (queryType === "assembly") {
+      // Test Assembly Build query
+      const query = `
+        SELECT t.id, t.type, t.trandate
+        FROM transaction t
+        WHERE t.type = 'AssyBld'
+        AND t.trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
+        FETCH FIRST 5 ROWS ONLY
+      `;
+      const results = await executeSuiteQL(query);
+      return NextResponse.json({ success: true, queryType, results });
+    }
 
-    // Test 2: Try the Assembly Build query
-    const assemblyQuery = `
-      SELECT
-        TO_CHAR(t.trandate, 'YYYY-MM-DD') as trandate,
-        BUILTIN.DF(tl.item) as item_sku,
-        SUM(tl.quantity) as quantity
-      FROM transaction t
-      JOIN transactionline tl ON tl.transaction = t.id
-      WHERE t.type = 'AssyBld'
-      AND tl.mainline = 'T'
-      AND t.trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
-      GROUP BY TO_CHAR(t.trandate, 'YYYY-MM-DD'), BUILTIN.DF(tl.item)
-      ORDER BY trandate
-    `;
+    if (queryType === "build") {
+      // Test Build transaction type
+      const query = `
+        SELECT t.id, t.type, t.trandate
+        FROM transaction t
+        WHERE t.type = 'Build'
+        AND t.trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
+        FETCH FIRST 5 ROWS ONLY
+      `;
+      const results = await executeSuiteQL(query);
+      return NextResponse.json({ success: true, queryType, results });
+    }
 
-    console.log("[DEBUG] Testing Assembly Build query...");
-    const assemblies = await executeSuiteQL<{ trandate: string; item_sku: string; quantity: string }>(assemblyQuery);
+    if (queryType === "search") {
+      // Try to list saved searches
+      const query = `
+        SELECT id, title
+        FROM savedsearch
+        WHERE title LIKE '%assembl%'
+        FETCH FIRST 10 ROWS ONLY
+      `;
+      const results = await executeSuiteQL(query);
+      return NextResponse.json({ success: true, queryType, results });
+    }
 
-    // Test 3: Try Work Order type instead
-    const workOrderQuery = `
-      SELECT
-        TO_CHAR(t.trandate, 'YYYY-MM-DD') as trandate,
-        BUILTIN.DF(tl.item) as item_sku,
-        tl.quantity
-      FROM transaction t
-      JOIN transactionline tl ON tl.transaction = t.id
-      WHERE t.type = 'WorkOrd'
-      AND tl.mainline = 'T'
-      AND t.trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
-      ORDER BY trandate
-      FETCH FIRST 10 ROWS ONLY
-    `;
-
-    console.log("[DEBUG] Testing Work Order query...");
-    const workOrders = await executeSuiteQL<{ trandate: string; item_sku: string; quantity: string }>(workOrderQuery);
-
-    // Test 4: Raw assembly query without grouping
-    const rawQuery = `
-      SELECT t.id, t.type, t.trandate, tl.item, tl.quantity, tl.mainline
-      FROM transaction t
-      JOIN transactionline tl ON tl.transaction = t.id
-      WHERE t.type IN ('AssyBld', 'Build', 'Assembly')
-      AND t.trandate >= TO_DATE('2025-12-01', 'YYYY-MM-DD')
-      FETCH FIRST 10 ROWS ONLY
-    `;
-
-    console.log("[DEBUG] Testing raw assembly query...");
-    const rawData = await executeSuiteQL(rawQuery);
-
-    return NextResponse.json({
-      success: true,
-      transactionTypes: types.slice(0, 20),
-      assemblyBuilds: assemblies.slice(0, 10),
-      workOrders: workOrders.slice(0, 10),
-      rawAssembly: rawData.slice(0, 10),
-      message: `Found ${types.length} transaction types, ${assemblies.length} assembly builds, ${workOrders.length} work orders`,
-    });
+    return NextResponse.json({ error: "Unknown query type. Use ?q=types|assembly|build|search" }, { status: 400 });
   } catch (error) {
     console.error("[DEBUG] Error:", error);
     return NextResponse.json(
