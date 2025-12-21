@@ -22,6 +22,7 @@ import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import {
   hasNetSuiteCredentials,
   fetchAssemblyBuilds,
+  fetchAssemblyBuildsForMonth,
   type NSAssemblyBuild,
 } from "@/lib/netsuite";
 
@@ -90,7 +91,26 @@ export async function GET(request: Request) {
     console.log(`[ASSEMBLY] Starting sync (${syncDescription}): ${startDate} to ${endDate}`);
 
     // Fetch assembly builds from NetSuite
-    const assemblyBuilds = await fetchAssemblyBuilds(startDate, endDate);
+    // For full year syncs, query month-by-month to avoid SuiteQL's 1000 row limit
+    let assemblyBuilds: NSAssemblyBuild[] = [];
+
+    if (isFullSync) {
+      // Query each month separately to avoid 1000 row limit
+      const year = today.getFullYear();
+      const currentMonth = today.getMonth() + 1; // 1-indexed
+
+      console.log(`[ASSEMBLY] Full sync - querying months 1 through ${currentMonth}`);
+
+      for (let month = 1; month <= currentMonth; month++) {
+        console.log(`[ASSEMBLY] Fetching month ${month}/${currentMonth}...`);
+        const monthData = await fetchAssemblyBuildsForMonth(year, month);
+        assemblyBuilds.push(...monthData);
+        console.log(`[ASSEMBLY] Month ${month}: ${monthData.length} records (total: ${assemblyBuilds.length})`);
+      }
+    } else {
+      // For incremental syncs, single query is fine (< 1000 rows expected)
+      assemblyBuilds = await fetchAssemblyBuilds(startDate, endDate);
+    }
 
     if (assemblyBuilds.length === 0) {
       console.log(`[ASSEMBLY] No assembly builds found in date range`);
