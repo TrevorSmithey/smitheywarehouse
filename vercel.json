@@ -14,6 +14,9 @@
     },
     "app/api/cron/sync-shopify-customers/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/sync-netsuite-assembly/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -76,6 +79,10 @@
     {
       "path": "/api/cron/sync-netsuite-pl",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-netsuite-assembly",
+      "schedule": "0 */2 * * *"
     }
   ]
 }
