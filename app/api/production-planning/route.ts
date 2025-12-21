@@ -307,6 +307,18 @@ export interface ProductionPlanningResponse {
 
   // Legacy (for backwards compat)
   componentInventory: Array<{ sku: string; available: number; limitsSkus: string[] }>;
+
+  // Yearly targets overview - shows target vs actual for each month
+  yearlyTargets: YearlyTargetMonth[];
+}
+
+export interface YearlyTargetMonth {
+  month: number;
+  monthName: string;
+  target: number;
+  produced: number;
+  isCurrent: boolean;
+  isFuture: boolean;
 }
 
 // ============================================
@@ -1320,6 +1332,37 @@ export async function GET(request: Request) {
       daysElapsedInMonth = 0;
     }
 
+    // ========================================
+    // Yearly Targets Overview
+    // ========================================
+    // Aggregate targets and production by month for the displayed year
+    const yearlyTargets: YearlyTargetMonth[] = [];
+
+    for (let m = 1; m <= 12; m++) {
+      // Sum targets for this month
+      const monthTargets = targets.filter(t => t.year === year && t.month === m);
+      const monthlyTargetTotal = monthTargets.reduce((sum, t) => sum + (t.target || 0), 0);
+
+      // Sum production for this month
+      const monthStart = `${year}-${String(m).padStart(2, "0")}-01`;
+      const monthEnd = `${year}-${String(m).padStart(2, "0")}-${getDaysInMonth(year, m)}`;
+      const monthProduction = production
+        .filter(p => p.date >= monthStart && p.date <= monthEnd)
+        .reduce((sum, p) => sum + (p.quantity || 0), 0);
+
+      const isCurrent = year === actualToday.year && m === actualToday.month;
+      const isFuture = year > actualToday.year || (year === actualToday.year && m > actualToday.month);
+
+      yearlyTargets.push({
+        month: m,
+        monthName: MONTH_NAMES[m - 1],
+        target: monthlyTargetTotal,
+        produced: monthProduction,
+        isCurrent,
+        isFuture,
+      });
+    }
+
     const response: ProductionPlanningResponse = {
       asOfDate: dateStr,
       period: {
@@ -1340,6 +1383,7 @@ export async function GET(request: Request) {
       inventoryCurves,
       aggregateCurve,
       componentInventory,
+      yearlyTargets,
     };
 
     return NextResponse.json(response);

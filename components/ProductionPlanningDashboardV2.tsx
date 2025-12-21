@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, AlertTriangle, Printer, Download, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, Printer, Download, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProductionPlanningResponse } from "@/app/api/production-planning/route";
 
@@ -488,6 +488,118 @@ function ConstrainedItemsSection({
 }
 
 // ============================================================================
+// YEARLY OVERVIEW - Collapsible section showing all 12 months
+// ============================================================================
+function YearlyOverview({
+  yearlyTargets,
+  year,
+  onMonthClick,
+}: {
+  yearlyTargets: ProductionPlanningResponse['yearlyTargets'];
+  year: number;
+  onMonthClick: (month: number) => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!yearlyTargets || yearlyTargets.length === 0) return null;
+
+  const yearTotal = yearlyTargets.reduce((sum, m) => sum + m.target, 0);
+  const yearProduced = yearlyTargets.reduce((sum, m) => sum + m.produced, 0);
+
+  // Format numbers compactly
+  const formatCompact = (n: number) => {
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+    return n.toLocaleString();
+  };
+
+  return (
+    <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] overflow-hidden">
+      {/* Collapsible Header */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-2 flex items-center justify-between hover:bg-[var(--color-bg-tertiary)]/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+          )}
+          <span className="text-[var(--color-text-secondary)] text-sm font-medium">
+            {year} Annual Budget
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <span className="text-[var(--color-text-tertiary)]">
+            Target: <span className="text-white font-medium">{formatCompact(yearTotal)}</span>
+          </span>
+          <span className="text-[var(--color-text-tertiary)]">
+            Produced: <span className="text-white font-medium">{formatCompact(yearProduced)}</span>
+          </span>
+        </div>
+      </button>
+
+      {/* Expanded Content */}
+      {isExpanded && (
+        <div className="border-t border-[var(--color-border)] px-4 py-3">
+          <div className="grid grid-cols-12 gap-1">
+            {yearlyTargets.map((m) => {
+              const delta = m.produced - m.target;
+              const percent = m.target > 0 ? (m.produced / m.target) * 100 : 0;
+              const isComplete = delta >= 0 && !m.isFuture;
+
+              return (
+                <button
+                  key={m.month}
+                  onClick={() => onMonthClick(m.month)}
+                  className={`p-2 rounded text-center transition-all hover:ring-1 hover:ring-sky-500/50
+                    ${m.isCurrent ? 'bg-sky-500/20 ring-1 ring-sky-500/50' : 'bg-[var(--color-bg-tertiary)]'}
+                    ${m.isFuture ? 'opacity-50' : ''}`}
+                >
+                  <div className="text-[10px] text-[var(--color-text-tertiary)] uppercase">
+                    {m.monthName.slice(0, 3)}
+                  </div>
+                  <div className="text-xs font-medium text-white mt-0.5">
+                    {formatCompact(m.target)}
+                  </div>
+                  {!m.isFuture && m.target > 0 && (
+                    <div className={`text-[10px] mt-0.5 ${isComplete ? 'text-emerald-400' : delta < 0 ? 'text-amber-400' : 'text-[var(--color-text-tertiary)]'}`}>
+                      {delta >= 0 ? '+' : ''}{formatCompact(delta)}
+                    </div>
+                  )}
+                  {m.isFuture && (
+                    <div className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">—</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Year Summary Bar */}
+          <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-[var(--color-text-tertiary)]">Year Progress</span>
+              <span className="text-white font-medium">
+                {formatCompact(yearProduced)} / {formatCompact(yearTotal)}
+                <span className="text-[var(--color-text-tertiary)] ml-2">
+                  ({yearTotal > 0 ? Math.round((yearProduced / yearTotal) * 100) : 0}%)
+                </span>
+              </span>
+            </div>
+            <div className="h-2 bg-[var(--color-bg-tertiary)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-sky-500 rounded-full transition-all"
+                style={{ width: `${Math.min(100, yearTotal > 0 ? (yearProduced / yearTotal) * 100 : 0)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 export default function ProductionPlanningDashboardV2({ data, onMonthChange }: Props) {
@@ -521,10 +633,21 @@ export default function ProductionPlanningDashboardV2({ data, onMonthChange }: P
     router.push(`/production-planning/${encodeURIComponent(sku)}`);
   };
 
+  const handleMonthClick = (month: number) => {
+    onMonthChange(data.period.year, month);
+  };
+
   return (
     <div className="space-y-4 p-4">
       {/* Compact Header */}
       <HeaderBar data={data} onMonthChange={onMonthChange} />
+
+      {/* Yearly Overview - Collapsible */}
+      <YearlyOverview
+        yearlyTargets={data.yearlyTargets}
+        year={data.period.year}
+        onMonthClick={handleMonthClick}
+      />
 
       {/* Side-by-Side Product Family Columns */}
       <div className="flex gap-4">
