@@ -136,6 +136,7 @@ export async function GET(request: Request) {
     }
 
     // Transform to database format
+    // Store ALL Smith- SKUs in assembly_sku_daily (for production planning)
     const records = assemblyBuilds
       .filter((ab: NSAssemblyBuild) => {
         // Only process Smith- SKUs (finished goods)
@@ -148,7 +149,18 @@ export async function GET(request: Request) {
       }))
       .filter((r) => r.quantity > 0); // Skip zero quantities
 
-    console.log(`[ASSEMBLY] Processing ${records.length} valid records (filtered from ${assemblyBuilds.length})`);
+    // Filter for production tracking (matches Excel Daily_Aggregation formula)
+    // Only Cast Iron (CI) and Carbon Steel (CS), excluding defects (-D)
+    const productionRecords = records.filter((r) => {
+      const skuUpper = r.sku.toUpperCase();
+      // Exclude defects
+      if (skuUpper.endsWith("-D")) return false;
+      // Only CI and CS
+      return skuUpper.startsWith("SMITH-CI-") || skuUpper.startsWith("SMITH-CS-");
+    });
+
+    console.log(`[ASSEMBLY] Processing ${records.length} SKU records (filtered from ${assemblyBuilds.length})`);
+    console.log(`[ASSEMBLY] Production tracking: ${productionRecords.length} records (CI+CS only, no defects)`);
 
     // Upsert in batches
     const BATCH_SIZE = 500;
@@ -185,9 +197,10 @@ export async function GET(request: Request) {
     // ─────────────────────────────────────────────────────────────
     // Compute and upsert assembly_daily aggregates
     // This replaces the "Daily_Aggregation" sheet from the old Excel
+    // Uses productionRecords (CI + CS only, no defects) to match Excel
     // ─────────────────────────────────────────────────────────────
     const dailyTotals = new Map<string, number>();
-    for (const r of records) {
+    for (const r of productionRecords) {
       dailyTotals.set(r.date, (dailyTotals.get(r.date) || 0) + r.quantity);
     }
 

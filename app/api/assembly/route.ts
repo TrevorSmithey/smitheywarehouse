@@ -5,6 +5,16 @@ import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-lim
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Production tracking filter (matches Excel Daily_Aggregation formula)
+// Only Cast Iron and Carbon Steel, excludes defects
+function isProductionTracked(sku: string): boolean {
+  const skuUpper = sku.toUpperCase();
+  // Exclude defects (items ending in -D)
+  if (skuUpper.endsWith("-D")) return false;
+  // Only CI and CS
+  return skuUpper.startsWith("SMITH-CI-") || skuUpper.startsWith("SMITH-CS-");
+}
+
 // Validate env vars and create client (lazy initialization to avoid build-time errors)
 function getSupabaseClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -159,10 +169,12 @@ export async function GET(request: Request) {
       throw new Error(`SKU daily data error: ${skuDailyError.message}`);
     }
 
-    // Aggregate T7 by SKU
+    // Aggregate T7 by SKU (only production-tracked SKUs: CI + CS, no defects)
     const t7BySku: Record<string, number> = {};
     for (const row of skuDailyData || []) {
-      t7BySku[row.sku] = (t7BySku[row.sku] || 0) + row.quantity;
+      if (isProductionTracked(row.sku)) {
+        t7BySku[row.sku] = (t7BySku[row.sku] || 0) + row.quantity;
+      }
     }
 
     // Fetch config

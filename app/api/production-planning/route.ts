@@ -24,10 +24,27 @@ import { fetchAllProducts, normalizeToShipHeroSku, SKU_DISPLAY_NAMES } from "@/l
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 // ============================================
-// Manufactured Products Filter
+// Product Filters
 // ============================================
-// Matches Excel filter: Smith-CI-* and Smith-CS-* only, excluding -D (defects)
-function isManufacturedProduct(sku: string): boolean {
+
+// STRICT filter for production counts (matches Excel Daily_Aggregation formula)
+// Only Cast Iron and Carbon Steel, excludes defects
+function isProductionTracked(sku: string): boolean {
+  const skuUpper = sku.toUpperCase();
+
+  // Exclude defects (items ending in -D)
+  if (skuUpper.endsWith("-D")) return false;
+
+  // Cast Iron and Carbon Steel cookware only
+  if (skuUpper.startsWith("SMITH-CI-")) return true;
+  if (skuUpper.startsWith("SMITH-CS-")) return true;
+
+  return false;
+}
+
+// BROADER filter for production planning (includes items with targets)
+// Cast Iron, Carbon Steel, Glass Lids, CareKit - excludes defects
+function isPlannedProduct(sku: string): boolean {
   const skuUpper = sku.toUpperCase();
 
   // Exclude defects (items ending in -D)
@@ -37,8 +54,17 @@ function isManufacturedProduct(sku: string): boolean {
   if (skuUpper.startsWith("SMITH-CI-")) return true;
   if (skuUpper.startsWith("SMITH-CS-")) return true;
 
+  // Glass lids (manufactured, have targets)
+  if (skuUpper.startsWith("SMITH-AC-GLID")) return true;
+
+  // Care Kit (assembled, has targets)
+  if (skuUpper.includes("CAREKIT") || skuUpper.includes("CARE-KIT")) return true;
+
   return false;
 }
+
+// Alias for backward compatibility
+const isManufacturedProduct = isPlannedProduct;
 
 // Purchased accessories ordered from China (not manufactured, need inventory planning)
 // These use sales forecast (not production targets) and have long lead times
