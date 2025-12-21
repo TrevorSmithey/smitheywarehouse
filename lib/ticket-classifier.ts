@@ -157,7 +157,7 @@ export async function classifyTicket(messageBody: string): Promise<Classificatio
 
   try {
     const response = await getAnthropicClient().messages.create({
-      model: "claude-haiku-4-5-latest",
+      model: "claude-haiku-4-5",
       max_tokens: 500,
       temperature: 0.2, // Low temperature for consistent classification
       messages: [
