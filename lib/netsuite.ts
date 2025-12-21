@@ -740,6 +740,7 @@ export interface NSAssemblyBuild {
  * (customsearchsi_assemblies_by_day)
  *
  * Returns daily assembly totals grouped by date and item SKU
+ * Paginates through all results (NetSuite limits to 1000 per query)
  *
  * @param startDate - Start date in YYYY-MM-DD format
  * @param endDate - End date in YYYY-MM-DD format (defaults to today)
@@ -749,31 +750,55 @@ export async function fetchAssemblyBuilds(
   endDate?: string
 ): Promise<NSAssemblyBuild[]> {
   const end = endDate || new Date().toISOString().split("T")[0];
-
-  // Query Assembly Build transactions grouped by date and item
-  // This replicates the saved search: customsearchsi_assemblies_by_day
-  // - Type: Build (NetSuite internal type for Assembly Builds)
-  // - Main Line: true (to get the built item, not components)
-  // - Grouped by date and item with SUM of quantity
-  const query = `
-    SELECT
-      TO_CHAR(t.trandate, 'YYYY-MM-DD') as trandate,
-      BUILTIN.DF(tl.item) as item_sku,
-      SUM(tl.quantity) as quantity
-    FROM transaction t
-    JOIN transactionline tl ON tl.transaction = t.id
-    WHERE t.type = 'Build'
-    AND tl.mainline = 'T'
-    AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
-    AND t.trandate <= TO_DATE('${end}', 'YYYY-MM-DD')
-    GROUP BY TO_CHAR(t.trandate, 'YYYY-MM-DD'), BUILTIN.DF(tl.item)
-    ORDER BY trandate, item_sku
-  `;
+  const allResults: NSAssemblyBuild[] = [];
+  const BATCH_SIZE = 1000;
+  let offset = 0;
 
   console.log(`[NETSUITE] Fetching assembly builds from ${startDate} to ${end}...`);
-  const results = await executeSuiteQL<NSAssemblyBuild>(query);
-  console.log(`[NETSUITE] Got ${results.length} assembly build records`);
-  return results;
+
+  while (true) {
+    // Query Assembly Build transactions grouped by date and item
+    // This replicates the saved search: customsearchsi_assemblies_by_day
+    // - Type: Build (NetSuite internal type for Assembly Builds)
+    // - Main Line: true (to get the built item, not components)
+    // - Grouped by date and item with SUM of quantity
+    const query = `
+      SELECT
+        TO_CHAR(t.trandate, 'YYYY-MM-DD') as trandate,
+        BUILTIN.DF(tl.item) as item_sku,
+        SUM(tl.quantity) as quantity
+      FROM transaction t
+      JOIN transactionline tl ON tl.transaction = t.id
+      WHERE t.type = 'Build'
+      AND tl.mainline = 'T'
+      AND t.trandate >= TO_DATE('${startDate}', 'YYYY-MM-DD')
+      AND t.trandate <= TO_DATE('${end}', 'YYYY-MM-DD')
+      GROUP BY TO_CHAR(t.trandate, 'YYYY-MM-DD'), BUILTIN.DF(tl.item)
+      ORDER BY trandate, item_sku
+      OFFSET ${offset} ROWS FETCH NEXT ${BATCH_SIZE} ROWS ONLY
+    `;
+
+    const results = await executeSuiteQL<NSAssemblyBuild>(query);
+    allResults.push(...results);
+
+    console.log(`[NETSUITE] Fetched ${results.length} records (offset=${offset}, total=${allResults.length})`);
+
+    // If we got less than BATCH_SIZE, we've reached the end
+    if (results.length < BATCH_SIZE) {
+      break;
+    }
+
+    offset += BATCH_SIZE;
+
+    // Safety limit - 10,000 records max
+    if (allResults.length >= 10000) {
+      console.warn(`[NETSUITE] Hit 10,000 record limit, stopping pagination`);
+      break;
+    }
+  }
+
+  console.log(`[NETSUITE] Total assembly build records: ${allResults.length}`);
+  return allResults;
 }
 
 /**
