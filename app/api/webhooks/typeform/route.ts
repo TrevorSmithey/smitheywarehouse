@@ -412,7 +412,7 @@ async function analyzeLeadWithAI(
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-haiku-4-5-latest",
       max_tokens: 500,
       temperature: 0.3,
       messages: [{ role: "user", content: `Analyze this ${isB2B ? "wholesale partnership" : "corporate gifting"} application:\n\n${leadContext}` }],

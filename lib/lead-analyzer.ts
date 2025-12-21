@@ -187,7 +187,7 @@ export async function analyzeLead(lead: TypeformLead): Promise<LeadAnalysisResul
 
   try {
     const response = await getAnthropicClient().messages.create({
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-haiku-4-5-latest",
       max_tokens: 800,
       temperature: 0.3,
       messages: [
