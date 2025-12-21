@@ -493,13 +493,14 @@ function ConstrainedItemsSection({
 function YearlyOverview({
   yearlyTargets,
   year,
-  onMonthClick,
+  annualSkuTargets,
 }: {
   yearlyTargets: ProductionPlanningResponse['yearlyTargets'];
   year: number;
-  onMonthClick: (month: number) => void;
+  annualSkuTargets: ProductionPlanningResponse['annualSkuTargets'];
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
   if (!yearlyTargets || yearlyTargets.length === 0) return null;
 
@@ -511,6 +512,22 @@ function YearlyOverview({
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
     return n.toLocaleString();
   };
+
+  // Get SKU targets for selected month
+  const getMonthSkuData = (monthIndex: number) => {
+    if (!annualSkuTargets) return [];
+    return annualSkuTargets
+      .filter(s => s.monthlyTargets && s.monthlyTargets[monthIndex] > 0)
+      .map(s => ({
+        displayName: s.displayName,
+        category: s.category,
+        target: s.monthlyTargets?.[monthIndex] || 0,
+      }))
+      .sort((a, b) => b.target - a.target);
+  };
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'];
 
   return (
     <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] overflow-hidden">
@@ -545,16 +562,17 @@ function YearlyOverview({
           <div className="grid grid-cols-12 gap-1">
             {yearlyTargets.map((m) => {
               const delta = m.produced - m.target;
-              const percent = m.target > 0 ? (m.produced / m.target) * 100 : 0;
               const isComplete = delta >= 0 && !m.isFuture;
+              const isSelected = selectedMonth === m.month;
 
               return (
                 <button
                   key={m.month}
-                  onClick={() => onMonthClick(m.month)}
-                  className={`p-2 rounded text-center transition-all hover:ring-1 hover:ring-sky-500/50
-                    ${m.isCurrent ? 'bg-sky-500/20 ring-1 ring-sky-500/50' : 'bg-[var(--color-bg-tertiary)]'}
-                    ${m.isFuture ? 'opacity-50' : ''}`}
+                  onClick={() => setSelectedMonth(isSelected ? null : m.month)}
+                  className={`p-2 rounded text-center transition-all
+                    ${isSelected ? 'bg-sky-500/30 ring-2 ring-sky-500' :
+                      m.isCurrent ? 'bg-sky-500/20 ring-1 ring-sky-500/50' : 'bg-[var(--color-bg-tertiary)] hover:ring-1 hover:ring-sky-500/50'}
+                    ${m.isFuture && !isSelected ? 'opacity-50' : ''}`}
                 >
                   <div className="text-[10px] text-[var(--color-text-tertiary)] uppercase">
                     {m.monthName.slice(0, 3)}
@@ -574,6 +592,53 @@ function YearlyOverview({
               );
             })}
           </div>
+
+          {/* Selected Month Detail */}
+          {selectedMonth !== null && (
+            <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-white">
+                  {monthNames[selectedMonth - 1]} {year} Budget
+                </span>
+                <button
+                  onClick={() => setSelectedMonth(null)}
+                  className="text-[var(--color-text-tertiary)] hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-4 max-h-64 overflow-y-auto">
+                {['cast_iron', 'carbon_steel', 'accessory'].map(category => {
+                  const categoryData = getMonthSkuData(selectedMonth - 1).filter(s => s.category === category);
+                  const categoryTotal = categoryData.reduce((sum, s) => sum + s.target, 0);
+                  const categoryLabel = category === 'cast_iron' ? 'Cast Iron' :
+                                       category === 'carbon_steel' ? 'Carbon Steel' : 'Accessories';
+
+                  if (categoryData.length === 0 && categoryTotal === 0) return null;
+
+                  return (
+                    <div key={category}>
+                      <div className="text-xs text-[var(--color-text-tertiary)] uppercase mb-1 flex justify-between">
+                        <span>{categoryLabel}</span>
+                        <span className="text-white">{formatCompact(categoryTotal)}</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        {categoryData.map((sku, i) => (
+                          <div key={i} className="flex justify-between text-xs">
+                            <span className="text-[var(--color-text-secondary)] truncate mr-2">{sku.displayName}</span>
+                            <span className="text-white tabular-nums">{formatCompact(sku.target)}</span>
+                          </div>
+                        ))}
+                        {categoryData.length === 0 && (
+                          <div className="text-xs text-[var(--color-text-tertiary)]">No targets</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Year Summary Bar */}
           <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
@@ -634,10 +699,6 @@ export default function ProductionPlanningDashboardV2({ data, onMonthChange }: P
     router.push(`/production-planning/${encodeURIComponent(sku)}`);
   };
 
-  const handleMonthClick = (month: number) => {
-    onMonthChange(data.period.year, month);
-  };
-
   return (
     <div className="space-y-4 p-4">
       {/* Compact Header */}
@@ -647,7 +708,7 @@ export default function ProductionPlanningDashboardV2({ data, onMonthChange }: P
       <YearlyOverview
         yearlyTargets={data.yearlyTargets}
         year={data.period.year}
-        onMonthClick={handleMonthClick}
+        annualSkuTargets={data.annualSkuTargets}
       />
 
       {/* Side-by-Side Product Family Columns */}

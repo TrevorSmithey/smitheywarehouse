@@ -666,6 +666,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // Pre-populate with Glass Lids and CareKit so they appear in budget
+    // even if no targets exist yet
+    const alwaysTrackSkus = [
+      "smith-ac-glid10",
+      "smith-ac-glid11",
+      "smith-ac-glid12",
+      "smith-ac-glid14",
+      "smith-ac-carekit",
+    ];
+    for (const sku of alwaysTrackSkus) {
+      allSkus.add(sku);
+    }
+
     // ========================================
     // Calculate total component demand across ALL SKUs
     // ========================================
