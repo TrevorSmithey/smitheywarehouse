@@ -111,7 +111,7 @@ export default function ProductionPlanningPage() {
         <AnnualBudgetTab
           annualSkuTargets={data.annualSkuTargets || []}
           year={data.period.year}
-          currentMonth={data.period.month}
+          currentMonth={new Date().getMonth() + 1}
         />
       )}
     </>
