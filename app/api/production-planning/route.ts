@@ -1304,6 +1304,22 @@ export async function GET(request: Request) {
     // ========================================
     // Response
     // ========================================
+
+    // Calculate daysElapsedInMonth based on whether this is past/current/future
+    const actualToday = getESTDate();
+    let daysElapsedInMonth: number;
+
+    if (year < actualToday.year || (year === actualToday.year && month < actualToday.month)) {
+      // Past month - all days elapsed
+      daysElapsedInMonth = daysInMonth;
+    } else if (year === actualToday.year && month === actualToday.month) {
+      // Current month - use today's day
+      daysElapsedInMonth = actualToday.day;
+    } else {
+      // Future month - no days elapsed yet
+      daysElapsedInMonth = 0;
+    }
+
     const response: ProductionPlanningResponse = {
       asOfDate: dateStr,
       period: {
@@ -1312,7 +1328,7 @@ export async function GET(request: Request) {
         monthName: MONTH_NAMES[month - 1],
         quarter,
         daysInMonth,
-        daysElapsedInMonth: day,
+        daysElapsedInMonth,
       },
       skuData,
       constraintAlerts,
