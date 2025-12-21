@@ -310,6 +310,9 @@ export interface ProductionPlanningResponse {
 
   // Yearly targets overview - shows target vs actual for each month
   yearlyTargets: YearlyTargetMonth[];
+
+  // Annual budget by SKU - sum of 12 monthly targets per SKU
+  annualSkuTargets: AnnualSkuTarget[];
 }
 
 export interface YearlyTargetMonth {
@@ -319,6 +322,16 @@ export interface YearlyTargetMonth {
   produced: number;
   isCurrent: boolean;
   isFuture: boolean;
+}
+
+export interface AnnualSkuTarget {
+  sku: string;
+  displayName: string;
+  category: ProductCategory;
+  monthlyTargets: number[];  // 12 elements, index 0 = January
+  annualTarget: number;      // Sum of 12 monthly targets
+  producedYTD: number;       // Units built year-to-date
+  remaining: number;         // annualTarget - producedYTD (floored at 0)
 }
 
 // ============================================
@@ -1363,6 +1376,55 @@ export async function GET(request: Request) {
       });
     }
 
+    // ========================================
+    // Annual SKU Targets - per-SKU annual budget
+    // ========================================
+    const annualSkuTargets: AnnualSkuTarget[] = [];
+
+    for (const skuLower of allSkus) {
+      // Build monthly targets array (index 0 = January)
+      const monthlyTargets: number[] = [];
+      let annualTarget = 0;
+
+      for (let m = 1; m <= 12; m++) {
+        const monthTarget = targetMap.get(`${skuLower}|${year}|${m}`) || 0;
+        monthlyTargets.push(monthTarget);
+        annualTarget += monthTarget;
+      }
+
+      // Skip SKUs with no annual target
+      if (annualTarget === 0) continue;
+
+      const producedYTD = ytdBySkuMap.get(skuLower) || 0;
+      const remaining = Math.max(0, annualTarget - producedYTD);
+
+      // Get display name
+      let displayName = displayNameMap[skuLower];
+      if (!displayName) {
+        const upperSku = Object.keys(SKU_DISPLAY_NAMES).find(k => k.toLowerCase() === skuLower);
+        displayName = upperSku ? SKU_DISPLAY_NAMES[upperSku] : skuLower;
+      }
+
+      annualSkuTargets.push({
+        sku: skuLower,
+        displayName,
+        category: getProductCategory(skuLower),
+        monthlyTargets,
+        annualTarget,
+        producedYTD,
+        remaining,
+      });
+    }
+
+    // Sort by category then by annual target descending
+    annualSkuTargets.sort((a, b) => {
+      const categoryOrder: Record<ProductCategory, number> = { cast_iron: 0, carbon_steel: 1, accessory: 2 };
+      if (categoryOrder[a.category] !== categoryOrder[b.category]) {
+        return categoryOrder[a.category] - categoryOrder[b.category];
+      }
+      return b.annualTarget - a.annualTarget;
+    });
+
     const response: ProductionPlanningResponse = {
       asOfDate: dateStr,
       period: {
@@ -1384,6 +1446,7 @@ export async function GET(request: Request) {
       aggregateCurve,
       componentInventory,
       yearlyTargets,
+      annualSkuTargets,
     };
 
     return NextResponse.json(response);
