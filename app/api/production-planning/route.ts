@@ -26,12 +26,17 @@ import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-lim
 // ============================================
 // Manufactured Products Filter
 // ============================================
+// Matches Excel filter: Smith-CI-* and Smith-CS-* only, excluding -D (defects)
 function isManufacturedProduct(sku: string): boolean {
   const skuUpper = sku.toUpperCase();
+
+  // Exclude defects (items ending in -D)
+  if (skuUpper.endsWith("-D")) return false;
+
+  // Cast Iron and Carbon Steel cookware
   if (skuUpper.startsWith("SMITH-CI-")) return true;
   if (skuUpper.startsWith("SMITH-CS-")) return true;
-  if (skuUpper.startsWith("SMITH-AC-GLID")) return true;
-  if (skuUpper.includes("CAREKIT") || skuUpper.includes("CARE-KIT")) return true;
+
   return false;
 }
 
