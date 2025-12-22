@@ -15,6 +15,7 @@ import {
   TrendingUp,
   ShoppingCart,
   Calculator,
+  ChevronRight,
 } from "lucide-react";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 
@@ -59,7 +60,6 @@ export function useDashboard() {
 const NAV_TABS = [
   // Operations group
   { href: "/inventory", label: "INVENTORY", icon: BarChart3, group: "operations" },
-  { href: "/fulfillment", label: "FULFILLMENT", icon: Package, group: "operations" },
   { href: "/production", label: "PRODUCTION", icon: Hammer, group: "operations" },
   // Analytics group
   { href: "/budget", label: "BUDGET V ACTUAL", icon: Target, group: "analytics" },
@@ -71,13 +71,23 @@ const NAV_TABS = [
   { href: "/ecommerce", label: "ECOMMERCE", icon: ShoppingCart, group: "engagement" },
 ] as const;
 
-// Hidden tabs - only shown when secret code is entered
-// Typing 4444 anywhere on the page toggles visibility
-const HIDDEN_TABS = [
+// Inventory sub-tabs - shown when on any inventory-related route
+const INVENTORY_SUB_TABS = [
+  { href: "/inventory", label: "INVENTORY", icon: BarChart3 },
+  { href: "/fulfillment", label: "FULFILLMENT", icon: Package },
+] as const;
+
+// Production sub-tabs - shown when on any production-related route
+const PRODUCTION_SUB_TABS = [
+  { href: "/production", label: "EXECUTE", icon: Hammer },
   { href: "/production-planning", label: "PLANNING", icon: Calculator },
 ] as const;
 
-// Secret codes to unlock hidden tabs (any of these will toggle visibility)
+// Routes that belong to parent tabs
+const INVENTORY_ROUTES = ["/inventory", "/fulfillment"];
+const PRODUCTION_ROUTES = ["/production", "/production-planning"];
+
+// Secret codes to unlock hidden features (any of these will toggle visibility)
 const SECRET_CODES = ["4444", "5555"];
 
 export default function DashboardLayout({
@@ -90,19 +100,20 @@ export default function DashboardLayout({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [triggerRefresh, setTriggerRefresh] = useState<(() => void) | null>(null);
 
-  // Hidden tab state - persisted in localStorage
-  const [showHiddenTabs, setShowHiddenTabs] = useState(false);
+  // Production sub-tabs visibility - persisted in localStorage
+  // Typing 4444 shows/hides the Planning sub-tab
+  const [showPlanningTab, setShowPlanningTab] = useState(false);
   const [keySequence, setKeySequence] = useState("");
 
-  // Check localStorage on mount for hidden tab state
+  // Check localStorage on mount for planning tab visibility
   useEffect(() => {
-    const saved = localStorage.getItem("smithey_hidden_unlocked");
+    const saved = localStorage.getItem("smithey_planning_unlocked");
     if (saved === "true") {
-      setShowHiddenTabs(true);
+      setShowPlanningTab(true);
     }
   }, []);
 
-  // Listen for secret code keystrokes
+  // Listen for secret code keystrokes (4444 toggles Planning tab)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input
@@ -115,10 +126,10 @@ export default function DashboardLayout({
         setKeySequence((prev) => {
           const newSeq = (prev + e.key).slice(-4); // Keep last 4 digits
           if (SECRET_CODES.includes(newSeq)) {
-            // Toggle visibility
-            setShowHiddenTabs((current) => {
+            // Toggle Planning tab visibility
+            setShowPlanningTab((current) => {
               const newValue = !current;
-              localStorage.setItem("smithey_hidden_unlocked", newValue ? "true" : "false");
+              localStorage.setItem("smithey_planning_unlocked", newValue ? "true" : "false");
               return newValue;
             });
             return ""; // Clear sequence after toggle
@@ -132,16 +143,25 @@ export default function DashboardLayout({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Check if current route is in a group with sub-tabs
+  const isInventoryRoute = INVENTORY_ROUTES.some(
+    route => pathname === route || pathname.startsWith(route + "/")
+  );
+  const isProductionRoute = PRODUCTION_ROUTES.some(
+    route => pathname === route || pathname.startsWith(route + "/")
+  );
+
   /**
-   * Determine which tab is active based on current pathname
-   * Fulfillment matches both /fulfillment and /fulfillment/tracking
+   * Determine which main tab is active based on current pathname
    */
   const getActiveTab = useCallback(() => {
-    // Check hidden tabs first
-    for (const tab of HIDDEN_TABS) {
-      if (pathname === tab.href || pathname.startsWith(tab.href + "/")) {
-        return tab.href;
-      }
+    // If on an inventory route, return /inventory as the active main tab
+    if (INVENTORY_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"))) {
+      return "/inventory";
+    }
+    // If on a production route, return /production as the active main tab
+    if (PRODUCTION_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"))) {
+      return "/production";
     }
     for (const tab of NAV_TABS) {
       if (pathname === tab.href || pathname.startsWith(tab.href + "/")) {
@@ -149,6 +169,30 @@ export default function DashboardLayout({
       }
     }
     return "/inventory";
+  }, [pathname]);
+
+  /**
+   * Determine which sub-tab is active for Inventory group
+   */
+  const getActiveInventorySubTab = useCallback(() => {
+    for (const tab of INVENTORY_SUB_TABS) {
+      if (pathname === tab.href || pathname.startsWith(tab.href + "/")) {
+        return tab.href;
+      }
+    }
+    return "/inventory";
+  }, [pathname]);
+
+  /**
+   * Determine which sub-tab is active for Production group
+   */
+  const getActiveProductionSubTab = useCallback(() => {
+    for (const tab of PRODUCTION_SUB_TABS) {
+      if (pathname === tab.href || pathname.startsWith(tab.href + "/")) {
+        return tab.href;
+      }
+    }
+    return "/production";
   }, [pathname]);
 
   const activeTab = getActiveTab();
@@ -187,6 +231,7 @@ export default function DashboardLayout({
               const isActive = activeTab === tab.href;
               const prevTab = index > 0 ? NAV_TABS[index - 1] : null;
               const isNewGroup = prevTab && prevTab.group !== tab.group;
+              const hasSubTabs = tab.href === "/inventory" || tab.href === "/production";
 
               return (
                 <div key={tab.href} className="flex items-center">
@@ -204,33 +249,68 @@ export default function DashboardLayout({
                   >
                     <Icon className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
                     {tab.label}
+                    {hasSubTabs && isActive && (
+                      <ChevronRight className="w-3 h-3 inline-block ml-1 -mt-0.5 opacity-50" />
+                    )}
                   </Link>
                 </div>
               );
             })}
+          </nav>
 
-            {/* Hidden tabs - only shown after secret code is entered */}
-            {showHiddenTabs &&
-              HIDDEN_TABS.map((tab) => {
+          {/* Inventory Sub-tabs */}
+          {isInventoryRoute && (
+            <nav className="flex gap-1 mt-1 pl-4 overflow-x-auto touch-pan-x">
+              {INVENTORY_SUB_TABS.map((tab) => {
                 const Icon = tab.icon;
-                const isActive = activeTab === tab.href;
+                const isActive = getActiveInventorySubTab() === tab.href;
 
                 return (
                   <Link
                     key={tab.href}
                     href={tab.href}
-                    className={`px-4 sm:px-5 py-2.5 text-xs font-semibold tracking-wider transition-all border-b-2 -mb-px whitespace-nowrap focus-visible:outline-none focus-visible:bg-white/5 ${
+                    className={`px-3 py-1.5 text-[10px] font-semibold tracking-wider transition-all rounded whitespace-nowrap ${
                       isActive
-                        ? "text-emerald-400 border-emerald-400"
-                        : "text-emerald-600/60 border-transparent hover:text-emerald-400/80"
+                        ? "bg-accent-blue/20 text-accent-blue"
+                        : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
                     }`}
                   >
-                    <Icon className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
+                    <Icon className="w-3 h-3 inline-block mr-1 -mt-0.5" />
                     {tab.label}
                   </Link>
                 );
               })}
-          </nav>
+            </nav>
+          )}
+
+          {/* Production Sub-tabs */}
+          {isProductionRoute && (
+            <nav className="flex gap-1 mt-1 pl-4 overflow-x-auto touch-pan-x">
+              {PRODUCTION_SUB_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = getActiveProductionSubTab() === tab.href;
+                // Hide Planning tab unless unlocked with 4444
+                if (tab.href === "/production-planning" && !showPlanningTab) {
+                  return null;
+                }
+
+                return (
+                  <Link
+                    key={tab.href}
+                    href={tab.href}
+                    className={`px-3 py-1.5 text-[10px] font-semibold tracking-wider transition-all rounded whitespace-nowrap ${
+                      isActive
+                        ? "bg-accent-blue/20 text-accent-blue"
+                        : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
+                    }`}
+                  >
+                    <Icon className="w-3 h-3 inline-block mr-1 -mt-0.5" />
+                    {tab.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
         </header>
 
         {/* Page Content */}
