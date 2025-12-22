@@ -98,8 +98,12 @@ export async function GET(request: Request) {
           : 0,
     };
 
-    // Get sync time from first row
-    const lastSynced = rows[0]?.synced_at || null;
+    // Get sync time from the most recently synced row
+    const lastSynced = rows.reduce((latest, row) => {
+      if (!row.synced_at) return latest;
+      if (!latest) return row.synced_at;
+      return row.synced_at > latest ? row.synced_at : latest;
+    }, null as string | null);
 
     const response: HolidayResponse = {
       data: rows,
