@@ -103,7 +103,11 @@ export async function GET(request: Request) {
 
     // Only fetch daily_stats for days AFTER the last Excel-synced day, excluding today (incomplete)
     const lastExcelDate = lastExcelDay > 0 ? dayNumberToDate2025(lastExcelDay) : "2025-09-30";
-    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD in UTC
+    // Get today in EST (store timezone) - incomplete data until next sync
+    const now = new Date();
+    const estOffset = -5 * 60; // EST is UTC-5
+    const estDate = new Date(now.getTime() + estOffset * 60 * 1000);
+    const today = estDate.toISOString().split("T")[0]; // YYYY-MM-DD in EST
 
     const { data: liveData, error: liveError } = await supabase
       .from("daily_stats")
