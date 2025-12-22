@@ -165,57 +165,38 @@ export default function SKUHeroCard({
             </p>
           </div>
 
-          {/* Runway Bar - Continuous gradient, no gaps */}
+          {/* Runway Bar - 52 discrete week boxes */}
           <div ref={barRef} className="relative">
-            {/* The continuous bar */}
-            <div className="h-8 rounded overflow-hidden relative">
-              <svg width="100%" height="100%" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="runwayGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    {projections.map((p, i) => {
-                      const percent = (i / 51) * 100;
-                      const color = getGradientColor(p.percentRemaining);
-                      return (
-                        <stop
-                          key={i}
-                          offset={`${percent}%`}
-                          stopColor={color}
-                        />
-                      );
-                    })}
-                  </linearGradient>
-                </defs>
-                <rect
-                  width="100%"
-                  height="100%"
-                  fill="url(#runwayGradient)"
-                  rx="4"
-                />
-              </svg>
-
-              {/* Hover zones - invisible but capture mouse events */}
-              <div className="absolute inset-0 flex">
-                {projections.map((p) => (
+            {/* The 52 week boxes */}
+            <div className="flex gap-px rounded-md overflow-hidden">
+              {projections.map((p) => {
+                const isHovered = hoveredWeek?.week === p.week;
+                return (
                   <div
                     key={p.week}
-                    className="flex-1 cursor-crosshair"
+                    className="flex-1 h-7 cursor-crosshair transition-all duration-75"
+                    style={{
+                      backgroundColor: getGradientColor(p.percentRemaining),
+                      opacity: isHovered ? 1 : 0.85,
+                      transform: isHovered ? "scaleY(1.1)" : "scaleY(1)",
+                    }}
                     onMouseEnter={(e) => handleMouseMove(e, p)}
                     onMouseMove={(e) => handleMouseMove(e, p)}
                     onMouseLeave={() => setHoveredWeek(null)}
                   />
-                ))}
-              </div>
-
-              {/* Stockout marker line */}
-              {stockoutWeek && (
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-white/60"
-                  style={{ left: `${((stockoutWeek - 0.5) / 52) * 100}%` }}
-                >
-                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-b-[5px] border-transparent border-b-white/60" />
-                </div>
-              )}
+                );
+              })}
             </div>
+
+            {/* Stockout marker line */}
+            {stockoutWeek && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-white/50 pointer-events-none"
+                style={{ left: `${((stockoutWeek - 0.5) / 52) * 100}%` }}
+              >
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-white/50" />
+              </div>
+            )}
 
             {/* Tooltip */}
             {hoveredWeek && (
