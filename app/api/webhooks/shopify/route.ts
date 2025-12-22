@@ -106,7 +106,21 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
   );
 
   // Determine if this is the customer's first order
-  const isFirstOrder = order.customer?.orders_count === 1;
+  // Shopify sometimes doesn't send orders_count in the webhook payload
+  // If missing, check our database to see if we've seen this customer before
+  let isFirstOrder = false;
+  if (order.customer?.orders_count === 1) {
+    // Shopify says it's the first order
+    isFirstOrder = true;
+  } else if (order.customer?.orders_count === undefined && order.customer?.id) {
+    // orders_count not provided - check our database
+    const { count } = await supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("shopify_customer_id", order.customer.id)
+      .eq("canceled", false);
+    isFirstOrder = count === 0; // First order if we have no previous orders for this customer
+  }
 
   // Extract shipping cost from nested structure
   const totalShipping = order.total_shipping_price_set?.shop_money?.amount
