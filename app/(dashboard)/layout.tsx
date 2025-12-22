@@ -77,9 +77,8 @@ const INVENTORY_SUB_TABS = [
   { href: "/fulfillment", label: "FULFILLMENT", icon: Package },
 ] as const;
 
-// Production sub-tabs - shown when on any production-related route
+// Production sub-tabs - only Planning, shown after 4444 unlock
 const PRODUCTION_SUB_TABS = [
-  { href: "/production", label: "EXECUTE", icon: Hammer },
   { href: "/production-planning", label: "PLANNING", icon: Calculator },
 ] as const;
 
