@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, AlertTriangle, Package } from "lucide-react";
+import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { useProductionPlanning } from "../layout";
 import { useMemo, useEffect, useState } from "react";
 import {
@@ -13,7 +13,7 @@ import {
   ReferenceLine,
   Cell,
 } from "recharts";
-import InventoryRunway from "@/components/InventoryRunway";
+import SKUHeroCard from "@/components/SKUHeroCard";
 
 // ============================================================================
 // SKU DETAIL PAGE
@@ -192,40 +192,16 @@ export default function SKUDetailPage() {
         )}
       </div>
 
-      {/* Inventory Section - FIRST */}
-      <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Package className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-          <h2 className="text-xs font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider">
-            Current Inventory
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <p className="text-[var(--color-text-tertiary)] text-xs mb-1">On Hand</p>
-            <p className="text-2xl font-semibold text-white">
-              {inventoryLoading ? '...' : inventory?.onHand?.toLocaleString() ?? '—'}
-            </p>
-          </div>
-          <div>
-            <p className="text-[var(--color-text-tertiary)] text-xs mb-1">Days of Inventory</p>
-            <p className="text-2xl font-semibold text-white">
-              {inventoryLoading ? '...' : inventory?.doi ? `${inventory.doi}d` : '—'}
-            </p>
-          </div>
-        </div>
-        {inventoryError && (
-          <p className="text-xs text-amber-400 mt-2">
-            Failed to load inventory data
-          </p>
-        )}
-
-        {/* 52 Week Runway Visualization */}
-        {!inventoryLoading && inventory && (
-          <InventoryRunway onHand={inventory.onHand} doi={inventory.doi} />
-        )}
-      </div>
+      {/* SKU Hero Card - Unified inventory + year context + runway */}
+      <SKUHeroCard
+        onHand={inventory?.onHand ?? 0}
+        doi={inventory?.doi ?? null}
+        yearForecast={skuData.yearSalesForecast}
+        ytdProduced={skuData.producedYTD}
+        yearRemaining={skuData.remainingForYear}
+        loading={inventoryLoading}
+        error={inventoryError}
+      />
 
       {/* Production Target Section */}
       <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
@@ -352,34 +328,6 @@ export default function SKUDetailPage() {
           <div className="flex items-center gap-2">
             <span className="w-6 border-t border-dashed border-[var(--color-text-tertiary)]" />
             <span>Daily target</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Year Context */}
-      <div className="bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] p-4">
-        <h2 className="text-xs font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider mb-3">
-          Year Context
-        </h2>
-
-        <div className="grid grid-cols-3 gap-6">
-          <div>
-            <p className="text-[var(--color-text-tertiary)] text-xs mb-1">Year Forecast</p>
-            <p className="text-xl font-semibold text-white">
-              {skuData.yearSalesForecast.toLocaleString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-[var(--color-text-tertiary)] text-xs mb-1">YTD Produced</p>
-            <p className="text-xl font-semibold text-white">
-              {skuData.producedYTD.toLocaleString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-[var(--color-text-tertiary)] text-xs mb-1">Remaining</p>
-            <p className="text-xl font-semibold text-white">
-              {skuData.remainingForYear.toLocaleString()}
-            </p>
           </div>
         </div>
       </div>
