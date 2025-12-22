@@ -41,6 +41,35 @@ export interface HolidayResponse {
     avgOrderValue2024: number;
   };
   lastSynced: string | null;
+  dataSource: "live" | "cached";
+}
+
+/**
+ * Convert a date string (YYYY-MM-DD) to day number in Q4
+ * Day 1 = Oct 1, Day 92 = Dec 31
+ */
+function dateToDayNumber(dateStr: string): number | null {
+  const date = new Date(dateStr + "T00:00:00");
+  const month = date.getMonth(); // 0-indexed: Oct=9, Nov=10, Dec=11
+  const day = date.getDate();
+
+  if (month === 9) return day; // Oct: day 1-31
+  if (month === 10) return 31 + day; // Nov: day 32-61
+  if (month === 11) return 61 + day; // Dec: day 62-92
+  return null; // Not in Q4
+}
+
+/**
+ * Convert day number to 2025 date string (YYYY-MM-DD)
+ */
+function dayNumberToDate2025(dayNumber: number): string {
+  if (dayNumber <= 31) {
+    return `2025-10-${String(dayNumber).padStart(2, "0")}`;
+  } else if (dayNumber <= 61) {
+    return `2025-11-${String(dayNumber - 31).padStart(2, "0")}`;
+  } else {
+    return `2025-12-${String(dayNumber - 61).padStart(2, "0")}`;
+  }
 }
 
 export async function GET(request: Request) {
@@ -54,18 +83,109 @@ export async function GET(request: Request) {
   try {
     const supabase = createServiceClient();
 
-    const { data, error } = await supabase
+    // Fetch 2024 baseline data from holiday_tracking
+    const { data: baselineData, error: baselineError } = await supabase
       .from("holiday_tracking")
-      .select("*")
+      .select("day_number, date_2024, orders_2024, sales_2024, cumulative_orders_2024, cumulative_sales_2024")
       .order("day_number", { ascending: true });
 
-    if (error) {
-      throw new Error(`Failed to fetch holiday data: ${error.message}`);
+    if (baselineError) {
+      throw new Error(`Failed to fetch baseline data: ${baselineError.message}`);
     }
 
-    const rows = (data || []) as HolidayData[];
+    // Fetch live 2025 data from daily_stats (Oct 1 - Dec 31, 2025)
+    const { data: liveData, error: liveError } = await supabase
+      .from("daily_stats")
+      .select("date, total_orders, total_revenue, updated_at")
+      .gte("date", "2025-10-01")
+      .lte("date", "2025-12-31")
+      .order("date", { ascending: true });
 
-    // Calculate summary stats
+    if (liveError) {
+      throw new Error(`Failed to fetch live Shopify data: ${liveError.message}`);
+    }
+
+    // Create a map of day_number -> live 2025 data
+    const liveDataByDay = new Map<number, { orders: number; revenue: number; date: string; updated_at: string }>();
+    for (const row of liveData || []) {
+      const dayNum = dateToDayNumber(row.date);
+      if (dayNum) {
+        liveDataByDay.set(dayNum, {
+          orders: row.total_orders,
+          revenue: parseFloat(row.total_revenue) || 0,
+          date: row.date,
+          updated_at: row.updated_at,
+        });
+      }
+    }
+
+    // Merge baseline with live data and calculate cumulative values
+    let cumOrders2025 = 0;
+    let cumSales2025 = 0;
+    let latestSyncedAt: string | null = null;
+
+    const rows: HolidayData[] = (baselineData || []).map((baseline) => {
+      const dayNum = baseline.day_number;
+      const live = liveDataByDay.get(dayNum);
+
+      // Get 2025 daily values from live Shopify data
+      const orders2025 = live?.orders ?? null;
+      const sales2025 = live?.revenue ?? null;
+
+      // Update cumulative totals
+      if (orders2025 !== null) {
+        cumOrders2025 += orders2025;
+      }
+      if (sales2025 !== null) {
+        cumSales2025 += sales2025;
+      }
+
+      // Track latest sync time
+      if (live?.updated_at) {
+        if (!latestSyncedAt || live.updated_at > latestSyncedAt) {
+          latestSyncedAt = live.updated_at;
+        }
+      }
+
+      // Calculate deltas (% change from 2024)
+      const dailyOrdersDelta =
+        orders2025 !== null && baseline.orders_2024
+          ? (orders2025 - baseline.orders_2024) / baseline.orders_2024
+          : null;
+      const dailySalesDelta =
+        sales2025 !== null && baseline.sales_2024
+          ? (sales2025 - baseline.sales_2024) / parseFloat(baseline.sales_2024)
+          : null;
+      const cumOrdersDelta =
+        cumOrders2025 > 0 && baseline.cumulative_orders_2024
+          ? (cumOrders2025 - baseline.cumulative_orders_2024) / baseline.cumulative_orders_2024
+          : null;
+      const cumSalesDelta =
+        cumSales2025 > 0 && baseline.cumulative_sales_2024
+          ? (cumSales2025 - parseFloat(baseline.cumulative_sales_2024)) / parseFloat(baseline.cumulative_sales_2024)
+          : null;
+
+      return {
+        day_number: dayNum,
+        date_2024: baseline.date_2024,
+        orders_2024: baseline.orders_2024,
+        sales_2024: baseline.sales_2024 ? parseFloat(baseline.sales_2024) : null,
+        cumulative_orders_2024: baseline.cumulative_orders_2024,
+        cumulative_sales_2024: baseline.cumulative_sales_2024 ? parseFloat(baseline.cumulative_sales_2024) : null,
+        date_2025: live?.date || dayNumberToDate2025(dayNum),
+        orders_2025: orders2025,
+        sales_2025: sales2025,
+        cumulative_orders_2025: orders2025 !== null ? cumOrders2025 : null,
+        cumulative_sales_2025: sales2025 !== null ? cumSales2025 : null,
+        daily_orders_delta: dailyOrdersDelta,
+        daily_sales_delta: dailySalesDelta,
+        cumulative_orders_delta: cumOrdersDelta,
+        cumulative_sales_delta: cumSalesDelta,
+        synced_at: live?.updated_at || undefined,
+      };
+    });
+
+    // Calculate summary stats from the merged data
     const rowsWithData = rows.filter((r) => r.orders_2025 !== null);
     const latestRow = rowsWithData[rowsWithData.length - 1];
 
@@ -98,20 +218,14 @@ export async function GET(request: Request) {
           : 0,
     };
 
-    // Get sync time from the most recently synced row
-    const lastSynced = rows.reduce((latest, row) => {
-      if (!row.synced_at) return latest;
-      if (!latest) return row.synced_at;
-      return row.synced_at > latest ? row.synced_at : latest;
-    }, null as string | null);
-
     const response: HolidayResponse = {
       data: rows,
       summary,
-      lastSynced,
+      lastSynced: latestSyncedAt,
+      dataSource: "live",
     };
 
-    // Holiday data syncs daily, cache for 5 minutes
+    // Live Shopify data, cache for 5 minutes
     return NextResponse.json(response, {
       headers: {
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
