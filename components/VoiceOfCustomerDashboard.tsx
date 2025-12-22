@@ -63,6 +63,8 @@ const AI_SLOP_WORDS = new Set([
   "resolution", "assistance", "support", "inquiry", "request",
   // Common AI filler
   "customer", "order", "issue", "problem", "question", "help",
+  // AI classification artifacts
+  "secondary", "secondaries", "unsolicited",
 ]);
 
 interface VoiceOfCustomerDashboardProps {
