@@ -82,7 +82,9 @@ export default function FulfillmentLayout({
 
   // Stuck shipment filters (for tracking page)
   const [stuckThreshold, setStuckThreshold] = useState<1 | 2 | 3>(2);
-  const [trackingShippedWithin, setTrackingShippedWithin] = useState<"7days" | "14days" | "30days" | "all">("14days");
+  // Default to "all" - stuck shipments that have been stuck longest are by definition shipped longest ago
+  // Filtering by "shipped within X days" excludes the most problematic stuck shipments
+  const [trackingShippedWithin, setTrackingShippedWithin] = useState<"7days" | "14days" | "30days" | "all">("all");
 
   // Fetch metrics data
   const fetchMetrics = useCallback(async () => {
