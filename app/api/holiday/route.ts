@@ -101,14 +101,15 @@ export async function GET(request: Request) {
       return max;
     }, 0);
 
-    // Only fetch daily_stats for days AFTER the last Excel-synced day
+    // Only fetch daily_stats for days AFTER the last Excel-synced day, excluding today (incomplete)
     const lastExcelDate = lastExcelDay > 0 ? dayNumberToDate2025(lastExcelDay) : "2025-09-30";
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD in UTC
 
     const { data: liveData, error: liveError } = await supabase
       .from("daily_stats")
       .select("date, total_orders, total_revenue, updated_at")
       .gt("date", lastExcelDate)
-      .lte("date", "2025-12-31")
+      .lt("date", today) // Exclude today - partial data
       .order("date", { ascending: true });
 
     if (liveError) {
