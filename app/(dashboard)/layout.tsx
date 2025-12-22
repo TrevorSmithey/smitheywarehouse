@@ -231,7 +231,6 @@ export default function DashboardLayout({
               const isActive = activeTab === tab.href;
               const prevTab = index > 0 ? NAV_TABS[index - 1] : null;
               const isNewGroup = prevTab && prevTab.group !== tab.group;
-              const hasSubTabs = tab.href === "/inventory" || tab.href === "/production";
 
               return (
                 <div key={tab.href} className="flex items-center">
@@ -249,7 +248,11 @@ export default function DashboardLayout({
                   >
                     <Icon className="w-4 h-4 inline-block mr-1.5 sm:mr-2 -mt-0.5" />
                     {tab.label}
-                    {hasSubTabs && isActive && (
+                    {/* Show chevron only if sub-tabs are visible */}
+                    {tab.href === "/inventory" && isActive && (
+                      <ChevronRight className="w-3 h-3 inline-block ml-1 -mt-0.5 opacity-50" />
+                    )}
+                    {tab.href === "/production" && isActive && showPlanningTab && (
                       <ChevronRight className="w-3 h-3 inline-block ml-1 -mt-0.5 opacity-50" />
                     )}
                   </Link>
@@ -283,16 +286,12 @@ export default function DashboardLayout({
             </nav>
           )}
 
-          {/* Production Sub-tabs */}
-          {isProductionRoute && (
+          {/* Production Sub-tabs - only show when Planning is unlocked via 4444 */}
+          {isProductionRoute && showPlanningTab && (
             <nav className="flex gap-1 mt-1 pl-4 overflow-x-auto touch-pan-x">
               {PRODUCTION_SUB_TABS.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = getActiveProductionSubTab() === tab.href;
-                // Hide Planning tab unless unlocked with 4444
-                if (tab.href === "/production-planning" && !showPlanningTab) {
-                  return null;
-                }
 
                 return (
                   <Link
