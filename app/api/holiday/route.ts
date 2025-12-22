@@ -252,10 +252,20 @@ export async function GET(request: Request) {
           : 0,
     };
 
+    // Get the most recent sync time from daily_stats (Shopify sync runs daily)
+    const { data: syncData } = await supabase
+      .from("daily_stats")
+      .select("updated_at")
+      .gte("date", "2025-10-01")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    const shopifySyncTime = syncData?.[0]?.updated_at || latestSyncedAt;
+
     const response: HolidayResponse = {
       data: rows,
       summary,
-      lastSynced: latestSyncedAt,
+      lastSynced: shopifySyncTime,
       dataSource: "live",
     };
 
