@@ -83,21 +83,31 @@ export async function GET(request: Request) {
   try {
     const supabase = createServiceClient();
 
-    // Fetch 2024 baseline data from holiday_tracking
-    const { data: baselineData, error: baselineError } = await supabase
+    // Fetch all holiday_tracking data (includes 2024 baseline + any existing 2025 data from Excel)
+    const { data: trackingData, error: trackingError } = await supabase
       .from("holiday_tracking")
-      .select("day_number, date_2024, orders_2024, sales_2024, cumulative_orders_2024, cumulative_sales_2024")
+      .select("*")
       .order("day_number", { ascending: true });
 
-    if (baselineError) {
-      throw new Error(`Failed to fetch baseline data: ${baselineError.message}`);
+    if (trackingError) {
+      throw new Error(`Failed to fetch holiday tracking data: ${trackingError.message}`);
     }
 
-    // Fetch live 2025 data from daily_stats (Oct 1 - Dec 31, 2025)
+    // Find the last day that has 2025 data in holiday_tracking (from Excel sync)
+    const lastExcelDay = (trackingData || []).reduce((max, row) => {
+      if (row.orders_2025 !== null && row.day_number > max) {
+        return row.day_number;
+      }
+      return max;
+    }, 0);
+
+    // Only fetch daily_stats for days AFTER the last Excel-synced day
+    const lastExcelDate = lastExcelDay > 0 ? dayNumberToDate2025(lastExcelDay) : "2025-09-30";
+
     const { data: liveData, error: liveError } = await supabase
       .from("daily_stats")
       .select("date, total_orders, total_revenue, updated_at")
-      .gte("date", "2025-10-01")
+      .gt("date", lastExcelDate)
       .lte("date", "2025-12-31")
       .order("date", { ascending: true });
 
@@ -105,7 +115,7 @@ export async function GET(request: Request) {
       throw new Error(`Failed to fetch live Shopify data: ${liveError.message}`);
     }
 
-    // Create a map of day_number -> live 2025 data
+    // Create a map of day_number -> live 2025 data (only for new days)
     const liveDataByDay = new Map<number, { orders: number; revenue: number; date: string; updated_at: string }>();
     for (const row of liveData || []) {
       const dayNum = dateToDayNumber(row.date);
@@ -119,18 +129,37 @@ export async function GET(request: Request) {
       }
     }
 
-    // Merge baseline with live data and calculate cumulative values
+    // Build the response, using Excel data where available, daily_stats for new days
     let cumOrders2025 = 0;
     let cumSales2025 = 0;
     let latestSyncedAt: string | null = null;
 
-    const rows: HolidayData[] = (baselineData || []).map((baseline) => {
-      const dayNum = baseline.day_number;
+    const rows: HolidayData[] = (trackingData || []).map((row) => {
+      const dayNum = row.day_number;
+      const hasExcelData = row.orders_2025 !== null;
       const live = liveDataByDay.get(dayNum);
 
-      // Get 2025 daily values from live Shopify data
-      const orders2025 = live?.orders ?? null;
-      const sales2025 = live?.revenue ?? null;
+      // Use Excel data if available, otherwise use live data
+      let orders2025: number | null;
+      let sales2025: number | null;
+      let syncedAt: string | undefined;
+
+      if (hasExcelData) {
+        // Use existing Excel-synced data
+        orders2025 = row.orders_2025;
+        sales2025 = row.sales_2025 ? parseFloat(row.sales_2025) : null;
+        syncedAt = row.synced_at;
+      } else if (live) {
+        // Use live Shopify data for new days
+        orders2025 = live.orders;
+        sales2025 = live.revenue;
+        syncedAt = live.updated_at;
+      } else {
+        // No data yet for this day
+        orders2025 = null;
+        sales2025 = null;
+        syncedAt = undefined;
+      }
 
       // Update cumulative totals
       if (orders2025 !== null) {
@@ -141,38 +170,38 @@ export async function GET(request: Request) {
       }
 
       // Track latest sync time
-      if (live?.updated_at) {
-        if (!latestSyncedAt || live.updated_at > latestSyncedAt) {
-          latestSyncedAt = live.updated_at;
+      if (syncedAt) {
+        if (!latestSyncedAt || syncedAt > latestSyncedAt) {
+          latestSyncedAt = syncedAt;
         }
       }
 
       // Calculate deltas (% change from 2024)
       const dailyOrdersDelta =
-        orders2025 !== null && baseline.orders_2024
-          ? (orders2025 - baseline.orders_2024) / baseline.orders_2024
+        orders2025 !== null && row.orders_2024
+          ? (orders2025 - row.orders_2024) / row.orders_2024
           : null;
       const dailySalesDelta =
-        sales2025 !== null && baseline.sales_2024
-          ? (sales2025 - baseline.sales_2024) / parseFloat(baseline.sales_2024)
+        sales2025 !== null && row.sales_2024
+          ? (sales2025 - parseFloat(row.sales_2024)) / parseFloat(row.sales_2024)
           : null;
       const cumOrdersDelta =
-        cumOrders2025 > 0 && baseline.cumulative_orders_2024
-          ? (cumOrders2025 - baseline.cumulative_orders_2024) / baseline.cumulative_orders_2024
+        cumOrders2025 > 0 && row.cumulative_orders_2024
+          ? (cumOrders2025 - row.cumulative_orders_2024) / row.cumulative_orders_2024
           : null;
       const cumSalesDelta =
-        cumSales2025 > 0 && baseline.cumulative_sales_2024
-          ? (cumSales2025 - parseFloat(baseline.cumulative_sales_2024)) / parseFloat(baseline.cumulative_sales_2024)
+        cumSales2025 > 0 && row.cumulative_sales_2024
+          ? (cumSales2025 - parseFloat(row.cumulative_sales_2024)) / parseFloat(row.cumulative_sales_2024)
           : null;
 
       return {
         day_number: dayNum,
-        date_2024: baseline.date_2024,
-        orders_2024: baseline.orders_2024,
-        sales_2024: baseline.sales_2024 ? parseFloat(baseline.sales_2024) : null,
-        cumulative_orders_2024: baseline.cumulative_orders_2024,
-        cumulative_sales_2024: baseline.cumulative_sales_2024 ? parseFloat(baseline.cumulative_sales_2024) : null,
-        date_2025: live?.date || dayNumberToDate2025(dayNum),
+        date_2024: row.date_2024,
+        orders_2024: row.orders_2024,
+        sales_2024: row.sales_2024 ? parseFloat(row.sales_2024) : null,
+        cumulative_orders_2024: row.cumulative_orders_2024,
+        cumulative_sales_2024: row.cumulative_sales_2024 ? parseFloat(row.cumulative_sales_2024) : null,
+        date_2025: row.date_2025 || (live?.date) || dayNumberToDate2025(dayNum),
         orders_2025: orders2025,
         sales_2025: sales2025,
         cumulative_orders_2025: orders2025 !== null ? cumOrders2025 : null,
@@ -181,7 +210,7 @@ export async function GET(request: Request) {
         daily_sales_delta: dailySalesDelta,
         cumulative_orders_delta: cumOrdersDelta,
         cumulative_sales_delta: cumSalesDelta,
-        synced_at: live?.updated_at || undefined,
+        synced_at: syncedAt,
       };
     });
 
