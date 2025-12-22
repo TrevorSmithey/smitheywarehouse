@@ -13,6 +13,7 @@ import {
   ReferenceLine,
   Cell,
 } from "recharts";
+import InventoryRunway from "@/components/InventoryRunway";
 
 // ============================================================================
 // SKU DETAIL PAGE
@@ -218,6 +219,11 @@ export default function SKUDetailPage() {
           <p className="text-xs text-amber-400 mt-2">
             Failed to load inventory data
           </p>
+        )}
+
+        {/* 52 Week Runway Visualization */}
+        {!inventoryLoading && inventory && (
+          <InventoryRunway onHand={inventory.onHand} doi={inventory.doi} />
         )}
       </div>
 
