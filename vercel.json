@@ -87,6 +87,10 @@
     {
       "path": "/api/cron/sync-netsuite-assembly",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/daily-snapshot",
+      "schedule": "0 4 * * *"
     }
   ]
 }
