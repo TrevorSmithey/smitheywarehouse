@@ -127,17 +127,9 @@ export async function GET(request: Request) {
       }
     }
 
-    // Post-sync: Compute derived fields using SQL
-    // This is more efficient than computing in JS and ensures consistency
-    console.log("[NETSUITE] Computing derived fields...");
-
-    const { error: computeError } = await supabase.rpc("compute_customer_metrics");
-    if (computeError) {
-      console.error("[NETSUITE] Failed to compute metrics:", computeError.message);
-      // Don't fail the sync - the raw data is still valid
-    } else {
-      console.log("[NETSUITE] Derived fields computed successfully");
-    }
+    // NOTE: compute_customer_metrics() is now called by sync-netsuite-transactions
+    // This ensures metrics are computed AFTER transactions are updated (6:05 AM)
+    // Previously this ran here at 6:00 AM, causing 1-day stale data
 
     const elapsed = Date.now() - startTime;
     console.log(`[NETSUITE] Sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);

@@ -240,6 +240,11 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
 
             {/* State paths */}
             {Object.entries(US_STATES).map(([abbr, { path }]) => {
+              // Guard against empty or invalid path data
+              if (!path || typeof path !== 'string' || path.length === 0) {
+                return null;
+              }
+
               const stateData = stateMap[abbr];
               const days = stateData?.avg_transit_days ?? null;
               const hasStateData = stateData !== undefined && stateData.shipment_count > 0;
@@ -253,7 +258,7 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
               return (
                 <path
                   key={abbr}
-                  d={path}
+                  d={path || ""}
                   fill={fillColor}
                   fillOpacity={hasStateData ? 0.92 : 0.3}
                   stroke={isHovered ? "#ffffff" : "rgba(30, 41, 59, 0.8)"}

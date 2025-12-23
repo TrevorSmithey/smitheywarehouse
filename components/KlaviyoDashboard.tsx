@@ -523,7 +523,7 @@ function MonthlyRevenueTrend({ monthly, period }: { monthly: KlaviyoMonthlySumma
 
       {/* Chart */}
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
             <defs>
               <linearGradient id="campaignGradient" x1="0" y1="0" x2="0" y2="1">
@@ -797,7 +797,7 @@ function SubscriberGrowthChart({ monthly, period }: { monthly: KlaviyoMonthlySum
 
       {/* Chart */}
       <div className="h-48">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 5, left: 0 }}>
             <defs>
               <linearGradient id="engaged365Gradient" x1="0" y1="0" x2="0" y2="1">

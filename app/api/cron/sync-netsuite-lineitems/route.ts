@@ -21,12 +21,14 @@ const LOCK_NAME = "sync-netsuite-lineitems";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Default to 7 days for incremental sync
-const DEFAULT_SYNC_DAYS = 7;
-// Time limit for full sync processing (leave 60s buffer for cleanup)
-const PROCESSING_TIME_LIMIT_MS = 240000; // 4 minutes
-// Smaller batch size for line items to avoid statement timeouts
-const LINE_ITEM_BATCH_SIZE = 100;
+// Default to 3 days for incremental sync (reduced from 7 to avoid timeout)
+// Daily new line items are ~100-200, so 3 days window is ~600 items
+// The 7-day window was fetching 18K+ items and timing out
+const DEFAULT_SYNC_DAYS = 3;
+// Time limit for processing (leave 20s buffer for cleanup/logging)
+const PROCESSING_TIME_LIMIT_MS = 280000; // 4 min 40 sec
+// Batch size for upserts (increased from 100 to 200 for better throughput)
+const LINE_ITEM_BATCH_SIZE = 200;
 
 export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {

@@ -299,7 +299,7 @@ export function HolidayDashboard({ data, loading, onRefresh }: HolidayDashboardP
             </div>
           </div>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
                 <defs>
                   <linearGradient id="dailyOrders2025" x1="0" y1="0" x2="0" y2="1">
@@ -343,7 +343,7 @@ export function HolidayDashboard({ data, loading, onRefresh }: HolidayDashboardP
             </div>
           </div>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
                 <defs>
                   <linearGradient id="dailySales2025" x1="0" y1="0" x2="0" y2="1">
@@ -385,7 +385,7 @@ export function HolidayDashboard({ data, loading, onRefresh }: HolidayDashboardP
             </div>
           </div>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
                 <defs>
                   <linearGradient id="cumOrders2025" x1="0" y1="0" x2="0" y2="1">
@@ -431,7 +431,7 @@ export function HolidayDashboard({ data, loading, onRefresh }: HolidayDashboardP
             </div>
           </div>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
                 <defs>
                   <linearGradient id="cumSales2025" x1="0" y1="0" x2="0" y2="1">

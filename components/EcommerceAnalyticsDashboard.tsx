@@ -701,7 +701,7 @@ function SessionsChart({ sessionMetrics }: { sessionMetrics: AnalyticsData["sess
 
       {/* Chart */}
       <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <ComposedChart data={chartData} barGap={2} barCategoryGap="20%">
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
             <XAxis
@@ -1144,7 +1144,7 @@ export function EcommerceAnalyticsDashboard({
             Revenue Trend
           </span>
           <div className="h-64 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={monthlyTrendData}>
                 <defs>
                   <linearGradient id="gradientCopper" x1="0" y1="0" x2="0" y2="1">

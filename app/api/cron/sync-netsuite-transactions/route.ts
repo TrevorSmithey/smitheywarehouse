@@ -120,6 +120,19 @@ export async function GET(request: Request) {
     const elapsed = Date.now() - startTime;
     console.log(`[NETSUITE] Transactions sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
 
+    // Post-sync: Compute derived customer metrics using SQL
+    // This runs AFTER transactions are updated (6:05 AM) to ensure fresh data
+    // Previously ran in customer sync (6:00 AM), causing metrics to be 1 day stale
+    console.log("[NETSUITE] Computing customer metrics...");
+
+    const { error: computeError } = await supabase.rpc("compute_customer_metrics");
+    if (computeError) {
+      console.error("[NETSUITE] Failed to compute metrics:", computeError.message);
+      // Don't fail the sync - the raw data is still valid
+    } else {
+      console.log("[NETSUITE] Customer metrics computed successfully");
+    }
+
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_transactions",
       started_at: new Date(startTime).toISOString(),

@@ -21,6 +21,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/cleanup-sync-logs",
+      "schedule": "0 3 * * *"
+    },
+    {
       "path": "/api/tracking/check",
       "schedule": "0 * * * *"
     },

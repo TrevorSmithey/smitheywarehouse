@@ -270,7 +270,7 @@ export function AssemblyDashboard({
           </div>
         </div>
         <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <ComposedChart data={dailyChartData} margin={{ top: 20, right: 10, left: -10, bottom: 20 }}>
               <defs>
                 <linearGradient id="greenGradient" x1="0" y1="0" x2="0" y2="1">
@@ -380,7 +380,7 @@ export function AssemblyDashboard({
             WEEKLY PRODUCTION
           </h3>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={weeklyChartData} margin={{ top: 10, right: 10, left: -10, bottom: 20 }}>
                 <defs>
                   <linearGradient id="weeklyGreenGradient" x1="0" y1="0" x2="0" y2="1">
@@ -451,7 +451,7 @@ export function AssemblyDashboard({
             AVERAGE BY WEEKDAY
           </h3>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={dowChartData} margin={{ top: 20, right: 10, left: -10, bottom: 20 }}>
                 <defs>
                   <linearGradient id="dowGradient" x1="0" y1="0" x2="0" y2="1">

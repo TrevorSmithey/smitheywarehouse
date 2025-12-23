@@ -193,7 +193,7 @@ function LargeDonutChart({
     <div className="flex flex-col items-center">
       <h3 className="text-sm font-medium text-text-secondary mb-4">{title}</h3>
       <div className="relative [&_svg]:outline-none [&_*:focus]:outline-none" style={{ width: 200, height: 200 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <PieChart>
             <Pie
               data={dataWithPercent}
@@ -305,7 +305,7 @@ function CategoryTrendChart({
         </div>
       </div>
       <div className="h-80 [&_svg]:outline-none [&_*:focus]:outline-none">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data} margin={{ top: 20, right: 20, left: 5, bottom: 10 }}>
             <XAxis
               dataKey="month"
@@ -438,7 +438,7 @@ function CumulativeLineChart({
         </div>
       </div>
       <div className="h-80 [&_svg]:outline-none [&_*:focus]:outline-none">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data} margin={{ top: 35, right: 20, left: 5, bottom: 10 }}>
             <XAxis
               dataKey="month"
@@ -991,7 +991,7 @@ export default function PLPage() {
                   <p className="text-xs text-text-tertiary/70 mb-4">Monthly YoY change — total business</p>
 
                   <div className="h-44 [&_svg]:outline-none [&_*:focus]:outline-none">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                       <AreaChart data={channelGrowthData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                         <defs>
                           {/* Thermal gradient for line stroke: green → yellow → red
@@ -1147,7 +1147,7 @@ export default function PLPage() {
                         {/* Sparkline with month context */}
                         <div className="relative">
                           <div className="h-14 [&_svg]:outline-none [&_*:focus]:outline-none">
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                               <AreaChart data={channelGrowthData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
                                 <defs>
                                   <linearGradient id="webSparkGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1235,7 +1235,7 @@ export default function PLPage() {
                         {/* Sparkline with month context */}
                         <div className="relative">
                           <div className="h-14 [&_svg]:outline-none [&_*:focus]:outline-none">
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                               <AreaChart data={channelGrowthData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
                                 <defs>
                                   <linearGradient id="wholesaleSparkGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1333,7 +1333,7 @@ export default function PLPage() {
           </div>
 
           <div className="h-96 [&_svg]:outline-none [&_*:focus]:outline-none">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={monthlyChartData} margin={{ top: 30, right: 30, left: 0, bottom: 10 }}>
                 <defs>
                   <linearGradient id="currentGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1512,7 +1512,7 @@ export default function PLPage() {
               </div>
             </div>
             <div className="h-[250px] [&_svg]:outline-none [&_*:focus]:outline-none">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <LineChart data={discountRateData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                   <XAxis
@@ -1594,7 +1594,7 @@ export default function PLPage() {
               </div>
             </div>
             <div className="h-[250px] [&_svg]:outline-none [&_*:focus]:outline-none">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={shippingData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="webShipGradient" x1="0" y1="0" x2="0" y2="1">
