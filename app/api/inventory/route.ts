@@ -92,14 +92,12 @@ export async function GET(request: Request) {
         .select("sku, display_name, category")
         .eq("is_active", true),
 
-      // 5. Monthly retail sales
-      supabase
-        .from("line_items")
-        .select("sku, quantity, orders!inner(created_at, canceled)")
-        .gte("orders.created_at", monthStart)
-        .lte("orders.created_at", monthEnd)
-        .eq("orders.canceled", false)
-        .limit(QUERY_LIMITS.INVENTORY_RETAIL_SALES),
+      // 5. Monthly retail sales (using efficient RPC that filters orders first)
+      supabase.rpc("get_sku_sales_by_date_range", {
+        p_start_date: monthStart,
+        p_end_date: monthEnd,
+        p_include_cancelled: false,
+      }),
 
       // 6. Monthly B2B (filter out cancelled orders using soft-delete column)
       supabase
@@ -110,23 +108,19 @@ export async function GET(request: Request) {
         .is("cancelled_at", null)
         .limit(QUERY_LIMITS.INVENTORY_B2B_SALES),
 
-      // 7. 3-day sales
-      supabase
-        .from("line_items")
-        .select("sku, quantity, orders!inner(created_at, canceled)")
-        .gte("orders.created_at", threeDayStartEST)
-        .lt("orders.created_at", todayEST)
-        .eq("orders.canceled", false)
-        .limit(QUERY_LIMITS.INVENTORY_VELOCITY),
+      // 7. 3-day sales (using efficient RPC - end date is yesterday 23:59:59 UTC)
+      supabase.rpc("get_sku_sales_by_date_range", {
+        p_start_date: `${threeDayStartEST}T05:00:00Z`, // EST midnight in UTC
+        p_end_date: new Date(Date.UTC(estYear, estMonth - 1, estDay, 4, 59, 59)).toISOString(), // Just before midnight EST today
+        p_include_cancelled: false,
+      }),
 
-      // 8. Prior 3-day sales
-      supabase
-        .from("line_items")
-        .select("sku, quantity, orders!inner(created_at, canceled)")
-        .gte("orders.created_at", sixDayStartEST)
-        .lt("orders.created_at", threeDayStartEST)
-        .eq("orders.canceled", false)
-        .limit(QUERY_LIMITS.INVENTORY_VELOCITY),
+      // 8. Prior 3-day sales (using efficient RPC)
+      supabase.rpc("get_sku_sales_by_date_range", {
+        p_start_date: `${sixDayStartEST}T05:00:00Z`, // EST midnight in UTC
+        p_end_date: `${threeDayStartEST}T04:59:59Z`, // Just before EST midnight 3 days ago
+        p_include_cancelled: false,
+      }),
 
       // 9. B2B Draft Orders (open draft orders from Shopify B2B)
       supabase

@@ -523,32 +523,17 @@ async function fetchSalesData(
 ): Promise<Map<string, number>> {
   const salesBySku = new Map<string, number>();
 
-  // Query D2C retail sales with pagination
-  const PAGE_SIZE = 50000;
-  const retailData: Array<{ sku: string | null; quantity: number }> = [];
-  let offset = 0;
-  let hasMore = true;
+  // Query D2C retail sales using optimized database function
+  // This filters orders first (indexed), then joins line_items - 10x+ faster
+  const { data: retailData, error: retailError } = await supabase
+    .rpc("get_sku_sales_by_date_range", {
+      p_start_date: start,
+      p_end_date: end,
+      p_include_cancelled: true, // Match Excel/Coupler methodology
+    });
 
-  while (hasMore) {
-    // Include all orders (including cancelled) to match Excel/Coupler methodology
-    const { data: page, error: pageError } = await supabase
-      .from("line_items")
-      .select(`sku, quantity, orders!inner(created_at)`)
-      .gte("orders.created_at", start)
-      .lte("orders.created_at", end)
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    if (pageError) {
-      throw new Error(`Failed to fetch retail sales: ${pageError.message}`);
-    }
-
-    if (page && page.length > 0) {
-      retailData.push(...page);
-      offset += PAGE_SIZE;
-      hasMore = page.length === PAGE_SIZE;
-    } else {
-      hasMore = false;
-    }
+  if (retailError) {
+    throw new Error(`Failed to fetch retail sales: ${retailError.message}`);
   }
 
   // Query B2B from b2b_fulfilled table (already synced from Shopify with status:any)
@@ -586,20 +571,25 @@ async function fetchSalesData(
   const rangeEndDate = new Date(end);
 
   if (rangeEndDate >= bundleStartDate) {
+    // Filter care kits from already-fetched retailData (no additional DB query needed)
+    // RPC returns order_created_at so we can filter by the July 1, 2025 cutoff
+    const careKitItems = (retailData || []).filter(
+      (item: { sku: string; quantity: number; order_created_at: string }) =>
+        item.sku?.toLowerCase() === CARE_KIT_SKU.toLowerCase() &&
+        new Date(item.order_created_at) >= bundleStartDate
+    );
+
+    let careKitCount = 0;
+    for (const item of careKitItems) {
+      careKitCount += item.quantity || 0;
+    }
+
+    // Query B2B care kits from b2b_fulfilled table (small, targeted query)
+    // Filter out cancelled orders using soft-delete column
     const effectiveStart = new Date(start) > bundleStartDate
       ? start
       : bundleStartDate.toISOString();
 
-    const { data: careKitRetail } = await supabase
-      .from("line_items")
-      .select(`sku, quantity, orders!inner(created_at)`)
-      .ilike("sku", CARE_KIT_SKU)
-      .gte("orders.created_at", effectiveStart)
-      .lte("orders.created_at", end)
-      .limit(100000);
-
-    // Query B2B care kits from b2b_fulfilled table
-    // Filter out cancelled orders using soft-delete column
     const { data: careKitB2B } = await supabase
       .from("b2b_fulfilled")
       .select("sku, quantity")
@@ -608,10 +598,6 @@ async function fetchSalesData(
       .lte("created_at", end)
       .is("cancelled_at", null);
 
-    let careKitCount = 0;
-    for (const item of careKitRetail || []) {
-      careKitCount += item.quantity || 0;
-    }
     for (const item of careKitB2B || []) {
       careKitCount += item.quantity || 0;
     }
@@ -799,21 +785,20 @@ export async function GET(request: Request) {
         ? start
         : bundleStartDate.toISOString();
 
-      // Query Care Kit retail sales from July 1, 2025 onwards (within our range)
-      // Include all orders (including cancelled) to match Excel/Coupler methodology
-      const { data: careKitRetail } = await supabase
-        .from("line_items")
-        .select(`
-          sku,
-          quantity,
-          orders!inner(created_at)
-        `)
-        .ilike("sku", CARE_KIT_SKU)
-        .gte("orders.created_at", effectiveStart)
-        .lte("orders.created_at", end)
-        .limit(100000);
+      // Use efficient RPC to get per-order data, then filter for care kits in-memory
+      // This avoids the slow PostgREST LATERAL join pattern
+      const { data: careKitData } = await supabase.rpc("get_sku_sales_by_date_range", {
+        p_start_date: effectiveStart,
+        p_end_date: end,
+        p_include_cancelled: true, // Match Excel/Coupler methodology
+      });
 
-      // Query B2B care kits from b2b_fulfilled table (already synced from Shopify)
+      // Filter for care kit SKU in-memory
+      const retailCareKitCount = (careKitData || [])
+        .filter((item: { sku: string }) => item.sku?.toLowerCase() === CARE_KIT_SKU.toLowerCase())
+        .reduce((sum: number, item: { quantity: number }) => sum + (item.quantity || 0), 0);
+
+      // Query B2B care kits from b2b_fulfilled table (small, targeted query)
       // Filter out cancelled orders using soft-delete column
       const { data: careKitB2B } = await supabase
         .from("b2b_fulfilled")
@@ -823,15 +808,8 @@ export async function GET(request: Request) {
         .lte("created_at", end)
         .is("cancelled_at", null);
 
-      // Count Care Kits sold by channel after July 1, 2025
-      let retailCareKitCount = 0;
-      let wholesaleCareKitCount = 0;
-      for (const item of careKitRetail || []) {
-        retailCareKitCount += item.quantity || 0;
-      }
-      for (const item of careKitB2B || []) {
-        wholesaleCareKitCount += item.quantity || 0;
-      }
+      const wholesaleCareKitCount = (careKitB2B || [])
+        .reduce((sum, item) => sum + (item.quantity || 0), 0);
 
       // Add Care Kit bundle components to their respective channel actuals
       if (retailCareKitCount > 0) {
