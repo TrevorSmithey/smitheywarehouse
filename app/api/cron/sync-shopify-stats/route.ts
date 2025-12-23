@@ -1,39 +1,55 @@
 /**
- * Shopify Daily Stats Sync
- * Syncs daily order counts and revenue from Shopify to Supabase
+ * Shopify Daily Stats Sync (via ShopifyQL)
+ *
+ * Uses Shopify's Analytics API (ShopifyQL) to sync daily sales data.
+ * This pulls the SAME numbers shown in Shopify Analytics dashboard.
  *
  * Triggered by Vercel cron daily at 5:30 AM UTC (12:30 AM EST)
  *
  * Syncs:
- * - Total orders per day
- * - Total revenue per day
- * - Average order value
+ * - Total orders per day (from Shopify Analytics)
+ * - Total revenue per day (from Shopify Analytics)
+ * - Average order value (calculated)
  */
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
-import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
-import { RATE_LIMIT_DELAYS } from "@/lib/constants";
+import { withRetry } from "@/lib/shopify";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300; // 5 minutes - Vercel Pro allows up to 300s for cron jobs
+export const maxDuration = 300;
 
-// How many days to look back when syncing (includes today)
-const SYNC_LOOKBACK_DAYS = 7;
+// How many days to look back when syncing
+const SYNC_LOOKBACK_DAYS = 30;
 
-interface ShopifyOrdersResponse {
-  orders: Array<{
-    id: number;
-    total_price: string;
-    created_at: string;
-    cancelled_at: string | null;
-    financial_status: string;
-  }>;
+// ShopifyQL requires API version 2025-01 or later (using unstable for now)
+const SHOPIFYQL_API_VERSION = "unstable";
+
+interface ShopifyQLRow {
+  day: string;
+  total_sales: string;
+  orders: string;
 }
 
-async function fetchShopifyOrders(startDate: Date, endDate: Date): Promise<ShopifyOrdersResponse["orders"]> {
+interface ShopifyQLResponse {
+  data?: {
+    shopifyqlQuery?: {
+      tableData?: {
+        columns: Array<{ name: string; dataType: string }>;
+        rows: ShopifyQLRow[];
+      };
+      parseErrors?: Array<{ message: string }>;
+    };
+  };
+  errors?: Array<{ message: string }>;
+}
+
+/**
+ * Fetch daily sales data from Shopify Analytics via ShopifyQL
+ */
+async function fetchDailyStats(): Promise<Map<string, { orders: number; revenue: number }>> {
   const shop = process.env.SHOPIFY_STORE_URL;
   const accessToken = process.env.SHOPIFY_ADMIN_TOKEN;
 
@@ -41,66 +57,90 @@ async function fetchShopifyOrders(startDate: Date, endDate: Date): Promise<Shopi
     throw new Error("Missing Shopify credentials");
   }
 
-  const orders: ShopifyOrdersResponse["orders"] = [];
-  let pageInfo: string | null = null;
-  let hasNextPage = true;
+  const url = `https://${shop}/admin/api/${SHOPIFYQL_API_VERSION}/graphql.json`;
 
-  const startIso = startDate.toISOString();
-  const endIso = endDate.toISOString();
+  // ShopifyQL query - get daily sales for the lookback period
+  // TIMESERIES ensures we get all days, even those with no sales
+  const shopifyqlQuery = `
+    FROM sales
+    SHOW total_sales, orders
+    SINCE -${SYNC_LOOKBACK_DAYS}d
+    UNTIL today
+    TIMESERIES day
+    ORDER BY day
+  `.trim().replace(/\s+/g, " ");
 
-  while (hasNextPage) {
-    let url: string;
-
-    if (pageInfo) {
-      url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json?page_info=${pageInfo}&limit=250`;
-    } else {
-      url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/orders.json?created_at_min=${startIso}&created_at_max=${endIso}&status=any&limit=250&fields=id,total_price,created_at,cancelled_at,financial_status`;
-    }
-
-    const { ordersData, linkHeader } = await withRetry(
-      async () => {
-        const response = await fetch(url, {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[SHOPIFY STATS] API error: ${response.status} - ${errorText}`);
-          throw new Error(`Shopify API error: ${response.status}`);
+  const graphqlQuery = {
+    query: `
+      {
+        shopifyqlQuery(query: "${shopifyqlQuery}") {
+          tableData {
+            columns { name dataType }
+            rows
+          }
+          parseErrors
         }
+      }
+    `,
+  };
 
-        const data: ShopifyOrdersResponse = await response.json();
-        return {
-          ordersData: data.orders,
-          linkHeader: response.headers.get("Link"),
-        };
-      },
-      { maxRetries: 3, baseDelayMs: 1000 },
-      "Shopify stats fetch"
-    );
-    orders.push(...ordersData);
+  const response = await withRetry(
+    async () => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": accessToken,
+        },
+        body: JSON.stringify(graphqlQuery),
+      });
 
-    // Handle pagination via Link header
-    if (linkHeader && linkHeader.includes('rel="next"')) {
-      const match = linkHeader.match(/<[^>]*page_info=([^>&]+)[^>]*>;\s*rel="next"/);
-      pageInfo = match ? match[1] : null;
-      hasNextPage = !!pageInfo;
-    } else {
-      hasNextPage = false;
-    }
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`[SHOPIFY STATS] GraphQL API error: ${res.status} - ${errorText}`);
+        throw new Error(`Shopify GraphQL API error: ${res.status}`);
+      }
 
-    // Rate limiting - use centralized delay
-    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAYS.SHOPIFY));
+      return res.json();
+    },
+    { maxRetries: 3, baseDelayMs: 1000 },
+    "ShopifyQL fetch"
+  ) as ShopifyQLResponse;
+
+  // Check for GraphQL errors
+  if (response.errors?.length) {
+    const errorMsg = response.errors.map((e) => e.message).join(", ");
+    throw new Error(`ShopifyQL GraphQL error: ${errorMsg}`);
   }
 
-  return orders;
+  // Check for parse errors in ShopifyQL
+  const parseErrors = response.data?.shopifyqlQuery?.parseErrors;
+  if (parseErrors?.length) {
+    const errorMsg = parseErrors.map((e) => e.message).join(", ");
+    throw new Error(`ShopifyQL parse error: ${errorMsg}`);
+  }
+
+  const rows = response.data?.shopifyqlQuery?.tableData?.rows;
+  if (!rows) {
+    throw new Error("No data returned from ShopifyQL");
+  }
+
+  // Parse the response into a map
+  const dailyStats = new Map<string, { orders: number; revenue: number }>();
+
+  for (const row of rows) {
+    // Row format is { day: "2025-12-21", total_sales: "12345.67", orders: "123" }
+    const date = row.day;
+    const revenue = parseFloat(row.total_sales) || 0;
+    const orders = parseInt(row.orders, 10) || 0;
+
+    dailyStats.set(date, { orders, revenue });
+  }
+
+  return dailyStats;
 }
 
 export async function GET(request: Request) {
-  // Always verify cron secret - no exceptions
   if (!verifyCronSecret(request)) {
     return unauthorizedResponse();
   }
@@ -108,52 +148,26 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const stats = {
     daysUpdated: 0,
-    ordersProcessed: 0,
+    totalOrders: 0,
+    totalRevenue: 0,
     errors: 0,
   };
 
   try {
-    console.log("[SHOPIFY STATS] Starting sync...");
+    console.log("[SHOPIFY STATS] Starting sync via ShopifyQL...");
 
     const supabase = createServiceClient();
 
-    // Sync last N days (to catch any late updates)
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - SYNC_LOOKBACK_DAYS);
-    startDate.setHours(0, 0, 0, 0);
+    // Fetch daily stats from Shopify Analytics
+    const dailyStats = await fetchDailyStats();
+    console.log(`[SHOPIFY STATS] Retrieved ${dailyStats.size} days from ShopifyQL`);
 
-    const endDate = new Date(now);
-    endDate.setHours(23, 59, 59, 999);
-
-    console.log(`[SHOPIFY STATS] Fetching orders from ${startDate.toISOString()} to ${endDate.toISOString()}`);
-
-    const orders = await fetchShopifyOrders(startDate, endDate);
-    console.log(`[SHOPIFY STATS] Fetched ${orders.length} orders`);
-    stats.ordersProcessed = orders.length;
-
-    // Group orders by date
-    const dailyStats = new Map<string, { orders: number; revenue: number }>();
-
-    for (const order of orders) {
-      // Skip cancelled orders and orders without payment
-      if (order.cancelled_at) continue;
-      if (order.financial_status !== "paid" && order.financial_status !== "partially_paid") continue;
-
-      const orderDate = order.created_at.split("T")[0];
-      const revenue = parseFloat(order.total_price) || 0;
-
-      const current = dailyStats.get(orderDate) || { orders: 0, revenue: 0 };
-      current.orders++;
-      current.revenue += revenue;
-      dailyStats.set(orderDate, current);
-    }
-
-    console.log(`[SHOPIFY STATS] Aggregated into ${dailyStats.size} days`);
-
-    // Upsert daily stats
+    // Upsert each day's stats
     for (const [date, data] of dailyStats) {
       const avgOrderValue = data.orders > 0 ? data.revenue / data.orders : 0;
+
+      stats.totalOrders += data.orders;
+      stats.totalRevenue += data.revenue;
 
       const { error } = await supabase.from("daily_stats").upsert(
         {
@@ -177,18 +191,20 @@ export async function GET(request: Request) {
     const duration = Date.now() - startTime;
     console.log(`[SHOPIFY STATS] Complete in ${duration}ms:`, stats);
 
-    // Log success to sync_logs
-    // Note: records_expected = days we intended to sync (7)
-    // records_synced = days actually updated (may be less if some days had no orders)
+    // Log success
     try {
       await supabase.from("sync_logs").insert({
         sync_type: "shopify_stats",
         started_at: new Date(startTime).toISOString(),
         completed_at: new Date().toISOString(),
         status: "success",
-        records_expected: SYNC_LOOKBACK_DAYS, // Number of days we sync
+        records_expected: SYNC_LOOKBACK_DAYS,
         records_synced: stats.daysUpdated,
-        details: { ...stats, ordersProcessed: stats.ordersProcessed },
+        details: {
+          source: "shopifyql",
+          totalOrders: stats.totalOrders,
+          totalRevenue: stats.totalRevenue,
+        },
         duration_ms: duration,
       });
     } catch (logError) {
@@ -197,24 +213,22 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
+      source: "shopifyql",
       ...stats,
       duration,
     });
-
   } catch (error) {
     console.error("[SHOPIFY STATS] Fatal error:", error);
 
     const errorMessage = error instanceof Error ? error.message : "Sync failed";
     const elapsed = Date.now() - startTime;
 
-    // Send email alert
     await sendSyncFailureAlert({
-      syncType: "Shopify Daily Stats",
+      syncType: "Shopify Daily Stats (ShopifyQL)",
       error: errorMessage,
       timestamp: new Date().toISOString(),
     });
 
-    // Log to sync_logs
     const supabase = createServiceClient();
     try {
       await supabase.from("sync_logs").insert({
@@ -231,17 +245,10 @@ export async function GET(request: Request) {
       console.error("[SHOPIFY STATS] Failed to log sync failure:", logError);
     }
 
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        duration: elapsed,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: errorMessage, duration: elapsed }, { status: 500 });
   }
 }
 
-// POST handler for manual triggers
 export async function POST(request: Request) {
   return GET(request);
 }
