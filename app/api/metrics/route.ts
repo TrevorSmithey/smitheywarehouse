@@ -23,7 +23,7 @@ export const revalidate = 0;
 
 // Helper to fetch all rows with pagination (Supabase caps at 1000 rows)
 async function fetchAllPaginated<T>(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createServiceClient>,
   table: string,
   select: string,
   filters: { column: string; op: string; value: unknown }[],

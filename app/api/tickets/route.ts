@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import type {
   TicketsResponse,
   SupportTicket,
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
 
     // Parse query parameters
