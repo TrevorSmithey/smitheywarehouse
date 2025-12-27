@@ -16,6 +16,7 @@ import {
   ShoppingCart,
   Calculator,
   ChevronRight,
+  DollarSign,
 } from "lucide-react";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 
@@ -63,6 +64,7 @@ const NAV_TABS = [
   { href: "/production", label: "PRODUCTION", icon: Hammer, group: "operations" },
   // Analytics group
   { href: "/budget", label: "BUDGET V ACTUAL", icon: Target, group: "analytics" },
+  { href: "/revenue-tracker", label: "REVENUE", icon: DollarSign, group: "analytics" },
   { href: "/holiday", label: "Q4 PACE", icon: Gift, group: "analytics" },
   // Engagement group
   { href: "/voc", label: "CUSTOMER SERVICE", icon: MessageCircle, group: "engagement" },

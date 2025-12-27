@@ -1,14 +1,16 @@
 /**
- * Shopify Daily Stats Sync (via ShopifyQL)
+ * Shopify Daily Stats Sync (via ShopifyQL) + B2B Sync (via NetSuite)
  *
- * Uses Shopify's Analytics API (ShopifyQL) to sync daily sales data.
+ * Uses Shopify's Analytics API (ShopifyQL) to sync D2C daily sales data.
+ * Also syncs B2B sales from NetSuite's ns_wholesale_transactions table.
  * This pulls the SAME numbers shown in Shopify Analytics dashboard.
  *
  * Triggered by Vercel cron daily at 5:30 AM UTC (12:30 AM EST)
  *
  * Syncs:
- * - Total orders per day (from Shopify Analytics)
- * - Total revenue per day (from Shopify Analytics)
+ * - Total orders per day (from Shopify Analytics) -> channel='d2c'
+ * - Total revenue per day (from Shopify Analytics) -> channel='d2c'
+ * - B2B orders/revenue per day (from NetSuite) -> channel='b2b'
  * - Average order value (calculated)
  */
 
@@ -23,6 +25,28 @@ export const maxDuration = 300;
 
 // How many days to look back when syncing
 const SYNC_LOOKBACK_DAYS = 30;
+
+/**
+ * Get day of year from a date string (1-366)
+ */
+function getDayOfYear(dateStr: string): number {
+  const date = new Date(dateStr);
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date.getTime() - start.getTime();
+  const oneDay = 1000 * 60 * 60 * 24;
+  return Math.floor(diff / oneDay);
+}
+
+/**
+ * Get quarter from a date string (1-4)
+ */
+function getQuarter(dateStr: string): number {
+  const month = new Date(dateStr).getMonth(); // 0-11
+  if (month <= 2) return 1; // Jan-Mar
+  if (month <= 5) return 2; // Apr-Jun
+  if (month <= 8) return 3; // Jul-Sep
+  return 4; // Oct-Dec
+}
 
 // ShopifyQL requires API version 2025-01 or later (using unstable for now)
 const SHOPIFYQL_API_VERSION = "unstable";
@@ -151,6 +175,10 @@ export async function GET(request: Request) {
     totalOrders: 0,
     totalRevenue: 0,
     errors: 0,
+    // B2B stats
+    b2bDaysUpdated: 0,
+    b2bTotalOrders: 0,
+    b2bTotalRevenue: 0,
   };
 
   try {
@@ -181,11 +209,119 @@ export async function GET(request: Request) {
       );
 
       if (error) {
-        console.error(`[SHOPIFY STATS] Error upserting ${date}:`, error);
+        console.error(`[SHOPIFY STATS] Error upserting daily_stats ${date}:`, error);
         stats.errors++;
       } else {
         stats.daysUpdated++;
       }
+
+      // Also upsert to annual_sales_tracking for full-year revenue tracker (D2C channel)
+      const year = new Date(date).getFullYear();
+      const dayOfYear = getDayOfYear(date);
+      const quarter = getQuarter(date);
+
+      const { error: annualError } = await supabase.from("annual_sales_tracking").upsert(
+        {
+          year,
+          day_of_year: dayOfYear,
+          date,
+          quarter,
+          orders: data.orders,
+          revenue: Math.round(data.revenue * 100) / 100,
+          channel: "d2c", // D2C/Shopify data
+          synced_at: new Date().toISOString(),
+        },
+        { onConflict: "year,day_of_year,channel" }
+      );
+
+      if (annualError) {
+        console.error(`[SHOPIFY STATS] Error upserting annual_sales_tracking ${date}:`, annualError);
+      }
+    }
+
+    // =========================================================================
+    // B2B SYNC: Aggregate NetSuite transactions for the same period
+    // =========================================================================
+    console.log("[SHOPIFY STATS] Starting B2B sync from NetSuite...");
+
+    // D2C customer ID in NetSuite to exclude from B2B metrics
+    const D2C_CUSTOMER_ID = 2501;
+
+    // Get date range for B2B sync
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - SYNC_LOOKBACK_DAYS);
+
+    const formatDate = (d: Date) => d.toISOString().split("T")[0];
+
+    // Fetch B2B transactions for the lookback period
+    const { data: b2bTransactions, error: b2bError } = await supabase
+      .from("ns_wholesale_transactions")
+      .select("tran_date, foreign_total")
+      .neq("ns_customer_id", D2C_CUSTOMER_ID)
+      .gte("tran_date", formatDate(startDate))
+      .lte("tran_date", formatDate(endDate))
+      .order("tran_date", { ascending: true });
+
+    if (b2bError) {
+      console.error("[SHOPIFY STATS] Error fetching B2B transactions:", b2bError);
+    } else if (b2bTransactions && b2bTransactions.length > 0) {
+      console.log(`[SHOPIFY STATS] Found ${b2bTransactions.length} B2B transactions`);
+
+      // Aggregate B2B transactions by day
+      const b2bByDay = new Map<string, { orders: number; revenue: number }>();
+      let skippedCount = 0;
+      for (const tx of b2bTransactions) {
+        const txDate = tx.tran_date?.split("T")[0];
+        if (!txDate) {
+          skippedCount++;
+          continue;
+        }
+
+        const existing = b2bByDay.get(txDate) || { orders: 0, revenue: 0 };
+        existing.orders += 1;
+        existing.revenue += tx.foreign_total || 0;
+        b2bByDay.set(txDate, existing);
+      }
+      if (skippedCount > 0) {
+        console.warn(`[SHOPIFY STATS] Skipped ${skippedCount} B2B transactions with null tran_date`);
+      }
+
+      console.log(`[SHOPIFY STATS] Aggregated ${b2bByDay.size} B2B days`);
+
+      // Upsert B2B data
+      for (const [date, data] of b2bByDay) {
+        const year = new Date(date).getFullYear();
+        const dayOfYear = getDayOfYear(date);
+        const quarter = getQuarter(date);
+
+        stats.b2bTotalOrders += data.orders;
+        stats.b2bTotalRevenue += data.revenue;
+
+        const { error: b2bAnnualError } = await supabase.from("annual_sales_tracking").upsert(
+          {
+            year,
+            day_of_year: dayOfYear,
+            date,
+            quarter,
+            orders: data.orders,
+            revenue: Math.round(data.revenue * 100) / 100,
+            channel: "b2b", // B2B/NetSuite data
+            synced_at: new Date().toISOString(),
+          },
+          { onConflict: "year,day_of_year,channel" }
+        );
+
+        if (b2bAnnualError) {
+          console.error(`[SHOPIFY STATS] Error upserting B2B annual_sales_tracking ${date}:`, b2bAnnualError);
+        } else {
+          stats.b2bDaysUpdated++;
+        }
+      }
+
+      console.log(`[SHOPIFY STATS] B2B sync complete: ${stats.b2bDaysUpdated} days updated`);
+    } else {
+      console.log("[SHOPIFY STATS] No B2B transactions found for period");
     }
 
     const duration = Date.now() - startTime;
@@ -199,11 +335,21 @@ export async function GET(request: Request) {
         completed_at: new Date().toISOString(),
         status: "success",
         records_expected: SYNC_LOOKBACK_DAYS,
-        records_synced: stats.daysUpdated,
+        records_synced: stats.daysUpdated + stats.b2bDaysUpdated,
         details: {
           source: "shopifyql",
-          totalOrders: stats.totalOrders,
-          totalRevenue: stats.totalRevenue,
+          // D2C (Shopify) metrics
+          d2c: {
+            daysUpdated: stats.daysUpdated,
+            totalOrders: stats.totalOrders,
+            totalRevenue: Math.round(stats.totalRevenue * 100) / 100,
+          },
+          // B2B (NetSuite) metrics
+          b2b: {
+            daysUpdated: stats.b2bDaysUpdated,
+            totalOrders: stats.b2bTotalOrders,
+            totalRevenue: Math.round(stats.b2bTotalRevenue * 100) / 100,
+          },
         },
         duration_ms: duration,
       });

@@ -381,6 +381,70 @@ export interface HolidayResponse {
   lastSynced: string | null;
 }
 
+// ============================================================
+// Revenue Tracker Types (Full-year sales comparison)
+// ============================================================
+
+/**
+ * Channel filter for Revenue Tracker dashboard
+ * - "total": Combined D2C + B2B revenue
+ * - "retail": D2C/Shopify sales only
+ * - "b2b": Wholesale/NetSuite sales only
+ */
+export type RevenueTrackerChannel = "total" | "retail" | "b2b";
+
+export interface DaySalesData {
+  dayOfYear: number;
+  date: string;
+  quarter: number;
+  ordersCurrent: number;
+  ordersComparison: number;
+  revenueCurrent: number;
+  revenueComparison: number;
+  cumulativeOrdersCurrent: number;
+  cumulativeOrdersComparison: number;
+  cumulativeRevenueCurrent: number;
+  cumulativeRevenueComparison: number;
+}
+
+export interface QuarterSummary {
+  quarter: number;
+  label: string;
+  months: string;
+  ordersCurrent: number;
+  ordersComparison: number;
+  ordersGrowth: number | null;
+  revenueCurrent: number;
+  revenueComparison: number;
+  revenueGrowth: number | null;
+  daysComplete: number;
+  daysTotal: number;
+  isComplete: boolean;
+  isCurrent: boolean;
+}
+
+export interface YTDSummary {
+  ordersCurrent: number;
+  ordersComparison: number;
+  ordersGrowth: number | null;
+  revenueCurrent: number;
+  revenueComparison: number;
+  revenueGrowth: number | null;
+  daysComplete: number;
+  avgDailyOrders: number;
+  avgDailyRevenue: number;
+  avgOrderValue: number;
+}
+
+export interface RevenueTrackerResponse {
+  currentYear: number;
+  comparisonYear: number;
+  dailyData: DaySalesData[];
+  quarterSummaries: QuarterSummary[];
+  ytdSummary: YTDSummary;
+  lastSynced: string | null;
+}
+
 // Assembly Tracking Types
 export interface DailyAssembly {
   date: string;
