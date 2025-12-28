@@ -28,13 +28,25 @@ const SYNC_LOOKBACK_DAYS = 30;
 
 /**
  * Get day of year from a date string (1-366)
+ * Uses month/day arithmetic to avoid DST issues
  */
 function getDayOfYear(dateStr: string): number {
-  const date = new Date(dateStr);
-  const start = new Date(date.getFullYear(), 0, 0);
-  const diff = date.getTime() - start.getTime();
-  const oneDay = 1000 * 60 * 60 * 24;
-  return Math.floor(diff / oneDay);
+  const [year, month, day] = dateStr.split("-").map(Number);
+
+  // Days in each month (index 0 is unused, index 1-12 are Jan-Dec)
+  const daysInMonth = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  // Check for leap year
+  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  if (isLeap) daysInMonth[2] = 29;
+
+  // Sum days from previous months + current day
+  let dayOfYear = day;
+  for (let m = 1; m < month; m++) {
+    dayOfYear += daysInMonth[m];
+  }
+
+  return dayOfYear;
 }
 
 /**
