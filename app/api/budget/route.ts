@@ -421,9 +421,15 @@ function calculateDateRange(
     Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0)
   ).toISOString();
 
-  // End of period: use current time (now) for "to date" queries
-  // This ensures MTD/QTD/YTD include all orders up to this moment
-  const endISO = new Date().toISOString();
+  // End of period:
+  // - For "to date" ranges (mtd, qtd, ytd): use current time to include all orders up to now
+  // - For completed ranges (last_month, 6months, custom): use the actual end date
+  const isToDateRange = range === "mtd" || range === "qtd" || range === "ytd";
+  const endISO = isToDateRange
+    ? new Date().toISOString()
+    : new Date(
+        Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999)
+      ).toISOString();
 
   return {
     start: startISO,
@@ -687,7 +693,8 @@ export async function GET(request: Request) {
 
     // Aggregate budgets by SKU and channel (FULL month budgets - no pro-rating)
     // Use lowercase keys for case-insensitive matching
-    // Note: "total" is its own channel in the database, NOT the sum of retail + wholesale
+    // Note: "total" channel = "budget out the door" = retail + wholesale + marketing giveaways
+    // This is intentionally different from retail + wholesale (giveaways aren't sales)
     const retailBudgetsBySku = new Map<string, number>();
     const wholesaleBudgetsBySku = new Map<string, number>();
     const totalBudgetsBySku = new Map<string, number>();
@@ -702,7 +709,7 @@ export async function GET(request: Request) {
       } else if (channel === "wholesale") {
         wholesaleBudgetsBySku.set(skuLower, (wholesaleBudgetsBySku.get(skuLower) || 0) + budget);
       } else if (channel === "total") {
-        // Total is its own budget, not the sum of retail + wholesale
+        // Total = "out the door" budget (includes marketing giveaways)
         totalBudgetsBySku.set(skuLower, (totalBudgetsBySku.get(skuLower) || 0) + budget);
       }
     }

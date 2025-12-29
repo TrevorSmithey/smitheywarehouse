@@ -87,60 +87,107 @@ export function BudgetDashboard({
   };
 
   // Get color based on PACE and BUDGET ACHIEVEMENT
-  // Conservative coloring: only celebrate when we're actually close to hitting budget
-  //
-  // Bright green: 90%+ of budget achieved (almost there, can celebrate)
-  // Muted green: On pace (100%+) but < 90% of budget (good trajectory, wait and see)
-  // Amber: 80-99% pace (slightly behind)
-  // Red: < 80% pace (needs attention)
-  const getPaceColor = (pace: number, pctOfBudget?: number) => {
-    // If we've hit 90%+ of budget, bright green regardless of pace
+  // Coloring logic:
+  // - Bright green (#22C55E): 90%+ of budget achieved (goal nearly hit)
+  // - Emerald: 90%+ pace (on track or ahead)
+  // - Amber: 80-89% pace (slightly behind)
+  // - Rose: <80% pace (needs attention)
+  // - Slate: No budget set (N/A - not a failure)
+  const getPaceColor = (pace: number, pctOfBudget?: number, budget?: number) => {
+    // No budget = not applicable (gray, not red)
+    if (budget !== undefined && budget === 0) return colors.slate;
+    // Hit 90%+ of budget = bright green (celebrate!)
     if (pctOfBudget !== undefined && pctOfBudget >= 90) return "#22C55E";
-    // On pace but not yet at 90% of budget - muted green (wait and see)
-    if (pace >= 100) return colors.emerald; // Muted green, not bright
+    // On pace (90%+) = emerald
     if (pace >= 90) return colors.emerald;
+    // Slightly behind (80-89%) = amber
     if (pace >= 80) return colors.amber;
+    // Significantly behind (<80%) = rose
     return colors.rose;
   };
 
-  const getPaceColorDark = (pace: number, pctOfBudget?: number) => {
+  const getPaceColorDark = (pace: number, pctOfBudget?: number, budget?: number) => {
+    if (budget !== undefined && budget === 0) return colors.slate;
     if (pctOfBudget !== undefined && pctOfBudget >= 90) return "#16A34A";
-    if (pace >= 100) return colors.emeraldDark;
     if (pace >= 90) return colors.emeraldDark;
     if (pace >= 80) return colors.amberDark;
     return colors.roseDark;
   };
 
-  // Export to CSV function
+  // Export to CSV function - respects current channel selection
   const exportToCSV = () => {
     if (!data) return;
 
+    // Helper to get channel-specific values
+    const getSkuBudget = (sku: typeof data.categories[0]["skus"][0]) =>
+      channel === "combined" ? sku.budget
+        : channel === "retail" ? sku.channelBudgets?.retail || 0
+        : sku.channelBudgets?.wholesale || 0;
+    const getSkuActual = (sku: typeof data.categories[0]["skus"][0]) =>
+      channel === "combined" ? sku.actual
+        : channel === "retail" ? sku.channelActuals?.retail || 0
+        : sku.channelActuals?.wholesale || 0;
+    const getCatBudget = (cat: typeof data.categories[0]) =>
+      channel === "combined" ? cat.totals.budget
+        : channel === "retail" ? cat.channelBudgets?.retail || 0
+        : cat.channelBudgets?.wholesale || 0;
+    const getCatActual = (cat: typeof data.categories[0]) =>
+      channel === "combined" ? cat.totals.actual
+        : channel === "retail" ? cat.channelActuals?.retail || 0
+        : cat.channelActuals?.wholesale || 0;
+
+    const channelLabel = channel === "combined" ? "Total" : channel === "retail" ? "Retail" : "Wholesale";
     const rows: string[] = [];
     rows.push("Category,Product,SKU,Budget,Actual,Variance,Variance %");
 
     for (const cat of data.categories) {
       for (const sku of cat.skus) {
+        const budget = getSkuBudget(sku);
+        const actual = getSkuActual(sku);
+        const variance = actual - budget;
+        const variancePct = budget > 0 ? (variance / budget) * 100 : 0;
         rows.push(
-          `"${cat.displayName}","${sku.displayName}","${sku.sku}",${sku.budget},${sku.actual},${sku.variance},${sku.variancePct.toFixed(1)}%`
+          `"${cat.displayName}","${sku.displayName}","${sku.sku}",${budget},${actual},${variance},${variancePct.toFixed(1)}%`
         );
       }
+      const catBudget = getCatBudget(cat);
+      const catActual = getCatActual(cat);
+      const catVariance = catActual - catBudget;
+      const catVariancePct = catBudget > 0 ? (catVariance / catBudget) * 100 : 0;
       rows.push(
-        `"${cat.displayName} Total","","",${cat.totals.budget},${cat.totals.actual},${cat.totals.variance},${cat.totals.variancePct.toFixed(1)}%`
+        `"${cat.displayName} Total","","",${catBudget},${catActual},${catVariance},${catVariancePct.toFixed(1)}%`
       );
     }
-    rows.push(
-      `"Cookware Total","","",${data.cookwareTotal.budget},${data.cookwareTotal.actual},${data.cookwareTotal.variance},${data.cookwareTotal.variancePct.toFixed(1)}%`
-    );
-    rows.push(
-      `"Grand Total","","",${data.grandTotal.budget},${data.grandTotal.actual},${data.grandTotal.variance},${data.grandTotal.variancePct.toFixed(1)}%`
-    );
+
+    // Cookware total (channel-specific)
+    const cwBudget = channel === "combined" ? data.cookwareTotal.budget
+      : channel === "retail" ? data.cookwareTotal.channelBudgets?.retail || 0
+      : data.cookwareTotal.channelBudgets?.wholesale || 0;
+    const cwActual = channel === "combined" ? data.cookwareTotal.actual
+      : channel === "retail" ? data.cookwareTotal.channelActuals?.retail || 0
+      : data.cookwareTotal.channelActuals?.wholesale || 0;
+    const cwVariance = cwActual - cwBudget;
+    const cwVariancePct = cwBudget > 0 ? (cwVariance / cwBudget) * 100 : 0;
+    rows.push(`"Cookware Total","","",${cwBudget},${cwActual},${cwVariance},${cwVariancePct.toFixed(1)}%`);
+
+    // Grand total (channel-specific)
+    const gtBudget = channel === "combined" ? data.grandTotal.budget
+      : channel === "retail" ? data.grandTotal.channelBudgets?.retail || 0
+      : data.grandTotal.channelBudgets?.wholesale || 0;
+    const gtActual = channel === "combined" ? data.grandTotal.actual
+      : channel === "retail" ? data.grandTotal.channelActuals?.retail || 0
+      : data.grandTotal.channelActuals?.wholesale || 0;
+    const gtVariance = gtActual - gtBudget;
+    const gtVariancePct = gtBudget > 0 ? (gtVariance / gtBudget) * 100 : 0;
+    rows.push(`"Grand Total","","",${gtBudget},${gtActual},${gtVariance},${gtVariancePct.toFixed(1)}%`);
 
     const csvContent = rows.join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `budget-vs-actual-${dateRange}-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    // Include channel in filename for clarity
+    a.download = `budget-vs-actual-${channelLabel.toLowerCase()}-${dateRange}-${format(new Date(), "yyyy-MM-dd")}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -307,7 +354,6 @@ export function BudgetDashboard({
           : channel === "retail"
             ? data.grandTotal.channelPace?.retail || 0
             : data.grandTotal.channelPace?.wholesale || 0;
-        const showPace = dateRange === "mtd"; // Pace is meaningful for MTD in all channel views
         const channelLabel = channel === "retail" ? "Retail" : channel === "wholesale" ? "Wholesale" : "";
 
         return (
@@ -322,7 +368,7 @@ export function BudgetDashboard({
               <div className="flex items-baseline gap-3 mb-1">
                 <span
                   className="text-3xl sm:text-4xl font-bold tabular-nums transition-colors duration-500"
-                  style={{ color: showPace ? getPaceColor(cookwarePace, cookwarePct) : colors.accent }}
+                  style={{ color: getPaceColor(cookwarePace, cookwarePct, cookwareBudget) }}
                 >
                   {cookwarePct}%
                 </span>
@@ -360,12 +406,10 @@ export function BudgetDashboard({
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.min(100, cookwarePct)}%`,
-                    background: showPace
-                      ? `linear-gradient(90deg, ${getPaceColor(cookwarePace, cookwarePct)}, ${getPaceColorDark(cookwarePace, cookwarePct)})`
-                      : `linear-gradient(90deg, ${colors.accent}, ${colors.accent})`,
+                    background: `linear-gradient(90deg, ${getPaceColor(cookwarePace, cookwarePct, cookwareBudget)}, ${getPaceColorDark(cookwarePace, cookwarePct, cookwareBudget)})`,
                   }}
                 />
-                {dateRange === "mtd" && showPace && (
+                {data.daysElapsed < data.daysInPeriod && (
                   <div
                     className="absolute top-0 bottom-0 w-0.5 bg-white/50"
                     style={{ left: `${pctThroughPeriod}%` }}
@@ -375,8 +419,8 @@ export function BudgetDashboard({
               </div>
               <div className="text-xs text-text-tertiary mt-2">
                 Cast Iron + Carbon Steel
-                {showPace && cookwarePace < 100 && (
-                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(cookwarePace, cookwarePct) }}>{cookwarePace}%</span></>
+                {data.daysElapsed < data.daysInPeriod && cookwarePace < 100 && (
+                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(cookwarePace, cookwarePct, cookwareBudget) }}>{cookwarePace}%</span></>
                 )}
               </div>
             </div>
@@ -391,7 +435,7 @@ export function BudgetDashboard({
               <div className="flex items-baseline gap-3 mb-1">
                 <span
                   className="text-3xl sm:text-4xl font-bold tabular-nums transition-colors duration-500"
-                  style={{ color: showPace ? getPaceColor(grandPace, grandPct) : colors.accent }}
+                  style={{ color: getPaceColor(grandPace, grandPct, grandBudget) }}
                 >
                   {grandPct}%
                 </span>
@@ -429,12 +473,10 @@ export function BudgetDashboard({
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.min(100, grandPct)}%`,
-                    background: showPace
-                      ? `linear-gradient(90deg, ${getPaceColor(grandPace, grandPct)}, ${getPaceColorDark(grandPace, grandPct)})`
-                      : `linear-gradient(90deg, ${colors.accent}, ${colors.accent})`,
+                    background: `linear-gradient(90deg, ${getPaceColor(grandPace, grandPct, grandBudget)}, ${getPaceColorDark(grandPace, grandPct, grandBudget)})`,
                   }}
                 />
-                {dateRange === "mtd" && showPace && (
+                {data.daysElapsed < data.daysInPeriod && (
                   <div
                     className="absolute top-0 bottom-0 w-0.5 bg-white/50"
                     style={{ left: `${pctThroughPeriod}%` }}
@@ -444,8 +486,8 @@ export function BudgetDashboard({
               </div>
               <div className="text-xs text-text-tertiary mt-2">
                 All Categories
-                {showPace && grandPace < 100 && (
-                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(grandPace, grandPct) }}>{grandPace}%</span></>
+                {data.daysElapsed < data.daysInPeriod && grandPace < 100 && (
+                  <> • Pace: <span className="tabular-nums" style={{ color: getPaceColor(grandPace, grandPct, grandBudget) }}>{grandPace}%</span></>
                 )}
               </div>
             </div>
@@ -481,9 +523,8 @@ export function BudgetDashboard({
             : channel === "retail"
               ? cat.channelPace?.retail || 0
               : cat.channelPace?.wholesale || 0;
-          const showPace = dateRange === "mtd"; // Pace is meaningful for MTD
-          const statusColor = showPace ? getPaceColor(catPace, pctOfBudget) : colors.accent;
-          const statusColorDark = showPace ? getPaceColorDark(catPace, pctOfBudget) : colors.accent;
+          const statusColor = getPaceColor(catPace, pctOfBudget, catBudget);
+          const statusColorDark = getPaceColorDark(catPace, pctOfBudget, catBudget);
 
           return (
             <div key={cat.category} className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden transition-all duration-300">
@@ -540,7 +581,7 @@ export function BudgetDashboard({
                         background: `linear-gradient(90deg, ${statusColor}, ${statusColorDark})`,
                       }}
                     />
-                    {dateRange === "mtd" && (
+                    {data.daysElapsed < data.daysInPeriod && (
                       <div
                         className="absolute top-0 bottom-0 w-0.5 bg-white/60"
                         style={{ left: `${periodPct}%` }}
@@ -590,10 +631,9 @@ export function BudgetDashboard({
                           : channel === "retail"
                             ? sku.channelPace?.retail || 0
                             : sku.channelPace?.wholesale || 0;
-                        const showSkuPace = dateRange === "mtd"; // Pace is meaningful for MTD
-                        const skuColor = showSkuPace ? getPaceColor(skuPace, skuPctOfBudget) : colors.accent;
+                        const skuColor = getPaceColor(skuPace, skuPctOfBudget, skuBudget);
                         // Pulse green only when actual exceeds budget (hit the goal early)
-                        const shouldPulse = showSkuPace && skuActual > skuBudget;
+                        const shouldPulse = skuActual > skuBudget;
 
                         return (
                           <tr
