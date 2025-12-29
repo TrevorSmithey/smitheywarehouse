@@ -15,7 +15,7 @@ async function triggerSync() {
   console.log("TRIGGERING SHOPIFY STATS SYNC");
   console.log("=".repeat(70) + "\n");
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://smitheywarehouse.vercel.app";
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
