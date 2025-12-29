@@ -24,7 +24,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 // How many days to look back when syncing
-const SYNC_LOOKBACK_DAYS = 30;
+// Extended to 90 days to ensure Black Friday/holiday data stays fresh
+// and to catch any delayed Shopify Analytics processing
+const SYNC_LOOKBACK_DAYS = 90;
 
 /**
  * Get day of year from a date string (1-366)
