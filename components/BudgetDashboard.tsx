@@ -65,7 +65,7 @@ export function BudgetDashboard({
   // Channel options
   const channelOptions: { value: BudgetChannel; label: string }[] = [
     { value: "combined", label: "Total" },
-    { value: "retail", label: "Retail" },
+    { value: "retail", label: "Web" },
     { value: "wholesale", label: "Wholesale" },
   ];
 
@@ -136,7 +136,7 @@ export function BudgetDashboard({
         : channel === "retail" ? cat.channelActuals?.retail || 0
         : cat.channelActuals?.wholesale || 0;
 
-    const channelLabel = channel === "combined" ? "Total" : channel === "retail" ? "Retail" : "Wholesale";
+    const channelLabel = channel === "combined" ? "Total" : channel === "retail" ? "Web" : "Wholesale";
     const rows: string[] = [];
     rows.push("Category,Product,SKU,Budget,Actual,Variance,Variance %");
 
@@ -354,7 +354,7 @@ export function BudgetDashboard({
           : channel === "retail"
             ? data.grandTotal.channelPace?.retail || 0
             : data.grandTotal.channelPace?.wholesale || 0;
-        const channelLabel = channel === "retail" ? "Retail" : channel === "wholesale" ? "Wholesale" : "";
+        const channelLabel = channel === "retail" ? "Web" : channel === "wholesale" ? "Wholesale" : "";
 
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -381,7 +381,7 @@ export function BudgetDashboard({
               {/* Channel breakdown when viewing Total */}
               {channel === "combined" && data.cookwareTotal.channelActuals && (
                 <div className="text-xs text-text-tertiary mb-2">
-                  <span className="text-text-muted">Retail:</span> {formatNumber(data.cookwareTotal.channelActuals.retail)}
+                  <span className="text-text-muted">Web:</span> {formatNumber(data.cookwareTotal.channelActuals.retail)}
                   <span className="mx-2">·</span>
                   <span className="text-text-muted">Wholesale:</span> {formatNumber(data.cookwareTotal.channelActuals.wholesale)}
                 </div>
@@ -448,7 +448,7 @@ export function BudgetDashboard({
               {/* Channel breakdown when viewing Total */}
               {channel === "combined" && data.grandTotal.channelActuals && (
                 <div className="text-xs text-text-tertiary mb-2">
-                  <span className="text-text-muted">Retail:</span> {formatNumber(data.grandTotal.channelActuals.retail)}
+                  <span className="text-text-muted">Web:</span> {formatNumber(data.grandTotal.channelActuals.retail)}
                   <span className="mx-2">·</span>
                   <span className="text-text-muted">Wholesale:</span> {formatNumber(data.grandTotal.channelActuals.wholesale)}
                 </div>

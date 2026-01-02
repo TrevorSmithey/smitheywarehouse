@@ -46,8 +46,8 @@ interface RevenueTrackerDashboardProps {
 
 const channelOptions: { value: RevenueTrackerChannel; label: string }[] = [
   { value: "total", label: "Total" },
-  { value: "retail", label: "Retail" },
-  { value: "b2b", label: "B2B" },
+  { value: "retail", label: "Web" },
+  { value: "b2b", label: "Wholesale" },
 ];
 
 // ============================================================================

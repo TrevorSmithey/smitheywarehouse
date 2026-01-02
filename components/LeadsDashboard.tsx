@@ -71,7 +71,7 @@ function FormTypeIndicator({ formType }: { formType: LeadFormType }) {
       `}
     >
       {isWholesale ? <Building2 className="w-3 h-3" /> : <Gift className="w-3 h-3" />}
-      {isWholesale ? "B2B" : "Corporate"}
+      {isWholesale ? "Wholesale" : "Corporate"}
     </div>
   );
 }
@@ -244,7 +244,7 @@ function ConversionFunnel({ data }: { data: LeadsResponse }) {
 
   const stages = [
     {
-      label: "B2B Wholesale",
+      label: "Wholesale",
       icon: Building2,
       color: "#0EA5E9",
       total: funnel.wholesale.total,
@@ -361,7 +361,7 @@ function VolumeTrend({ data }: { data: LeadsResponse }) {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-accent-blue" />
-            <span className="text-[10px] text-text-tertiary">B2B</span>
+            <span className="text-[10px] text-text-tertiary">Wholesale</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-purple-400" />
@@ -418,7 +418,7 @@ function VolumeTrend({ data }: { data: LeadsResponse }) {
               stroke="#0EA5E9"
               strokeWidth={2}
               fill="url(#wholesaleGrad)"
-              name="B2B"
+              name="Wholesale"
             />
             <Area
               type="monotone"
@@ -517,7 +517,7 @@ function LeadsTable({ leads, totalCount }: { leads: TypeformLead[]; totalCount: 
             }`}
           >
             <Building2 className="w-3 h-3" />
-            B2B
+            Wholesale
           </button>
           <button
             onClick={() => setFilterType("corporate")}
