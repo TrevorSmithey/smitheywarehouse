@@ -6,6 +6,7 @@ import {
   TrendingDown,
   RefreshCw,
   AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 import {
   AreaChart,
@@ -739,9 +740,10 @@ function SessionsChart({ sessionMetrics }: { sessionMetrics: AnalyticsData["sess
               }}
               labelStyle={{ color: '#fff', fontWeight: 600, marginBottom: '8px' }}
               formatter={(value: number, name: string) => {
+                const currentYear = new Date().getFullYear();
                 if (name === "conversionRate") return [`${value.toFixed(2)}%`, "Conv"];
-                if (name === "sessions2025") return [formatNumber(value), "2025"];
-                if (name === "sessions2024") return [formatNumber(value), "2024"];
+                if (name === "sessions2025") return [formatNumber(value), String(currentYear)];
+                if (name === "sessions2024") return [formatNumber(value), String(currentYear - 1)];
                 return [value, name];
               }}
             />
@@ -795,11 +797,11 @@ function SessionsChart({ sessionMetrics }: { sessionMetrics: AnalyticsData["sess
       <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-border/20">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: FORGE.copper }} />
-          <span className="text-xs text-text-secondary font-medium">2025</span>
+          <span className="text-xs text-text-secondary font-medium">{new Date().getFullYear()}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(100, 116, 139, 0.5)' }} />
-          <span className="text-xs text-text-muted">2024</span>
+          <span className="text-xs text-text-muted">{new Date().getFullYear() - 1}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-0.5 rounded-full bg-white/50" />
@@ -868,6 +870,205 @@ function DiscountImpact({ discounts }: { discounts: AnalyticsData["discounts"] }
   );
 }
 
+// Cohort Health Cards - Clear comparison of each cohort vs benchmark at their age
+function CohortMaturationChart({
+  cohortMaturation,
+}: {
+  cohortMaturation?: AnalyticsData["cohortMaturation"];
+}) {
+  if (!cohortMaturation || cohortMaturation.cohorts.length === 0) return null;
+
+  const { cohorts, benchmarks } = cohortMaturation;
+
+  // For each cohort, find their current milestone and compare to benchmark
+  const cohortCards = cohorts.map((cohort) => {
+    // Determine the furthest milestone this cohort has reached
+    let currentMilestone: "m1" | "m3" | "m6" | "m9" | "m12" = "m1";
+    let currentValue = cohort.m1;
+
+    if (cohort.m12 !== null) {
+      currentMilestone = "m12";
+      currentValue = cohort.m12;
+    } else if (cohort.m9 !== null) {
+      currentMilestone = "m9";
+      currentValue = cohort.m9;
+    } else if (cohort.m6 !== null) {
+      currentMilestone = "m6";
+      currentValue = cohort.m6;
+    } else if (cohort.m3 !== null) {
+      currentMilestone = "m3";
+      currentValue = cohort.m3;
+    }
+
+    const benchmark = benchmarks[currentMilestone];
+    const percentVsBenchmark = benchmark > 0 && currentValue
+      ? Math.round(((currentValue - benchmark) / benchmark) * 100)
+      : 0;
+
+    const milestoneLabel = currentMilestone.toUpperCase().replace("M", "M");
+
+    return {
+      ...cohort,
+      currentMilestone,
+      milestoneLabel,
+      currentValue,
+      benchmark,
+      percentVsBenchmark,
+    };
+  });
+
+  // Reverse so most recent is first
+  const displayCards = [...cohortCards].reverse();
+
+  return (
+    <div className="bg-bg-secondary border border-border/30 rounded-xl p-6">
+      {/* Header */}
+      <div className="mb-6">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">
+          Cohort Health
+        </h3>
+        <p className="text-xs text-text-muted">
+          How each cohort compares to mature customers at the same age
+        </p>
+      </div>
+
+      {/* Cohort Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {displayCards.map((card, idx) => {
+          const isAbove = card.percentVsBenchmark >= 0;
+          const isRecent = idx === 0;
+
+          return (
+            <div
+              key={card.cohort}
+              className={`relative rounded-lg p-4 ${
+                isRecent
+                  ? "bg-emerald-500/10 border border-emerald-500/30"
+                  : "bg-bg-tertiary/50 border border-border/20"
+              }`}
+            >
+              {/* Cohort name & age */}
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-sm font-semibold ${isRecent ? "text-emerald-400" : "text-text-primary"}`}>
+                  {card.cohort}
+                </span>
+                <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">
+                  {card.milestoneLabel}
+                </span>
+              </div>
+
+              {/* Current LTV */}
+              <div className="mb-3">
+                <div className="text-2xl font-bold text-text-primary">
+                  {card.currentValue ? formatCurrency(card.currentValue) : "—"}
+                </div>
+                <div className="text-[10px] text-text-muted mt-0.5">
+                  {formatNumber(card.customerCount)} customers
+                </div>
+              </div>
+
+              {/* Comparison to benchmark */}
+              <div className="flex items-center gap-2">
+                <div
+                  className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                    isAbove
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : "bg-amber-500/20 text-amber-400"
+                  }`}
+                >
+                  {isAbove ? "+" : ""}{card.percentVsBenchmark}%
+                </div>
+                <span className="text-[10px] text-text-muted">
+                  vs {formatCurrency(card.benchmark)} expected
+                </span>
+              </div>
+
+              {/* Progress bar showing where they are vs benchmark */}
+              <div className="mt-3 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    isAbove ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                  style={{
+                    width: `${Math.min(100, Math.max(0, ((card.currentValue || 0) / card.benchmark) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer - Benchmark explanation */}
+      <div className="mt-5 pt-4 border-t border-border/20">
+        <div className="flex items-center justify-between text-xs text-text-muted">
+          <span>
+            Benchmarks based on mature cohorts (12+ months old)
+          </span>
+          <div className="flex items-center gap-4">
+            <span>M3: {formatCurrency(benchmarks.m3)}</span>
+            <span>M6: {formatCurrency(benchmarks.m6)}</span>
+            <span>M12: {formatCurrency(benchmarks.m12)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Deep Dives Section - Collapsible container for secondary analytics
+function DeepDivesSection({
+  segments,
+  cohorts,
+  productInsights,
+  geographic,
+  loading,
+}: {
+  segments: AnalyticsData["segments"];
+  cohorts?: AnalyticsData["cohorts"];
+  productInsights?: AnalyticsData["productInsights"];
+  geographic: AnalyticsData["geographic"];
+  loading: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <div className="border border-border/30 rounded-xl overflow-hidden">
+      {/* Header - always visible */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-4 bg-bg-secondary hover:bg-bg-tertiary/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-text-primary">Deep Dives</span>
+          <span className="text-xs text-text-muted">
+            Segments, Cohorts, Products, Geography
+          </span>
+        </div>
+        <ChevronDown
+          className={`w-5 h-5 text-text-muted transition-transform ${
+            isExpanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {/* Collapsible content */}
+      {isExpanded && (
+        <div className="p-4 pt-0 space-y-6 bg-bg-secondary">
+          <CustomerSegments segments={segments} />
+
+          {cohorts && cohorts.length > 0 && (
+            <CohortRetentionTable cohorts={cohorts} />
+          )}
+
+          <ProductInsights productInsights={productInsights} />
+
+          <USRevenueMap data={geographic.topStates} loading={loading} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function EcommerceAnalyticsDashboard({
   data,
@@ -928,109 +1129,126 @@ export function EcommerceAnalyticsDashboard({
   return (
     <div className="space-y-6">
       {/* ============================================
-          HERO SECTION - Revenue First
+          HERO - The Pulse (Scannable in 2 seconds)
           ============================================ */}
-      <div
-        className="relative rounded-2xl p-6 md:p-8 overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.08) 0%, rgba(15, 23, 42, 0.95) 40%, rgba(16, 185, 129, 0.05) 100%)',
-          border: '1px solid rgba(217, 119, 6, 0.15)',
-        }}
-      >
-        {/* Subtle grid pattern */}
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0V0zm1 1v38h38V1H1z' fill='%23ffffff' fill-opacity='0.02'/%3E%3C/svg%3E")`,
-          }}
-        />
+      <div className="bg-bg-secondary border border-border/30 rounded-xl p-5">
+        {/* Top row: Controls */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs text-text-muted">
+              {new Date(data.dateRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – {new Date(data.dateRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={period}
+              onChange={(e) => onPeriodChange(e.target.value as AnalyticsPeriod)}
+              className="px-3 py-1.5 bg-bg-tertiary border border-border/30 rounded-lg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-amber-600/50 transition-all"
+            >
+              {PERIOD_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="p-1.5 bg-bg-tertiary border border-border/30 rounded-lg text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
 
-        <div className="relative flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-          {/* Left: Revenue hero */}
-          <div>
-            <div className="flex items-baseline gap-3 mb-1">
-              <span
-                className="text-5xl md:text-6xl font-bold tracking-tight"
-                style={{ color: FORGE.copper }}
-              >
+        {/* Metrics row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6">
+          {/* Revenue */}
+          <div className="col-span-2 md:col-span-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold" style={{ color: FORGE.copper }}>
                 {formatCurrency(data.summary.totalRevenue)}
               </span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-text-muted uppercase tracking-wide">Revenue</span>
               {data.summary.revenueDeltaPct !== undefined && (
-                <div
-                  className={`flex items-center gap-1 text-sm font-medium ${
-                    isPositive ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                  {formatPercent(data.summary.revenueDeltaPct)}
-                </div>
+                <span className={`text-xs font-medium ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
+                  {isPositive ? "↑" : "↓"} {formatPercent(Math.abs(data.summary.revenueDeltaPct))}
+                </span>
               )}
             </div>
-            <div className="text-[11px] font-semibold tracking-wider text-text-muted uppercase">
-              Revenue
+          </div>
+
+          {/* Orders */}
+          <div>
+            <div className="text-2xl font-bold text-text-primary">
+              {formatNumber(data.summary.totalOrders)}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-text-muted uppercase tracking-wide">Orders</span>
+              {data.summary.ordersDelta !== undefined && data.summary.ordersDelta !== 0 && (
+                <span className={`text-xs font-medium ${data.summary.ordersDelta > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {data.summary.ordersDelta > 0 ? "↑" : "↓"} {formatNumber(Math.abs(data.summary.ordersDelta))}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Right: Secondary metrics + controls */}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-            <div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatNumber(data.summary.totalOrders)}
-              </div>
-              <div className="text-[10px] text-text-muted uppercase tracking-wide">Orders</div>
+          {/* AOV */}
+          <div>
+            <div className="text-2xl font-bold text-text-primary">
+              {formatCurrency(data.summary.avgOrderValue)}
             </div>
-
-            <div className="w-px h-8 bg-border/30 hidden sm:block" />
-
-            <div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatCurrency(data.summary.avgOrderValue)}
-              </div>
-              <div className="text-[10px] text-text-muted uppercase tracking-wide">AOV</div>
-            </div>
-
-            <div className="w-px h-8 bg-border/30 hidden sm:block" />
-
-            <div>
-              <div className="text-xl font-bold text-text-primary">
-                {data.summary.repeatPurchaseRate.toFixed(1)}%
-              </div>
-              <div className="text-[10px] text-text-muted uppercase tracking-wide">Repeat Rate</div>
-            </div>
-
-            <div className="w-px h-8 bg-border/30 hidden sm:block" />
-
-            <div>
-              <div className="text-xl font-bold text-text-primary">
-                {formatCurrency(data.summary.avgCustomerLTV)}
-              </div>
-              <div className="text-[10px] text-text-muted uppercase tracking-wide">Avg LTV</div>
-            </div>
-
-            <div className="w-px h-8 bg-border/30 hidden sm:block" />
-
-            {/* Period selector and refresh */}
-            <div className="flex items-center gap-2">
-              <select
-                value={period}
-                onChange={(e) => onPeriodChange(e.target.value as AnalyticsPeriod)}
-                className="px-3 py-2 bg-bg-tertiary border border-border/30 rounded-lg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-amber-600/50 transition-all"
-              >
-                {PERIOD_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={onRefresh}
-                disabled={loading}
-                className="p-2 bg-bg-tertiary border border-border/30 rounded-lg text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              </button>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-text-muted uppercase tracking-wide">AOV</span>
+              {data.summary.aovDeltaPct !== undefined && data.summary.aovDeltaPct !== 0 && (
+                <span className={`text-xs font-medium ${data.summary.aovDeltaPct > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {data.summary.aovDeltaPct > 0 ? "↑" : "↓"} {formatPercent(Math.abs(data.summary.aovDeltaPct))}
+                </span>
+              )}
             </div>
           </div>
+
+          {/* Conversion */}
+          <div>
+            <div className="text-2xl font-bold text-text-primary">
+              {data.sessionMetrics?.currentMonth?.conversionRate
+                ? `${(data.sessionMetrics.currentMonth.conversionRate * 100).toFixed(1)}%`
+                : "—"}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-text-muted uppercase tracking-wide">Conv Rate</span>
+              {data.sessionMetrics?.currentMonth?.conversionRate && data.sessionMetrics?.priorMonth?.conversionRate && (
+                (() => {
+                  const delta = data.sessionMetrics.currentMonth.conversionRate - data.sessionMetrics.priorMonth.conversionRate;
+                  const deltaPct = delta * 100;
+                  if (Math.abs(deltaPct) < 0.1) return null;
+                  return (
+                    <span className={`text-xs font-medium ${delta > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {delta > 0 ? "↑" : "↓"} {Math.abs(deltaPct).toFixed(1)}%
+                    </span>
+                  );
+                })()
+              )}
+            </div>
+          </div>
+
+          {/* Repeat Rate */}
+          <div>
+            <div className="text-2xl font-bold text-text-primary">
+              {data.summary.repeatPurchaseRate.toFixed(1)}%
+            </div>
+            <div className="text-[10px] text-text-muted uppercase tracking-wide mt-1">
+              Repeat Rate
+            </div>
+          </div>
+        </div>
+
+        {/* Comparison context */}
+        <div className="mt-4 pt-4 border-t border-border/20 text-xs text-text-muted">
+          Comparing to {["30d", "90d", "12m"].includes(period) ? "prior period" : "same period last year"}
         </div>
       </div>
 
@@ -1124,7 +1342,7 @@ export function EcommerceAnalyticsDashboard({
                   className="w-2.5 h-2.5 rounded-full ring-2 ring-amber-600/20"
                   style={{ backgroundColor: FORGE.copper }}
                 />
-                <span className="text-sm text-text-secondary">Returning</span>
+                <span className="text-sm text-text-secondary">Returning Customers</span>
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-sm font-semibold text-text-primary">
@@ -1183,7 +1401,7 @@ export function EcommerceAnalyticsDashboard({
                   stackId="1"
                   stroke={FORGE.copper}
                   fill="url(#gradientCopper)"
-                  name="Returning"
+                  name="Returning Customers"
                 />
                 <Area
                   type="monotone"
@@ -1191,7 +1409,7 @@ export function EcommerceAnalyticsDashboard({
                   stackId="1"
                   stroke={FORGE.emerald}
                   fill="url(#gradientEmerald)"
-                  name="New"
+                  name="New Customers"
                 />
                 <Legend
                   wrapperStyle={{ paddingTop: '16px' }}
@@ -1204,48 +1422,25 @@ export function EcommerceAnalyticsDashboard({
       </div>
 
       {/* ============================================
-          SESSIONS & CONVERSION CHART
+          COHORT HEALTH
+          ============================================ */}
+      <CohortMaturationChart cohortMaturation={data.cohortMaturation} />
+
+      {/* ============================================
+          SESSIONS & CONVERSION
           ============================================ */}
       <SessionsChart sessionMetrics={data.sessionMetrics} />
 
       {/* ============================================
-          CUSTOMER SEGMENTS
+          DEEP DIVES (Secondary - collapsed by default on mobile)
           ============================================ */}
-      <CustomerSegments segments={data.segments} />
-
-      {/* ============================================
-          RE-ENGAGEMENT QUEUES
-          ============================================ */}
-      <ReengagementQueues reengagement={data.reengagement} />
-
-      {/* ============================================
-          PRODUCT INSIGHTS
-          ============================================ */}
-      <ProductInsights productInsights={data.productInsights} />
-
-      {/* ============================================
-          COHORT RETENTION
-          ============================================ */}
-      {data.cohorts && data.cohorts.length > 0 && (
-        <CohortRetentionTable cohorts={data.cohorts} />
-      )}
-
-      {/* ============================================
-          DISCOUNT IMPACT + US MAP
-          ============================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <DiscountImpact discounts={data.discounts} />
-        <USRevenueMap data={data.geographic.topStates} loading={loading} />
-      </div>
-
-
-      {/* ============================================
-          FOOTER
-          ============================================ */}
-      <div className="text-center text-xs text-text-muted pt-2">
-        Data from {new Date(data.dateRange.start).toLocaleDateString()} to{" "}
-        {new Date(data.dateRange.end).toLocaleDateString()}
-      </div>
+      <DeepDivesSection
+        segments={data.segments}
+        cohorts={data.cohorts}
+        productInsights={data.productInsights}
+        geographic={data.geographic}
+        loading={loading}
+      />
     </div>
   );
 }

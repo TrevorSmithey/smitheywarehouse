@@ -155,6 +155,25 @@ export interface AnalyticsData {
     }>;
     computed_at: string | null;
   };
+  cohortMaturation?: {
+    cohorts: Array<{
+      cohort: string;       // "Q1 '24"
+      cohortStart: string;  // "2024-01-01"
+      customerCount: number;
+      m1: number | null;    // Avg LTV at month 1
+      m3: number | null;    // Avg LTV at month 3
+      m6: number | null;    // Avg LTV at month 6
+      m9: number | null;    // Avg LTV at month 9
+      m12: number | null;   // Avg LTV at month 12
+    }>;
+    benchmarks: {
+      m1: number;
+      m3: number;
+      m6: number;
+      m9: number;
+      m12: number;
+    };
+  };
   period: string;
   dateRange: {
     start: string;

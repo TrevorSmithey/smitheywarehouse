@@ -512,31 +512,47 @@ async function getSessionMetrics(
   supabase: ReturnType<typeof createServiceClient>
 ): Promise<SessionMetrics> {
   const now = new Date();
-  const currentYear = now.getFullYear();
-  const priorYear = currentYear - 1;
-  const currentYearStart = `${currentYear}-01-01`;
-  const currentYearEnd = `${currentYear}-12-31`;
-  const priorYearStart = `${priorYear}-01-01`;
-  const priorYearEnd = `${priorYear}-12-31`;
+  let displayYear = now.getFullYear();
+  let comparisonYear = displayYear - 1;
 
-  // Fetch current year and prior year data in parallel
-  const [currentYearData, priorYearData] = await Promise.all([
+  // First, check if current year has any data
+  const { data: currentYearCheck } = await supabase
+    .from("session_metrics")
+    .select("month")
+    .gte("month", `${displayYear}-01-01`)
+    .lte("month", `${displayYear}-12-31`)
+    .limit(1);
+
+  // If no current year data, fall back to prior year as display year
+  // This handles the year-start edge case (e.g., Jan 2 with no new year data yet)
+  if (!currentYearCheck || currentYearCheck.length === 0) {
+    displayYear = displayYear - 1;
+    comparisonYear = displayYear - 1;
+  }
+
+  const displayYearStart = `${displayYear}-01-01`;
+  const displayYearEnd = `${displayYear}-12-31`;
+  const comparisonYearStart = `${comparisonYear}-01-01`;
+  const comparisonYearEnd = `${comparisonYear}-12-31`;
+
+  // Fetch display year and comparison year data in parallel
+  const [displayYearData, comparisonYearData] = await Promise.all([
     supabase
       .from("session_metrics")
       .select("month, web_sessions, web_orders, conversion_rate, new_customers, returning_customers, new_customer_aov, returning_customer_aov")
-      .gte("month", currentYearStart)
-      .lte("month", currentYearEnd)
+      .gte("month", displayYearStart)
+      .lte("month", displayYearEnd)
       .order("month", { ascending: true }),
     supabase
       .from("session_metrics")
       .select("month, web_sessions, web_orders, conversion_rate")
-      .gte("month", priorYearStart)
-      .lte("month", priorYearEnd)
+      .gte("month", comparisonYearStart)
+      .lte("month", comparisonYearEnd)
       .order("month", { ascending: true }),
   ]);
 
-  const currentYearRecords = currentYearData.data || [];
-  const priorYearRecords = priorYearData.data || [];
+  const displayYearRecords = displayYearData.data || [];
+  const comparisonYearRecords = comparisonYearData.data || [];
 
   // Helper to extract month number from "YYYY-MM-DD" without timezone issues
   const getMonthFromDateStr = (dateStr: string): number => {
@@ -544,11 +560,11 @@ async function getSessionMetrics(
     return parseInt(monthStr, 10);
   };
 
-  // Build prior year lookup by month number (1-12)
-  const priorYearByMonth: Record<number, { webSessions: number; webOrders: number; conversionRate: number }> = {};
-  for (const r of priorYearRecords) {
+  // Build comparison year lookup by month number (1-12)
+  const comparisonYearByMonth: Record<number, { webSessions: number; webOrders: number; conversionRate: number }> = {};
+  for (const r of comparisonYearRecords) {
     const monthNum = getMonthFromDateStr(r.month);
-    priorYearByMonth[monthNum] = {
+    comparisonYearByMonth[monthNum] = {
       webSessions: r.web_sessions || 0,
       webOrders: r.web_orders || 0,
       conversionRate: parseFloat(r.conversion_rate) || 0,
@@ -556,67 +572,55 @@ async function getSessionMetrics(
   }
 
   // Build monthly trends with YoY comparison
-  const monthlyTrends = currentYearRecords.map(r => {
+  const monthlyTrends = displayYearRecords.map(r => {
     const monthNum = getMonthFromDateStr(r.month);
-    const priorYearMonth = priorYearByMonth[monthNum];
+    const comparisonYearMonth = comparisonYearByMonth[monthNum];
     return {
       month: r.month,
       webSessions: r.web_sessions || 0,
       webOrders: r.web_orders || 0,
       conversionRate: parseFloat(r.conversion_rate) || 0,
-      priorYearSessions: priorYearMonth?.webSessions || 0,
-      priorYearOrders: priorYearMonth?.webOrders || 0,
-      priorYearConversion: priorYearMonth?.conversionRate || 0,
+      priorYearSessions: comparisonYearMonth?.webSessions || 0,
+      priorYearOrders: comparisonYearMonth?.webOrders || 0,
+      priorYearConversion: comparisonYearMonth?.conversionRate || 0,
     };
   });
 
-  // Calculate YTD totals
-  const ytdTotalSessions = currentYearRecords.reduce((sum, r) => sum + (r.web_sessions || 0), 0);
-  const ytdTotalOrders = currentYearRecords.reduce((sum, r) => sum + (r.web_orders || 0), 0);
+  // Calculate YTD totals for display year
+  const ytdTotalSessions = displayYearRecords.reduce((sum, r) => sum + (r.web_sessions || 0), 0);
+  const ytdTotalOrders = displayYearRecords.reduce((sum, r) => sum + (r.web_orders || 0), 0);
   const ytdAvgConversion = ytdTotalSessions > 0 ? ytdTotalOrders / ytdTotalSessions : 0;
 
-  // Helper to extract year and month from "YYYY-MM-DD"
-  const getYearMonthFromDateStr = (dateStr: string): { year: number; month: number } => {
-    const [yearStr, monthStr] = dateStr.split('-');
-    return { year: parseInt(yearStr, 10), month: parseInt(monthStr, 10) };
-  };
+  // Comparison year YTD totals - compare ONLY months that exist in display year data
+  const displayYearMonths = new Set(displayYearRecords.map(r => getMonthFromDateStr(r.month)));
+  const maxDisplayYearMonth = displayYearMonths.size > 0 ? Math.max(...Array.from(displayYearMonths)) : 12;
+  const comparisonYtdRecords = comparisonYearRecords.filter(r => getMonthFromDateStr(r.month) <= maxDisplayYearMonth);
+  const comparisonYtdSessions = comparisonYtdRecords.reduce((sum, r) => sum + (r.web_sessions || 0), 0);
+  const comparisonYtdOrders = comparisonYtdRecords.reduce((sum, r) => sum + (r.web_orders || 0), 0);
 
-  // Prior year YTD totals - compare ONLY months that exist in current year data
-  // This fixes the bug where Dec 2024 was included but Dec 2025 wasn't imported yet
-  const currentYearMonths = new Set(currentYearRecords.map(r => getMonthFromDateStr(r.month)));
-  const maxCurrentYearMonth = Math.max(...Array.from(currentYearMonths));
-  const priorYtdRecords = priorYearRecords.filter(r => getMonthFromDateStr(r.month) <= maxCurrentYearMonth);
-  const priorYtdSessions = priorYtdRecords.reduce((sum, r) => sum + (r.web_sessions || 0), 0);
-  const priorYtdOrders = priorYtdRecords.reduce((sum, r) => sum + (r.web_orders || 0), 0);
+  // Get most recent month data from display year
+  // When showing prior year data, use the latest available month
+  const latestRecord = displayYearRecords.length > 0
+    ? displayYearRecords[displayYearRecords.length - 1]
+    : null;
 
-  // Get current month data
-  const currentMonthNum = now.getMonth() + 1;
-  const currentMonthRecord = currentYearRecords.find(r => {
-    const { year, month } = getYearMonthFromDateStr(r.month);
-    return month === currentMonthNum && year === now.getFullYear();
-  });
-
-  const currentMonth = currentMonthRecord ? {
-    webSessions: currentMonthRecord.web_sessions || 0,
-    webOrders: currentMonthRecord.web_orders || 0,
-    conversionRate: parseFloat(currentMonthRecord.conversion_rate) || 0,
-    newCustomers: currentMonthRecord.new_customers || 0,
+  const currentMonth = latestRecord ? {
+    webSessions: latestRecord.web_sessions || 0,
+    webOrders: latestRecord.web_orders || 0,
+    conversionRate: parseFloat(latestRecord.conversion_rate) || 0,
+    newCustomers: latestRecord.new_customers || 0,
     newCustomerRevenue: 0,
-    newCustomerAOV: parseFloat(currentMonthRecord.new_customer_aov) || 0,
-    returningCustomers: currentMonthRecord.returning_customers || 0,
+    newCustomerAOV: parseFloat(latestRecord.new_customer_aov) || 0,
+    returningCustomers: latestRecord.returning_customers || 0,
     returningCustomerRevenue: 0,
-    returningCustomerAOV: parseFloat(currentMonthRecord.returning_customer_aov) || 0,
+    returningCustomerAOV: parseFloat(latestRecord.returning_customer_aov) || 0,
   } : null;
 
   // Get prior month for MoM comparison
-  const priorMonthNum = now.getMonth(); // 0-indexed, so current month - 1
-  const priorMonthYear = priorMonthNum === 0 ? now.getFullYear() - 1 : now.getFullYear();
-  const priorMonthNumAdjusted = priorMonthNum === 0 ? 12 : priorMonthNum;
-
-  const priorMonthRecord = currentYearRecords.find(r => {
-    const { year, month } = getYearMonthFromDateStr(r.month);
-    return month === priorMonthNumAdjusted && year === priorMonthYear;
-  });
+  // Find the second-to-last record in display year for comparison
+  const priorMonthRecord = displayYearRecords.length > 1
+    ? displayYearRecords[displayYearRecords.length - 2]
+    : null;
 
   const priorMonth = priorMonthRecord ? {
     webSessions: priorMonthRecord.web_sessions || 0,
@@ -631,8 +635,8 @@ async function getSessionMetrics(
       totalSessions: ytdTotalSessions,
       totalOrders: ytdTotalOrders,
       avgConversionRate: ytdAvgConversion,
-      priorYearSessions: priorYtdSessions,
-      priorYearOrders: priorYtdOrders,
+      priorYearSessions: comparisonYtdSessions,
+      priorYearOrders: comparisonYtdOrders,
     },
     monthlyTrends,
   };
@@ -894,6 +898,199 @@ async function getCohortAnalysis(
   return cohorts.sort((a, b) => b.cohort.localeCompare(a.cohort)).slice(0, 18);
 }
 
+// Cohort Maturation Analysis - LTV growth over time by acquisition quarter
+interface CohortMaturationData {
+  cohort: string;       // "Q1 '24"
+  cohortStart: string;  // "2024-01-01"
+  customerCount: number;
+  m1: number | null;    // Avg LTV at month 1
+  m3: number | null;    // Avg LTV at month 3
+  m6: number | null;    // Avg LTV at month 6
+  m9: number | null;    // Avg LTV at month 9
+  m12: number | null;   // Avg LTV at month 12
+}
+
+async function getCohortMaturation(
+  supabase: ReturnType<typeof createServiceClient>
+): Promise<{ cohorts: CohortMaturationData[]; benchmarks: { m1: number; m3: number; m6: number; m9: number; m12: number } }> {
+  // Fetch orders from 2023 onwards to have mature cohorts for comparison
+  const { data: orderData, error } = await supabase
+    .from("orders")
+    .select("shopify_customer_id, created_at, total_price")
+    .gte("created_at", "2023-01-01")
+    .eq("canceled", false)
+    .not("shopify_customer_id", "is", null)
+    .not("total_price", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(250000);
+
+  if (error) {
+    console.error("[ANALYTICS] Cohort Maturation error:", error.message);
+    return { cohorts: [], benchmarks: { m1: 0, m3: 0, m6: 0, m9: 0, m12: 0 } };
+  }
+
+  // Build customer data: first order date and all orders with timestamps
+  const customerData = new Map<string, {
+    firstOrderDate: Date;
+    orders: Array<{ date: Date; amount: number }>;
+  }>();
+
+  for (const o of orderData || []) {
+    const cid = o.shopify_customer_id;
+    if (!cid) continue;
+
+    const orderDate = new Date(o.created_at);
+    const orderTotal = parseFloat(String(o.total_price)) || 0;
+    if (orderTotal <= 0) continue;
+
+    const existing = customerData.get(cid);
+    if (!existing) {
+      customerData.set(cid, {
+        firstOrderDate: orderDate,
+        orders: [{ date: orderDate, amount: orderTotal }],
+      });
+    } else {
+      // Update first order date if this is earlier
+      if (orderDate < existing.firstOrderDate) {
+        existing.firstOrderDate = orderDate;
+      }
+      existing.orders.push({ date: orderDate, amount: orderTotal });
+    }
+  }
+
+  const now = new Date();
+  const milestones = [1, 3, 6, 9, 12]; // months
+
+  // Calculate LTV at each milestone for each customer
+  function getLTVAtMilestone(customer: { firstOrderDate: Date; orders: Array<{ date: Date; amount: number }> }, months: number): number | null {
+    const cutoffDate = new Date(customer.firstOrderDate);
+    cutoffDate.setMonth(cutoffDate.getMonth() + months);
+
+    // If customer hasn't aged enough, return null
+    if (cutoffDate > now) return null;
+
+    // Sum all orders up to milestone
+    let total = 0;
+    for (const order of customer.orders) {
+      if (order.date <= cutoffDate) {
+        total += order.amount;
+      }
+    }
+    return total;
+  }
+
+  // Get quarter from date
+  function getQuarter(date: Date): { quarter: number; year: number; label: string; key: string } {
+    const quarter = Math.floor(date.getMonth() / 3) + 1;
+    const year = date.getFullYear();
+    return {
+      quarter,
+      year,
+      label: `Q${quarter} '${String(year).slice(-2)}`,
+      key: `${year}-Q${quarter}`,
+    };
+  }
+
+  // Group customers into quarterly cohorts and calculate LTV at each milestone
+  interface CohortAccumulator {
+    label: string;
+    start: string;
+    customers: number;
+    m1Total: number; m1Count: number;
+    m3Total: number; m3Count: number;
+    m6Total: number; m6Count: number;
+    m9Total: number; m9Count: number;
+    m12Total: number; m12Count: number;
+  }
+
+  const cohortMap = new Map<string, CohortAccumulator>();
+
+  for (const [, customer] of customerData) {
+    const q = getQuarter(customer.firstOrderDate);
+
+    // Only include cohorts from Q1 2024 onwards for display
+    if (q.year < 2024) continue;
+
+    const existing = cohortMap.get(q.key) || {
+      label: q.label,
+      start: `${q.year}-${String((q.quarter - 1) * 3 + 1).padStart(2, '0')}-01`,
+      customers: 0,
+      m1Total: 0, m1Count: 0,
+      m3Total: 0, m3Count: 0,
+      m6Total: 0, m6Count: 0,
+      m9Total: 0, m9Count: 0,
+      m12Total: 0, m12Count: 0,
+    };
+
+    existing.customers++;
+
+    // Calculate LTV at each milestone
+    for (const m of milestones) {
+      const ltv = getLTVAtMilestone(customer, m);
+      if (ltv !== null) {
+        const key = `m${m}` as keyof CohortAccumulator;
+        (existing[`${key}Total` as keyof CohortAccumulator] as number) += ltv;
+        (existing[`${key}Count` as keyof CohortAccumulator] as number)++;
+      }
+    }
+
+    cohortMap.set(q.key, existing);
+  }
+
+  // Build result array
+  const cohorts: CohortMaturationData[] = [];
+  for (const [, data] of cohortMap) {
+    cohorts.push({
+      cohort: data.label,
+      cohortStart: data.start,
+      customerCount: data.customers,
+      m1: data.m1Count > 0 ? Math.round(data.m1Total / data.m1Count) : null,
+      m3: data.m3Count > 0 ? Math.round(data.m3Total / data.m3Count) : null,
+      m6: data.m6Count > 0 ? Math.round(data.m6Total / data.m6Count) : null,
+      m9: data.m9Count > 0 ? Math.round(data.m9Total / data.m9Count) : null,
+      m12: data.m12Count > 0 ? Math.round(data.m12Total / data.m12Count) : null,
+    });
+  }
+
+  // Sort by cohort start date (oldest first)
+  cohorts.sort((a, b) => a.cohortStart.localeCompare(b.cohortStart));
+
+  // Calculate mature benchmarks at EACH milestone
+  // Using cohorts that have reached M12 as our "mature" reference
+  const matureCohorts = cohorts.filter(c => c.m12 !== null);
+
+  const benchmarks = {
+    m1: 0,
+    m3: 0,
+    m6: 0,
+    m9: 0,
+    m12: 0,
+  };
+
+  if (matureCohorts.length > 0) {
+    benchmarks.m1 = Math.round(
+      matureCohorts.reduce((sum, c) => sum + (c.m1 || 0), 0) / matureCohorts.length
+    );
+    benchmarks.m3 = Math.round(
+      matureCohorts.reduce((sum, c) => sum + (c.m3 || 0), 0) / matureCohorts.length
+    );
+    benchmarks.m6 = Math.round(
+      matureCohorts.reduce((sum, c) => sum + (c.m6 || 0), 0) / matureCohorts.length
+    );
+    benchmarks.m9 = Math.round(
+      matureCohorts.reduce((sum, c) => sum + (c.m9 || 0), 0) / matureCohorts.length
+    );
+    benchmarks.m12 = Math.round(
+      matureCohorts.reduce((sum, c) => sum + (c.m12 || 0), 0) / matureCohorts.length
+    );
+  }
+
+  return {
+    cohorts: cohorts.slice(-4), // Last 4 quarters for cleaner display
+    benchmarks,
+  };
+}
+
 // Re-engagement queue counts
 // Based on cumulative return curve: 90d (first nudge), 180d (second push), 365d (final attempt), 545+ (VIP only)
 interface ReengagementQueues {
@@ -1065,6 +1262,7 @@ export async function GET(request: Request) {
       cohortData,
       reengagementQueues,
       productInsights,
+      cohortMaturationData,
     ] = await Promise.all([
       getOrderSummary(supabase, startStr, endStr),
       getOrderSummary(supabase, priorStartStr, priorEndStr),
@@ -1081,6 +1279,7 @@ export async function GET(request: Request) {
       getCohortAnalysis(supabase),
       getReengagementQueues(supabase),
       getProductInsights(supabase),
+      getCohortMaturation(supabase),
     ]);
 
     // Build state heat map
@@ -1166,6 +1365,7 @@ export async function GET(request: Request) {
       sessionMetrics,
       reengagement: reengagementQueues,
       productInsights,
+      cohortMaturation: cohortMaturationData,
     };
 
     console.log(`[ANALYTICS] Success: ${currentSummary.totalOrders} orders, $${currentSummary.totalRevenue.toFixed(2)} revenue`);
