@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { US_STATES } from "@/lib/us-states";
+import { formatCurrency, formatNumberCompact } from "@/lib/formatters";
 
 interface StateRevenueData {
   provinceCode: string;
@@ -54,17 +55,8 @@ function rgbToHex(rgb: number[]): string {
   return `#${rgb.map(c => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function formatCurrency(value: number): string {
-  if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
-
-function formatNumber(value: number): string {
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
-  return value.toLocaleString();
-}
+// Alias for backwards compatibility
+const formatNumber = formatNumberCompact;
 
 // Generate CSS gradient for legend
 function generateGradientCSS(): string {

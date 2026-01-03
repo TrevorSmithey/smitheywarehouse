@@ -24,6 +24,11 @@ import {
 } from "recharts";
 import type { AnalyticsData, AnalyticsPeriod } from "@/app/(dashboard)/ecommerce/page";
 import { USRevenueMap } from "./USRevenueMap";
+import {
+  formatCurrency,
+  formatNumberCompact,
+  formatPctChange,
+} from "@/lib/formatters";
 
 interface Props {
   data: AnalyticsData | null;
@@ -61,29 +66,9 @@ const SEGMENT_COLORS = {
   vip: "#8b5cf6",
 };
 
-function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`;
-  }
-  return `$${value.toFixed(0)}`;
-}
-
-function formatNumber(value: number): string {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1)}K`;
-  }
-  return value.toLocaleString();
-}
-
-function formatPercent(value: number): string {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
-}
+// Aliases for backwards compatibility
+const formatNumber = formatNumberCompact;
+const formatPercent = formatPctChange;
 
 /**
  * Customer Segments - Smithey-Specific

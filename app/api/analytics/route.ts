@@ -12,6 +12,24 @@ import { createServiceClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
+// Query limits for safety - prevents silent data truncation
+const QUERY_LIMITS = {
+  ORDER_SUMMARY: 50000,
+  NEW_VS_RETURNING: 50000,
+  GEOGRAPHIC: 50000,
+  DISCOUNT_CODES: 10000,
+  COHORT_ANALYSIS: 150000,
+  COHORT_MATURATION: 250000,
+  ABANDONED_CHECKOUTS: 50000,
+} as const;
+
+// Verify query didn't hit limit - warns if data may be truncated
+function checkQueryLimit(count: number, limit: number, queryName: string): void {
+  if (count >= limit) {
+    console.warn(`[ANALYTICS] WARNING: ${queryName} returned ${count} rows (limit: ${limit}). Data may be truncated.`);
+  }
+}
+
 type AnalyticsPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d" | "12m";
 
 interface DateRange {
@@ -121,9 +139,10 @@ async function getOrderSummary(
       .lte("created_at", endDate)
       .eq("canceled", false)
       .not("total_price", "is", null)
-      .limit(50000); // Safety limit
+      .limit(QUERY_LIMITS.ORDER_SUMMARY);
 
     const orders = fallbackData || [];
+    checkQueryLimit(orders.length, QUERY_LIMITS.ORDER_SUMMARY, "getOrderSummary");
     const totalOrders = orders.length;
     const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(String(o.total_price)) || 0), 0);
     const totalDiscounts = orders.reduce((sum, o) => sum + (parseFloat(String(o.total_discounts)) || 0), 0);
@@ -169,9 +188,10 @@ async function getNewVsReturning(
       .lte("created_at", endDate)
       .eq("canceled", false)
       .not("total_price", "is", null)
-      .limit(50000);
+      .limit(QUERY_LIMITS.NEW_VS_RETURNING);
 
     const orderList = orders || [];
+    checkQueryLimit(orderList.length, QUERY_LIMITS.NEW_VS_RETURNING, "getNewVsReturning");
     const newOrders = orderList.filter(o => o.is_first_order === true);
     const returningOrders = orderList.filter(o => o.is_first_order === false && o.shopify_customer_id);
 
@@ -240,7 +260,10 @@ async function getTopStates(
       .eq("shipping_country_code", "US")
       .not("shipping_province_code", "is", null)
       .not("total_price", "is", null)
-      .limit(50000);
+      .limit(QUERY_LIMITS.GEOGRAPHIC);
+
+    const orderList = orders || [];
+    checkQueryLimit(orderList.length, QUERY_LIMITS.GEOGRAPHIC, "getTopStates");
 
     const geoAgg = new Map<string, { revenue: number; count: number; customers: Set<string> }>();
     for (const o of orders || []) {
@@ -373,7 +396,10 @@ async function getTopDiscountCodes(
       .lte("created_at", endDate)
       .eq("canceled", false)
       .not("discount_codes", "is", null)
-      .limit(10000);
+      .limit(QUERY_LIMITS.DISCOUNT_CODES);
+
+    const orderList = orders || [];
+    checkQueryLimit(orderList.length, QUERY_LIMITS.DISCOUNT_CODES, "getTopDiscountCodes");
 
     const codeUsage = new Map<string, { count: number; revenue: number; discount: number }>();
     for (const order of orders || []) {
@@ -660,7 +686,8 @@ async function getAbandonedCheckouts(
     .from("abandoned_checkouts")
     .select("id, subtotal_price, recovered_order_id")
     .gte("created_at", startDate)
-    .lte("created_at", endDate);
+    .lte("created_at", endDate)
+    .limit(QUERY_LIMITS.ABANDONED_CHECKOUTS);
 
   if (error) {
     console.error("[ANALYTICS] Abandoned checkouts error:", error.message);
@@ -668,6 +695,7 @@ async function getAbandonedCheckouts(
   }
 
   const checkouts = data || [];
+  checkQueryLimit(checkouts.length, QUERY_LIMITS.ABANDONED_CHECKOUTS, "getAbandonedCheckouts");
   const total = checkouts.length;
   const totalValue = checkouts.reduce((sum, c) => sum + (parseFloat(String(c.subtotal_price)) || 0), 0);
   const recovered = checkouts.filter(c => c.recovered_order_id != null).length;
@@ -809,12 +837,15 @@ async function getCohortAnalysis(
     .eq("canceled", false)
     .not("shopify_customer_id", "is", null)
     .order("created_at", { ascending: true })
-    .limit(150000);
+    .limit(QUERY_LIMITS.COHORT_ANALYSIS);
 
   if (error) {
     console.error("[ANALYTICS] Cohort analysis error:", error.message);
     return [];
   }
+
+  const orders = orderData || [];
+  checkQueryLimit(orders.length, QUERY_LIMITS.COHORT_ANALYSIS, "getCohortAnalysis");
 
   // Build customer first order map
   const customerFirstOrder = new Map<string, Date>();
@@ -922,12 +953,15 @@ async function getCohortMaturation(
     .not("shopify_customer_id", "is", null)
     .not("total_price", "is", null)
     .order("created_at", { ascending: true })
-    .limit(250000);
+    .limit(QUERY_LIMITS.COHORT_MATURATION);
 
   if (error) {
     console.error("[ANALYTICS] Cohort Maturation error:", error.message);
     return { cohorts: [], benchmarks: { m1: 0, m3: 0, m6: 0, m9: 0, m12: 0 } };
   }
+
+  const orders = orderData || [];
+  checkQueryLimit(orders.length, QUERY_LIMITS.COHORT_MATURATION, "getCohortMaturation");
 
   // Build customer data: first order date and all orders with timestamps
   const customerData = new Map<string, {

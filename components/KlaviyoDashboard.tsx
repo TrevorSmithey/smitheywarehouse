@@ -48,6 +48,13 @@ import type {
 } from "@/lib/types";
 import { formatNumber, formatNumberCompact } from "@/lib/dashboard-utils";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
+import {
+  formatCurrency,
+  formatCurrencyFull,
+  formatPct,
+  formatRate,
+  formatRateWhole,
+} from "@/lib/formatters";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
 type SortField = "date" | "revenue" | "recipients" | "open_rate" | "click_rate" | "conversions";
@@ -61,34 +68,8 @@ interface KlaviyoDashboardProps {
   onRefresh: () => void;
 }
 
-// ============================================================================
-// FORMATTING UTILITIES
-// ============================================================================
-
-function formatCurrency(n: number): string {
-  if (n >= 1000000) return `$${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
-function formatCurrencyFull(n: number): string {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-function formatPct(n: number | null): string {
-  if (n === null || n === undefined) return "—";
-  return `${n.toFixed(0)}%`;
-}
-
-function formatRate(n: number | null): string {
-  if (n === null || n === undefined) return "—";
-  return `${(n * 100).toFixed(1)}%`;
-}
-
-function formatRatePct(n: number | null): string {
-  if (n === null || n === undefined) return "—";
-  return `${(n * 100).toFixed(0)}%`;
-}
+// Alias for backwards compatibility
+const formatRatePct = formatRateWhole;
 
 // ============================================================================
 // PERIOD LABELS

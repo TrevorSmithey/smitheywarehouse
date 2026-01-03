@@ -205,7 +205,7 @@ function OrderAgingChart({
           <div className="w-32 h-5 bg-bg-tertiary/50 rounded-sm overflow-hidden">
             <div
               className={`h-full rounded-sm transition-all duration-500 ease-out ${
-                isDanger ? "bg-status-bad/50" : "bg-slate-500/50"
+                isDanger ? "bg-status-bad/70" : "bg-slate-500/70"
               }`}
               style={{ width: `${seleryBarPct}%` }}
             />

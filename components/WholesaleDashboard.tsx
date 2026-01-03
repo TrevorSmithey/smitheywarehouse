@@ -61,6 +61,7 @@ import type {
 import type { ChurnPrediction, PatternInsightsResponse } from "@/lib/types";
 import { WHOLESALE_THRESHOLDS } from "@/lib/constants";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
+import { formatCurrency, formatCurrencyFull, formatPctChange } from "@/lib/formatters";
 
 type SortField = "revenue" | "orders" | "last_order" | "company";
 type SortDirection = "asc" | "desc";
@@ -74,24 +75,8 @@ interface WholesaleDashboardProps {
   onRefresh: () => void;
 }
 
-// ============================================================================
-// FORMATTING UTILITIES
-// ============================================================================
-
-function formatCurrency(n: number): string {
-  if (n >= 1000000) return `$${(n / 1000000).toFixed(2)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
-function formatCurrencyFull(n: number): string {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-function formatPct(n: number | null): string {
-  if (n === null || n === undefined) return "—";
-  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
-}
+// Alias for backwards compatibility with existing code
+const formatPct = formatPctChange;
 
 // ============================================================================
 // PERIOD LABELS
@@ -791,7 +776,7 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
 }
 
 // ============================================================================
-// NEW CUSTOMERS - First-time buyers in last 90 days + YoY Comparison
+// NEW CUSTOMERS - First-time buyers in last 12 months (T365) + Period-over-Period Comparison
 // ============================================================================
 
 function NewCustomersSection({
@@ -819,18 +804,18 @@ function NewCustomersSection({
           </h3>
         </div>
         <span className="text-[10px] text-status-good font-medium">
-          {acquisition?.currentPeriod.newCustomerCount ?? customers.length} in {new Date().getFullYear()}
+          {acquisition?.currentPeriod.newCustomerCount ?? customers.length} last 12 months
         </span>
       </div>
 
-      {/* YoY Comparison Header */}
+      {/* Period-over-Period Comparison Header (T365 vs Prior T365) */}
       {acquisition && (
         <div className="px-5 py-4 border-b border-border/10 bg-bg-tertiary/30">
           <div className="grid grid-cols-3 gap-4">
-            {/* Current YTD - show adjusted if outliers exist */}
+            {/* Current T365 - show adjusted if outliers exist */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-                {new Date().getFullYear()} YTD
+                Last 12 Months
               </div>
               <div className="text-lg font-bold text-text-primary tabular-nums">
                 {acquisition.currentPeriod.newCustomerCount.toLocaleString()}
@@ -840,10 +825,10 @@ function NewCustomersSection({
               </div>
             </div>
 
-            {/* Prior YTD - show adjusted if outliers exist */}
+            {/* Prior T365 - show adjusted if outliers exist */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-                {new Date().getFullYear() - 1} YTD
+                Prior 12 Months
               </div>
               <div className="text-lg font-bold text-text-secondary tabular-nums">
                 {acquisition.priorPeriod.newCustomerCount.toLocaleString()}
@@ -853,10 +838,10 @@ function NewCustomersSection({
               </div>
             </div>
 
-            {/* YoY Change - show adjusted if outliers exist */}
+            {/* Period Change - show adjusted if outliers exist */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-                YoY Change
+                Period Change
               </div>
               <div className={`text-lg font-bold tabular-nums ${
                 (hasOutliers ? acquisition.adjustedComparison.revenueDeltaPct : acquisition.yoyComparison.revenueDeltaPct) >= 0 ? "text-status-good" : "text-status-bad"
@@ -1238,7 +1223,9 @@ function OrderingAnomaliesSection({
 // ============================================================================
 
 function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
-  if (!skus || skus.length === 0) return null;
+  const isEmpty = !skus || skus.length === 0;
+  const displayLimit = 10;
+  const hasMore = skus && skus.length > displayLimit;
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
@@ -1250,10 +1237,15 @@ function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
           </h3>
         </div>
         <span className="text-[10px] text-text-muted">
-          {skus.length} SKUs
+          {isEmpty ? "No data" : hasMore ? `Top ${displayLimit} of ${skus.length}` : `${skus.length} SKUs`}
         </span>
       </div>
 
+      {isEmpty ? (
+        <div className="px-5 py-8 text-center text-text-muted text-sm">
+          No SKU data available for this period
+        </div>
+      ) : (
       <div className="max-h-[350px] overflow-y-auto">
         <table className="w-full">
           <thead className="sticky top-0 z-10">
@@ -1265,7 +1257,7 @@ function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
             </tr>
           </thead>
           <tbody>
-            {skus.slice(0, 10).map((sku, idx) => (
+            {skus.slice(0, displayLimit).map((sku, idx) => (
               <tr key={sku.sku} className="border-b border-border/10 hover:bg-white/[0.02] transition-colors">
                 <td className="py-2.5 px-4">
                   <div className="flex items-center gap-2">
@@ -1291,6 +1283,7 @@ function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
@@ -1300,7 +1293,9 @@ function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
 // ============================================================================
 
 function RecentTransactionsSection({ transactions }: { transactions: WholesaleTransaction[] }) {
-  if (!transactions || transactions.length === 0) return null;
+  const isEmpty = !transactions || transactions.length === 0;
+  const displayLimit = 15;
+  const hasMore = transactions && transactions.length > displayLimit;
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
@@ -1312,12 +1307,17 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
           </h3>
         </div>
         <span className="text-[10px] text-text-muted">
-          Last {transactions.length} orders
+          {isEmpty ? "No data" : hasMore ? `Last ${displayLimit} of ${transactions.length}` : `Last ${transactions.length} orders`}
         </span>
       </div>
 
+      {isEmpty ? (
+        <div className="px-5 py-8 text-center text-text-muted text-sm">
+          No transactions in this period
+        </div>
+      ) : (
       <div className="max-h-[350px] overflow-y-auto">
-        {transactions.slice(0, 15).map((txn) => (
+        {transactions.slice(0, displayLimit).map((txn) => (
           <div
             key={txn.ns_transaction_id}
             className="flex items-center justify-between px-5 py-2.5 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
@@ -1341,6 +1341,7 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -2681,7 +2682,8 @@ export function WholesaleDashboard({
           <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
             <div className="text-center text-text-muted">
               <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No new customers in the last 90 days</p>
+              <p className="text-sm">No new wholesale customers acquired in the last 12 months</p>
+              <p className="text-xs mt-1 opacity-60">First-time B2B buyers appear here</p>
             </div>
           </div>
         )}

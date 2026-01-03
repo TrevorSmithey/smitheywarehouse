@@ -54,7 +54,7 @@ export default function SalesLayout({
   const [wholesaleData, setWholesaleData] = useState<WholesaleResponse | null>(null);
   const [wholesaleLoading, setWholesaleLoading] = useState(false);
   const [wholesaleError, setWholesaleError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<WholesalePeriod>("ytd");
+  const [period, setPeriod] = useState<WholesalePeriod>("12m");
 
   // Leads state
   const [leadsData, setLeadsData] = useState<LeadsResponse | null>(null);

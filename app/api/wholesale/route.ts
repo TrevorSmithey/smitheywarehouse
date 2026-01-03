@@ -33,12 +33,24 @@ const HARDCODED_EXCLUDED_IDS = [
   2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
 ];
 
+// Type-safe customer ID parser - handles both string and number from DB
+// Supabase can return numeric columns as strings in some edge cases
+function parseCustomerId(id: unknown): number {
+  if (typeof id === "number") return id;
+  if (typeof id === "string") return Number(id) || 0;
+  return 0;
+}
+
 // Helper to build exclusion list combining hardcoded IDs and DB-flagged test accounts
 async function getExcludedCustomerIds(supabase: ReturnType<typeof createServiceClient>): Promise<number[]> {
-  const { data: excludedFromDB } = await supabase
+  const { data: excludedFromDB, error } = await supabase
     .from("ns_wholesale_customers")
     .select("ns_customer_id")
     .eq("is_excluded", true);
+
+  if (error) {
+    console.warn("[WHOLESALE] Failed to fetch excluded customers from DB, using hardcoded list only:", error.message);
+  }
 
   const dbExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
   return [...new Set([...HARDCODED_EXCLUDED_IDS, ...dbExcludedIds])];
@@ -255,7 +267,7 @@ export async function GET(request: Request) {
     // Build customer category map for revenue breakdown
     const customerCategoryMapForMonthly = new Map<number, string>();
     for (const c of customersResult.data || []) {
-      customerCategoryMapForMonthly.set(parseInt(c.ns_customer_id), c.category || "");
+      customerCategoryMapForMonthly.set(parseCustomerId(c.ns_customer_id), c.category || "");
     }
 
     // Query all transactions from the last 24 months for monthly breakdown
@@ -275,7 +287,7 @@ export async function GET(request: Request) {
       const monthKey = txn.tran_date.substring(0, 7); // YYYY-MM format
       const revenue = parseFloat(txn.foreign_total) || 0;
       // Add parseInt to handle potential string type from Supabase
-      const category = customerCategoryMapForMonthly.get(parseInt(String(txn.ns_customer_id)));
+      const category = customerCategoryMapForMonthly.get(parseCustomerId(txn.ns_customer_id));
       const isCorporate = category === "Corporate" || category === "4";
 
       const existing = monthlyRevenueBreakdown.get(monthKey) || { corporate: 0, regular: 0 };
@@ -331,7 +343,7 @@ export async function GET(request: Request) {
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
 
       return {
-        ns_customer_id: parseInt(c.ns_customer_id) || 0,
+        ns_customer_id: parseCustomerId(c.ns_customer_id),
         entity_id: c.ns_customer_id?.toString() || "",
         company_name: c.company_name || `Customer ${c.ns_customer_id}`,
         email: null, // Not in current schema
@@ -448,7 +460,7 @@ export async function GET(request: Request) {
       const firstOrderDate = c.first_sale_date ? new Date(c.first_sale_date) : null;
       const lastOrderDate = lastSaleDate; // Use the current date for interval calculations
       const isCorporate = c.is_corporate === true; // Uses DB computed column
-      const customerId = parseInt(c.ns_customer_id) || 0;
+      const customerId = parseCustomerId(c.ns_customer_id);
 
       // Skip corporate gifting - rare repeat customers, not useful for anomaly detection
       if (isCorporate) {
@@ -549,7 +561,7 @@ export async function GET(request: Request) {
         return bDate - aDate;
       })
       .map((c) => ({
-        ns_customer_id: parseInt(c.ns_customer_id) || 0,
+        ns_customer_id: parseCustomerId(c.ns_customer_id),
         entity_id: c.ns_customer_id?.toString() || "",
         company_name: c.company_name || `Customer ${c.ns_customer_id}`,
         email: null, // Not in current schema
@@ -652,7 +664,7 @@ export async function GET(request: Request) {
     // Build a map of customer_id -> category from the raw customers data
     const customerCategoryMap = new Map<number, string>();
     for (const c of customersResult.data || []) {
-      customerCategoryMap.set(parseInt(c.ns_customer_id), c.category || "");
+      customerCategoryMap.set(parseCustomerId(c.ns_customer_id), c.category || "");
     }
 
     // Calculate revenue breakdown by type for current period
@@ -767,42 +779,47 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total_revenue - a.total_revenue); // Highest value first - these are win-back opportunities
 
     // ========================================================================
-    // NEW CUSTOMER ACQUISITION YoY COMPARISON
-    // Compare new customers acquired YTD vs same period last year
+    // NEW CUSTOMER ACQUISITION - TRAILING 365 DAYS (T365)
+    // Compare new customers acquired in last 365 days vs prior 365 days (period-over-period)
     // IMPORTANT: We derive "first order date" from the transactions table,
     // NOT from ns_wholesale_customers.first_order_date (which is incomplete)
     // EXCLUDES: Corporate gifting customers (not recurring B2B accounts)
     // ========================================================================
     let newCustomerAcquisition: WholesaleNewCustomerAcquisition | null = null;
     const partialErrors: { section: string; message: string }[] = [];
-    // Set to track YTD new customer IDs (populated inside try block, used for table after)
-    const ytdNewCustomerIds = new Set<number>();
+    // Set to track T365 (trailing 365 days) new customer IDs (populated inside try block, used for table after)
+    const t365NewCustomerIds = new Set<number>();
     // Map to store transaction-derived first order dates for new customers
     // This ensures we use ACTUAL first order dates, not stale/null DB values
-    const ytdNewCustomerFirstOrders = new Map<number, string>();
+    const t365NewCustomerFirstOrders = new Map<number, string>();
 
     // Build set of corporate customer IDs to exclude from YoY calculation
     // Uses DB computed column `is_corporate` (non-recurring gifting accounts, not part of B2B book)
     const corporateGiftingIds = new Set<number>();
     for (const c of customersResult.data || []) {
       if (c.is_corporate === true) {
-        corporateGiftingIds.add(parseInt(c.ns_customer_id));
+        corporateGiftingIds.add(parseCustomerId(c.ns_customer_id));
       }
     }
 
     try {
-      // Current YTD period
-      const currentYearStart = new Date(now.getFullYear(), 0, 1);
-      const currentYearEnd = now;
+      // Current T365 period (trailing 365 days / 1 year)
+      const t365End = now;
+      const t365Start = new Date(now);
+      t365Start.setDate(t365Start.getDate() - 365);
+      t365Start.setHours(0, 0, 0, 0); // Start of day 365 days ago
 
-      // Same period last year (Jan 1 to same day/month last year)
-      const priorYearStart = new Date(now.getFullYear() - 1, 0, 1);
-      const priorYearEnd = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      // Prior T365 period (365-730 days ago, for period-over-period comparison)
+      const priorT365End = new Date(t365Start);
+      priorT365End.setMilliseconds(-1); // Just before t365Start
+      const priorT365Start = new Date(priorT365End);
+      priorT365Start.setDate(priorT365Start.getDate() - 365);
+      priorT365Start.setHours(0, 0, 0, 0);
 
       // Get customer names lookup from customers table
       const customerNamesMap = new Map<number, string>();
       for (const c of customersResult.data || []) {
-        customerNamesMap.set(parseInt(c.ns_customer_id), c.company_name || `Customer ${c.ns_customer_id}`);
+        customerNamesMap.set(parseCustomerId(c.ns_customer_id), c.company_name || `Customer ${c.ns_customer_id}`);
       }
 
       // Get ALL transactions to find each customer's first order date AND total revenue per period
@@ -815,10 +832,10 @@ export async function GET(request: Request) {
 
       // Build map of each customer's first transaction ever (for determining "new" status)
       const customerFirstTxn = new Map<number, { date: string }>();
-      // Build map of each customer's total revenue in current YTD period
-      const customerCurrentYTDRevenue = new Map<number, number>();
-      // Build map of each customer's total revenue in prior YTD period
-      const customerPriorYTDRevenue = new Map<number, number>();
+      // Build map of each customer's total revenue in current T365 period (last 365 days)
+      const customerCurrentT365Revenue = new Map<number, number>();
+      // Build map of each customer's total revenue in prior T365 period (365-730 days ago)
+      const customerPriorT365Revenue = new Map<number, number>();
 
       for (const txn of allTxns || []) {
         // Skip corporate gifting customers - they're not part of recurring B2B book of business
@@ -834,37 +851,37 @@ export async function GET(request: Request) {
           customerFirstTxn.set(txn.ns_customer_id, { date: txn.tran_date });
         }
 
-        // Accumulate current YTD revenue
-        if (txnDate >= currentYearStart && txnDate <= currentYearEnd) {
-          customerCurrentYTDRevenue.set(
+        // Accumulate current T365 revenue (last 365 days)
+        if (txnDate >= t365Start && txnDate <= t365End) {
+          customerCurrentT365Revenue.set(
             txn.ns_customer_id,
-            (customerCurrentYTDRevenue.get(txn.ns_customer_id) || 0) + revenue
+            (customerCurrentT365Revenue.get(txn.ns_customer_id) || 0) + revenue
           );
         }
 
-        // Accumulate prior YTD revenue
-        if (txnDate >= priorYearStart && txnDate <= priorYearEnd) {
-          customerPriorYTDRevenue.set(
+        // Accumulate prior T365 revenue (365-730 days ago)
+        if (txnDate >= priorT365Start && txnDate <= priorT365End) {
+          customerPriorT365Revenue.set(
             txn.ns_customer_id,
-            (customerPriorYTDRevenue.get(txn.ns_customer_id) || 0) + revenue
+            (customerPriorT365Revenue.get(txn.ns_customer_id) || 0) + revenue
           );
         }
       }
 
-      // Find NEW customers in current YTD (first transaction ever is in 2025 YTD)
-      // Revenue = their TOTAL YTD revenue, not just first order
+      // Find NEW customers in current T365 (first transaction ever is in the last 365 days)
+      // Revenue = their TOTAL T365 revenue, not just first order
       const currentNewCustomers = new Map<number, { revenue: number; firstOrderDate: string; companyName: string }>();
       for (const [customerId, firstTxn] of customerFirstTxn) {
         const firstDate = new Date(firstTxn.date);
-        if (firstDate >= currentYearStart && firstDate <= currentYearEnd) {
+        if (firstDate >= t365Start && firstDate <= t365End) {
           currentNewCustomers.set(customerId, {
-            revenue: customerCurrentYTDRevenue.get(customerId) || 0,
+            revenue: customerCurrentT365Revenue.get(customerId) || 0,
             firstOrderDate: firstTxn.date,
             companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
           // Populate external Set/Map for newCustomers table (outside try block)
-          ytdNewCustomerIds.add(customerId);
-          ytdNewCustomerFirstOrders.set(customerId, firstTxn.date);
+          t365NewCustomerIds.add(customerId);
+          t365NewCustomerFirstOrders.set(customerId, firstTxn.date);
         }
       }
 
@@ -875,14 +892,14 @@ export async function GET(request: Request) {
         ? currentTotalRevenue / currentNewCustomerCount
         : 0;
 
-      // Find NEW customers in prior YTD (first transaction ever is in 2024 YTD)
-      // Revenue = their TOTAL prior YTD revenue, not just first order
+      // Find NEW customers in prior T365 (first transaction ever is 365-730 days ago)
+      // Revenue = their TOTAL prior T365 revenue, not just first order
       const priorNewCustomers = new Map<number, { revenue: number; firstOrderDate: string; companyName: string }>();
       for (const [customerId, firstTxn] of customerFirstTxn) {
         const firstDate = new Date(firstTxn.date);
-        if (firstDate >= priorYearStart && firstDate <= priorYearEnd) {
+        if (firstDate >= priorT365Start && firstDate <= priorT365End) {
           priorNewCustomers.set(customerId, {
-            revenue: customerPriorYTDRevenue.get(customerId) || 0,
+            revenue: customerPriorT365Revenue.get(customerId) || 0,
             firstOrderDate: firstTxn.date,
             companyName: customerNamesMap.get(customerId) || `Customer ${customerId}`,
           });
@@ -953,15 +970,15 @@ export async function GET(request: Request) {
 
       newCustomerAcquisition = {
         currentPeriod: {
-          startDate: formatDate(currentYearStart),
-          endDate: formatDate(currentYearEnd),
+          startDate: formatDate(t365Start),
+          endDate: formatDate(t365End),
           newCustomerCount: currentNewCustomerCount,
           totalRevenue: Math.round(currentTotalRevenue),
           avgOrderValue: Math.round(currentAvgOrderValue),
         },
         priorPeriod: {
-          startDate: formatDate(priorYearStart),
-          endDate: formatDate(priorYearEnd),
+          startDate: formatDate(priorT365Start),
+          endDate: formatDate(priorT365End),
           newCustomerCount: priorNewCustomerCount,
           totalRevenue: Math.round(priorTotalRevenue),
           avgOrderValue: Math.round(priorAvgOrderValue),
@@ -992,23 +1009,23 @@ export async function GET(request: Request) {
 
     // Warn if transaction-derived first order dates are unavailable
     // This means we'll fall back to potentially stale/null DB values for first_sale_date
-    if (ytdNewCustomerFirstOrders.size === 0 && ytdNewCustomerIds.size > 0) {
+    if (t365NewCustomerFirstOrders.size === 0 && t365NewCustomerIds.size > 0) {
       console.warn(
-        `[WHOLESALE API] Transaction-derived first order dates unavailable for ${ytdNewCustomerIds.size} new customers. ` +
-        `Falling back to DB first_sale_date values (may be null/stale). Check YoY calculation errors above.`
+        `[WHOLESALE API] Transaction-derived first order dates unavailable for ${t365NewCustomerIds.size} new customers. ` +
+        `Falling back to DB first_sale_date values (may be null/stale). Check T365 calculation errors above.`
       );
     }
 
-    // New customers - all customers acquired in the current calendar year (YTD)
-    // Uses ytdNewCustomerIds which identifies customers whose first-ever order was this year
+    // New customers - all customers acquired in the last 365 days (T365)
+    // Uses t365NewCustomerIds which identifies customers whose first-ever order was in the last 365 days
     // Excludes $0 revenue customers (likely cash sales or returns that don't count as real customers)
     // IMPORTANT: Override first_sale_date with transaction-derived date (DB value may be null/stale)
     const newCustomers: WholesaleCustomer[] = b2bCustomers
-      .filter((c) => ytdNewCustomerIds.has(c.ns_customer_id) && (c.total_revenue || 0) > 0)
+      .filter((c) => t365NewCustomerIds.has(c.ns_customer_id) && (c.total_revenue || 0) > 0)
       .map((c) => ({
         ...c,
         // Use transaction-derived first order date, falling back to DB value
-        first_sale_date: ytdNewCustomerFirstOrders.get(c.ns_customer_id) || c.first_sale_date,
+        first_sale_date: t365NewCustomerFirstOrders.get(c.ns_customer_id) || c.first_sale_date,
       }))
       .sort((a, b) => {
         // Sort by first order date (most recent first) - now guaranteed to have data

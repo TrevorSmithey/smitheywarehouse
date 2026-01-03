@@ -90,7 +90,21 @@ export async function GET(request: Request) {
 
     // Default to 7 days if no params provided
     const rangeStart = startParam ? new Date(startParam) : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const rangeEnd = endParam ? new Date(endParam) : now;
+
+    // When endParam is a date-only string (YYYY-MM-DD), extend to end of day
+    // Otherwise new Date("2026-01-02") = midnight, making range 0 seconds wide
+    let rangeEnd: Date;
+    if (endParam) {
+      const parsed = new Date(endParam);
+      // If it's a date-only param (no time component), extend to 23:59:59.999
+      if (endParam.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(endParam)) {
+        rangeEnd = new Date(parsed.getTime() + 24 * 60 * 60 * 1000 - 1);
+      } else {
+        rangeEnd = parsed;
+      }
+    } else {
+      rangeEnd = now;
+    }
 
     // Calculate previous period (same duration, shifted back)
     const rangeDuration = rangeEnd.getTime() - rangeStart.getTime();

@@ -32,6 +32,7 @@ import type {
   LeadFormType,
 } from "@/lib/types";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
+import { formatCurrency } from "@/lib/formatters";
 
 // ============================================================================
 // COMPONENT PROPS
@@ -42,16 +43,6 @@ interface LeadsDashboardProps {
   loading: boolean;
   error?: string | null;
   onRefresh: () => void;
-}
-
-// ============================================================================
-// FORMATTING UTILITIES
-// ============================================================================
-
-function formatCurrency(n: number): string {
-  if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `$${(n / 1000).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
 }
 
 // ============================================================================
