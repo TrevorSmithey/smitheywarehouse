@@ -98,6 +98,10 @@
     {
       "path": "/api/cron/reconcile-shopify-stats",
       "schedule": "0 6 * * 0"
+    },
+    {
+      "path": "/api/cron/backfill-warehouse",
+      "schedule": "30 * * * *"
     }
   ]
 }
