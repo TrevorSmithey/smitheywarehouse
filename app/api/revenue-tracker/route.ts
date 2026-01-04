@@ -406,8 +406,8 @@ async function handleCalendarYear(
     const ordersComparison = comparisonData?.orders || 0;
     const revenueComparison = comparisonData?.revenue || 0;
 
-    // Current year: accumulate up to YTD cutoff only
-    if (day <= ytdCutoffDay) {
+    // Current year: accumulate up to last COMPLETED day only (not today's partial)
+    if (day <= yoyCompletedDay) {
       cumOrdersCurrent += ordersCurrent;
       cumRevenuesCurrent += revenueCurrent;
     }
@@ -421,9 +421,9 @@ async function handleCalendarYear(
     const dateStr = currentData?.date || comparisonData?.date || "";
     const quarter = dateStr ? getQuarterFromDate(dateStr) : Math.ceil(day / 91.25);
 
-    // For current year: set cumulative to null for days beyond ytdCutoffDay
-    // This matches Q4 tracking pattern - chart line stops at last real data point
-    const hasCurrent = day <= ytdCutoffDay;
+    // For current year: set cumulative to null for days beyond last COMPLETED day
+    // Today's partial data shouldn't be shown in cumulative (unfair comparison)
+    const hasCurrent = day <= yoyCompletedDay;
 
     dailyData.push({
       dayOfYear: day,
