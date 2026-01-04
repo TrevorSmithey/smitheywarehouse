@@ -486,18 +486,25 @@ function FullWidthChart({
     return data.filter((d) => d.day >= qBounds.start && d.day <= qBounds.end);
   }, [data, selectedQuarter]);
 
-  // Calculate latest value for header
-  const latestValue = useMemo(() => {
+  // Calculate latest values for header (current + comparison for % change)
+  const { latestValue, comparisonValue, percentChange } = useMemo(() => {
     // For cumulative charts: find last day with non-null value
-    // For daily charts: find last day with value > 0
+    // For daily charts: find last day with value > 0 (excluding today's partial)
     const validData = chartData.filter((d) => {
       const val = d[currentKey];
       if (isCumulative) return val !== null;
-      return val !== null && val > 0;
+      // For daily: exclude today's partial data by checking if comparison also has data
+      return val !== null && val > 0 && d[comparisonKey] > 0;
     });
-    if (validData.length === 0) return 0;
-    return validData[validData.length - 1][currentKey] ?? 0;
-  }, [chartData, currentKey, isCumulative]);
+    if (validData.length === 0) return { latestValue: 0, comparisonValue: 0, percentChange: null };
+
+    const lastDay = validData[validData.length - 1];
+    const current = lastDay[currentKey] ?? 0;
+    const comparison = lastDay[comparisonKey] ?? 0;
+    const pctChange = comparison > 0 ? ((current - comparison) / comparison) * 100 : null;
+
+    return { latestValue: current, comparisonValue: comparison, percentChange: pctChange };
+  }, [chartData, currentKey, comparisonKey, isCumulative]);
 
   return (
     <div className="bg-bg-secondary rounded-2xl border border-border overflow-hidden">
@@ -511,8 +518,15 @@ function FullWidthChart({
           <div className="text-xl font-bold text-text-primary tabular-nums">
             {valueFormatter(latestValue)}
           </div>
-          <div className="text-xs text-text-muted">
-            {isCumulative ? "YTD Total" : "Latest"}
+          <div className="flex items-center justify-end gap-2">
+            {percentChange !== null && (
+              <span className={`text-xs font-medium ${percentChange >= 0 ? "text-status-good" : "text-status-bad"}`}>
+                {percentChange >= 0 ? "+" : ""}{percentChange.toFixed(1)}%
+              </span>
+            )}
+            <span className="text-xs text-text-muted">
+              {isCumulative ? "YTD" : "Last Complete"}
+            </span>
           </div>
         </div>
       </div>
