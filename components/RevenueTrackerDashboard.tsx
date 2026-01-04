@@ -488,13 +488,13 @@ function FullWidthChart({
 
   // Calculate latest values for header (current + comparison for % change)
   const { latestValue, comparisonValue, percentChange } = useMemo(() => {
-    // For cumulative charts: find last day with non-null value
-    // For daily charts: find last day with value > 0 (excluding today's partial)
+    // For all charts: only include completed days (where cumulative is not null)
+    // This excludes today's partial data for both daily and cumulative charts
     const validData = chartData.filter((d) => {
+      // Use cumulative as the indicator - if cumulative is null, day is incomplete
+      if (d.cumRevenueCurrent === null) return false;
       const val = d[currentKey];
-      if (isCumulative) return val !== null;
-      // For daily: exclude today's partial data by checking if comparison also has data
-      return val !== null && val > 0 && d[comparisonKey] > 0;
+      return val !== null && (isCumulative || val > 0);
     });
     if (validData.length === 0) return { latestValue: 0, comparisonValue: 0, percentChange: null };
 
