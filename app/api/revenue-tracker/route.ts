@@ -372,25 +372,23 @@ async function handleCalendarYear(
     const ordersComparison = comparisonData?.orders || 0;
     const revenueComparison = comparisonData?.revenue || 0;
 
-    // Current year: accumulate up to last COMPLETED day only (not today's partial)
-    if (day <= yoyCompletedDay) {
+    // Current year: accumulate up to YTD cutoff (includes today's partial for chart)
+    if (day <= ytdCutoffDay) {
       cumOrdersCurrent += ordersCurrent;
       cumRevenuesCurrent += revenueCurrent;
     }
 
-    // Comparison year: accumulate for days up to ytdCutoffDay (for chart trajectory)
-    // We use ytdCutoffDay here to show comparison line up to same point as current
-    if (day <= ytdCutoffDay) {
-      cumOrdersComparison += ordersComparison;
-      cumRevenuesComparison += revenueComparison;
-    }
+    // Comparison year: accumulate for ALL days (full year trajectory for chart)
+    // The YoY percentage calculation uses separate completed-day filtering
+    cumOrdersComparison += ordersComparison;
+    cumRevenuesComparison += revenueComparison;
 
     // Get quarter from actual date
     const quarter = getQuarterFromDate(currentDateStr);
 
-    // For current year: set cumulative to null for days beyond last COMPLETED day
-    // Today's partial data shouldn't be shown in cumulative (unfair comparison)
-    const hasCurrent = day <= yoyCompletedDay;
+    // For current year: set cumulative to null for days beyond ytdCutoffDay
+    // This matches Q4 tracking pattern - chart line stops at last real data point
+    const hasCurrent = day <= ytdCutoffDay;
 
     dailyData.push({
       dayOfYear: day,
@@ -403,9 +401,9 @@ async function handleCalendarYear(
       // Current year cumulative: null for future days (line stops at current day)
       cumulativeOrdersCurrent: hasCurrent ? cumOrdersCurrent : null,
       cumulativeRevenueCurrent: hasCurrent ? cumRevenuesCurrent : null,
-      // Comparison year cumulative: follows same pattern for chart alignment
-      cumulativeOrdersComparison: day <= ytdCutoffDay ? cumOrdersComparison : cumOrdersComparison,
-      cumulativeRevenueComparison: day <= ytdCutoffDay ? cumRevenuesComparison : cumRevenuesComparison,
+      // Comparison year cumulative: always has value (shows full year trajectory)
+      cumulativeOrdersComparison: cumOrdersComparison,
+      cumulativeRevenueComparison: cumRevenuesComparison,
     });
   }
 
