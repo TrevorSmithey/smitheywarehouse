@@ -372,20 +372,21 @@ async function handleCalendarYear(
     const ordersComparison = comparisonData?.orders || 0;
     const revenueComparison = comparisonData?.revenue || 0;
 
-    // Both years: accumulate up to last COMPLETED day only (no intraday partial data)
-    // This ensures fair YoY comparison - both lines stop at the same point
+    // Current year: accumulate up to last COMPLETED day only (no partial today data)
     if (day <= yoyCompletedDay) {
       cumOrdersCurrent += ordersCurrent;
       cumRevenuesCurrent += revenueCurrent;
-      cumOrdersComparison += ordersComparison;
-      cumRevenuesComparison += revenueComparison;
     }
+
+    // Comparison year: accumulate ALL days (historical data is complete, not partial)
+    cumOrdersComparison += ordersComparison;
+    cumRevenuesComparison += revenueComparison;
 
     // Get quarter from actual date
     const quarter = getQuarterFromDate(currentDateStr);
 
-    // Both years: null for days beyond last completed day (lines stop together)
-    const hasCompleteData = day <= yoyCompletedDay;
+    // Current year: null after last completed day (line stops, no partial data)
+    const hasCurrentData = day <= yoyCompletedDay;
 
     dailyData.push({
       dayOfYear: day,
@@ -395,11 +396,12 @@ async function handleCalendarYear(
       ordersComparison,
       revenueCurrent,
       revenueComparison,
-      // Cumulative: null for incomplete days (both lines stop at same point)
-      cumulativeOrdersCurrent: hasCompleteData ? cumOrdersCurrent : null,
-      cumulativeRevenueCurrent: hasCompleteData ? cumRevenuesCurrent : null,
-      cumulativeOrdersComparison: hasCompleteData ? cumOrdersComparison : null,
-      cumulativeRevenueComparison: hasCompleteData ? cumRevenuesComparison : null,
+      // Current year cumulative: null for incomplete days (line stops at yesterday)
+      cumulativeOrdersCurrent: hasCurrentData ? cumOrdersCurrent : null,
+      cumulativeRevenueCurrent: hasCurrentData ? cumRevenuesCurrent : null,
+      // Comparison year cumulative: always has value (historical data is complete)
+      cumulativeOrdersComparison: cumOrdersComparison,
+      cumulativeRevenueComparison: cumRevenuesComparison,
     });
   }
 
