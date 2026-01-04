@@ -98,6 +98,15 @@ function getCurrentDayOfYear(): number {
 }
 
 /**
+ * Get last completed day of year (yesterday) for fair YoY comparisons
+ * Today's data is partial, so YoY % should only compare completed days
+ */
+function getLastCompletedDayOfYear(): number {
+  const today = getCurrentDayOfYear();
+  return Math.max(1, today - 1); // At minimum day 1
+}
+
+/**
  * Get current quarter (1-4)
  */
 function getCurrentQuarter(): number {
@@ -380,7 +389,13 @@ async function handleCalendarYear(
   // For YTD: only accumulate up to current day if viewing current year
   const currentDayOfYear = getCurrentDayOfYear();
   const isViewingCurrentYear = currentYear === thisYear;
+
+  // ytdCutoffDay: Used for chart display (includes today's partial data)
   const ytdCutoffDay = isViewingCurrentYear ? currentDayOfYear : daysInCurrentYear;
+
+  // yoyCompletedDay: Used for YoY percentage calculations (excludes today's partial data)
+  // Comparing partial-to-complete data is unfair, so we only compare completed days
+  const yoyCompletedDay = isViewingCurrentYear ? getLastCompletedDayOfYear() : daysInCurrentYear;
 
   for (let day = 1; day <= maxDaysTotal; day++) {
     const currentData = dataByYearDay[currentYear][day];
@@ -430,26 +445,39 @@ async function handleCalendarYear(
     const qMeta = QUARTER_META[q as 1 | 2 | 3 | 4];
     const qData = dailyData.filter((d) => d.quarter === q);
 
+    // Display totals (includes today's partial data)
     let ordersCurrent = 0;
-    let ordersComparison = 0;
     let revenueCurrent = 0;
-    let revenueComparison = 0;
     let daysComplete = 0;
 
+    // Completed-day totals for fair YoY growth calculation
+    let ordersCurrentCompleted = 0;
+    let revenueCurrentCompleted = 0;
+    let ordersComparison = 0;
+    let revenueComparison = 0;
+
     for (const day of qData) {
-      const isWithinYTD = day.dayOfYear <= ytdCutoffDay;
+      // isWithinDisplay: Include in current year display totals (shows today's partial)
+      const isWithinDisplay = day.dayOfYear <= ytdCutoffDay;
+      // isWithinComparison: Include in YoY comparison (completed days only, both years)
+      const isWithinComparison = day.dayOfYear <= yoyCompletedDay;
 
-      ordersCurrent += day.ordersCurrent;
-      revenueCurrent += day.revenueCurrent;
+      // Current year display totals: include up to today
+      if (isWithinDisplay) {
+        ordersCurrent += day.ordersCurrent;
+        revenueCurrent += day.revenueCurrent;
 
-      // Only count comparison data for days within YTD (fair comparison)
-      if (isWithinYTD) {
-        ordersComparison += day.ordersComparison;
-        revenueComparison += day.revenueComparison;
+        if (day.ordersCurrent > 0 || day.revenueCurrent > 0) {
+          daysComplete++;
+        }
       }
 
-      if (day.ordersCurrent > 0 || day.revenueCurrent > 0) {
-        daysComplete++;
+      // YoY comparison: both years use completed days only for fair comparison
+      if (isWithinComparison) {
+        ordersCurrentCompleted += day.ordersCurrent;
+        revenueCurrentCompleted += day.revenueCurrent;
+        ordersComparison += day.ordersComparison;
+        revenueComparison += day.revenueComparison;
       }
     }
 
@@ -462,10 +490,11 @@ async function handleCalendarYear(
       months: qMeta.months,
       ordersCurrent,
       ordersComparison,
-      ordersGrowth: calcGrowth(ordersCurrent, ordersComparison),
+      // Growth uses completed-day totals for fair YoY comparison
+      ordersGrowth: calcGrowth(ordersCurrentCompleted, ordersComparison),
       revenueCurrent,
       revenueComparison,
-      revenueGrowth: calcGrowth(revenueCurrent, revenueComparison),
+      revenueGrowth: calcGrowth(revenueCurrentCompleted, revenueComparison),
       daysComplete,
       daysTotal: qData.length,
       isComplete,
@@ -474,20 +503,31 @@ async function handleCalendarYear(
   }
 
   // Build YTD summary
-  const ytdData = dailyData.filter((d) => d.dayOfYear <= ytdCutoffDay);
-  const daysComplete = ytdData.filter((d) => d.ordersCurrent > 0 || d.revenueCurrent > 0).length;
-  const totalOrdersCurrent = ytdData.reduce((sum, d) => sum + d.ordersCurrent, 0);
-  const totalRevenueCurrent = ytdData.reduce((sum, d) => sum + d.revenueCurrent, 0);
-  const totalOrdersComparison = ytdData.reduce((sum, d) => sum + d.ordersComparison, 0);
-  const totalRevenueComparison = ytdData.reduce((sum, d) => sum + d.revenueComparison, 0);
+  // Display data: include up to today (for showing current totals)
+  const ytdDataDisplay = dailyData.filter((d) => d.dayOfYear <= ytdCutoffDay);
+  // Comparison data: only completed days for fair YoY % (excludes today for both years)
+  const ytdDataCompleted = dailyData.filter((d) => d.dayOfYear <= yoyCompletedDay);
+
+  const daysComplete = ytdDataDisplay.filter((d) => d.ordersCurrent > 0 || d.revenueCurrent > 0).length;
+
+  // Display totals (includes today's partial data)
+  const totalOrdersCurrent = ytdDataDisplay.reduce((sum, d) => sum + d.ordersCurrent, 0);
+  const totalRevenueCurrent = ytdDataDisplay.reduce((sum, d) => sum + d.revenueCurrent, 0);
+
+  // YoY comparison totals (completed days only, for fair comparison)
+  const ordersCurrentCompleted = ytdDataCompleted.reduce((sum, d) => sum + d.ordersCurrent, 0);
+  const revenueCurrentCompleted = ytdDataCompleted.reduce((sum, d) => sum + d.revenueCurrent, 0);
+  const totalOrdersComparison = ytdDataCompleted.reduce((sum, d) => sum + d.ordersComparison, 0);
+  const totalRevenueComparison = ytdDataCompleted.reduce((sum, d) => sum + d.revenueComparison, 0);
 
   const ytdSummary: YTDSummary = {
     ordersCurrent: totalOrdersCurrent,
     ordersComparison: totalOrdersComparison,
-    ordersGrowth: calcGrowth(totalOrdersCurrent, totalOrdersComparison),
+    // Growth uses completed-day totals for fair YoY comparison
+    ordersGrowth: calcGrowth(ordersCurrentCompleted, totalOrdersComparison),
     revenueCurrent: totalRevenueCurrent,
     revenueComparison: totalRevenueComparison,
-    revenueGrowth: calcGrowth(totalRevenueCurrent, totalRevenueComparison),
+    revenueGrowth: calcGrowth(revenueCurrentCompleted, totalRevenueComparison),
     daysComplete,
     avgDailyOrders: daysComplete > 0 ? Math.round(totalOrdersCurrent / daysComplete) : 0,
     avgDailyRevenue: daysComplete > 0 ? Math.round(totalRevenueCurrent / daysComplete) : 0,
