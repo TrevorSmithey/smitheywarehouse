@@ -401,12 +401,11 @@ export interface DaySalesData {
   ordersComparison: number;
   revenueCurrent: number;
   revenueComparison: number;
-  // Current year cumulative: null for days beyond current day (chart line stops)
+  // Cumulative values: null for days beyond last completed day (both lines stop together)
   cumulativeOrdersCurrent: number | null;
   cumulativeRevenueCurrent: number | null;
-  // Comparison year cumulative: always has value (shows full year trajectory)
-  cumulativeOrdersComparison: number;
-  cumulativeRevenueComparison: number;
+  cumulativeOrdersComparison: number | null;
+  cumulativeRevenueComparison: number | null;
 }
 
 export interface QuarterSummary {

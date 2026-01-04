@@ -372,23 +372,20 @@ async function handleCalendarYear(
     const ordersComparison = comparisonData?.orders || 0;
     const revenueComparison = comparisonData?.revenue || 0;
 
-    // Current year: accumulate up to YTD cutoff (includes today's partial for chart)
-    if (day <= ytdCutoffDay) {
+    // Both years: accumulate up to last COMPLETED day only (no intraday partial data)
+    // This ensures fair YoY comparison - both lines stop at the same point
+    if (day <= yoyCompletedDay) {
       cumOrdersCurrent += ordersCurrent;
       cumRevenuesCurrent += revenueCurrent;
+      cumOrdersComparison += ordersComparison;
+      cumRevenuesComparison += revenueComparison;
     }
-
-    // Comparison year: accumulate for ALL days (full year trajectory for chart)
-    // The YoY percentage calculation uses separate completed-day filtering
-    cumOrdersComparison += ordersComparison;
-    cumRevenuesComparison += revenueComparison;
 
     // Get quarter from actual date
     const quarter = getQuarterFromDate(currentDateStr);
 
-    // For current year: set cumulative to null for days beyond ytdCutoffDay
-    // This matches Q4 tracking pattern - chart line stops at last real data point
-    const hasCurrent = day <= ytdCutoffDay;
+    // Both years: null for days beyond last completed day (lines stop together)
+    const hasCompleteData = day <= yoyCompletedDay;
 
     dailyData.push({
       dayOfYear: day,
@@ -398,12 +395,11 @@ async function handleCalendarYear(
       ordersComparison,
       revenueCurrent,
       revenueComparison,
-      // Current year cumulative: null for future days (line stops at current day)
-      cumulativeOrdersCurrent: hasCurrent ? cumOrdersCurrent : null,
-      cumulativeRevenueCurrent: hasCurrent ? cumRevenuesCurrent : null,
-      // Comparison year cumulative: always has value (shows full year trajectory)
-      cumulativeOrdersComparison: cumOrdersComparison,
-      cumulativeRevenueComparison: cumRevenuesComparison,
+      // Cumulative: null for incomplete days (both lines stop at same point)
+      cumulativeOrdersCurrent: hasCompleteData ? cumOrdersCurrent : null,
+      cumulativeRevenueCurrent: hasCompleteData ? cumRevenuesCurrent : null,
+      cumulativeOrdersComparison: hasCompleteData ? cumOrdersComparison : null,
+      cumulativeRevenueComparison: hasCompleteData ? cumRevenuesComparison : null,
     });
   }
 

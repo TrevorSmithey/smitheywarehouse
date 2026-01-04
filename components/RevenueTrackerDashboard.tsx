@@ -108,9 +108,9 @@ interface ChartDataPoint {
   revenueCurrent: number;
   revenueComparison: number;
   cumOrdersCurrent: number | null;
-  cumOrdersComparison: number;
+  cumOrdersComparison: number | null;
   cumRevenueCurrent: number | null;
-  cumRevenueComparison: number;
+  cumRevenueComparison: number | null;
 }
 
 // ============================================================================
