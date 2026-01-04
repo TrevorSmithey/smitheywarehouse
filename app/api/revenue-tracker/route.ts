@@ -17,6 +17,19 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import {
+  getCurrentDayOfYearEST,
+  getLastCompletedDayOfYearEST,
+  getCurrentQuarterEST,
+  getCurrentYearEST,
+  getDaysInYear,
+  isLeapYearNumber,
+  getQuarterFromDate,
+  getCorrespondingDate,
+  getDayOfYearFromDate,
+  getDateFromDayOfYear,
+  getTodayEST,
+} from "@/lib/date-utils";
 import type {
   DaySalesData,
   QuarterSummary,
@@ -61,61 +74,8 @@ function getChannelDbValues(channel: RevenueTrackerChannel): string[] {
   }
 }
 
-/**
- * Check if a year is a leap year
- */
-function isLeapYear(year: number): boolean {
-  return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
-}
-
-/**
- * Get total days in a year (365 or 366)
- */
-function getDaysInYear(year: number): number {
-  return isLeapYear(year) ? 366 : 365;
-}
-
-/**
- * Get quarter (1-4) from a date string (YYYY-MM-DD)
- */
-function getQuarterFromDate(dateStr: string): number {
-  const month = parseInt(dateStr.split("-")[1], 10);
-  return Math.ceil(month / 3);
-}
-
 // Re-export types for backwards compatibility with existing imports
 export type { DaySalesData, QuarterSummary, YTDSummary, RevenueTrackerResponse } from "@/lib/types";
-
-/**
- * Get current day of year (1-365/366)
- */
-function getCurrentDayOfYear(): number {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  const diff = now.getTime() - start.getTime();
-  const oneDay = 1000 * 60 * 60 * 24;
-  return Math.floor(diff / oneDay);
-}
-
-/**
- * Get last completed day of year (yesterday) for fair YoY comparisons
- * Today's data is partial, so YoY % should only compare completed days
- */
-function getLastCompletedDayOfYear(): number {
-  const today = getCurrentDayOfYear();
-  return Math.max(1, today - 1); // At minimum day 1
-}
-
-/**
- * Get current quarter (1-4)
- */
-function getCurrentQuarter(): number {
-  const month = new Date().getMonth();
-  if (month <= 2) return 1;
-  if (month <= 5) return 2;
-  if (month <= 8) return 3;
-  return 4;
-}
 
 /**
  * Calculate percentage growth (handles null/zero cases)
@@ -133,25 +93,19 @@ function formatDate(date: Date): string {
 }
 
 /**
- * Get day of year from date
- */
-function getDayOfYearFromDate(date: Date): number {
-  const start = new Date(date.getFullYear(), 0, 0);
-  const diff = date.getTime() - start.getTime();
-  const oneDay = 1000 * 60 * 60 * 24;
-  return Math.floor(diff / oneDay);
-}
-
-/**
  * Handle trailing period mode (T7, T30, T90, T365)
+ * Uses EST timezone for "today" to match Smithey operations.
  */
 async function handleTrailingPeriod(
   supabase: ReturnType<typeof createServiceClient>,
   trailingDays: TrailingPeriod,
   channel: RevenueTrackerChannel = "total"
 ): Promise<RevenueTrackerResponse> {
-  const today = new Date();
-  const thisYear = today.getFullYear();
+  // Use EST timezone for determining "today" to match Smithey operations
+  const todayStr = getTodayEST();
+  const [yearStr, monthStr, dayStr] = todayStr.split("-");
+  const today = new Date(parseInt(yearStr), parseInt(monthStr) - 1, parseInt(dayStr));
+  const thisYear = parseInt(yearStr);
   const channelValues = getChannelDbValues(channel);
 
   // Calculate date ranges
@@ -236,7 +190,7 @@ async function handleTrailingPeriod(
     cumOrdersComparison += ordersComparison;
     cumRevenuesComparison += revenueComparison;
 
-    const dayOfYear = getDayOfYearFromDate(currentDate);
+    const dayOfYear = getDayOfYearFromDate(currentDateStr);
     const quarter = getQuarterFromDate(currentDateStr);
 
     dailyData.push({
@@ -255,7 +209,7 @@ async function handleTrailingPeriod(
   }
 
   // Build quarter summaries (for trailing periods, group by quarter in the data)
-  const currentQuarter = getCurrentQuarter();
+  const currentQuarter = getCurrentQuarterEST();
   const quarterSummaries: QuarterSummary[] = [];
 
   for (let q = 1; q <= 4; q++) {
@@ -327,13 +281,17 @@ async function handleTrailingPeriod(
 
 /**
  * Handle calendar year mode
+ *
+ * IMPORTANT: Uses calendar date alignment (not day-of-year) for YoY comparisons.
+ * This ensures March 1, 2025 compares to March 1, 2024 - not Feb 29, 2024.
+ * Feb 29 in leap years maps to Feb 28 in non-leap years.
  */
 async function handleCalendarYear(
   supabase: ReturnType<typeof createServiceClient>,
   currentYear: number,
   channel: RevenueTrackerChannel = "total"
 ): Promise<RevenueTrackerResponse> {
-  const thisYear = new Date().getFullYear();
+  const thisYear = getCurrentYearEST();
   const comparisonYear = currentYear - 1;
   const channelValues = getChannelDbValues(channel);
 
@@ -343,31 +301,31 @@ async function handleCalendarYear(
     .select("year, day_of_year, date, quarter, orders, revenue, channel, synced_at")
     .in("year", [currentYear, comparisonYear])
     .in("channel", channelValues)
-    .order("day_of_year", { ascending: true });
+    .order("date", { ascending: true });
 
   if (error) {
     throw new Error(`Failed to fetch annual sales data: ${error.message}`);
   }
 
-  // Index and aggregate data by year and day (may have multiple channels per day for "total" view)
-  const dataByYearDay: Record<number, Record<number, { orders: number; revenue: number; date: string }>> = {
-    [currentYear]: {},
-    [comparisonYear]: {},
-  };
+  // Index data by DATE STRING (not day-of-year) for proper calendar alignment
+  // This fixes the leap year bug where day 60 in 2025 (Mar 1) was compared to day 60 in 2024 (Feb 29)
+  const dataByDate: Record<string, { orders: number; revenue: number; year: number }> = {};
 
   let lastSynced: string | null = null;
 
   for (const row of rawData || []) {
-    const existing = dataByYearDay[row.year]?.[row.day_of_year];
+    if (!row.date) continue;
+
+    const existing = dataByDate[row.date];
     if (existing) {
-      // Aggregate multiple channels for the same day
+      // Aggregate multiple channels for the same date
       existing.orders += row.orders || 0;
       existing.revenue += parseFloat(row.revenue) || 0;
     } else {
-      dataByYearDay[row.year][row.day_of_year] = {
+      dataByDate[row.date] = {
         orders: row.orders || 0,
         revenue: parseFloat(row.revenue) || 0,
-        date: row.date,
+        year: row.year,
       };
     }
     if (row.synced_at && (!lastSynced || row.synced_at > lastSynced)) {
@@ -378,7 +336,6 @@ async function handleCalendarYear(
   // Build daily data array with cumulative totals
   const daysInCurrentYear = getDaysInYear(currentYear);
   const daysInComparisonYear = getDaysInYear(comparisonYear);
-  const maxDaysTotal = Math.max(daysInCurrentYear, daysInComparisonYear);
 
   const dailyData: DaySalesData[] = [];
   let cumOrdersCurrent = 0;
@@ -386,8 +343,8 @@ async function handleCalendarYear(
   let cumOrdersComparison = 0;
   let cumRevenuesComparison = 0;
 
-  // For YTD: only accumulate up to current day if viewing current year
-  const currentDayOfYear = getCurrentDayOfYear();
+  // For YTD: only accumulate up to current day if viewing current year (EST timezone)
+  const currentDayOfYear = getCurrentDayOfYearEST();
   const isViewingCurrentYear = currentYear === thisYear;
 
   // ytdCutoffDay: Used for chart display (includes today's partial data)
@@ -395,11 +352,20 @@ async function handleCalendarYear(
 
   // yoyCompletedDay: Used for YoY percentage calculations (excludes today's partial data)
   // Comparing partial-to-complete data is unfair, so we only compare completed days
-  const yoyCompletedDay = isViewingCurrentYear ? getLastCompletedDayOfYear() : daysInCurrentYear;
+  // Returns 0 on January 1st (no completed days yet)
+  const yoyCompletedDay = isViewingCurrentYear ? getLastCompletedDayOfYearEST() : daysInCurrentYear;
 
-  for (let day = 1; day <= maxDaysTotal; day++) {
-    const currentData = dataByYearDay[currentYear][day];
-    const comparisonData = dataByYearDay[comparisonYear][day];
+  // Iterate through current year's calendar dates
+  for (let day = 1; day <= daysInCurrentYear; day++) {
+    // Get the actual calendar date for this day-of-year in current year
+    const currentDateStr = getDateFromDayOfYear(currentYear, day);
+
+    // Get the CORRESPONDING date in comparison year (handles leap year alignment)
+    // e.g., 2025-03-01 → 2024-03-01 (not 2024-02-29 which would be day 60 in leap year)
+    const comparisonDateStr = getCorrespondingDate(currentDateStr, comparisonYear);
+
+    const currentData = dataByDate[currentDateStr];
+    const comparisonData = dataByDate[comparisonDateStr];
 
     const ordersCurrent = currentData?.orders || 0;
     const revenueCurrent = currentData?.revenue || 0;
@@ -412,14 +378,15 @@ async function handleCalendarYear(
       cumRevenuesCurrent += revenueCurrent;
     }
 
-    // Comparison year: accumulate for ALL days (full year trajectory for chart)
-    // The YoY percentage calculation uses separate completed-day filtering
-    cumOrdersComparison += ordersComparison;
-    cumRevenuesComparison += revenueComparison;
+    // Comparison year: accumulate for days up to ytdCutoffDay (for chart trajectory)
+    // We use ytdCutoffDay here to show comparison line up to same point as current
+    if (day <= ytdCutoffDay) {
+      cumOrdersComparison += ordersComparison;
+      cumRevenuesComparison += revenueComparison;
+    }
 
-    // Determine quarter from actual date (not hardcoded day boundaries)
-    const dateStr = currentData?.date || comparisonData?.date || "";
-    const quarter = dateStr ? getQuarterFromDate(dateStr) : Math.ceil(day / 91.25);
+    // Get quarter from actual date
+    const quarter = getQuarterFromDate(currentDateStr);
 
     // For current year: set cumulative to null for days beyond last COMPLETED day
     // Today's partial data shouldn't be shown in cumulative (unfair comparison)
@@ -427,7 +394,7 @@ async function handleCalendarYear(
 
     dailyData.push({
       dayOfYear: day,
-      date: dateStr,
+      date: currentDateStr,
       quarter,
       ordersCurrent,
       ordersComparison,
@@ -436,14 +403,14 @@ async function handleCalendarYear(
       // Current year cumulative: null for future days (line stops at current day)
       cumulativeOrdersCurrent: hasCurrent ? cumOrdersCurrent : null,
       cumulativeRevenueCurrent: hasCurrent ? cumRevenuesCurrent : null,
-      // Comparison year cumulative: always has value (shows full year trajectory)
-      cumulativeOrdersComparison: cumOrdersComparison,
-      cumulativeRevenueComparison: cumRevenuesComparison,
+      // Comparison year cumulative: follows same pattern for chart alignment
+      cumulativeOrdersComparison: day <= ytdCutoffDay ? cumOrdersComparison : cumOrdersComparison,
+      cumulativeRevenueComparison: day <= ytdCutoffDay ? cumRevenuesComparison : cumRevenuesComparison,
     });
   }
 
   // Build quarter summaries using actual quarter assignments from dates
-  const currentQuarter = getCurrentQuarter();
+  const currentQuarter = getCurrentQuarterEST();
   const quarterSummaries: QuarterSummary[] = [];
 
   for (let q = 1; q <= 4; q++) {
@@ -590,8 +557,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // Calendar year mode
-    const thisYear = new Date().getFullYear();
+    // Calendar year mode (use EST timezone for consistency)
+    const thisYear = getCurrentYearEST();
     const requestedYear = parseInt(searchParams.get("year") || "", 10);
     const currentYear = (requestedYear >= 2023 && requestedYear <= thisYear)
       ? requestedYear

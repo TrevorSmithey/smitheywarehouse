@@ -24,6 +24,7 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
+import { getQuarterBoundaries } from "@/lib/date-utils";
 import type { RevenueTrackerResponse, QuarterSummary, DaySalesData, RevenueTrackerChannel } from "@/lib/types";
 
 // ============================================================================
@@ -71,13 +72,8 @@ const trailingOptions: { days: TrailingPeriod; label: string }[] = [
   { days: 365, label: "T365" },
 ];
 
-// Quarter boundaries (approximate day of year)
-const quarterBoundaries = [
-  { q: 1, start: 1, end: 90, label: "Q1", months: "Jan–Mar" },
-  { q: 2, start: 91, end: 181, label: "Q2", months: "Apr–Jun" },
-  { q: 3, start: 182, end: 273, label: "Q3", months: "Jul–Sep" },
-  { q: 4, start: 274, end: 366, label: "Q4", months: "Oct–Dec" },
-];
+// Quarter boundaries are now computed dynamically to handle leap years
+// See getQuarterBoundaries() from date-utils
 
 // ============================================================================
 // FORMATTING UTILITIES
@@ -457,6 +453,7 @@ function FullWidthChart({
   gradientId,
   currentDayOfYear,
   selectedQuarter,
+  year,
 }: {
   data: ChartDataPoint[];
   dataKeyPrefix: "orders" | "revenue" | "cumOrders" | "cumRevenue";
@@ -469,7 +466,10 @@ function FullWidthChart({
   gradientId: string;
   currentDayOfYear: number;
   selectedQuarter: number | null;
+  year: number;
 }) {
+  // Compute quarter boundaries dynamically based on year (handles leap years)
+  const quarterBoundaries = useMemo(() => getQuarterBoundaries(year), [year]);
   const currentKey = dataKeyPrefix === "orders" ? "ordersCurrent" :
                      dataKeyPrefix === "revenue" ? "revenueCurrent" :
                      dataKeyPrefix === "cumOrders" ? "cumOrdersCurrent" : "cumRevenueCurrent";
@@ -484,7 +484,7 @@ function FullWidthChart({
     const qBounds = quarterBoundaries.find((q) => q.q === selectedQuarter);
     if (!qBounds) return data;
     return data.filter((d) => d.day >= qBounds.start && d.day <= qBounds.end);
-  }, [data, selectedQuarter]);
+  }, [data, selectedQuarter, quarterBoundaries]);
 
   // Calculate latest values for header (current + comparison for % change)
   const { latestValue, comparisonValue, percentChange } = useMemo(() => {
@@ -909,6 +909,7 @@ export function RevenueTrackerDashboard({
           gradientId="dailyRevenue"
           currentDayOfYear={currentDayOfYear}
           selectedQuarter={selectedQuarter}
+          year={currentYear}
         />
 
         {/* Cumulative Revenue Chart */}
@@ -924,6 +925,7 @@ export function RevenueTrackerDashboard({
           gradientId="cumRevenue"
           currentDayOfYear={currentDayOfYear}
           selectedQuarter={selectedQuarter}
+          year={currentYear}
         />
 
         {/* Daily Orders Chart */}
@@ -939,6 +941,7 @@ export function RevenueTrackerDashboard({
           gradientId="dailyOrders"
           currentDayOfYear={currentDayOfYear}
           selectedQuarter={selectedQuarter}
+          year={currentYear}
         />
 
         {/* Cumulative Orders Chart */}
@@ -954,6 +957,7 @@ export function RevenueTrackerDashboard({
           gradientId="cumOrders"
           currentDayOfYear={currentDayOfYear}
           selectedQuarter={selectedQuarter}
+          year={currentYear}
         />
       </div>
 
