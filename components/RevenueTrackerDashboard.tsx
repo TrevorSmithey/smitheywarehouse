@@ -102,6 +102,22 @@ const fmt = {
 };
 
 // ============================================================================
+// CHART DATA TYPE
+// ============================================================================
+
+interface ChartDataPoint {
+  day: number;
+  ordersCurrent: number;
+  ordersComparison: number;
+  revenueCurrent: number;
+  revenueComparison: number;
+  cumOrdersCurrent: number | null;
+  cumOrdersComparison: number;
+  cumRevenueCurrent: number | null;
+  cumRevenueComparison: number;
+}
+
+// ============================================================================
 // CHART TOOLTIP
 // ============================================================================
 
@@ -442,13 +458,13 @@ function FullWidthChart({
   currentDayOfYear,
   selectedQuarter,
 }: {
-  data: Array<Record<string, number>>;
+  data: ChartDataPoint[];
   dataKeyPrefix: "orders" | "revenue" | "cumOrders" | "cumRevenue";
   title: string;
   subtitle: string;
   currentLabel: string;
   comparisonLabel: string;
-  valueFormatter: (n: number) => string;
+  valueFormatter: (n: number | null) => string;
   yAxisFormatter: (n: number) => string;
   gradientId: string;
   currentDayOfYear: number;
@@ -472,9 +488,12 @@ function FullWidthChart({
 
   // Calculate latest value for header
   const latestValue = useMemo(() => {
-    const validData = chartData.filter((d) => d[currentKey] > 0 || (isCumulative && d.day <= currentDayOfYear));
+    const validData = chartData.filter((d) => {
+      const val = d[currentKey];
+      return (val !== null && val > 0) || (isCumulative && d.day <= currentDayOfYear);
+    });
     if (validData.length === 0) return 0;
-    return validData[validData.length - 1][currentKey];
+    return validData[validData.length - 1][currentKey] ?? 0;
   }, [chartData, currentKey, isCumulative, currentDayOfYear]);
 
   return (
@@ -883,7 +902,7 @@ export function RevenueTrackerDashboard({
           subtitle={selectedQuarter ? "Running total within quarter" : "Running total through the year"}
           currentLabel={currentLabel}
           comparisonLabel={comparisonLabel}
-          valueFormatter={(n) => `$${(n / 1000000).toFixed(2)}M`}
+          valueFormatter={(n) => n === null ? "—" : `$${(n / 1000000).toFixed(2)}M`}
           yAxisFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`}
           gradientId="cumRevenue"
           currentDayOfYear={currentDayOfYear}
