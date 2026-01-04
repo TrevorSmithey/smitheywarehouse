@@ -84,13 +84,14 @@ const quarterBoundaries = [
 // ============================================================================
 
 const fmt = {
-  currency: (n: number) => {
+  currency: (n: number | null) => {
+    if (n === null) return "—";
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
     if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
     return `$${Math.round(n)}`;
   },
-  currencyFull: (n: number) => `$${n.toLocaleString()}`,
-  number: (n: number) => n.toLocaleString(),
+  currencyFull: (n: number | null) => (n === null ? "—" : `$${n.toLocaleString()}`),
+  number: (n: number | null) => (n === null ? "—" : n.toLocaleString()),
   delta: (n: number | null) => (n === null ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`),
   dayToMonth: (day: number): string => {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
