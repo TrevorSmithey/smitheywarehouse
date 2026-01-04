@@ -581,6 +581,7 @@ function FullWidthChart({
               stroke={colors.current}
               strokeWidth={isCumulative ? 2 : 1.5}
               fill={`url(#${gradientId}Current)`}
+              connectNulls={false}
             />
           </AreaChart>
         </ResponsiveContainer>

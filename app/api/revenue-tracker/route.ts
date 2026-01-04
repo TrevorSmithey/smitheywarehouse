@@ -406,21 +406,24 @@ async function handleCalendarYear(
     const ordersComparison = comparisonData?.orders || 0;
     const revenueComparison = comparisonData?.revenue || 0;
 
-    // Accumulate current year up to YTD cutoff
+    // Current year: accumulate up to YTD cutoff only
     if (day <= ytdCutoffDay) {
       cumOrdersCurrent += ordersCurrent;
       cumRevenuesCurrent += revenueCurrent;
     }
 
-    // For comparison year: ONLY accumulate up to same day for fair YTD comparison
-    if (day <= ytdCutoffDay) {
-      cumOrdersComparison += ordersComparison;
-      cumRevenuesComparison += revenueComparison;
-    }
+    // Comparison year: accumulate for ALL days (full year trajectory for chart)
+    // The YoY percentage calculation uses separate completed-day filtering
+    cumOrdersComparison += ordersComparison;
+    cumRevenuesComparison += revenueComparison;
 
     // Determine quarter from actual date (not hardcoded day boundaries)
     const dateStr = currentData?.date || comparisonData?.date || "";
     const quarter = dateStr ? getQuarterFromDate(dateStr) : Math.ceil(day / 91.25);
+
+    // For current year: set cumulative to null for days beyond ytdCutoffDay
+    // This matches Q4 tracking pattern - chart line stops at last real data point
+    const hasCurrent = day <= ytdCutoffDay;
 
     dailyData.push({
       dayOfYear: day,
@@ -430,9 +433,11 @@ async function handleCalendarYear(
       ordersComparison,
       revenueCurrent,
       revenueComparison,
-      cumulativeOrdersCurrent: cumOrdersCurrent,
+      // Current year cumulative: null for future days (line stops at current day)
+      cumulativeOrdersCurrent: hasCurrent ? cumOrdersCurrent : null,
+      cumulativeRevenueCurrent: hasCurrent ? cumRevenuesCurrent : null,
+      // Comparison year cumulative: always has value (shows full year trajectory)
       cumulativeOrdersComparison: cumOrdersComparison,
-      cumulativeRevenueCurrent: cumRevenuesCurrent,
       cumulativeRevenueComparison: cumRevenuesComparison,
     });
   }
