@@ -488,13 +488,16 @@ function FullWidthChart({
 
   // Calculate latest value for header
   const latestValue = useMemo(() => {
+    // For cumulative charts: find last day with non-null value
+    // For daily charts: find last day with value > 0
     const validData = chartData.filter((d) => {
       const val = d[currentKey];
-      return (val !== null && val > 0) || (isCumulative && d.day <= currentDayOfYear);
+      if (isCumulative) return val !== null;
+      return val !== null && val > 0;
     });
     if (validData.length === 0) return 0;
     return validData[validData.length - 1][currentKey] ?? 0;
-  }, [chartData, currentKey, isCumulative, currentDayOfYear]);
+  }, [chartData, currentKey, isCumulative]);
 
   return (
     <div className="bg-bg-secondary rounded-2xl border border-border overflow-hidden">
