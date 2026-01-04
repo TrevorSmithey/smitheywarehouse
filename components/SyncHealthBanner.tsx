@@ -3,9 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-
-const DEBUG_CODE = "9999";
-const STORAGE_KEY = "smithey_debug_mode";
+import { useAuth } from "@/lib/auth";
 
 interface SyncStatus {
   type: string;
@@ -41,49 +39,11 @@ const SYNC_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export function SyncHealthBanner() {
+  const { isAdmin } = useAuth();
   const [health, setHealth] = useState<SyncHealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
-  const [keySequence, setKeySequence] = useState("");
-
-  // Check localStorage on mount for debug mode
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "true") {
-      setDebugMode(true);
-    }
-  }, []);
-
-  // Listen for secret code (9999) typed anywhere on the page
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input/textarea
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      // Only track number keys
-      if (!/^[0-9]$/.test(e.key)) {
-        setKeySequence("");
-        return;
-      }
-
-      const newSequence = (keySequence + e.key).slice(-DEBUG_CODE.length);
-      setKeySequence(newSequence);
-
-      if (newSequence === DEBUG_CODE) {
-        const newDebugMode = !debugMode;
-        setDebugMode(newDebugMode);
-        localStorage.setItem(STORAGE_KEY, newDebugMode.toString());
-        setKeySequence("");
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [keySequence, debugMode]);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -102,6 +62,9 @@ export function SyncHealthBanner() {
   // Delay 30 seconds before first fetch to let main content load first
   // Then fetch every 5 minutes
   useEffect(() => {
+    // Only fetch if admin
+    if (!isAdmin) return;
+
     const initialDelay = setTimeout(() => {
       fetchHealth();
     }, 30 * 1000);
@@ -111,10 +74,10 @@ export function SyncHealthBanner() {
       clearTimeout(initialDelay);
       clearInterval(interval);
     };
-  }, [fetchHealth]);
+  }, [fetchHealth, isAdmin]);
 
-  // Hide sync health unless debug mode is enabled (type 9999 to toggle)
-  if (!debugMode) return null;
+  // Admin-only: hide if not admin
+  if (!isAdmin) return null;
 
   // Still loading initial data - show nothing (prevents flash of error during page load)
   if (!hasLoadedOnce) return null;

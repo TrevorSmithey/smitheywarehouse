@@ -1,10 +1,12 @@
 /**
- * StaleTimestamp - Visual urgency indicator for data freshness
+ * StaleTimestamp - Visual urgency indicator for data freshness (Admin-only)
  *
  * Shows sync timestamp with color-coded urgency:
  * - Fresh (< 4 hours): muted grey - no concern
  * - Getting stale (4-24 hours): amber warning - check on it
  * - Stale (> 24 hours): red alert with icon - data may be wrong
+ *
+ * Only visible to admin users - regular users don't need to see sync timestamps.
  *
  * Usage:
  *   <StaleTimestamp date={data.lastSynced} />
@@ -15,6 +17,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useAuth } from "@/lib/auth";
 
 interface StaleTimestampProps {
   date: string | Date | null | undefined;
@@ -35,6 +38,11 @@ export function StaleTimestamp({
   staleThreshold = 24,
   className = "",
 }: StaleTimestampProps) {
+  const { isAdmin } = useAuth();
+
+  // Only visible to admins
+  if (!isAdmin) return null;
+
   if (!date) return null;
 
   const syncDate = new Date(date);
