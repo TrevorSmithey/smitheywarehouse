@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useCallback } from "react";
+
 interface PinPadProps {
   pin: string;
   onPinChange: (pin: string) => void;
@@ -17,6 +19,37 @@ export default function PinPad({
   hideSubmit = false,
   disabled = false,
 }: PinPadProps) {
+  // Keyboard support - listen for number keys, backspace, escape
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (disabled) return;
+
+      // Number keys 0-9
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        if (pin.length < maxLength) {
+          onPinChange(pin + e.key);
+        }
+      }
+      // Backspace - delete last digit
+      else if (e.key === "Backspace") {
+        e.preventDefault();
+        onPinChange(pin.slice(0, -1));
+      }
+      // Escape - clear all
+      else if (e.key === "Escape") {
+        e.preventDefault();
+        onPinChange("");
+      }
+    },
+    [disabled, pin, maxLength, onPinChange]
+  );
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
   const handleNumberClick = (num: string) => {
     if (disabled) return;
     if (pin.length < maxLength) {
