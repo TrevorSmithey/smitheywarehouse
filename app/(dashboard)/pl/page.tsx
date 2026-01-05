@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import {
   AreaChart,
@@ -72,12 +74,38 @@ interface YtdClosedData {
   netRevenue: { current: number; prior: number; yoyPercent: number };
 }
 
+type ViewMode = "ttm" | "year";
+
+interface TTMRange {
+  startMonth: string;
+  endMonth: string;
+  label: string;
+  priorLabel: string;
+}
+
+interface MonthLabel {
+  yearMonth: string;
+  shortLabel: string;
+}
+
+interface Last3MonthsData {
+  current: { web: number; wholesale: number; total: number; byCategory: Record<string, CategoryData> };
+  prior: { web: number; wholesale: number; total: number; byCategory: Record<string, CategoryData> };
+  displayLabel: string;
+}
+
 interface PLData {
+  mode: ViewMode;
   year: number;
   priorYear: number;
+  // TTM-specific fields (only present when mode === "ttm")
+  ttmRange?: TTMRange;
+  monthLabels?: MonthLabel[];
+  last3Months?: Last3MonthsData;
+  // Standard fields
   monthly: MonthlyData[];
   priorMonthly: MonthlyData[];
-  cumulativeYtd: { month: string; monthNum: number; current: number; prior: number }[];
+  cumulativeYtd: { month: string; monthNum: number; current: number; prior: number; label?: string }[];
   ytd: { web: number; wholesale: number; total: number; byCategory: Record<string, CategoryData> };
   priorYtd: { web: number; wholesale: number; total: number; byCategory: Record<string, CategoryData> };
   lastMonth: {
@@ -379,15 +407,17 @@ function CategoryTrendChart({
   );
 }
 
-// Cumulative YTD line chart - shows both years with staggered labels
+// Cumulative line chart - shows both years with staggered labels
 function CumulativeLineChart({
   data,
   currentYear,
   priorYear,
+  periodLabel = "YTD",
 }: {
   data: { month: string; current: number; prior: number }[];
   currentYear: number;
   priorYear: number;
+  periodLabel?: string;
 }) {
   const dataLength = data.length;
 
@@ -425,7 +455,7 @@ function CumulativeLineChart({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-text-secondary">Cumulative Revenue YTD</h3>
+        <h3 className="text-sm font-medium text-text-secondary">Cumulative Revenue {periodLabel}</h3>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-2">
             <div className="w-4 h-0.5 rounded" style={{ backgroundColor: colors.current }} />
@@ -581,25 +611,60 @@ function RevenueTable({
 
 export default function PLPage() {
   const { triggerRefresh } = useDashboard();
+  const [viewMode, setViewMode] = useState<ViewMode>("ttm"); // Default to TTM
   const [year, setYear] = useState(new Date().getFullYear());
   const [data, setData] = useState<PLData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Track active fetch to prevent race conditions on rapid mode switching
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const fetchData = useCallback(async () => {
+    // Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new controller for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
-      const res = await fetch(`/api/pl?year=${year}`);
+      const params = new URLSearchParams({ mode: viewMode });
+      if (viewMode === "year") {
+        params.set("year", String(year));
+      }
+      const res = await fetch(`/api/pl?${params}`, { signal: controller.signal });
       const json = await res.json();
-      setData(json);
+
+      // Only update state if this request wasn't aborted
+      if (!controller.signal.aborted) {
+        setData(json);
+      }
     } catch (err) {
+      // Ignore abort errors (expected when switching modes quickly)
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       console.error("Failed to fetch P&L data:", err);
     } finally {
-      setLoading(false);
+      // Only clear loading if this request wasn't aborted
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
-  }, [year]);
+  }, [viewMode, year]);
 
   useEffect(() => {
     fetchData();
+
+    // Cleanup: abort on unmount or dependency change
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchData]);
 
   const handleSync = async () => {
@@ -642,41 +707,69 @@ export default function PLPage() {
   // DATA PREPARATION
   // ============================================================================
 
+  // Mode-dependent labels
+  const isTTM = viewMode === "ttm";
+  const periodLabel = isTTM ? "12M" : "YTD";
+  const periodLabelLower = isTTM ? "12 months" : "YTD";
+  const priorPeriodLabel = isTTM
+    ? (data.ttmRange?.priorLabel || "Prior 12M")
+    : `YTD ${year - 1}`;
+  const currentPeriodLabel = isTTM
+    ? (data.ttmRange?.label || "Current 12M")
+    : `YTD ${year}`;
+  const vsLabel = isTTM ? "vs Prior 12M" : `vs ${year - 1}`;
+
   // Use CLOSED period for financial comparisons, not current month
+  // In TTM mode, all 12 months are complete by definition
   // If ytdClosed is null (January of current year or no data), use current month - 1
   const currentCalendarMonth = new Date().getMonth() + 1;
-  const closedThroughMonth = data.ytdClosed?.throughMonth || Math.max(currentCalendarMonth - 1, 0);
-  const closedMonthName = data.ytdClosed?.throughMonthName ||
-    (closedThroughMonth > 0 ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][closedThroughMonth - 1] : "");
+  const closedThroughMonth = isTTM ? 12 : (data.ytdClosed?.throughMonth || Math.max(currentCalendarMonth - 1, 0));
+  const closedMonthName = isTTM
+    ? "" // Not used in TTM mode
+    : (data.ytdClosed?.throughMonthName ||
+      (closedThroughMonth > 0 ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][closedThroughMonth - 1] : ""));
 
-  // Monthly chart data - EXCLUDE current month, show only closed period
-  const monthlyChartData = MONTHS_SHORT.slice(0, closedThroughMonth).map((m, i) => {
-    const monthNum = i + 1;
-    const currentMonth = data.monthly.find((d) => d.monthNum === monthNum);
-    const priorMonth = data.priorMonthly.find((d) => d.monthNum === monthNum);
-    return {
-      month: `${m} ${String(year).slice(2)}`,
-      current: currentMonth?.total || 0,
-      prior: priorMonth?.total || 0,
-    };
-  }).filter((d) => d.current > 0 || d.prior > 0);
+  // Monthly chart data - In TTM mode, use all 12 months; in year mode, exclude current month
+  const monthlyChartData = isTTM
+    ? data.monthly.map((d, i) => ({
+        month: data.monthLabels?.[i]?.shortLabel || `M${i + 1}`,
+        current: d.total,
+        prior: data.priorMonthly.find((p) => p.monthNum === d.monthNum)?.total || 0,
+      }))
+    : MONTHS_SHORT.slice(0, closedThroughMonth).map((m, i) => {
+        const monthNum = i + 1;
+        const currentMonth = data.monthly.find((d) => d.monthNum === monthNum);
+        const priorMonth = data.priorMonthly.find((d) => d.monthNum === monthNum);
+        return {
+          month: `${m} ${String(year).slice(2)}`,
+          current: currentMonth?.total || 0,
+          prior: priorMonth?.total || 0,
+        };
+      }).filter((d) => d.current > 0 || d.prior > 0);
 
-  // Cumulative chart data - EXCLUDE current month
-  const cumulativeChartData = data.cumulativeYtd
-    .filter((d) => d.monthNum <= closedThroughMonth)
-    .map((d) => ({
-      month: `${MONTHS_SHORT[d.monthNum - 1]} ${String(year).slice(2)}`,
-      current: d.current,
-      prior: d.prior,
-    }));
+  // Cumulative chart data - In TTM mode, use TTM labels; in year mode, exclude current month
+  const cumulativeChartData = isTTM
+    ? data.cumulativeYtd.map((d) => ({
+        month: d.label || `M${d.monthNum}`,
+        current: d.current,
+        prior: d.prior,
+      }))
+    : data.cumulativeYtd
+        .filter((d) => d.monthNum <= closedThroughMonth)
+        .map((d) => ({
+          month: `${MONTHS_SHORT[d.monthNum - 1]} ${String(year).slice(2)}`,
+          current: d.current,
+          prior: d.prior,
+        }));
 
-  // YTD Revenue mix (CLOSED PERIOD - excludes current month)
+  // Period Revenue mix - In TTM mode use ytdSummary (full period), in year mode use ytdClosed (excludes current month)
   // Shows main product categories only - percentages shown, no dollar value in center
+  const periodSource = isTTM ? data.ytdSummary : data.ytdClosed;
   const ytdRevenueMix = [
-    { name: "Cast Iron", value: data.ytdClosed?.comparison.find(c => c.category === "Cast Iron")?.current || 0, color: colors.castIron },
-    { name: "Carbon Steel", value: data.ytdClosed?.comparison.find(c => c.category === "Carbon Steel")?.current || 0, color: colors.carbonSteel },
-    { name: "Accessories", value: data.ytdClosed?.comparison.find(c => c.category === "Accessories")?.current || 0, color: colors.accessories },
-    { name: "Services", value: data.ytdClosed?.comparison.find(c => c.category === "Services")?.current || 0, color: colors.services },
+    { name: "Cast Iron", value: periodSource?.comparison.find(c => c.category === "Cast Iron")?.current || 0, color: colors.castIron },
+    { name: "Carbon Steel", value: periodSource?.comparison.find(c => c.category === "Carbon Steel")?.current || 0, color: colors.carbonSteel },
+    { name: "Accessories", value: periodSource?.comparison.find(c => c.category === "Accessories")?.current || 0, color: colors.accessories },
+    { name: "Services", value: periodSource?.comparison.find(c => c.category === "Services")?.current || 0, color: colors.services },
   ].filter(d => d.value > 0);
 
   // Category trend data - for revenue by category over time chart
@@ -815,27 +908,65 @@ export default function PLPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">Sales: Monthly Report</h1>
-          <p className="text-sm text-text-tertiary mt-1">Smithey Ironware Company • {year}</p>
+          <p className="text-sm text-text-tertiary mt-1">
+            Smithey Ironware Company • {viewMode === "ttm" && data?.ttmRange ? data.ttmRange.label : year}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* Year selector */}
-          <div className="flex items-center gap-1 bg-bg-tertiary/50 rounded-lg p-1 border border-border/40">
+          {/* View mode toggle */}
+          <div
+            className="flex items-center bg-bg-tertiary rounded-lg p-0.5"
+            role="group"
+            aria-label="Data view mode selector"
+          >
             <button
-              onClick={() => setYear(year - 1)}
-              className="p-2 hover:bg-bg-tertiary rounded transition-colors disabled:opacity-30"
-              disabled={year <= 2019}
+              onClick={() => setViewMode("ttm")}
+              aria-pressed={viewMode === "ttm"}
+              aria-label="Trailing twelve months view"
+              title="Trailing Twelve Months - Last 12 complete months"
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-accent-blue focus:ring-offset-1 focus:ring-offset-bg-primary ${
+                viewMode === "ttm"
+                  ? "bg-bg-secondary text-text-primary shadow-sm"
+                  : "text-text-tertiary hover:text-text-secondary"
+              }`}
             >
-              <ChevronLeft className="w-4 h-4 text-text-tertiary" />
+              <Clock className="w-4 h-4" aria-hidden="true" />
+              <span>TTM</span>
             </button>
-            <span className="px-4 py-1.5 text-sm font-semibold text-text-primary tabular-nums">{year}</span>
             <button
-              onClick={() => setYear(year + 1)}
-              className="p-2 hover:bg-bg-tertiary rounded transition-colors disabled:opacity-30"
-              disabled={year >= new Date().getFullYear()}
+              onClick={() => setViewMode("year")}
+              aria-pressed={viewMode === "year"}
+              aria-label="Full calendar year view"
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-accent-blue focus:ring-offset-1 focus:ring-offset-bg-primary ${
+                viewMode === "year"
+                  ? "bg-bg-secondary text-text-primary shadow-sm"
+                  : "text-text-tertiary hover:text-text-secondary"
+              }`}
             >
-              <ChevronRight className="w-4 h-4 text-text-tertiary" />
+              <Calendar className="w-4 h-4" aria-hidden="true" />
+              <span>Year</span>
             </button>
           </div>
+          {/* Year selector - only show in year mode */}
+          {viewMode === "year" && (
+            <div className="flex items-center gap-1 bg-bg-tertiary/50 rounded-lg p-1 border border-border/40">
+              <button
+                onClick={() => setYear(year - 1)}
+                className="p-2 hover:bg-bg-tertiary rounded transition-colors disabled:opacity-30"
+                disabled={year <= 2019}
+              >
+                <ChevronLeft className="w-4 h-4 text-text-tertiary" />
+              </button>
+              <span className="px-4 py-1.5 text-sm font-semibold text-text-primary tabular-nums">{year}</span>
+              <button
+                onClick={() => setYear(year + 1)}
+                className="p-2 hover:bg-bg-tertiary rounded transition-colors disabled:opacity-30"
+                disabled={year >= new Date().getFullYear()}
+              >
+                <ChevronRight className="w-4 h-4 text-text-tertiary" />
+              </button>
+            </div>
+          )}
           <button
             onClick={handleSync}
             className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-bg-secondary hover:bg-bg-tertiary rounded-lg border border-border transition-colors"
@@ -850,7 +981,8 @@ export default function PLPage() {
       {/* HERO METRICS - Executive Summary */}
       {/* ================================================================== */}
       {(() => {
-        // Calculate QTD (quarter to date) metrics
+        // Calculate QTD (quarter to date) metrics - for year mode
+        // In TTM mode, we show "Last 3 Months" instead
         const getQuarter = (month: number) => Math.ceil(month / 3);
         const currentQuarter = getQuarter(closedThroughMonth);
         const quarterStartMonth = (currentQuarter - 1) * 3 + 1;
@@ -859,26 +991,41 @@ export default function PLPage() {
 
         let qtdCurrent = 0;
         let qtdPrior = 0;
-        for (let m = quarterStartMonth; m <= closedThroughMonth; m++) {
-          const currentMonth = data.monthly.find((d) => d.monthNum === m);
-          const priorMonth = data.priorMonthly.find((d) => d.monthNum === m);
-          qtdCurrent += currentMonth?.total || 0;
-          qtdPrior += priorMonth?.total || 0;
+        if (isTTM && data.last3Months) {
+          // TTM mode: use last 3 months from API
+          qtdCurrent = data.last3Months.current.total;
+          qtdPrior = data.last3Months.prior.total;
+        } else {
+          // Year mode: calculate QTD
+          for (let m = quarterStartMonth; m <= closedThroughMonth; m++) {
+            const currentMonth = data.monthly.find((d) => d.monthNum === m);
+            const priorMonth = data.priorMonthly.find((d) => d.monthNum === m);
+            qtdCurrent += currentMonth?.total || 0;
+            qtdPrior += priorMonth?.total || 0;
+          }
         }
         const qtdYoY = qtdPrior > 0 ? ((qtdCurrent - qtdPrior) / qtdPrior) * 100 : 0;
+        const secondCardLabel = isTTM ? "Last 3 Months" : `${quarterName} to Date`;
+        const secondCardSubLabel = isTTM
+          ? (data.last3Months?.displayLabel || "")
+          : MONTHS_SHORT.slice(quarterStartMonth - 1, closedThroughMonth).join("-");
 
-        // Last month metrics
-        const lastMonthData = data.monthly.find((d) => d.monthNum === closedThroughMonth);
-        const priorLastMonthData = data.priorMonthly.find((d) => d.monthNum === closedThroughMonth);
+        // Last month metrics - use last month from data array
+        const lastMonthEntry = data.monthly[data.monthly.length - 1];
+        const lastMonthNum = lastMonthEntry?.monthNum || closedThroughMonth;
+        const lastMonthName = MONTHS_SHORT[lastMonthNum - 1];
+        const lastMonthData = data.monthly.find((d) => d.monthNum === lastMonthNum);
+        const priorLastMonthData = data.priorMonthly.find((d) => d.monthNum === lastMonthNum);
         const lastMonthRevenue = lastMonthData?.total || 0;
         const priorLastMonthRevenue = priorLastMonthData?.total || 0;
         const lastMonthYoY = priorLastMonthRevenue > 0 ? ((lastMonthRevenue - priorLastMonthRevenue) / priorLastMonthRevenue) * 100 : 0;
 
         // Channel YoY by month - for the growth trend chart
-        const channelGrowthData = MONTHS_SHORT.slice(0, closedThroughMonth).map((m, i) => {
-          const monthNum = i + 1;
-          const currentMonth = data.monthly.find((d) => d.monthNum === monthNum);
-          const priorMonth = data.priorMonthly.find((d) => d.monthNum === monthNum);
+        const channelGrowthData = (isTTM ? data.monthLabels || [] : MONTHS_SHORT.slice(0, closedThroughMonth).map((m, i) => ({ shortLabel: m, idx: i }))).map((item, i) => {
+          const monthNum = isTTM ? (i + 1) : (item as { idx: number }).idx + 1;
+          const label = isTTM ? (item as MonthLabel).shortLabel : (item as { shortLabel: string }).shortLabel;
+          const currentMonth = data.monthly[i];
+          const priorMonth = data.priorMonthly[i];
 
           const webCurrent = currentMonth?.web || 0;
           const webPrior = priorMonth?.web || 0;
@@ -894,7 +1041,7 @@ export default function PLPage() {
           const totalYoY = totalPrior > 0 ? ((totalCurrent - totalPrior) / totalPrior) * 100 : 0;
 
           return {
-            month: m,
+            month: label,
             combined: totalYoY,
             web: webYoY,
             wholesale: wholesaleYoY,
@@ -907,15 +1054,16 @@ export default function PLPage() {
           };
         }).filter((d) => d.totalCurrent > 0 || d.totalPrior > 0);
 
-        // YTD totals for the summary
-        const totalYtdYoY = data.ytdClosed?.netRevenue.yoyPercent || 0;
+        // Period totals for the summary - use periodSource (ytdSummary for TTM, ytdClosed for year)
+        const periodNetRevenue = isTTM ? data.ytdSummary.netRevenue : data.ytdClosed?.netRevenue;
+        const totalYtdYoY = periodNetRevenue?.yoyPercent || 0;
 
-        const webYtdCurrent = data.ytdClosed?.current?.web || 0;
-        const webYtdPrior = data.ytdClosed?.prior?.web || 0;
+        const webYtdCurrent = isTTM ? data.ytd.web : (data.ytdClosed?.current?.web || 0);
+        const webYtdPrior = isTTM ? data.priorYtd.web : (data.ytdClosed?.prior?.web || 0);
         const webYtdYoY = webYtdPrior > 0 ? ((webYtdCurrent - webYtdPrior) / webYtdPrior) * 100 : 0;
 
-        const wholesaleYtdCurrent = data.ytdClosed?.current?.wholesale || 0;
-        const wholesaleYtdPrior = data.ytdClosed?.prior?.wholesale || 0;
+        const wholesaleYtdCurrent = isTTM ? data.ytd.wholesale : (data.ytdClosed?.current?.wholesale || 0);
+        const wholesaleYtdPrior = isTTM ? data.priorYtd.wholesale : (data.ytdClosed?.prior?.wholesale || 0);
         const wholesaleYtdYoY = wholesaleYtdPrior > 0 ? ((wholesaleYtdCurrent - wholesaleYtdPrior) / wholesaleYtdPrior) * 100 : 0;
 
         const quarterMonths = MONTHS_SHORT.slice(quarterStartMonth - 1, closedThroughMonth).join("-");
@@ -924,32 +1072,34 @@ export default function PLPage() {
           <section className="space-y-6">
             {/* Row 1: Key Period Metrics */}
             <div className="grid grid-cols-3 gap-4">
-              {/* YTD Revenue - Hero */}
+              {/* Period Revenue - Hero */}
               <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 rounded-2xl p-5 border border-emerald-500/20">
                 <div className="text-xs font-medium text-emerald-400/80 uppercase tracking-wider mb-1">
-                  Net Revenue YTD
+                  Net Revenue {periodLabel}
                 </div>
                 <div className="text-3xl font-black text-white tracking-tight">
-                  {fmt.currency(data.ytdClosed?.netRevenue.current || 0)}
+                  {fmt.currency(periodNetRevenue?.current || 0)}
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs text-emerald-400/60">Jan–{closedMonthName}</span>
-                  <span className={`text-sm font-bold ${(data.ytdClosed?.netRevenue.yoyPercent || 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {(data.ytdClosed?.netRevenue.yoyPercent || 0) >= 0 ? "+" : ""}{(data.ytdClosed?.netRevenue.yoyPercent || 0).toFixed(1)}%
+                  <span className="text-xs text-emerald-400/60">
+                    {isTTM ? data.ttmRange?.label : `Jan–${closedMonthName}`}
+                  </span>
+                  <span className={`text-sm font-bold ${(periodNetRevenue?.yoyPercent || 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {(periodNetRevenue?.yoyPercent || 0) >= 0 ? "+" : ""}{(periodNetRevenue?.yoyPercent || 0).toFixed(1)}%
                   </span>
                 </div>
               </div>
 
-              {/* QTD */}
+              {/* QTD / Last 3 Months */}
               <div className="bg-bg-secondary/80 rounded-2xl p-5 border border-border/50">
                 <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">
-                  {quarterName} to Date
+                  {secondCardLabel}
                 </div>
                 <div className="text-3xl font-bold text-white tracking-tight">
                   {fmt.currency(qtdCurrent)}
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs text-text-tertiary">{quarterMonths}</span>
+                  <span className="text-xs text-text-tertiary">{secondCardSubLabel}</span>
                   <span className={`text-sm font-bold ${qtdYoY >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {qtdYoY >= 0 ? "+" : ""}{qtdYoY.toFixed(1)}%
                   </span>
@@ -959,13 +1109,13 @@ export default function PLPage() {
               {/* Last Month */}
               <div className="bg-bg-secondary/80 rounded-2xl p-5 border border-border/50">
                 <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">
-                  {closedMonthName} {year}
+                  {lastMonthName} {isTTM ? "" : year}
                 </div>
                 <div className="text-3xl font-bold text-white tracking-tight">
                   {fmt.currency(lastMonthRevenue)}
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs text-text-tertiary">vs {year - 1}</span>
+                  <span className="text-xs text-text-tertiary">{vsLabel}</span>
                   <span className={`text-sm font-bold ${lastMonthYoY >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {lastMonthYoY >= 0 ? "+" : ""}{lastMonthYoY.toFixed(1)}%
                   </span>
@@ -986,7 +1136,7 @@ export default function PLPage() {
                     <span className={`text-2xl font-black tracking-tight ${totalYtdYoY >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {totalYtdYoY >= 0 ? "+" : ""}{totalYtdYoY.toFixed(1)}%
                     </span>
-                    <span className="text-xs text-text-tertiary">YTD vs {year - 1}</span>
+                    <span className="text-xs text-text-tertiary">{periodLabel} {vsLabel}</span>
                   </div>
                   <p className="text-xs text-text-tertiary/70 mb-4">Monthly YoY change — total business</p>
 
@@ -1205,7 +1355,7 @@ export default function PLPage() {
                           </div>
                         </div>
                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-                          <span className="text-[10px] text-text-tertiary">YTD Revenue</span>
+                          <span className="text-[10px] text-text-tertiary">{periodLabel} Revenue</span>
                           <span className="text-xs font-semibold text-blue-400">{fmt.currency(webYtdCurrent)}</span>
                         </div>
                       </div>
@@ -1293,7 +1443,7 @@ export default function PLPage() {
                           </div>
                         </div>
                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-                          <span className="text-[10px] text-text-tertiary">YTD Revenue</span>
+                          <span className="text-[10px] text-text-tertiary">{periodLabel} Revenue</span>
                           <span className="text-xs font-semibold text-orange-400">{fmt.currency(wholesaleYtdCurrent)}</span>
                         </div>
                       </div>
@@ -1459,7 +1609,7 @@ export default function PLPage() {
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">Discount Rate YTD</div>
+            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">Discount Rate {periodLabel}</div>
             <div className="text-2xl font-bold text-amber-400">{ytdDiscountRate.toFixed(1)}%</div>
             <div className={`text-xs font-medium ${ytdDiscountRate <= priorYtdDiscountRate ? "text-emerald-400" : "text-red-400"}`}>
               {ytdDiscountRate <= priorYtdDiscountRate ? "↓" : "↑"} vs {(priorYtdDiscountRate).toFixed(1)}% last year
@@ -1473,7 +1623,7 @@ export default function PLPage() {
             </div>
           </div>
           <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">Shipping Income YTD</div>
+            <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1">Shipping Income {periodLabel}</div>
             <div className="text-2xl font-bold text-sky-400">
               {fmt.currency(closedData?.comparison.find(c => c.category === "Shipping Income")?.current || 0)}
             </div>
@@ -1684,20 +1834,22 @@ export default function PLPage() {
       </section>
 
       {/* ================================================================== */}
-      {/* SUMMARY YTD (Through Closed Period) */}
+      {/* SUMMARY {periodLabel} (Through Closed Period) */}
       {/* ================================================================== */}
       <section>
         <h2 className="text-xl font-bold text-text-primary mb-6 pb-2 border-b border-border">
-          Summary Jan-{closedMonthName} {year} (Closed Period)
+          {isTTM
+            ? `Summary ${data.ttmRange?.label || "12 Months"}`
+            : `Summary Jan-${closedMonthName} ${year} (Closed Period)`}
         </h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left: Revenue Mix Pie (Closed Period) */}
+          {/* Left: Revenue Mix Pie */}
           <div className="lg:col-span-3">
             <LargeDonutChart
               data={ytdRevenueMix}
               title="Product Mix"
-              centerLabel={`Jan-${closedMonthName}`}
+              centerLabel={isTTM ? periodLabel : `Jan-${closedMonthName}`}
             />
           </div>
 
@@ -1707,16 +1859,17 @@ export default function PLPage() {
               data={cumulativeChartData}
               currentYear={year}
               priorYear={year - 1}
+              periodLabel={periodLabel}
             />
           </div>
         </div>
 
-        {/* YTD Revenue Table */}
+        {/* Revenue Table */}
         <div className="mt-8">
           <RevenueTable
-            title="Total Revenue (YTD)"
-            priorLabel={`YTD ${year - 1}`}
-            currentLabel={`YTD ${year}`}
+            title={`Total Revenue (${periodLabel})`}
+            priorLabel={priorPeriodLabel}
+            currentLabel={currentPeriodLabel}
             rows={ytdTableRows}
           />
         </div>

@@ -183,6 +183,143 @@ export function getQuarterFromDate(dateStr: string): number {
 }
 
 // ============================================================================
+// TTM (TRAILING TWELVE MONTHS) UTILITIES
+// ============================================================================
+
+const MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * Get TTM (Trailing Twelve Months) boundaries
+ *
+ * Returns the last 12 COMPLETE months (excluding current partial month)
+ * and the corresponding prior 12-month period for YoY comparison.
+ *
+ * Example: If today is Jan 5, 2026
+ * - TTM = Jan 2025 through Dec 2025 (12 complete months)
+ * - Prior TTM = Jan 2024 through Dec 2024
+ *
+ * @returns Object with current/prior date ranges and month labels for charts
+ */
+export function getTTMBoundaries(): {
+  current: { start: string; end: string };
+  prior: { start: string; end: string };
+  monthLabels: { yearMonth: string; shortLabel: string }[];
+  displayLabel: string;
+  priorDisplayLabel: string;
+} {
+  const now = getNowEST();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-indexed
+
+  // End month = last complete month
+  let endYear = currentYear;
+  let endMonth = currentMonth - 1;
+  if (endMonth === 0) {
+    // January: last complete month is December of prior year
+    endMonth = 12;
+    endYear = currentYear - 1;
+  }
+
+  // Start month = 12 months before end month (inclusive)
+  // End month minus 11 months = start month
+  let startYear = endYear;
+  let startMonth = endMonth - 11;
+  if (startMonth <= 0) {
+    startMonth += 12;
+    startYear -= 1;
+  }
+
+  // Format as YYYY-MM
+  const formatYearMonth = (y: number, m: number) =>
+    `${y}-${String(m).padStart(2, "0")}`;
+
+  // Build month labels array for chart X-axis
+  const monthLabels: { yearMonth: string; shortLabel: string }[] = [];
+  let y = startYear;
+  let m = startMonth;
+  for (let i = 0; i < 12; i++) {
+    monthLabels.push({
+      yearMonth: formatYearMonth(y, m),
+      shortLabel: `${MONTH_NAMES_SHORT[m - 1]} ${String(y).slice(2)}`,
+    });
+    m++;
+    if (m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+
+  // Build display labels (e.g., "Jan 2025 - Dec 2025")
+  const displayLabel = `${MONTH_NAMES_SHORT[startMonth - 1]} ${startYear} - ${MONTH_NAMES_SHORT[endMonth - 1]} ${endYear}`;
+  const priorDisplayLabel = `${MONTH_NAMES_SHORT[startMonth - 1]} ${startYear - 1} - ${MONTH_NAMES_SHORT[endMonth - 1]} ${endYear - 1}`;
+
+  return {
+    current: {
+      start: formatYearMonth(startYear, startMonth),
+      end: formatYearMonth(endYear, endMonth),
+    },
+    prior: {
+      start: formatYearMonth(startYear - 1, startMonth),
+      end: formatYearMonth(endYear - 1, endMonth),
+    },
+    monthLabels,
+    displayLabel,
+    priorDisplayLabel,
+  };
+}
+
+/**
+ * Get "Last N Months" boundaries for rolling metrics
+ *
+ * @param months Number of complete months to include (default: 3)
+ * @returns Object with date range and labels
+ */
+export function getLastNMonthsBoundaries(months: number = 3): {
+  current: { start: string; end: string };
+  prior: { start: string; end: string };
+  displayLabel: string;
+} {
+  const now = getNowEST();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  // End month = last complete month
+  let endYear = currentYear;
+  let endMonth = currentMonth - 1;
+  if (endMonth === 0) {
+    endMonth = 12;
+    endYear = currentYear - 1;
+  }
+
+  // Start month = N months before end month (inclusive)
+  let startYear = endYear;
+  let startMonth = endMonth - (months - 1);
+  if (startMonth <= 0) {
+    startMonth += 12;
+    startYear -= 1;
+  }
+
+  const formatYearMonth = (y: number, m: number) =>
+    `${y}-${String(m).padStart(2, "0")}`;
+
+  const displayLabel = months === 1
+    ? `${MONTH_NAMES_SHORT[endMonth - 1]} ${endYear}`
+    : `${MONTH_NAMES_SHORT[startMonth - 1]} - ${MONTH_NAMES_SHORT[endMonth - 1]} ${endYear}`;
+
+  return {
+    current: {
+      start: formatYearMonth(startYear, startMonth),
+      end: formatYearMonth(endYear, endMonth),
+    },
+    prior: {
+      start: formatYearMonth(startYear - 1, startMonth),
+      end: formatYearMonth(endYear - 1, endMonth),
+    },
+    displayLabel,
+  };
+}
+
+// ============================================================================
 // DATE FORMATTING
 // ============================================================================
 

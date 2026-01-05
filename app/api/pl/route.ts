@@ -4,12 +4,19 @@
  * Returns monthly P&L data by channel and category.
  * Supports YoY comparisons, monthly trends, and cumulative tracking.
  * Designed to power a Fathom-style sales report.
+ *
+ * Modes:
+ * - TTM (default): Trailing 12 complete months
+ * - Year: Calendar year view (legacy behavior)
  */
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getTTMBoundaries, getLastNMonthsBoundaries, getNowEST } from "@/lib/date-utils";
 
 export const dynamic = "force-dynamic";
+
+type ViewMode = "ttm" | "year";
 
 interface PLMonthlyRow {
   year_month: string;
@@ -122,46 +129,99 @@ function yoyPercent(current: number, prior: number): number {
   return Math.min(Math.max(pct, -1000), 1000);
 }
 
+const VALID_MODES = ["ttm", "year"] as const;
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const yearParam = parseInt(url.searchParams.get("year") || new Date().getFullYear().toString());
 
-  // Validate year parameter to prevent invalid queries
-  const currentYear = new Date().getFullYear();
-  if (isNaN(yearParam) || yearParam < 2020 || yearParam > currentYear + 5) {
+  // Validate mode parameter
+  const modeParam = url.searchParams.get("mode") || "ttm";
+  if (!VALID_MODES.includes(modeParam as ViewMode)) {
     return NextResponse.json(
-      { error: `Invalid year. Must be between 2020 and ${currentYear + 5}` },
+      { error: `Invalid mode. Must be one of: ${VALID_MODES.join(", ")}` },
       { status: 400 }
     );
+  }
+  const mode = modeParam as ViewMode;
+  const yearParam = parseInt(url.searchParams.get("year") || getNowEST().getFullYear().toString());
+
+  // Validate year parameter (only used in year mode)
+  const currentYear = getNowEST().getFullYear();
+  if (mode === "year") {
+    if (isNaN(yearParam) || yearParam < 2020 || yearParam > currentYear + 5) {
+      return NextResponse.json(
+        { error: `Invalid year. Must be between 2020 and ${currentYear + 5}` },
+        { status: 400 }
+      );
+    }
   }
   const year = yearParam;
 
   const supabase = createServiceClient();
 
   try {
-    // Fetch both years in parallel
-    const [currentYearResult, priorYearResult] = await Promise.all([
+    // Determine date ranges based on mode
+    let currentRange: { start: string; end: string };
+    let priorRange: { start: string; end: string };
+    let ttmInfo: {
+      startMonth: string;
+      endMonth: string;
+      label: string;
+      priorLabel: string;
+      monthLabels: { yearMonth: string; shortLabel: string }[];
+    } | null = null;
+    let last3MonthsInfo: {
+      current: { start: string; end: string };
+      prior: { start: string; end: string };
+      displayLabel: string;
+    } | null = null;
+
+    if (mode === "ttm") {
+      const ttmBounds = getTTMBoundaries();
+      currentRange = ttmBounds.current;
+      priorRange = ttmBounds.prior;
+      ttmInfo = {
+        startMonth: ttmBounds.current.start,
+        endMonth: ttmBounds.current.end,
+        label: ttmBounds.displayLabel,
+        priorLabel: ttmBounds.priorDisplayLabel,
+        monthLabels: ttmBounds.monthLabels,
+      };
+      // Get last 3 months for "Last 3 Months" card (replaces QTD in TTM mode)
+      last3MonthsInfo = getLastNMonthsBoundaries(3);
+    } else {
+      // Calendar year mode
+      currentRange = { start: `${year}-01`, end: `${year}-12` };
+      priorRange = { start: `${year - 1}-01`, end: `${year - 1}-12` };
+    }
+
+    // Fetch both periods in parallel
+    const [currentResult, priorResult] = await Promise.all([
       supabase
         .from("ns_pl_monthly")
         .select("*")
-        .gte("year_month", `${year}-01`)
-        .lte("year_month", `${year}-12`)
+        .gte("year_month", currentRange.start)
+        .lte("year_month", currentRange.end)
         .order("year_month"),
       supabase
         .from("ns_pl_monthly")
         .select("*")
-        .gte("year_month", `${year - 1}-01`)
-        .lte("year_month", `${year - 1}-12`)
+        .gte("year_month", priorRange.start)
+        .lte("year_month", priorRange.end)
         .order("year_month"),
     ]);
 
-    if (currentYearResult.error) {
-      console.error("[PL-API] Current year error:", currentYearResult.error);
-      return NextResponse.json({ error: currentYearResult.error.message }, { status: 500 });
+    if (currentResult.error || priorResult.error) {
+      const errorMsg = currentResult.error?.message || priorResult.error?.message || "Database query failed";
+      console.error("[PL-API] Query error:", {
+        currentError: currentResult.error,
+        priorError: priorResult.error,
+      });
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
     }
 
-    const currentData = (currentYearResult.data || []) as PLMonthlyRow[];
-    const priorData = (priorYearResult.data || []) as PLMonthlyRow[];
+    const currentData = (currentResult.data || []) as PLMonthlyRow[];
+    const priorData = (priorResult.data || []) as PLMonthlyRow[];
 
     // Aggregate monthly data for both years
     const currentMonthly = aggregateMonthlyData(currentData);
@@ -178,14 +238,18 @@ export async function GET(request: Request) {
 
     // Get the most recent month with data for calculating "closed" period
     const monthlyArrayTemp = Object.values(currentMonthly).sort((a, b) => a.month.localeCompare(b.month));
-    const currentDate = new Date();
-    const currentCalendarYear = currentDate.getFullYear();
-    const currentCalendarMonth = currentDate.getMonth() + 1; // 1-indexed
+    const nowEST = getNowEST();
+    const currentCalendarYear = nowEST.getFullYear();
+    const currentCalendarMonth = nowEST.getMonth() + 1; // 1-indexed
 
     // Determine "closed through" month based on whether we're viewing current year or past year
+    // This is only used in year mode; TTM always shows complete months
     let closedThroughMonth: number;
 
-    if (year < currentCalendarYear) {
+    if (mode === "ttm") {
+      // TTM mode: all 12 months are complete by definition
+      closedThroughMonth = 12;
+    } else if (year < currentCalendarYear) {
       // Past year: all 12 months are closed
       closedThroughMonth = 12;
     } else if (year > currentCalendarYear) {
@@ -203,34 +267,108 @@ export async function GET(request: Request) {
     const priorMonthNum = closedThroughMonth;
 
     // Calculate YTD through closed period - more stable for comparisons
-    const ytdClosed = closedThroughMonth > 0 ? calculateYTD(currentMonthly, closedThroughMonth) : null;
-    const priorYtdClosed = closedThroughMonth > 0 ? calculateYTD(priorMonthly, closedThroughMonth) : null;
+    // In TTM mode, we don't need this since all months are complete
+    const ytdClosed = mode === "year" && closedThroughMonth > 0 ? calculateYTD(currentMonthly, closedThroughMonth) : null;
+    const priorYtdClosed = mode === "year" && closedThroughMonth > 0 ? calculateYTD(priorMonthly, closedThroughMonth) : null;
 
     // Build monthly arrays sorted by month
     const monthlyArray = Object.values(currentMonthly).sort((a, b) => a.month.localeCompare(b.month));
     const priorMonthlyArray = Object.values(priorMonthly).sort((a, b) => a.month.localeCompare(b.month));
 
-    // Calculate cumulative YTD for trend charts
-    const cumulativeYtd: { month: string; monthNum: number; current: number; prior: number }[] = [];
+    // Calculate cumulative totals for trend charts
+    const cumulativeYtd: { month: string; monthNum: number; current: number; prior: number; label?: string }[] = [];
     let currentCumulative = 0;
     let priorCumulative = 0;
 
-    for (let m = 1; m <= 12; m++) {
-      const monthStr = m.toString().padStart(2, "0");
-      const currentMonth = currentMonthly[`${year}-${monthStr}`];
-      const priorMonth = priorMonthly[`${year - 1}-${monthStr}`];
+    if (mode === "ttm" && ttmInfo) {
+      // TTM mode: iterate through the month labels (may span years)
+      for (let i = 0; i < ttmInfo.monthLabels.length; i++) {
+        const { yearMonth, shortLabel } = ttmInfo.monthLabels[i];
+        // Get corresponding prior month (same position in prior TTM)
+        const [priorYear, priorMonth] = yearMonth.split("-").map(Number);
+        const priorYearMonth = `${priorYear - 1}-${String(priorMonth).padStart(2, "0")}`;
 
-      if (currentMonth) currentCumulative += currentMonth.total;
-      if (priorMonth) priorCumulative += priorMonth.total;
+        const currentMonth = currentMonthly[yearMonth];
+        const priorMonthData = priorMonthly[priorYearMonth];
 
-      if (currentMonth || priorMonth) {
+        if (currentMonth) currentCumulative += currentMonth.total;
+        if (priorMonthData) priorCumulative += priorMonthData.total;
+
         cumulativeYtd.push({
-          month: `${year}-${monthStr}`,
-          monthNum: m,
+          month: yearMonth,
+          monthNum: i + 1,
           current: currentCumulative,
           prior: priorCumulative,
+          label: shortLabel,
         });
       }
+    } else {
+      // Year mode: iterate months 1-12 of the calendar year
+      for (let m = 1; m <= 12; m++) {
+        const monthStr = m.toString().padStart(2, "0");
+        const currentMonth = currentMonthly[`${year}-${monthStr}`];
+        const priorMonth = priorMonthly[`${year - 1}-${monthStr}`];
+
+        if (currentMonth) currentCumulative += currentMonth.total;
+        if (priorMonth) priorCumulative += priorMonth.total;
+
+        if (currentMonth || priorMonth) {
+          cumulativeYtd.push({
+            month: `${year}-${monthStr}`,
+            monthNum: m,
+            current: currentCumulative,
+            prior: priorCumulative,
+          });
+        }
+      }
+    }
+
+    // Calculate "Last 3 Months" data for TTM mode (replaces QTD)
+    let last3Months: {
+      current: { web: number; wholesale: number; total: number; byCategory: Record<string, CategoryData> };
+      prior: { web: number; wholesale: number; total: number; byCategory: Record<string, CategoryData> };
+      displayLabel: string;
+    } | null = null;
+
+    if (mode === "ttm" && last3MonthsInfo) {
+      // Aggregate the last 3 months for current and prior periods
+      const l3mCurrent = { web: 0, wholesale: 0, total: 0, byCategory: {} as Record<string, CategoryData> };
+      const l3mPrior = { web: 0, wholesale: 0, total: 0, byCategory: {} as Record<string, CategoryData> };
+
+      // Iterate through months in the range
+      for (const [monthKey, monthData] of Object.entries(currentMonthly)) {
+        if (monthKey >= last3MonthsInfo.current.start && monthKey <= last3MonthsInfo.current.end) {
+          l3mCurrent.web += monthData.web;
+          l3mCurrent.wholesale += monthData.wholesale;
+          l3mCurrent.total += monthData.total;
+          for (const [cat, vals] of Object.entries(monthData.byCategory)) {
+            if (!l3mCurrent.byCategory[cat]) l3mCurrent.byCategory[cat] = { web: 0, wholesale: 0, total: 0 };
+            l3mCurrent.byCategory[cat].web += vals.web;
+            l3mCurrent.byCategory[cat].wholesale += vals.wholesale;
+            l3mCurrent.byCategory[cat].total += vals.total;
+          }
+        }
+      }
+
+      for (const [monthKey, monthData] of Object.entries(priorMonthly)) {
+        if (monthKey >= last3MonthsInfo.prior.start && monthKey <= last3MonthsInfo.prior.end) {
+          l3mPrior.web += monthData.web;
+          l3mPrior.wholesale += monthData.wholesale;
+          l3mPrior.total += monthData.total;
+          for (const [cat, vals] of Object.entries(monthData.byCategory)) {
+            if (!l3mPrior.byCategory[cat]) l3mPrior.byCategory[cat] = { web: 0, wholesale: 0, total: 0 };
+            l3mPrior.byCategory[cat].web += vals.web;
+            l3mPrior.byCategory[cat].wholesale += vals.wholesale;
+            l3mPrior.byCategory[cat].total += vals.total;
+          }
+        }
+      }
+
+      last3Months = {
+        current: l3mCurrent,
+        prior: l3mPrior,
+        displayLabel: last3MonthsInfo.displayLabel,
+      };
     }
 
     // Get the most recent month with data
@@ -374,15 +512,31 @@ export async function GET(request: Request) {
       .single();
 
     return NextResponse.json({
+      // Mode information
+      mode,
       year,
       priorYear: year - 1,
+
+      // TTM-specific info (only present in TTM mode)
+      ...(mode === "ttm" && ttmInfo ? {
+        ttmRange: {
+          startMonth: ttmInfo.startMonth,
+          endMonth: ttmInfo.endMonth,
+          label: ttmInfo.label,
+          priorLabel: ttmInfo.priorLabel,
+        },
+        monthLabels: ttmInfo.monthLabels,
+      } : {}),
+
+      // Last 3 months data (replaces QTD in TTM mode)
+      ...(last3Months ? { last3Months } : {}),
 
       // Monthly data for charts
       monthly: monthlyArray,
       priorMonthly: priorMonthlyArray,
       cumulativeYtd,
 
-      // YTD totals
+      // Period totals (YTD in year mode, 12M in TTM mode)
       ytd,
       priorYtd,
 
@@ -497,6 +651,10 @@ export async function GET(request: Request) {
       // Metadata
       categories: sortedCategories,
       lastSync: syncLog?.completed_at || null,
+    }, {
+      headers: {
+        "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+      },
     });
   } catch (error) {
     console.error("[PL-API] Error:", error);
