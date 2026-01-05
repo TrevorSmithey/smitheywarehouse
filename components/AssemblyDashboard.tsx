@@ -137,9 +137,8 @@ export function AssemblyDashboard({
   });
 
   const WEEKLY_TARGET = 5000;
-  const currentYear = new Date().getFullYear();
   const weeklyChartData = weeklyData.map((w) => ({
-    week: w.year === currentYear ? `W${w.week_num}` : `W${w.week_num}'${String(w.year).slice(2)}`,
+    week: `W${w.week_num}`,
     total: w.total,
     meetsTarget: w.total >= WEEKLY_TARGET,
   }));
@@ -353,6 +352,7 @@ export function AssemblyDashboard({
                   fontSize: '11px',
                 }}
                 labelStyle={{ color: '#94A3B8', marginBottom: 4 }}
+                itemStyle={{ color: '#FFFFFF' }}
                 formatter={(value: number, name: string) => [
                   <span key={name} style={{ color: name === 'value' ? '#0EA5E9' : '#FBBF24' }}>
                     {fmt.num(value)}
@@ -419,6 +419,8 @@ export function AssemblyDashboard({
                     borderRadius: '6px',
                     fontSize: '11px',
                   }}
+                  labelStyle={{ color: '#94A3B8' }}
+                  itemStyle={{ color: '#FFFFFF' }}
                   formatter={(value: number) => [fmt.num(value), 'Total']}
                 />
                 <ReferenceLine y={5000} stroke="#475569" strokeDasharray="4 4" strokeOpacity={0.5} />
@@ -558,6 +560,8 @@ export function AssemblyDashboard({
                     borderRadius: '6px',
                     fontSize: '11px',
                   }}
+                  labelStyle={{ color: '#94A3B8' }}
+                  itemStyle={{ color: '#FFFFFF' }}
                   formatter={(value: number) => [fmt.num(value), 'Avg']}
                 />
                 <Bar dataKey="avg" fill="url(#dowGrad)" radius={[3, 3, 0, 0]} maxBarSize={50} />
