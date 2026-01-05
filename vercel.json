@@ -33,10 +33,6 @@
   },
   "crons": [
     {
-      "path": "/api/cron/cleanup-sync-logs",
-      "schedule": "0 3 * * *"
-    },
-    {
       "path": "/api/tracking/check",
       "schedule": "0 * * * *"
     },
@@ -75,10 +71,6 @@
     {
       "path": "/api/cron/sync-netsuite-lineitems",
       "schedule": "10 6 * * *"
-    },
-    {
-      "path": "/api/cron/check-lead-conversions",
-      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/cron/analyze-leads",
