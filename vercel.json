@@ -21,6 +21,9 @@
     "app/api/cron/reconcile-shopify-stats/route.ts": {
       "maxDuration": 300
     },
+    "app/api/cron/weekly-maintenance/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/cron/sync-meta/route.ts": {
       "maxDuration": 300
     },
@@ -93,11 +96,7 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/reconcile-shopify-stats",
-      "schedule": "0 6 * * 0"
-    },
-    {
-      "path": "/api/cron/refresh-shiphero-token",
+      "path": "/api/cron/weekly-maintenance",
       "schedule": "0 2 * * 0"
     },
     {

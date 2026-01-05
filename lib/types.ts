@@ -520,10 +520,24 @@ export interface AnnualTarget {
   pct_complete: number;
 }
 
+export interface DefectRate {
+  sku: string;
+  display_name: string;
+  fq_qty: number;           // First quality quantity (all time)
+  defect_qty: number;       // Defect quantity (all time)
+  total_qty: number;        // Total quantity (all time)
+  defect_rate: number;      // All-time defect rate (percentage)
+  recent_fq: number;        // FQ in last 60 days
+  recent_defect: number;    // Defects in last 60 days
+  recent_rate: number;      // 60-day defect rate (percentage)
+  is_elevated: boolean;     // True if recent rate is significantly higher than all-time
+}
+
 export interface AssemblyResponse {
   daily: DailyAssembly[];
   targets: AssemblyTarget[];
   annualTargets: AnnualTarget[];
+  defectRates: DefectRate[];
   summary: AssemblySummary;
   weeklyData: WeeklyAssembly[];
   dayOfWeekAvg: DayOfWeekAvg[];

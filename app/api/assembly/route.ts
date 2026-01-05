@@ -106,10 +106,24 @@ export interface AnnualTarget {
   pct_complete: number;
 }
 
+export interface DefectRate {
+  sku: string;
+  display_name: string;
+  fq_qty: number;           // First quality quantity (all time)
+  defect_qty: number;       // Defect quantity (all time)
+  total_qty: number;        // Total quantity (all time)
+  defect_rate: number;      // All-time defect rate (percentage)
+  recent_fq: number;        // FQ in last 60 days
+  recent_defect: number;    // Defects in last 60 days
+  recent_rate: number;      // 60-day defect rate (percentage)
+  is_elevated: boolean;     // True if recent rate is significantly higher than all-time
+}
+
 export interface AssemblyResponse {
   daily: DailyAssembly[];
   targets: AssemblyTarget[];
   annualTargets: AnnualTarget[];
+  defectRates: DefectRate[];  // 60-day defect rates by SKU
   summary: AssemblySummary;
   weeklyData: WeeklyData[];
   dayOfWeekAvg: DayOfWeekAvg[];
@@ -255,6 +269,96 @@ export async function GET(request: Request) {
         return { sku, display_name, annual_target, ytd_built, t7, pct_complete };
       })
       .sort((a, b) => b.annual_target - a.annual_target);
+
+    // === DEFECT RATE CALCULATION (all-time + 60-day comparison) ===
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const defectWindowStart = sixtyDaysAgo.toISOString().split("T")[0];
+
+    // Fetch ALL assembly_sku_daily data for all-time rates
+    const { data: allTimeData, error: allTimeError } = await supabase
+      .from("assembly_sku_daily")
+      .select("sku, quantity, date");
+
+    if (allTimeError) {
+      console.error("Failed to fetch all-time defect data:", allTimeError);
+    }
+
+    // Group by base SKU, separating FQ and defects for both all-time and recent
+    const defectMap = new Map<string, {
+      allTime: { fq: number; defect: number };
+      recent: { fq: number; defect: number };
+    }>();
+
+    for (const row of allTimeData || []) {
+      const skuUpper = row.sku.toUpperCase();
+      // Only CI and CS SKUs
+      if (!skuUpper.startsWith("SMITH-CI-") && !skuUpper.startsWith("SMITH-CS-")) continue;
+
+      const isDefect = skuUpper.endsWith("-D");
+      const baseSku = isDefect ? row.sku.slice(0, -2) : row.sku;
+      const isRecent = row.date >= defectWindowStart;
+
+      const existing = defectMap.get(baseSku) || {
+        allTime: { fq: 0, defect: 0 },
+        recent: { fq: 0, defect: 0 }
+      };
+
+      // Always add to all-time
+      if (isDefect) {
+        existing.allTime.defect += row.quantity;
+      } else {
+        existing.allTime.fq += row.quantity;
+      }
+
+      // Add to recent if within 60-day window
+      if (isRecent) {
+        if (isDefect) {
+          existing.recent.defect += row.quantity;
+        } else {
+          existing.recent.fq += row.quantity;
+        }
+      }
+
+      defectMap.set(baseSku, existing);
+    }
+
+    // Build defect rates array with anomaly detection
+    const defectRates: DefectRate[] = [];
+    defectMap.forEach((data, baseSku) => {
+      const allTimeTotal = data.allTime.fq + data.allTime.defect;
+      const recentTotal = data.recent.fq + data.recent.defect;
+
+      if (allTimeTotal > 0) {
+        const allTimeRate = (data.allTime.defect / allTimeTotal) * 100;
+        const recentRate = recentTotal > 0 ? (data.recent.defect / recentTotal) * 100 : 0;
+
+        // Anomaly detection: recent rate is elevated if:
+        // 1. Recent rate > all-time rate * 1.3 (30% higher)
+        // 2. AND recent rate > all-time rate + 1.5 percentage points
+        // 3. AND we have meaningful recent volume (at least 50 units)
+        const isElevated = recentTotal >= 50 &&
+          recentRate > allTimeRate * 1.3 &&
+          recentRate > allTimeRate + 1.5;
+
+        const display_name = displayNameMap[baseSku] || displayNameMap[baseSku.toLowerCase()] || baseSku.replace("Smith-", "").replace(/-/g, " ");
+
+        defectRates.push({
+          sku: baseSku,
+          display_name,
+          fq_qty: data.allTime.fq,
+          defect_qty: data.allTime.defect,
+          total_qty: allTimeTotal,
+          defect_rate: Math.round(allTimeRate * 100) / 100,
+          recent_fq: data.recent.fq,
+          recent_defect: data.recent.defect,
+          recent_rate: Math.round(recentRate * 100) / 100,
+          is_elevated: isElevated,
+        });
+      }
+    });
+    // Sort by all-time defect rate descending (worst first)
+    defectRates.sort((a, b) => b.defect_rate - a.defect_rate);
 
     const daily = (dailyData || []) as DailyAssembly[];
     const targets = (targetData || []).map((t) => ({
@@ -419,6 +523,7 @@ export async function GET(request: Request) {
       daily,
       targets,
       annualTargets,
+      defectRates,
       summary,
       weeklyData,
       dayOfWeekAvg,

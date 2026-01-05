@@ -40,30 +40,21 @@ export function AssemblyDashboard({
   loading,
   onRefresh,
 }: AssemblyDashboardProps) {
-  // Loading state - forge firing up
+  // Loading state
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <div className="flex flex-col items-center gap-6">
           <div className="relative">
-            <div className="w-20 h-20 rounded-full border-2 border-stone-700/50" />
+            <div className="w-16 h-16 rounded-full border-2 border-border" />
             <div
-              className="absolute inset-0 w-20 h-20 rounded-full border-2 border-transparent animate-spin"
-              style={{
-                borderTopColor: FORGE.molten,
-                borderRightColor: FORGE.ember,
-                animationDuration: '1.5s'
-              }}
+              className="absolute inset-0 w-16 h-16 rounded-full border-2 border-transparent animate-spin"
+              style={{ borderTopColor: '#0EA5E9', animationDuration: '1.2s' }}
             />
-            <Flame
-              className="absolute inset-0 m-auto w-8 h-8 animate-pulse"
-              style={{ color: FORGE.heat }}
-            />
+            <Flame className="absolute inset-0 m-auto w-6 h-6 animate-pulse text-amber-500" />
           </div>
-          <div className="text-center">
-            <div className="text-xs font-mono uppercase tracking-[0.3em] text-stone-500">
-              Firing up the forge
-            </div>
+          <div className="text-xs uppercase tracking-widest text-text-tertiary">
+            Loading production data
           </div>
         </div>
       </div>
@@ -74,12 +65,12 @@ export function AssemblyDashboard({
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] gap-6">
-        <Flame className="w-16 h-16 text-stone-600" />
+        <Flame className="w-12 h-12 text-text-muted" />
         <div className="text-center">
-          <div className="text-stone-400 mb-4">No production data available</div>
+          <div className="text-text-secondary mb-4">No production data available</div>
           <button
             onClick={onRefresh}
-            className="px-6 py-2.5 text-xs font-mono uppercase tracking-widest border border-stone-700 hover:border-amber-600 hover:text-amber-500 transition-colors"
+            className="px-5 py-2 text-xs uppercase tracking-widest border border-border hover:border-accent-blue hover:text-accent-blue transition-colors rounded-lg"
           >
             Refresh
           </button>
@@ -169,10 +160,10 @@ export function AssemblyDashboard({
   const Trend = ({ value, size = "sm" }: { value: number; size?: "sm" | "lg" }) => {
     const isPositive = value >= 0;
     const Icon = isPositive ? TrendingUp : TrendingDown;
-    const sizeClasses = size === "lg" ? "text-lg" : "text-xs";
+    const sizeClasses = size === "lg" ? "text-base" : "text-xs";
     return (
-      <span className={`inline-flex items-center gap-1 font-mono ${sizeClasses} ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
-        <Icon className={size === "lg" ? "w-5 h-5" : "w-3.5 h-3.5"} />
+      <span className={`inline-flex items-center gap-1 tabular-nums ${sizeClasses} ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
+        <Icon className={size === "lg" ? "w-4 h-4" : "w-3 h-3"} />
         {fmt.delta(value)}
       </span>
     );
@@ -441,14 +432,167 @@ export function AssemblyDashboard({
           </div>
         </div>
 
-        {/* Day of Week Pattern */}
+        {/* Monthly Summary (moved from bottom) */}
+        <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+              Monthly Summary
+            </h3>
+          </div>
+          <div className="overflow-y-auto max-h-48">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-bg-secondary">
+                <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
+                  <th className="text-left py-2 px-4 font-medium">Month</th>
+                  <th className="text-right py-2 px-4 font-medium">Total</th>
+                  <th className="text-right py-2 px-4 font-medium">Avg</th>
+                  <th className="text-right py-2 px-4 font-medium">MoM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyWithMoM.slice(0, 6).map((m, idx) => (
+                  <tr
+                    key={m.key}
+                    className={`border-b border-border/50 ${idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''}`}
+                  >
+                    <td className="py-2 px-4 text-text-secondary">{m.monthName.slice(0, 3)}</td>
+                    <td className="py-2 px-4 text-right text-text-tertiary tabular-nums">{fmt.compact(m.total)}</td>
+                    <td className="py-2 px-4 text-right text-text-secondary tabular-nums">{fmt.num(m.dailyAvg)}</td>
+                    <td className={`py-2 px-4 text-right tabular-nums ${
+                      m.momPct === null ? 'text-text-muted' : m.momPct >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {m.momPct !== null ? fmt.delta(m.momPct) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* === 2026 ANNUAL TARGETS === */}
+      {data.annualTargets && data.annualTargets.length > 0 && (
+        <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+              2026 Annual Production Progress
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
+                  <th className="text-left py-3 px-5 font-medium">SKU</th>
+                  <th className="text-right py-3 px-4 font-medium">Target</th>
+                  <th className="text-right py-3 px-4 font-medium">YTD</th>
+                  <th className="text-right py-3 px-4 font-medium text-amber-400">T7</th>
+                  <th className="text-right py-3 px-4 font-medium">Remaining</th>
+                  <th className="py-3 px-5 font-medium w-36">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.annualTargets.map((target, idx) => {
+                  const remaining = Math.max(0, target.annual_target - target.ytd_built);
+                  const isComplete = target.pct_complete >= 100;
+                  return (
+                    <tr
+                      key={target.sku}
+                      className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''}`}
+                    >
+                      <td className="py-2.5 px-5 text-text-secondary">{target.display_name}</td>
+                      <td className="py-2.5 px-4 text-right text-text-muted tabular-nums">{fmt.num(target.annual_target)}</td>
+                      <td className="py-2.5 px-4 text-right text-text-tertiary tabular-nums">{fmt.num(target.ytd_built)}</td>
+                      <td className={`py-2.5 px-4 text-right tabular-nums ${target.t7 ? 'text-amber-400' : 'text-text-muted'}`}>
+                        {target.t7 ? fmt.num(target.t7) : "—"}
+                      </td>
+                      <td className={`py-2.5 px-4 text-right tabular-nums ${isComplete ? 'text-emerald-400' : 'text-text-tertiary'}`}>
+                        {isComplete ? "✓" : fmt.num(remaining)}
+                      </td>
+                      <td className="py-2.5 px-5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${Math.min(100, target.pct_complete)}%`,
+                                background: isComplete ? '#10B981' : '#0EA5E9',
+                              }}
+                            />
+                          </div>
+                          <span className={`text-[10px] tabular-nums w-12 text-right ${isComplete ? 'text-emerald-400' : 'text-text-muted'}`}>
+                            {target.pct_complete.toFixed(1)}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* === BOTTOM ROW: DEFECT RATE + WEEKDAY PATTERN (side by side) === */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Defect Rate by SKU */}
+        {data.defectRates && data.defectRates.length > 0 && (
+          <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden">
+            <div className="px-5 py-4 border-b border-border">
+              <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+                Defect Rate by SKU <span className="text-text-muted ml-2">· All Time</span>
+              </h3>
+            </div>
+            <div className="overflow-y-auto max-h-[320px]">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-bg-secondary z-10">
+                  <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium">SKU</th>
+                    <th className="text-right py-3 px-3 font-medium">All-Time</th>
+                    <th className="text-right py-3 px-4 font-medium">60-Day</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.defectRates.slice(0, 25).map((d, idx) => (
+                    <tr
+                      key={d.sku}
+                      className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${
+                        idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''
+                      } ${d.is_elevated ? 'bg-amber-950/20' : ''}`}
+                    >
+                      <td className="py-2 px-4 text-text-secondary">{d.display_name}</td>
+                      <td className={`py-2 px-3 text-right tabular-nums font-medium ${
+                        d.defect_rate > 5 ? 'text-red-400' : d.defect_rate > 2 ? 'text-amber-400' : 'text-emerald-400'
+                      }`}>
+                        {d.defect_rate.toFixed(1)}%
+                      </td>
+                      <td className="py-2 px-4 text-right tabular-nums">
+                        {d.is_elevated ? (
+                          <span className="inline-flex items-center gap-1.5 text-amber-300 font-semibold">
+                            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                            {d.recent_rate.toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span className="text-text-muted">{d.recent_rate.toFixed(1)}%</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Weekday Pattern */}
         <div className="rounded-xl border border-border bg-bg-secondary p-5">
           <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary mb-4">
             Weekday Pattern
           </h3>
-          <div className="h-48">
+          <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dowChartData} margin={{ top: 15, right: 5, left: -15, bottom: 5 }}>
+              <BarChart data={dowChartData} margin={{ top: 10, right: 5, left: -15, bottom: 5 }}>
                 <defs>
                   <linearGradient id="dowGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#64748B" />
@@ -477,114 +621,11 @@ export function AssemblyDashboard({
                   }}
                   formatter={(value: number) => [fmt.num(value), 'Avg']}
                 />
-                <Bar dataKey="avg" fill="url(#dowGrad)" radius={[3, 3, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="avg" fill="url(#dowGrad)" radius={[3, 3, 0, 0]} maxBarSize={50} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
-
-      {/* === 2026 ANNUAL TARGETS === */}
-      {data.annualTargets && data.annualTargets.length > 0 && (
-        <div className="rounded-lg border border-stone-800/60 bg-stone-900/30 overflow-hidden">
-          <div className="px-5 py-4 border-b border-stone-800/40">
-            <h3 className="text-[10px] font-mono uppercase tracking-[0.25em] text-stone-500">
-              2026 Annual Production Progress
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-[9px] font-mono uppercase tracking-wider text-stone-600 border-b border-stone-800/30">
-                  <th className="text-left py-3 px-5 font-medium">SKU</th>
-                  <th className="text-right py-3 px-4 font-medium">Target</th>
-                  <th className="text-right py-3 px-4 font-medium">YTD</th>
-                  <th className="text-right py-3 px-4 font-medium" style={{ color: FORGE.molten }}>T7</th>
-                  <th className="text-right py-3 px-4 font-medium">Remaining</th>
-                  <th className="py-3 px-5 font-medium w-36">Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.annualTargets.map((target, idx) => {
-                  const remaining = Math.max(0, target.annual_target - target.ytd_built);
-                  const isComplete = target.pct_complete >= 100;
-                  return (
-                    <tr
-                      key={target.sku}
-                      className={`border-b border-stone-800/20 hover:bg-stone-800/20 transition-colors ${idx % 2 === 0 ? 'bg-stone-900/20' : ''}`}
-                    >
-                      <td className="py-2.5 px-5 text-stone-300">{target.display_name}</td>
-                      <td className="py-2.5 px-4 text-right text-stone-500 tabular-nums font-mono">{fmt.num(target.annual_target)}</td>
-                      <td className="py-2.5 px-4 text-right text-stone-400 tabular-nums font-mono">{fmt.num(target.ytd_built)}</td>
-                      <td className="py-2.5 px-4 text-right tabular-nums font-mono" style={{ color: target.t7 ? FORGE.molten : '#57534E' }}>
-                        {target.t7 ? fmt.num(target.t7) : "—"}
-                      </td>
-                      <td className={`py-2.5 px-4 text-right tabular-nums font-mono ${isComplete ? 'text-emerald-400' : 'text-stone-400'}`}>
-                        {isComplete ? "✓" : fmt.num(remaining)}
-                      </td>
-                      <td className="py-2.5 px-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 h-1.5 bg-stone-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{
-                                width: `${Math.min(100, target.pct_complete)}%`,
-                                background: isComplete
-                                  ? '#10B981'
-                                  : `linear-gradient(90deg, ${FORGE.copper}, ${FORGE.heat})`,
-                              }}
-                            />
-                          </div>
-                          <span className={`text-[10px] tabular-nums font-mono w-12 text-right ${isComplete ? 'text-emerald-400' : 'text-stone-500'}`}>
-                            {target.pct_complete.toFixed(1)}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* === MONTHLY SUMMARY === */}
-      <div className="rounded-lg border border-stone-800/60 bg-stone-900/30 overflow-hidden">
-        <div className="px-5 py-4 border-b border-stone-800/40">
-          <h3 className="text-[10px] font-mono uppercase tracking-[0.25em] text-stone-500">
-            Monthly Summary
-          </h3>
-        </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-[9px] font-mono uppercase tracking-wider text-stone-600 border-b border-stone-800/30">
-              <th className="text-left py-3 px-5 font-medium">Month</th>
-              <th className="text-right py-3 px-4 font-medium">Total</th>
-              <th className="text-right py-3 px-4 font-medium">Days</th>
-              <th className="text-right py-3 px-4 font-medium">Daily Avg</th>
-              <th className="text-right py-3 px-5 font-medium">MoM</th>
-            </tr>
-          </thead>
-          <tbody>
-            {monthlyWithMoM.slice(0, 6).map((m, idx) => (
-              <tr
-                key={m.key}
-                className={`border-b border-stone-800/20 ${idx % 2 === 0 ? 'bg-stone-900/20' : ''}`}
-              >
-                <td className="py-2.5 px-5 text-stone-300">{m.monthName}</td>
-                <td className="py-2.5 px-4 text-right text-stone-400 tabular-nums font-mono">{fmt.num(m.total)}</td>
-                <td className="py-2.5 px-4 text-right text-stone-500 tabular-nums font-mono">{m.days}</td>
-                <td className="py-2.5 px-4 text-right text-stone-300 tabular-nums font-mono font-medium">{fmt.num(m.dailyAvg)}</td>
-                <td className={`py-2.5 px-5 text-right tabular-nums font-mono ${
-                  m.momPct === null ? 'text-stone-600' : m.momPct >= 0 ? 'text-emerald-400' : 'text-red-400'
-                }`}>
-                  {m.momPct !== null ? fmt.delta(m.momPct) : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
 
       {/* === FOOTER: SYNC STATUS === */}
