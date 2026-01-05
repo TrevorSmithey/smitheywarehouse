@@ -11,7 +11,7 @@
  * - exec: All tabs, no admin panel
  * - ops1: Operations + production + VOC + budget (no marketing/ecomm/revenue)
  * - ops2: ops1 + revenue tracker
- * - standard: Everything except production, planning, P&L
+ * - standard: Everything except production, planning, exec revenue report
  * - sales: Same as standard, starts on sales tab
  */
 export type DashboardRole = "admin" | "exec" | "ops1" | "ops2" | "standard" | "sales";
@@ -102,7 +102,7 @@ export const TAB_CONFIG: Record<
   budget: { label: "BUDGET V ACTUAL", group: "analytics" },
   "revenue-tracker": { label: "REVENUE", group: "analytics" },
   holiday: { label: "Q4 PACE", group: "analytics" },
-  pl: { label: "P&L", group: "analytics" },
+  pl: { label: "EXEC REVENUE REPORT", group: "analytics" },
   voc: { label: "CUSTOMER SERVICE", group: "engagement" },
   marketing: { label: "MARKETING", group: "engagement" },
   sales: { label: "SALES", group: "engagement" },
