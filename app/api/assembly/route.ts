@@ -97,9 +97,19 @@ export interface DayOfWeekAvg {
   count: number;
 }
 
+export interface AnnualTarget {
+  sku: string;
+  display_name: string;
+  annual_target: number;
+  ytd_built: number;
+  t7: number;
+  pct_complete: number;
+}
+
 export interface AssemblyResponse {
   daily: DailyAssembly[];
   targets: AssemblyTarget[];
+  annualTargets: AnnualTarget[];
   summary: AssemblySummary;
   weeklyData: WeeklyData[];
   dayOfWeekAvg: DayOfWeekAvg[];
@@ -197,6 +207,54 @@ export async function GET(request: Request) {
       revised_manufacturing_need: Number(configMap.revised_manufacturing_need) || 0,
       assembled_since_cutoff: Number(configMap.assembled_since_cutoff) || 0,
     };
+
+    // Fetch 2026 annual targets from production_targets
+    const currentYear = new Date().getFullYear();
+    const { data: prodTargetsData, error: prodTargetsError } = await supabase
+      .from("production_targets")
+      .select("sku, target")
+      .eq("year", currentYear);
+
+    if (prodTargetsError) {
+      console.error("Failed to fetch production targets:", prodTargetsError);
+    }
+
+    // Aggregate annual targets by SKU (sum all months)
+    const annualTargetsBySku: Record<string, number> = {};
+    for (const pt of prodTargetsData || []) {
+      annualTargetsBySku[pt.sku] = (annualTargetsBySku[pt.sku] || 0) + pt.target;
+    }
+
+    // Fetch YTD production for current year
+    const yearStart = `${currentYear}-01-01`;
+    const { data: ytdData, error: ytdError } = await supabase
+      .from("assembly_sku_daily")
+      .select("sku, quantity")
+      .gte("date", yearStart);
+
+    if (ytdError) {
+      console.error("Failed to fetch YTD production:", ytdError);
+    }
+
+    // Aggregate YTD by SKU (only production-tracked)
+    const ytdBySku: Record<string, number> = {};
+    for (const row of ytdData || []) {
+      if (isProductionTracked(row.sku)) {
+        ytdBySku[row.sku] = (ytdBySku[row.sku] || 0) + row.quantity;
+      }
+    }
+
+    // Build annual targets array
+    const annualTargets: AnnualTarget[] = Object.entries(annualTargetsBySku)
+      .filter(([, target]) => target > 0)
+      .map(([sku, annual_target]) => {
+        const ytd_built = ytdBySku[sku] || 0;
+        const t7 = t7BySku[sku] || 0;
+        const pct_complete = annual_target > 0 ? Math.round((ytd_built / annual_target) * 1000) / 10 : 0;
+        const display_name = displayNameMap[sku] || displayNameMap[sku.toLowerCase()] || sku.replace("Smith-", "").replace(/-/g, " ");
+        return { sku, display_name, annual_target, ytd_built, t7, pct_complete };
+      })
+      .sort((a, b) => b.annual_target - a.annual_target);
 
     const daily = (dailyData || []) as DailyAssembly[];
     const targets = (targetData || []).map((t) => ({
@@ -360,6 +418,7 @@ export async function GET(request: Request) {
     const response: AssemblyResponse = {
       daily,
       targets,
+      annualTargets,
       summary,
       weeklyData,
       dayOfWeekAvg,

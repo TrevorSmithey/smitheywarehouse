@@ -20,6 +20,15 @@
     },
     "app/api/cron/reconcile-shopify-stats/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/sync-meta/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/compute-ad-metrics/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/cron/sync-google-ads/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -98,6 +107,18 @@
     {
       "path": "/api/cron/refresh-shiphero-token",
       "schedule": "0 2 * * 0"
+    },
+    {
+      "path": "/api/cron/sync-meta",
+      "schedule": "30 6 * * *"
+    },
+    {
+      "path": "/api/cron/sync-google-ads",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/compute-ad-metrics",
+      "schedule": "30 7 * * *"
     }
   ]
 }

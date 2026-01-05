@@ -511,9 +511,19 @@ export interface DayOfWeekAvg {
   count: number;
 }
 
+export interface AnnualTarget {
+  sku: string;
+  display_name: string;
+  annual_target: number;
+  ytd_built: number;
+  t7: number;
+  pct_complete: number;
+}
+
 export interface AssemblyResponse {
   daily: DailyAssembly[];
   targets: AssemblyTarget[];
+  annualTargets: AnnualTarget[];
   summary: AssemblySummary;
   weeklyData: WeeklyAssembly[];
   dayOfWeekAvg: DayOfWeekAvg[];

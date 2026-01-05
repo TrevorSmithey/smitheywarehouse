@@ -1,7 +1,10 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { useDashboard } from "../layout";
+import { Mail, TrendingUp } from "lucide-react";
 import type { KlaviyoResponse } from "@/lib/types";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
@@ -29,6 +32,44 @@ export function useMarketing() {
 }
 
 // ============================================================================
+// SUB-TABS
+// ============================================================================
+
+function MarketingTabs() {
+  const pathname = usePathname();
+
+  const tabs = [
+    { name: "Email", href: "/marketing", icon: Mail },
+    { name: "Paid", href: "/marketing/paid", icon: TrendingUp },
+  ];
+
+  return (
+    <div className="flex items-center gap-1 mb-6 bg-bg-secondary/50 rounded-lg p-1 w-fit">
+      {tabs.map((tab) => {
+        const isActive = tab.href === "/marketing"
+          ? pathname === "/marketing"
+          : pathname.startsWith(tab.href);
+
+        return (
+          <Link
+            key={tab.name}
+            href={tab.href}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              isActive
+                ? "bg-bg-secondary text-text-primary shadow-sm"
+                : "text-text-muted hover:text-text-secondary"
+            }`}
+          >
+            <tab.icon className="w-4 h-4" />
+            {tab.name}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================================
 // LAYOUT COMPONENT
 // ============================================================================
 
@@ -37,6 +78,8 @@ export default function MarketingLayout({
 }: {
   children: ReactNode;
 }) {
+  const pathname = usePathname();
+  const isPaidPage = pathname.startsWith("/marketing/paid");
   const { setLastRefresh, setIsRefreshing, setTriggerRefresh } = useDashboard();
 
   const [data, setData] = useState<KlaviyoResponse | null>(null);
@@ -60,26 +103,28 @@ export default function MarketingLayout({
     }
   }, [period, setLastRefresh, setIsRefreshing]);
 
-  // Register refresh handler with parent layout
+  // Only register Klaviyo refresh handler when on email page
   useEffect(() => {
-    setTriggerRefresh(() => fetchKlaviyo);
-    return () => setTriggerRefresh(null);
-  }, [fetchKlaviyo, setTriggerRefresh]);
+    if (!isPaidPage) {
+      setTriggerRefresh(() => fetchKlaviyo);
+      return () => setTriggerRefresh(null);
+    }
+  }, [fetchKlaviyo, setTriggerRefresh, isPaidPage]);
 
-  // Initial data fetch
+  // Initial data fetch (only for email page)
   useEffect(() => {
-    if (!data && !loading) {
+    if (!isPaidPage && !data && !loading) {
       fetchKlaviyo();
     }
-  }, [data, loading, fetchKlaviyo]);
+  }, [data, loading, fetchKlaviyo, isPaidPage]);
 
-  // Refetch when period changes
+  // Refetch when period changes (only for email page)
   useEffect(() => {
-    if (data) {
+    if (!isPaidPage && data) {
       fetchKlaviyo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period]);
+  }, [period, isPaidPage]);
 
   // Context value
   const contextValue: MarketingContextType = {
@@ -92,6 +137,7 @@ export default function MarketingLayout({
 
   return (
     <MarketingContext.Provider value={contextValue}>
+      <MarketingTabs />
       {children}
     </MarketingContext.Provider>
   );
