@@ -2,11 +2,73 @@
  * ShipHero GraphQL API Client
  *
  * Fetches inventory data from ShipHero for the Inventory Dashboard.
+ * Token management: Reads from Supabase api_tokens table with env var fallback.
  */
 
 import { WAREHOUSE_GRAPHQL_IDS } from "@/lib/constants";
+import { createClient } from "@supabase/supabase-js";
 
 const SHIPHERO_API_URL = "https://public-api.shiphero.com/graphql";
+
+// Token cache to avoid DB hits on every request
+let cachedToken: { token: string; expiresAt: Date | null; fetchedAt: Date } | null = null;
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get ShipHero access token from database (with memory cache)
+ * Falls back to environment variable if DB fetch fails
+ */
+async function getShipHeroToken(): Promise<string> {
+  // Check memory cache first (valid for 5 minutes)
+  if (cachedToken && Date.now() - cachedToken.fetchedAt.getTime() < TOKEN_CACHE_TTL_MS) {
+    return cachedToken.token;
+  }
+
+  // Try to fetch from database
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!url || !key) {
+      throw new Error("Supabase credentials not configured");
+    }
+
+    const supabase = createClient(url, key);
+    const { data, error } = await supabase
+      .from("api_tokens")
+      .select("access_token, expires_at")
+      .eq("service", "shiphero")
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to fetch ShipHero token from DB: ${error.message}`);
+    }
+
+    if (!data?.access_token) {
+      throw new Error("No ShipHero token found in database");
+    }
+
+    // Cache the token
+    cachedToken = {
+      token: data.access_token,
+      expiresAt: data.expires_at ? new Date(data.expires_at) : null,
+      fetchedAt: new Date(),
+    };
+
+    return data.access_token;
+  } catch (err) {
+    // Fall back to environment variable
+    const envToken = process.env.SHIPHERO_API_TOKEN;
+    if (!envToken) {
+      throw new Error(
+        `SHIPHERO_API_TOKEN not configured and database fetch failed: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    }
+
+    console.warn("ShipHero: Using env var fallback due to DB error:", err);
+    return envToken;
+  }
+}
 
 // Re-export with HQ added (not in central constants as it's only used here)
 export const WAREHOUSES = {
@@ -52,10 +114,7 @@ async function shipheroQuery<T>(
   query: string,
   variables: Record<string, unknown> = {}
 ): Promise<T> {
-  const token = process.env.SHIPHERO_API_TOKEN;
-  if (!token) {
-    throw new Error("SHIPHERO_API_TOKEN not configured");
-  }
+  const token = await getShipHeroToken();
 
   const response = await fetch(SHIPHERO_API_URL, {
     method: "POST",

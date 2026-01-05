@@ -102,6 +102,10 @@
     {
       "path": "/api/cron/backfill-warehouse",
       "schedule": "30 * * * *"
+    },
+    {
+      "path": "/api/cron/refresh-shiphero-token",
+      "schedule": "0 2 * * 0"
     }
   ]
 }
