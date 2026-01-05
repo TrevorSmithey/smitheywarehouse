@@ -84,7 +84,7 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   budget: "BUDGET V ACTUAL",
   "revenue-tracker": "REVENUE",
   holiday: "Q4 PACE",
-  pl: "P&L",
+  pl: "EXEC REVENUE REPORT",
   voc: "CUSTOMER SERVICE",
   marketing: "MARKETING",
   sales: "SALES",
