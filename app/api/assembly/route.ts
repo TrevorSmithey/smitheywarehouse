@@ -324,12 +324,15 @@ export async function GET(request: Request) {
     }
 
     // Build defect rates array with anomaly detection
+    // Minimum 500 units all-time to filter out statistical noise
+    const MIN_VOLUME_THRESHOLD = 500;
     const defectRates: DefectRate[] = [];
     defectMap.forEach((data, baseSku) => {
       const allTimeTotal = data.allTime.fq + data.allTime.defect;
       const recentTotal = data.recent.fq + data.recent.defect;
 
-      if (allTimeTotal > 0) {
+      // Only include SKUs with meaningful volume
+      if (allTimeTotal >= MIN_VOLUME_THRESHOLD) {
         const allTimeRate = (data.allTime.defect / allTimeTotal) * 100;
         const recentRate = recentTotal > 0 ? (data.recent.defect / recentTotal) * 100 : 0;
 

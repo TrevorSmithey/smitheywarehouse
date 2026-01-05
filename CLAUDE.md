@@ -234,6 +234,30 @@ When `sync-meta` and `sync-google-ads` run concurrently, they can overwrite each
 
 ---
 
+## Production Dashboard (January 2026)
+
+### Seasonality Context
+**Production is level-loaded** - Unlike fulfillment, marketing, and sales which are highly seasonal, Smithey intentionally maintains steady production output year-round. This means:
+- MoM comparisons are meaningful (not skewed by seasonal peaks)
+- T7 velocity is a reliable health indicator
+- Defect rates should remain stable (spikes = real problems, not volume effects)
+
+### Defect Rate Pattern
+- **Identification**: Defect SKUs have "-D" suffix (e.g., `SMITH-CI-12FLAT-D`)
+- **Calculation**: `defect_qty / (fq_qty + defect_qty) × 100`
+- **All-time vs 60-day**: Track both to detect emerging quality issues
+- **Anomaly detection**: Flag when recent rate > all-time × 1.3 AND > all-time + 1.5pp AND volume ≥ 50
+
+### Statistical Noise Filtering
+`MIN_VOLUME_THRESHOLD = 500` - SKUs with fewer than 500 total units are excluded from defect rate analysis. Low-volume SKUs create misleading percentages (4 units with 1 defect = 25% defect rate).
+
+### Visual Patterns
+- **Elevated indicators**: Pulsing amber dot for SKUs with recent rates significantly above baseline
+- **Color-coded rates**: Green (<2%), Amber (2-5%), Red (>5%) for all-time defect rates
+- **Ember-tinted scrollbar**: `.scrollbar-thin` class with `rgba(249, 115, 22, x)` for on-brand dark theme
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development

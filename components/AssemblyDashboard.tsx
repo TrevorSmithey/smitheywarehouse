@@ -471,70 +471,7 @@ export function AssemblyDashboard({
         </div>
       </div>
 
-      {/* === 2026 ANNUAL TARGETS === */}
-      {data.annualTargets && data.annualTargets.length > 0 && (
-        <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-              2026 Annual Production Progress
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
-                  <th className="text-left py-3 px-5 font-medium">SKU</th>
-                  <th className="text-right py-3 px-4 font-medium">Target</th>
-                  <th className="text-right py-3 px-4 font-medium">YTD</th>
-                  <th className="text-right py-3 px-4 font-medium text-amber-400">T7</th>
-                  <th className="text-right py-3 px-4 font-medium">Remaining</th>
-                  <th className="py-3 px-5 font-medium w-36">Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.annualTargets.map((target, idx) => {
-                  const remaining = Math.max(0, target.annual_target - target.ytd_built);
-                  const isComplete = target.pct_complete >= 100;
-                  return (
-                    <tr
-                      key={target.sku}
-                      className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''}`}
-                    >
-                      <td className="py-2.5 px-5 text-text-secondary">{target.display_name}</td>
-                      <td className="py-2.5 px-4 text-right text-text-muted tabular-nums">{fmt.num(target.annual_target)}</td>
-                      <td className="py-2.5 px-4 text-right text-text-tertiary tabular-nums">{fmt.num(target.ytd_built)}</td>
-                      <td className={`py-2.5 px-4 text-right tabular-nums ${target.t7 ? 'text-amber-400' : 'text-text-muted'}`}>
-                        {target.t7 ? fmt.num(target.t7) : "—"}
-                      </td>
-                      <td className={`py-2.5 px-4 text-right tabular-nums ${isComplete ? 'text-emerald-400' : 'text-text-tertiary'}`}>
-                        {isComplete ? "✓" : fmt.num(remaining)}
-                      </td>
-                      <td className="py-2.5 px-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{
-                                width: `${Math.min(100, target.pct_complete)}%`,
-                                background: isComplete ? '#10B981' : '#0EA5E9',
-                              }}
-                            />
-                          </div>
-                          <span className={`text-[10px] tabular-nums w-12 text-right ${isComplete ? 'text-emerald-400' : 'text-text-muted'}`}>
-                            {target.pct_complete.toFixed(1)}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* === BOTTOM ROW: DEFECT RATE + WEEKDAY PATTERN (side by side) === */}
+      {/* === DEFECT RATE + WEEKDAY PATTERN (side by side) === */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Defect Rate by SKU */}
         {data.defectRates && data.defectRates.length > 0 && (
@@ -544,9 +481,9 @@ export function AssemblyDashboard({
                 Defect Rate by SKU <span className="text-text-muted ml-2">· All Time</span>
               </h3>
             </div>
-            <div className="overflow-y-auto max-h-[320px]">
+            <div className="max-h-[320px] overflow-y-auto scrollbar-thin">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-bg-secondary z-10">
+                <thead className="sticky top-0 bg-bg-secondary">
                   <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
                     <th className="text-left py-3 px-4 font-medium">SKU</th>
                     <th className="text-right py-3 px-3 font-medium">All-Time</th>
@@ -558,8 +495,10 @@ export function AssemblyDashboard({
                     <tr
                       key={d.sku}
                       className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${
-                        idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''
-                      } ${d.is_elevated ? 'bg-amber-950/20' : ''}`}
+                        d.is_elevated
+                          ? 'bg-amber-950/20'
+                          : idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''
+                      }`}
                     >
                       <td className="py-2 px-4 text-text-secondary">{d.display_name}</td>
                       <td className={`py-2 px-3 text-right tabular-nums font-medium ${
@@ -627,6 +566,69 @@ export function AssemblyDashboard({
           </div>
         </div>
       </div>
+
+      {/* === 2026 ANNUAL TARGETS === */}
+      {data.annualTargets && data.annualTargets.length > 0 && (
+        <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+              2026 Annual Production Progress
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
+                  <th className="text-left py-3 px-5 font-medium">SKU</th>
+                  <th className="text-right py-3 px-4 font-medium">Target</th>
+                  <th className="text-right py-3 px-4 font-medium">YTD</th>
+                  <th className="text-right py-3 px-4 font-medium text-amber-400">T7</th>
+                  <th className="text-right py-3 px-4 font-medium">Remaining</th>
+                  <th className="py-3 px-5 font-medium w-36">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.annualTargets.map((target, idx) => {
+                  const remaining = Math.max(0, target.annual_target - target.ytd_built);
+                  const isComplete = target.pct_complete >= 100;
+                  return (
+                    <tr
+                      key={target.sku}
+                      className={`border-b border-border/50 hover:bg-bg-tertiary transition-colors ${idx % 2 === 0 ? 'bg-bg-tertiary/30' : ''}`}
+                    >
+                      <td className="py-2.5 px-5 text-text-secondary">{target.display_name}</td>
+                      <td className="py-2.5 px-4 text-right text-text-muted tabular-nums">{fmt.num(target.annual_target)}</td>
+                      <td className="py-2.5 px-4 text-right text-text-tertiary tabular-nums">{fmt.num(target.ytd_built)}</td>
+                      <td className={`py-2.5 px-4 text-right tabular-nums ${target.t7 ? 'text-amber-400' : 'text-text-muted'}`}>
+                        {target.t7 ? fmt.num(target.t7) : "—"}
+                      </td>
+                      <td className={`py-2.5 px-4 text-right tabular-nums ${isComplete ? 'text-emerald-400' : 'text-text-tertiary'}`}>
+                        {isComplete ? "✓" : fmt.num(remaining)}
+                      </td>
+                      <td className="py-2.5 px-5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${Math.min(100, target.pct_complete)}%`,
+                                background: isComplete ? '#10B981' : '#0EA5E9',
+                              }}
+                            />
+                          </div>
+                          <span className={`text-[10px] tabular-nums w-12 text-right ${isComplete ? 'text-emerald-400' : 'text-text-muted'}`}>
+                            {target.pct_complete.toFixed(1)}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* === FOOTER: SYNC STATUS === */}
       <div className="flex justify-end">
