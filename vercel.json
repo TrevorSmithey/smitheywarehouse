@@ -40,10 +40,6 @@
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/cron/sync-holiday",
-      "schedule": "0 12 * * *"
-    },
-    {
       "path": "/api/cron/sync-reamaze",
       "schedule": "*/5 * * * *"
     },
@@ -98,10 +94,6 @@
     {
       "path": "/api/cron/reconcile-shopify-stats",
       "schedule": "0 6 * * 0"
-    },
-    {
-      "path": "/api/cron/backfill-warehouse",
-      "schedule": "30 * * * *"
     },
     {
       "path": "/api/cron/refresh-shiphero-token",
