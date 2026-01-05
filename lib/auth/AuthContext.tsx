@@ -39,6 +39,7 @@ interface DashboardConfig {
   hiddenTabs: DashboardTab[];
   rolePermissions: Record<DashboardRole, string[]>;
   roleDefaults: Record<DashboardRole, string>;
+  roleTabOrders: Record<DashboardRole, DashboardTab[]>;
 }
 
 interface AuthContextType {
@@ -91,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           hiddenTabs: data.hidden_tabs || [],
           rolePermissions: data.role_permissions || DEFAULT_ROLE_PERMISSIONS,
           roleDefaults: data.role_defaults || DEFAULT_ROLE_DEFAULTS,
+          roleTabOrders: data.role_tab_orders || ({} as Record<DashboardRole, DashboardTab[]>),
         });
       }
     } catch (error) {
@@ -105,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hiddenTabs: [],
         rolePermissions: DEFAULT_ROLE_PERMISSIONS as Record<DashboardRole, string[]>,
         roleDefaults: DEFAULT_ROLE_DEFAULTS as Record<DashboardRole, string>,
+        roleTabOrders: {} as Record<DashboardRole, DashboardTab[]>,
       });
     }
   }, []);
@@ -239,10 +242,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = session ? canAccessAdmin(session.role) : false;
 
+  // Use role-specific tab order if it exists, otherwise fall back to global
+  const effectiveTabOrder = session && config?.roleTabOrders?.[session.role]
+    ? config.roleTabOrders[session.role]
+    : config?.tabOrder;
+
   const accessibleTabs = session
     ? getAccessibleTabs(session.role, {
         permissions: config?.rolePermissions as Record<DashboardRole, string[]>,
-        tabOrder: config?.tabOrder,
+        tabOrder: effectiveTabOrder,
         hiddenTabs: config?.hiddenTabs,
       })
     : [];
