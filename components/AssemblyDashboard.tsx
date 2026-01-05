@@ -439,7 +439,7 @@ export function AssemblyDashboard({
               Monthly Summary
             </h3>
           </div>
-          <div className="overflow-y-auto max-h-48">
+          <div className="overflow-y-auto max-h-48 scrollbar-thin">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-bg-secondary">
                 <tr className="text-[9px] uppercase tracking-wider text-text-muted border-b border-border">
