@@ -7,6 +7,7 @@ import { SAFETY_STOCK } from "@/lib/shiphero";
 import { formatNumber } from "@/lib/dashboard-utils";
 import { MetricLabel } from "@/components/MetricLabel";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
+import { SmitheyPageLoader } from "@/components/SmitheyLoader";
 
 type InventoryCategoryTab = "cast_iron" | "carbon_steel" | "accessory" | "factory_second";
 
@@ -237,22 +238,9 @@ export function InventoryDashboard({
     return "#34D399"; // emerald-400
   };
 
-  // Loading state with branded spinner
+  // Loading state with animated quail
   if (loading && !inventory) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
-            <div
-              className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: "#0EA5E9", borderRightColor: "#0284C7" }}
-            />
-          </div>
-          <span className="text-sm text-text-tertiary tracking-widest uppercase">Opening the vault...</span>
-        </div>
-      </div>
-    );
+    return <SmitheyPageLoader />;
   }
 
   return (

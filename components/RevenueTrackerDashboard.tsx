@@ -23,6 +23,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react";
+import { SmitheyPageLoader } from "@/components/SmitheyLoader";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
 import { getQuarterBoundaries } from "@/lib/date-utils";
 import type { RevenueTrackerResponse, QuarterSummary, DaySalesData, RevenueTrackerChannel } from "@/lib/types";
@@ -675,16 +676,9 @@ export function RevenueTrackerDashboard({
     onYearChange(year);
   }, [onYearChange]);
 
-  // Loading state
+  // Loading state with animated quail
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="w-6 h-6 animate-spin text-accent-blue" />
-          <span className="text-sm text-text-tertiary tracking-wide">Loading revenue data...</span>
-        </div>
-      </div>
-    );
+    return <SmitheyPageLoader />;
   }
 
   // Empty state

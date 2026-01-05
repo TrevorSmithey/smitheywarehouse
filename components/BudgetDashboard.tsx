@@ -3,6 +3,7 @@
 import { Target, Download } from "lucide-react";
 import { format } from "date-fns";
 import { formatNumber } from "@/lib/dashboard-utils";
+import { SmitheyPageLoader } from "@/components/SmitheyLoader";
 import type {
   BudgetResponse,
   BudgetDateRange,
@@ -193,20 +194,7 @@ export function BudgetDashboard({
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full border-4 border-bg-tertiary" />
-            <div
-              className="absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: colors.accent, borderRightColor: colors.emerald }}
-            />
-          </div>
-          <span className="text-sm text-text-tertiary tracking-widest uppercase">Analyzing sales...</span>
-        </div>
-      </div>
-    );
+    return <SmitheyPageLoader />;
   }
 
   if (!data) {

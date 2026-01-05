@@ -11,6 +11,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { RefreshCw, Calendar, TrendingUp, Package } from "lucide-react";
+import { SmitheyPageLoader } from "@/components/SmitheyLoader";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
 import type { HolidayResponse } from "@/lib/types";
 
@@ -83,15 +84,9 @@ function HolidayChartTooltip({ active, payload, label, prefix = "" }: {
 }
 
 export function HolidayDashboard({ data, loading, onRefresh }: HolidayDashboardProps) {
+  // Loading state with animated quail
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-4">
-          <RefreshCw className="w-6 h-6 animate-spin text-accent-blue" />
-          <span className="text-sm text-text-tertiary tracking-wide">Loading holiday data...</span>
-        </div>
-      </div>
-    );
+    return <SmitheyPageLoader />;
   }
 
   if (!data) {

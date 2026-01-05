@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ChevronDown,
 } from "lucide-react";
+import { SmitheyPageLoader } from "@/components/SmitheyLoader";
 import {
   AreaChart,
   Area,
@@ -1081,19 +1082,9 @@ export function EcommerceAnalyticsDashboard({
     );
   }
 
-  // Loading state
+  // Loading state with animated quail
   if (loading && !data) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="flex flex-col items-center gap-4">
-          <div
-            className="w-10 h-10 border-2 rounded-full animate-spin"
-            style={{ borderColor: 'rgba(217, 119, 6, 0.2)', borderTopColor: FORGE.copper }}
-          />
-          <span className="text-text-muted text-sm">Loading analytics...</span>
-        </div>
-      </div>
-    );
+    return <SmitheyPageLoader />;
   }
 
   if (!data) return null;

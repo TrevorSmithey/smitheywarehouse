@@ -143,6 +143,64 @@ These are manually flagged as corporate gifting (one-time buyers, not recurring 
 
 ---
 
+## Design Philosophy: Whimsy & Delight
+
+### The Rule
+**Little bits of whimsy are okay as long as they are subservient.** This is a serious business operations dashboard, but occasional moments of fun and personality are welcome—when they don't get in the way.
+
+### When Whimsy Works
+- **Loading states**: Cast-iron themed messages ("Seasoning the data...", "Tempering the numbers...") transform dead time into brand moments
+- **Login celebration**: A 2-second moment of delight with the bouncing quail creates emotional connection
+- **Empty states**: A gentle message or subtle animation can soften the "nothing here" experience
+- **Success feedback**: After completing an action, a brief celebration feels earned
+
+### When Whimsy Fails
+- **Never forced**: If it feels like "we added this to be quirky," cut it
+- **Never blocking**: Fun should never add friction or slow down work
+- **Never repetitive**: The 10th time someone sees a cute animation, it becomes annoying
+- **Never in data**: Metrics, charts, tables—these are sacred. No jokes in the numbers.
+
+### The AnimatedQuail System
+The Smithey quail mascot has four states:
+- `idle`: Gentle pecking animation (default, for loading)
+- `looking`: Head raised, attentive (when user is typing)
+- `happy`: Bouncing celebration (success moments)
+- `surprised`: Shake animation (error/wrong PIN)
+
+Use sparingly. The quail appears on:
+- Login page (interactive)
+- Loading states (subtle background presence)
+
+### Loading Messages
+Located in `/components/SmitheyLoader.tsx`:
+```typescript
+const LOADING_MESSAGES = [
+  "Seasoning the data...",      // Default/signature
+  "Firing up the forge...",
+  "Heating the iron...",
+  "Opening the vault...",
+  "Tempering the numbers...",
+  "Polishing the pans...",
+  "Stoking the coals...",
+  "Forging ahead...",
+  "Hammering out the details...",
+  "Preheating the numbers...",
+];
+```
+
+These rotate randomly during longer loads. For quick loads, "Seasoning the data..." is the default signature message.
+
+### The Test
+Before adding any whimsy, ask:
+1. Does this serve the user or just amuse the developer?
+2. Will this be delightful on the 100th viewing?
+3. Does it slow anything down?
+4. Is it on-brand (cast iron, forge, craftsmanship themes)?
+
+If any answer is no, cut it.
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development
