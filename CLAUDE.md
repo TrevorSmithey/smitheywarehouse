@@ -256,6 +256,19 @@ When `sync-meta` and `sync-google-ads` run concurrently, they can overwrite each
 - **Color-coded rates**: Green (<2%), Amber (2-5%), Red (>5%) for all-time defect rates
 - **Ember-tinted scrollbar**: `.scrollbar-thin` class with `rgba(249, 115, 22, x)` for on-brand dark theme
 
+### Known Limitations (Revisit Later)
+1. **MIN_VOLUME_THRESHOLD = 500 may be too aggressive**
+   - New SKUs or low-volume specialty items won't appear until 500+ units produced
+   - Could miss critical early-stage quality problems
+   - Consider: Lower to 100-200, or show low-volume SKUs with "Low Volume" badge
+
+2. **Anomaly detection thresholds are hardcoded**
+   - `recentRate > allTimeRate * 1.3` (30% higher)
+   - `recentRate > allTimeRate + 1.5` (+1.5 percentage points)
+   - `recentTotal >= 50` (minimum recent volume)
+   - Edge case: 0.5% → 1.8% is +260% but only +1.3pp (wouldn't flag)
+   - Consider: Extract to named constants, validate against historical data
+
 ---
 
 ## Development Commands
