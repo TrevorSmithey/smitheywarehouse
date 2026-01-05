@@ -201,6 +201,39 @@ If any answer is no, cut it.
 
 ---
 
+## Paid Media Integration (January 2026)
+
+### Architecture Decisions
+
+**Platform-Specific Tables (Not Unified)**
+- `meta_campaigns` and `google_campaigns` are separate tables, NOT a unified `ad_campaigns` table
+- Why: Meta has `reach`, `frequency`, `add_to_carts` that Google doesn't. Google has `search_impression_share` that Meta doesn't. A unified table would have 10+ nullable columns and messy TypeScript unions.
+- Aggregation happens in `ad_daily_stats` and `ad_monthly_stats` which join on `date`.
+
+**MER vs Platform ROAS**
+- MER (Marketing Efficiency Ratio) = Shopify Revenue / Total Ad Spend
+- Platform ROAS is inflated by attribution overlap. MER is the truth.
+- Always show MER as the hero metric. Platform ROAS is for channel comparison only.
+
+**nCAC Calculation**
+- Uses `Set<string>` to count DISTINCT `shopify_customer_id` per day
+- Previous bug: counted orders instead of unique customers, inflating new customer count
+
+### Race Condition Fix
+When `sync-meta` and `sync-google-ads` run concurrently, they can overwrite each other's data in `ad_daily_stats`. Solution: atomic upsert functions (`upsert_ad_daily_stats_meta`, `upsert_ad_daily_stats_google`) that use `COALESCE` to preserve the other platform's columns.
+
+### Vercel Cron Limits
+- **Limit: 20 cron jobs per project**
+- Combined weekly jobs (`reconcile-shopify-stats` + `refresh-shiphero-token`) into `weekly-maintenance` to save slots
+- Before adding new crons, always check current count: `grep -c '"path":' vercel.json`
+
+### Secrets in Code
+- GitHub Push Protection blocks commits with hardcoded secrets
+- NEVER put OAuth tokens, API keys, or credentials directly in code
+- Always use `process.env.VARIABLE_NAME` even in utility scripts
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development
