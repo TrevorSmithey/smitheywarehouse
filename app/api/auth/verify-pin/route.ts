@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { logActivity, logFailedLogin } from "@/lib/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
  *
  * Verifies a 4-digit PIN and returns user info if valid.
  * Updates last_login_at on successful auth.
+ * Logs login attempts for admin tracking.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +33,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error || !user) {
+      // Log failed login attempt (fire-and-forget)
+      logFailedLogin(pin).catch(() => {});
       return NextResponse.json({ error: "Invalid PIN" }, { status: 401 });
     }
 
@@ -39,6 +43,9 @@ export async function POST(request: NextRequest) {
       .from("dashboard_users")
       .update({ last_login_at: new Date().toISOString() })
       .eq("id", user.id);
+
+    // Log successful login (fire-and-forget)
+    logActivity(user.id, "login").catch(() => {});
 
     return NextResponse.json({
       success: true,
