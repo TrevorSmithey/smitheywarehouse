@@ -23,6 +23,9 @@ import {
 } from "lucide-react";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import { NotificationBell } from "@/components/NotificationBell";
+import { AnnouncementProvider } from "@/lib/announcements";
 import { useAuth } from "@/lib/auth";
 import type { DashboardTab } from "@/lib/auth/permissions";
 
@@ -289,14 +292,18 @@ export default function DashboardLayout({
         setTriggerRefresh,
       }}
     >
-      {/* Impersonation Banner - fixed at top when admin is viewing as another user */}
-      <ImpersonationBanner />
+      <AnnouncementProvider>
+        {/* Impersonation Banner - fixed at top when admin is viewing as another user */}
+        <ImpersonationBanner />
 
       <div
         className={`min-h-screen bg-bg-primary text-text-primary p-4 sm:p-6 overscroll-none ${
           isImpersonating ? "pt-14 sm:pt-14" : ""
         }`}
       >
+        {/* System Announcements - full-width banner at top */}
+        <AnnouncementBanner />
+
         {/* Header */}
         <header className="mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -313,7 +320,7 @@ export default function DashboardLayout({
               </p>
             </div>
 
-            {/* User info + Admin + Logout */}
+            {/* User info + Admin + Notifications + Logout */}
             <div className="flex items-center gap-4">
               {isAdmin && (
                 <Link
@@ -324,6 +331,7 @@ export default function DashboardLayout({
                   <span className="hidden sm:inline uppercase tracking-wider">Admin</span>
                 </Link>
               )}
+              <NotificationBell />
               <span className="text-xs text-text-secondary uppercase tracking-wider hidden sm:inline">
                 {session.name}
               </span>
@@ -428,6 +436,7 @@ export default function DashboardLayout({
         {/* Sync Health Banner - data freshness indicator (admin only via component) */}
         <SyncHealthBanner />
       </div>
+      </AnnouncementProvider>
     </DashboardContext.Provider>
   );
 }
