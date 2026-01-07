@@ -153,19 +153,35 @@ export async function GET(request: Request) {
     const adInsights = await meta.getAdInsights(startDate, endDate);
     console.log(`[META SYNC] Retrieved ${adInsights.length} ad insight records`);
 
-    // Get creative details for thumbnail URLs
-    // Wrapped in try-catch to prevent entire sync from failing if creative fetch times out
+    // Get creative details for thumbnail URLs - only for ads that don't have them yet
+    // This dramatically speeds up daily syncs since most ads already have thumbnails
     const uniqueAdIds = [...new Set(adInsights.map((a) => a.meta_ad_id))];
-    console.log(`[META SYNC] Fetching creatives for ${uniqueAdIds.length} unique ads...`);
+
+    // Check which ads already have thumbnails in the database
+    const { data: existingAds } = await supabase
+      .from("meta_ads")
+      .select("meta_ad_id")
+      .in("meta_ad_id", uniqueAdIds)
+      .not("thumbnail_url", "is", null);
+
+    const existingAdIds = new Set((existingAds || []).map(a => a.meta_ad_id));
+    const newAdIds = uniqueAdIds.filter(id => !existingAdIds.has(id));
+
+    console.log(`[META SYNC] ${uniqueAdIds.length} unique ads, ${existingAdIds.size} already have thumbnails, fetching ${newAdIds.length} new`);
 
     let creatives = new Map<string, { thumbnail_url?: string; object_type?: string }>();
-    try {
-      creatives = await meta.getAdCreatives(uniqueAdIds);
-      console.log(`[META SYNC] Retrieved ${creatives.size} ad creatives`);
-    } catch (creativeError) {
-      // Log but don't fail - ads will sync without thumbnails
-      console.error("[META SYNC] Failed to fetch creatives (continuing without thumbnails):", creativeError);
-      stats.errors++;
+
+    if (newAdIds.length > 0) {
+      try {
+        creatives = await meta.getAdCreatives(newAdIds);
+        console.log(`[META SYNC] Retrieved ${creatives.size} ad creatives`);
+      } catch (creativeError) {
+        // Log but don't fail - ads will sync without thumbnails
+        console.error("[META SYNC] Failed to fetch creatives (continuing without thumbnails):", creativeError);
+        stats.errors++;
+      }
+    } else {
+      console.log("[META SYNC] Skipping creative fetch - all ads have thumbnails");
     }
 
     // Upsert ad insights in batches
