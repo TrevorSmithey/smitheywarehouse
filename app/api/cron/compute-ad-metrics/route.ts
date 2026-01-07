@@ -291,6 +291,16 @@ export async function GET(request: Request) {
     const duration = Date.now() - startTime;
     console.log(`[AD METRICS] Complete in ${duration}ms:`, stats);
 
+    // Log to ad_sync_logs for monitoring
+    await supabase.from("ad_sync_logs").insert({
+      sync_type: "compute_ad_metrics",
+      status: "completed",
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      records_synced: stats.dailyUpdated + stats.monthlyUpdated,
+      metadata: { ...stats, dateRange: { startDate: startDateStr, endDate: endDateStr } },
+    });
+
     return NextResponse.json({
       success: true,
       ...stats,
@@ -301,9 +311,19 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("[AD METRICS] Fatal error:", error);
     const errorMessage = error instanceof Error ? error.message : "Computation failed";
+    const elapsed = Date.now() - startTime;
+
+    // Log failure for monitoring
+    await supabase.from("ad_sync_logs").insert({
+      sync_type: "compute_ad_metrics",
+      status: "failed",
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      error_message: errorMessage,
+    });
 
     return NextResponse.json(
-      { error: errorMessage, duration: Date.now() - startTime },
+      { error: errorMessage, duration: elapsed },
       { status: 500 }
     );
 

@@ -154,11 +154,19 @@ export async function GET(request: Request) {
     console.log(`[META SYNC] Retrieved ${adInsights.length} ad insight records`);
 
     // Get creative details for thumbnail URLs
+    // Wrapped in try-catch to prevent entire sync from failing if creative fetch times out
     const uniqueAdIds = [...new Set(adInsights.map((a) => a.meta_ad_id))];
     console.log(`[META SYNC] Fetching creatives for ${uniqueAdIds.length} unique ads...`);
 
-    const creatives = await meta.getAdCreatives(uniqueAdIds);
-    console.log(`[META SYNC] Retrieved ${creatives.size} ad creatives`);
+    let creatives = new Map<string, { thumbnail_url?: string; object_type?: string }>();
+    try {
+      creatives = await meta.getAdCreatives(uniqueAdIds);
+      console.log(`[META SYNC] Retrieved ${creatives.size} ad creatives`);
+    } catch (creativeError) {
+      // Log but don't fail - ads will sync without thumbnails
+      console.error("[META SYNC] Failed to fetch creatives (continuing without thumbnails):", creativeError);
+      stats.errors++;
+    }
 
     // Upsert ad insights in batches
     for (let i = 0; i < adInsights.length; i += UPSERT_BATCH_SIZE) {

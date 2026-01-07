@@ -46,6 +46,19 @@ export async function GET(request: Request) {
 
     if (!unanalyzedLeads || unanalyzedLeads.length === 0) {
       console.log("[ANALYZE-LEADS] No unanalyzed leads found");
+
+      // Log even when nothing to analyze - proves cron is running
+      await supabase.from("sync_logs").insert({
+        sync_type: "lead_analysis",
+        started_at: new Date(startTime).toISOString(),
+        completed_at: new Date().toISOString(),
+        status: "success",
+        records_expected: 0,
+        records_synced: 0,
+        duration_ms: Date.now() - startTime,
+        details: { message: "No unanalyzed leads found" },
+      });
+
       return NextResponse.json({
         success: true,
         message: "No leads to analyze",

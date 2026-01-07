@@ -163,11 +163,13 @@ async function logSync(
   const duration = Date.now() - startTime;
   await supabase.from("sync_logs").insert({
     sync_type: "backfill-warehouse",
+    started_at: new Date(startTime).toISOString(),
+    completed_at: new Date().toISOString(),
     status,
+    records_expected: processed,
     records_synced: updated,
-    records_processed: processed,
     duration_ms: duration,
     error_message: errorMessage || null,
-    metadata: { processed, updated },
+    details: { processed, updated },
   });
 }
