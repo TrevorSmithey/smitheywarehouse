@@ -110,6 +110,10 @@
     {
       "path": "/api/cron/compute-ad-metrics",
       "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/backfill-warehouse",
+      "schedule": "15 * * * *"
     }
   ]
 }
