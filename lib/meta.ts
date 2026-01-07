@@ -413,11 +413,12 @@ export class MetaClient {
           console.warn(`[META] Failed to get creative ID for ad ${adId}:`, error);
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // Reduced delay - Meta rate limits are dynamic, 10ms is usually safe
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
 
       if (i + batchSize < adIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
 
@@ -444,11 +445,12 @@ export class MetaClient {
           console.warn(`[META] Failed to get creative ${creativeId}:`, error);
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Reduced delay for faster sync
+        await new Promise((resolve) => setTimeout(resolve, 20));
       }
 
       if (i + batchSize < creativeIds.length) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
 
