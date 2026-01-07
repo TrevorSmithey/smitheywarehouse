@@ -18,6 +18,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import {
   createMetaClient,
   getDailySyncDateRange,
+  getAdInsightsSyncDateRange,
   type ParsedCampaignInsight,
   type ParsedAdInsight,
 } from "@/lib/meta";
@@ -78,16 +79,19 @@ export async function GET(request: Request) {
 
     const meta = createMetaClient();
 
-    // Get date range (90 days for attribution changes)
+    // Get date range (90 days for campaigns - attribution accuracy matters)
     const { startDate, endDate } = getDailySyncDateRange();
-    console.log(`[META SYNC] Date range: ${startDate} to ${endDate}`);
+    // Get shorter date range for ads (30 days - creative fatigue detection)
+    const { startDate: adStartDate, endDate: adEndDate } = getAdInsightsSyncDateRange();
+    console.log(`[META SYNC] Campaign date range: ${startDate} to ${endDate}`);
+    console.log(`[META SYNC] Ad date range: ${adStartDate} to ${adEndDate}`);
 
     // Log sync start
     await supabase.from("ad_sync_logs").insert({
       sync_type: "meta",
       status: "running",
       started_at: new Date().toISOString(),
-      metadata: { startDate, endDate },
+      metadata: { campaignDateRange: { startDate, endDate }, adDateRange: { startDate: adStartDate, endDate: adEndDate } },
     });
 
     // ============================================================
@@ -147,10 +151,11 @@ export async function GET(request: Request) {
 
     // ============================================================
     // 2. Fetch and sync ad insights (for creative tracking)
+    // Using shorter 30-day window to avoid timeout (200 ads × 90 days = too many rows)
     // ============================================================
     console.log("[META SYNC] Fetching ad insights...");
 
-    const adInsights = await meta.getAdInsights(startDate, endDate);
+    const adInsights = await meta.getAdInsights(adStartDate, adEndDate);
     console.log(`[META SYNC] Retrieved ${adInsights.length} ad insight records`);
 
     // Get creative details for thumbnail URLs - only for ads that don't have them yet
@@ -271,7 +276,8 @@ export async function GET(request: Request) {
       success: true,
       ...stats,
       duration,
-      dateRange: { startDate, endDate },
+      campaignDateRange: { startDate, endDate },
+      adDateRange: { startDate: adStartDate, endDate: adEndDate },
       ...(approachedTimeout && { warning: "Approaching timeout threshold" }),
     });
 

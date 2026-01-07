@@ -326,9 +326,9 @@ export class MetaClient {
 
       after = response.paging?.cursors?.after;
 
-      // Rate limit buffer
+      // Rate limit buffer - 50ms is safe for Meta's dynamic limits
       if (after) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     } while (after);
 
@@ -367,9 +367,9 @@ export class MetaClient {
 
       after = response.paging?.cursors?.after;
 
-      // Rate limit buffer
+      // Rate limit buffer - 50ms is safe for Meta's dynamic limits
       if (after) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     } while (after);
 
@@ -603,11 +603,30 @@ export function getHistoricalDateRange(): { startDate: string; endDate: string }
 
 /**
  * Get date range for daily sync (90 days to capture attribution changes)
+ * Used for campaign-level data where attribution accuracy matters
  */
 export function getDailySyncDateRange(): { startDate: string; endDate: string } {
   const endDate = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 90);
+
+  return {
+    startDate: formatDate(startDate),
+    endDate: formatDate(endDate),
+  };
+}
+
+/**
+ * Get date range for ad-level sync (30 days)
+ * Shorter than campaign sync because:
+ * 1. Ad-level data generates ~4x more rows (200 ads × 90 days = huge)
+ * 2. Creative fatigue detection only needs ~30 days of CTR trend
+ * 3. Meta attribution typically settles within 7-14 days
+ */
+export function getAdInsightsSyncDateRange(): { startDate: string; endDate: string } {
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - 30);
 
   return {
     startDate: formatDate(startDate),
