@@ -89,10 +89,15 @@ export const RATE_LIMIT_DELAYS = {
  * Centralized limits for all database queries.
  * These should be set high enough to never truncate real data.
  * If a limit is reached, a warning is logged.
+ *
+ * IMPORTANT: These limits were increased for peak season (Nov-Dec 2026).
+ * At 2000+ orders/day during Q4, previous 50k limits would truncate data.
+ * Silent data truncation is a critical integrity failure.
  */
 export const QUERY_LIMITS = {
-  // Daily fulfillments - 50k covers ~33 days at 1500/day peak
-  DAILY_FULFILLMENTS: 50000,
+  // Daily fulfillments - 150k covers ~75 days at 2000/day peak season
+  // Previous 50k limit would truncate during Q4 (was hitting ~100k/50days)
+  DAILY_FULFILLMENTS: 150000,
 
   // Oldest orders per warehouse - fetch extra to allow for filtering
   OLDEST_ORDERS_SMITHEY: 100,
@@ -104,17 +109,18 @@ export const QUERY_LIMITS = {
   // Stuck shipments - 100 is reasonable for display
   STUCK_SHIPMENTS: 100,
 
-  // Transit data - 10k shipments over 30 days
-  TRANSIT_DATA: 10000,
+  // Transit data - 30k shipments over 30 days (peak: 1000/day delivered)
+  TRANSIT_DATA: 30000,
 
-  // Lead time data - 50k orders
-  LEAD_TIME: 50000,
+  // Lead time data - 150k orders (peak season: 2000/day for 75 days)
+  // Previous 50k limit would truncate during Q4
+  LEAD_TIME: 150000,
 
   // Engraving queue - unfulfilled only, should be ~2k max
   ENGRAVING_QUEUE: 10000,
 
-  // Aging data - 10k unfulfilled orders
-  AGING_DATA: 10000,
+  // Aging data - 30k unfulfilled orders (peak backlog)
+  AGING_DATA: 30000,
 
   // Budget API
   BUDGETS: 1000000,

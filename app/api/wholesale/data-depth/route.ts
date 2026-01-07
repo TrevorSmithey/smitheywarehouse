@@ -44,9 +44,10 @@ export async function GET(request: Request) {
       .select("*", { count: "exact", head: true });
 
     // 4. Customers with 5+ orders (enough for pattern analysis)
+    // IMPORTANT: Use *_sale_date (from transaction sync, current) NOT *_order_date (from customer sync, stale)
     const { data: customersWithHistory } = await supabase
       .from("ns_wholesale_customers")
-      .select("ns_customer_id, company_name, lifetime_orders, first_order_date, last_order_date")
+      .select("ns_customer_id, company_name, lifetime_orders, first_sale_date, last_sale_date")
       .gte("lifetime_orders", 5)
       .order("lifetime_orders", { ascending: false });
 
@@ -59,8 +60,8 @@ export async function GET(request: Request) {
     const twoYearsAgo = new Date();
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
     const longHistoryCustomers = customersWithHistory?.filter((c) => {
-      if (!c.first_order_date) return false;
-      return new Date(c.first_order_date) <= twoYearsAgo;
+      if (!c.first_sale_date) return false;
+      return new Date(c.first_sale_date) <= twoYearsAgo;
     }) || [];
 
     // 7. Distribution of order counts
@@ -116,8 +117,8 @@ export async function GET(request: Request) {
       top_pattern_candidates: strongPatternCustomers.slice(0, 15).map((c) => ({
         company_name: c.company_name,
         lifetime_orders: c.lifetime_orders,
-        first_order: c.first_order_date,
-        last_order: c.last_order_date,
+        first_order: c.first_sale_date,
+        last_order: c.last_sale_date,
       })),
       ai_viability_assessment: {
         has_enough_history: historyMonths >= 18,

@@ -3,36 +3,31 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Sync Health Row from the sync_health view
+ *
+ * The view now includes:
+ * - All syncs that have ever logged (from sync_logs)
+ * - All syncs that SHOULD exist but haven't run (from expected_syncs)
+ *
+ * This fixes the critical flaw where syncs that never ran were invisible.
+ */
 interface SyncHealthRow {
   sync_type: string;
   status: string;
-  started_at: string;
-  completed_at: string;
+  started_at: string | null;
+  completed_at: string | null;
   records_expected: number | null;
   records_synced: number | null;
   success_rate: number;
   error_message: string | null;
   duration_ms: number | null;
   hours_since_success: number | null;
+  display_name: string | null;
+  stale_threshold_hours: number | null;
+  is_stale: boolean;
+  never_ran: boolean;
 }
-
-// Stale thresholds per sync type (in hours)
-// Webhooks: Should fire frequently during business hours, 12h is concerning
-// Crons: Depend on schedule, but 24h is reasonable for most
-// Assembly: Only runs when manually triggered, give it more slack
-const STALE_THRESHOLDS: Record<string, number> = {
-  d2c: 12,          // D2C webhook - orders should come in frequently
-  b2b: 24,          // B2B webhook - less frequent, 24h is ok
-  inventory: 6,     // Inventory cron - runs every few hours
-  holiday: 24,      // Holiday sync - runs daily
-  assembly: 48,     // Assembly sync - manually triggered
-  netsuite_customers: 24,    // NetSuite customers - runs daily at 6 AM UTC
-  netsuite_transactions: 24, // NetSuite transactions - runs daily at 6:05 AM UTC
-  netsuite_lineitems: 24,    // NetSuite line items - runs daily at 6:10 AM UTC
-  klaviyo: 24,      // Klaviyo sync - runs daily
-  reamaze: 24,      // Reamaze sync - runs daily
-  shopify_stats: 24, // Shopify stats - runs daily
-};
 
 // Sync types to exclude from health monitoring
 // These are disabled/unconfigured syncs that shouldn't trigger alerts
@@ -47,6 +42,7 @@ export async function GET() {
     const supabase = createServiceClient();
 
     // Get latest sync status for each type
+    // The view now includes syncs that SHOULD exist but haven't run (never_ran = true)
     const { data: health, error } = await supabase
       .from("sync_health")
       .select("*")
@@ -61,42 +57,49 @@ export async function GET() {
     const activeHealth = (health || []).filter(h => !EXCLUDED_SYNC_TYPES.has(h.sync_type));
 
     // Determine overall health (only from active syncs)
+    // CRITICAL: never_ran syncs are now detected and flagged as critical
+    const hasNeverRan = activeHealth.some((h) => h.never_ran);
     const hasFailures = activeHealth.some((h) => h.status === "failed");
     const hasPartials = activeHealth.some((h) => h.status === "partial");
-    const hasStaleData = activeHealth.some((h) => {
-      const threshold = STALE_THRESHOLDS[h.sync_type] || 24;
-      return h.hours_since_success && h.hours_since_success > threshold;
-    });
+    const hasStaleData = activeHealth.some((h) => h.is_stale && !h.never_ran);
 
-    const overallStatus = hasFailures
+    // never_ran is critical - means expected sync has never logged
+    const overallStatus = hasNeverRan || hasFailures
       ? "critical"
       : hasPartials || hasStaleData
         ? "warning"
         : "healthy";
 
     // Format for dashboard consumption (only active syncs)
-    const syncs = activeHealth.map((h) => {
-      const threshold = STALE_THRESHOLDS[h.sync_type] || 24;
-      return {
-        type: h.sync_type,
-        status: h.status,
-        lastRun: h.completed_at,
-        recordsExpected: h.records_expected,
-        recordsSynced: h.records_synced,
-        successRate: h.success_rate,
-        durationMs: h.duration_ms,
-        hoursSinceSuccess: h.hours_since_success,
-        error: h.error_message,
-        isStale: h.hours_since_success ? h.hours_since_success > threshold : false,
-        staleThreshold: threshold,
-      };
-    });
+    const syncs = activeHealth.map((h) => ({
+      type: h.sync_type,
+      displayName: h.display_name || h.sync_type,
+      status: h.status,
+      lastRun: h.completed_at,
+      recordsExpected: h.records_expected,
+      recordsSynced: h.records_synced,
+      successRate: h.success_rate,
+      durationMs: h.duration_ms,
+      hoursSinceSuccess: h.hours_since_success,
+      error: h.error_message,
+      isStale: h.is_stale,
+      staleThreshold: h.stale_threshold_hours || 24,
+      neverRan: h.never_ran,
+    }));
 
     // Cache for 1 minute, stale-while-revalidate for 3 minutes
     return NextResponse.json({
       status: overallStatus,
       syncs,
       checkedAt: new Date().toISOString(),
+      // Include counts for quick summary
+      summary: {
+        total: syncs.length,
+        healthy: syncs.filter(s => s.status === "success" && !s.isStale).length,
+        stale: syncs.filter(s => s.isStale && !s.neverRan).length,
+        failed: syncs.filter(s => s.status === "failed").length,
+        neverRan: syncs.filter(s => s.neverRan).length,
+      },
     }, {
       headers: {
         "Cache-Control": "public, s-maxage=60, stale-while-revalidate=180",

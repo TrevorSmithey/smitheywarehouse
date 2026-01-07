@@ -4,6 +4,7 @@
  * Combines multiple weekly tasks into one cron job to save slots:
  * 1. ShipHero token refresh
  * 2. Shopify stats reconciliation
+ * 3. Sync logs cleanup (prevents table bloat)
  *
  * Runs Sundays at 2:00 AM UTC (9:00 PM EST Saturday)
  */
@@ -78,6 +79,30 @@ export async function GET(request: Request) {
       error: error instanceof Error ? error.message : "Unknown error",
     };
     console.error("[WEEKLY] Shopify reconcile error:", error);
+  }
+
+  // 3. Cleanup old sync logs (prevents table bloat)
+  console.log("[WEEKLY] Starting sync logs cleanup...");
+  const cleanupStart = Date.now();
+  try {
+    const res = await fetch(`${baseUrl}/api/cron/cleanup-sync-logs`, {
+      method: "GET",
+      headers,
+    });
+    const data = await res.json();
+    results.syncLogsCleanup = {
+      success: res.ok,
+      duration: Date.now() - cleanupStart,
+      error: data.error,
+    };
+    console.log(`[WEEKLY] Sync logs cleanup: ${res.ok ? "success" : "failed"} - deleted ${data.deleted || 0} rows`);
+  } catch (error) {
+    results.syncLogsCleanup = {
+      success: false,
+      duration: Date.now() - cleanupStart,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+    console.error("[WEEKLY] Sync logs cleanup error:", error);
   }
 
   const totalDuration = Date.now() - startTime;

@@ -92,12 +92,14 @@ export async function GET(request: Request) {
     cutoffDate.setDate(cutoffDate.getDate() - MAX_DAYS_SINCE_LAST_ORDER);
     const cutoffDateStr = cutoffDate.toISOString().split("T")[0];
 
+    // IMPORTANT: Use last_sale_date (from transaction sync, current) NOT last_order_date (from customer sync, stale)
+    // This was a data integrity bug - last_order_date can be 6+ months out of date
     const { data: customers, error: customersError } = await supabase
       .from("ns_wholesale_customers")
-      .select("ns_customer_id, company_name, lifetime_revenue, lifetime_orders, segment, last_order_date")
+      .select("ns_customer_id, company_name, lifetime_revenue, lifetime_orders, segment, last_sale_date")
       .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
       .gte("lifetime_orders", MIN_ORDERS_FOR_PATTERN)
-      .gte("last_order_date", cutoffDateStr)
+      .gte("last_sale_date", cutoffDateStr)
       .order("lifetime_revenue", { ascending: false });
 
     if (customersError) {
