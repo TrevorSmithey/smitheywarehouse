@@ -113,7 +113,7 @@
     },
     {
       "path": "/api/cron/backfill-warehouse",
-      "schedule": "15 * * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }

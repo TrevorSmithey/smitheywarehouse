@@ -34,19 +34,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Find orders from last 7 days with null warehouse, excluding POS
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Find orders from last 30 days with null warehouse, excluding POS
+    // Extended from 7 days to prevent silent data loss on older orders
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const { data: orders, error: fetchError } = await supabase
       .from("orders")
       .select("id, order_name, source_name")
       .is("warehouse", null)
-      .gte("created_at", sevenDaysAgo.toISOString())
+      .gte("created_at", thirtyDaysAgo.toISOString())
       .neq("source_name", "pos")
       .eq("canceled", false)
       .order("created_at", { ascending: false })
-      .limit(50); // Process 50 at a time to stay within time limits
+      .limit(100); // Process 100 at a time - increased from 50 for faster backlog clearing
 
     if (fetchError) {
       throw new Error(`Failed to fetch orders: ${fetchError.message}`);
