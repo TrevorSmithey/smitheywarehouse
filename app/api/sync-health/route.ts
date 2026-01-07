@@ -29,6 +29,14 @@ interface SyncHealthRow {
   never_ran: boolean;
 }
 
+interface DataFreshnessRow {
+  data_type: string;
+  last_record: string | null;
+  hours_stale: number;
+  is_stale: boolean;
+  records_last_24h: number;
+}
+
 // Sync types to exclude from health monitoring
 // These are disabled/unconfigured syncs that shouldn't trigger alerts
 const EXCLUDED_SYNC_TYPES = new Set<string>([
@@ -43,15 +51,19 @@ export async function GET() {
 
     // Get latest sync status for each type
     // The view now includes syncs that SHOULD exist but haven't run (never_ran = true)
-    const { data: health, error } = await supabase
-      .from("sync_health")
-      .select("*")
-      .returns<SyncHealthRow[]>();
+    // Fetch sync health and data freshness in parallel
+    const [healthResult, freshnessResult] = await Promise.all([
+      supabase.from("sync_health").select("*").returns<SyncHealthRow[]>(),
+      supabase.from("data_freshness").select("*").returns<DataFreshnessRow[]>(),
+    ]);
 
-    if (error) {
-      console.error("Error fetching sync health:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (healthResult.error) {
+      console.error("Error fetching sync health:", healthResult.error);
+      return NextResponse.json({ error: healthResult.error.message }, { status: 500 });
     }
+
+    const health = healthResult.data;
+    const freshness = freshnessResult.data || [];
 
     // Filter out excluded/disabled sync types
     const activeHealth = (health || []).filter(h => !EXCLUDED_SYNC_TYPES.has(h.sync_type));
@@ -63,8 +75,13 @@ export async function GET() {
     const hasPartials = activeHealth.some((h) => h.status === "partial");
     const hasStaleData = activeHealth.some((h) => h.is_stale && !h.never_ran);
 
+    // Check data freshness (catches silent webhook failures)
+    // This detects when webhooks stop firing even though crons show healthy
+    const hasStaleWebhookData = freshness.some((f) => f.is_stale);
+
     // never_ran is critical - means expected sync has never logged
-    const overallStatus = hasNeverRan || hasFailures
+    // stale webhook data is critical - means webhooks silently stopped
+    const overallStatus = hasNeverRan || hasFailures || hasStaleWebhookData
       ? "critical"
       : hasPartials || hasStaleData
         ? "warning"
@@ -87,10 +104,20 @@ export async function GET() {
       neverRan: h.never_ran,
     }));
 
+    // Format data freshness for response
+    const dataFreshness = freshness.map((f) => ({
+      type: f.data_type,
+      lastRecord: f.last_record,
+      hoursStale: Math.round(f.hours_stale * 10) / 10,
+      isStale: f.is_stale,
+      recordsLast24h: f.records_last_24h,
+    }));
+
     // Cache for 1 minute, stale-while-revalidate for 3 minutes
     return NextResponse.json({
       status: overallStatus,
       syncs,
+      dataFreshness,
       checkedAt: new Date().toISOString(),
       // Include counts for quick summary
       summary: {
@@ -99,6 +126,7 @@ export async function GET() {
         stale: syncs.filter(s => s.isStale && !s.neverRan).length,
         failed: syncs.filter(s => s.status === "failed").length,
         neverRan: syncs.filter(s => s.neverRan).length,
+        staleData: dataFreshness.filter(d => d.isStale).length,
       },
     }, {
       headers: {
