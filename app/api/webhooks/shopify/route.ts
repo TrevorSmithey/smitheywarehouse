@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     switch (topic) {
       case "orders/create":
       case "orders/updated":
+      case "orders/fulfilled":
         await upsertOrder(supabase, order);
         break;
 
