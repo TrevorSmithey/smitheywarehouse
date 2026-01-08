@@ -106,6 +106,11 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     (item) => item.sku && item.sku.toLowerCase().includes("-rest-")
   );
 
+  // Auto-create restoration tracking record for restoration orders
+  if (isRestoration) {
+    await ensureRestorationRecord(supabase, order, fulfilledAt);
+  }
+
   // Determine if this is the customer's first order
   // Shopify sometimes doesn't send orders_count in the webhook payload
   // If missing, check our database to see if we've seen this customer before
@@ -309,4 +314,104 @@ async function upsertFulfillmentShipment(
   }
 
   console.log(`Processed fulfillment ${fulfillment.id} for order ${fulfillment.order_id}`);
+}
+
+/**
+ * Ensure a restoration tracking record exists for restoration orders
+ * Creates if not exists, updates status on fulfillment
+ *
+ * Restoration workflow:
+ * - Order created → Create record with status "pending_label"
+ * - Aftership webhook → Updates to label_sent/in_transit/delivered
+ * - Order fulfilled → Update to "shipped"
+ */
+async function ensureRestorationRecord(
+  supabase: ReturnType<typeof createServiceClient>,
+  order: ShopifyOrder,
+  fulfilledAt: string | null
+) {
+  try {
+    // Check if restoration record already exists for this order
+    const { data: existing } = await supabase
+      .from("restorations")
+      .select("id, status")
+      .eq("order_id", order.id)
+      .maybeSingle();
+
+    if (existing) {
+      // If order is now fulfilled and restoration is ready_to_ship, mark as shipped
+      if (
+        fulfilledAt &&
+        existing.status === "ready_to_ship"
+      ) {
+        const { error } = await supabase
+          .from("restorations")
+          .update({
+            status: "shipped",
+            shipped_at: fulfilledAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+
+        if (!error) {
+          // Log shipment event
+          await supabase.from("restoration_events").insert({
+            restoration_id: existing.id,
+            event_type: "shipped",
+            event_timestamp: fulfilledAt,
+            event_data: {
+              order_name: order.name,
+              fulfillment_status: order.fulfillment_status,
+            },
+            source: "shopify_webhook",
+            created_by: "system",
+          });
+
+          console.log(`[RESTORATION] Marked ${order.name} as shipped`);
+        }
+      }
+      return;
+    }
+
+    // Create new restoration record for this order
+    // Status is "pending_label" - will be updated when Aftership generates label
+    const { data: newRecord, error } = await supabase
+      .from("restorations")
+      .insert({
+        order_id: order.id,
+        status: "pending_label",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      // Duplicate key is OK - record was created by Aftership sync
+      if (!error.message.includes("duplicate key")) {
+        console.error("[RESTORATION] Error creating record:", error);
+      }
+      return;
+    }
+
+    // Log creation event
+    await supabase.from("restoration_events").insert({
+      restoration_id: newRecord.id,
+      event_type: "order_created",
+      event_timestamp: order.created_at,
+      event_data: {
+        order_name: order.name,
+        order_id: order.id,
+        customer_email: order.customer?.email,
+      },
+      source: "shopify_webhook",
+      created_by: "system",
+    });
+
+    console.log(`[RESTORATION] Created tracking record for ${order.name}`);
+  } catch (error) {
+    // Don't fail the entire webhook on restoration tracking errors
+    // The main order processing should still succeed
+    console.error("[RESTORATION] Error in ensureRestorationRecord:", error);
+  }
 }

@@ -32,6 +32,9 @@
     },
     "app/api/cron/sync-google-ads/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/sync-aftership-returns/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -114,6 +117,10 @@
     {
       "path": "/api/cron/backfill-warehouse",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-aftership-returns",
+      "schedule": "0 */4 * * *"
     }
   ]
 }

@@ -24,6 +24,7 @@ export type DashboardTab =
   | "production"
   | "fulfillment"
   | "production-planning"
+  | "restoration"
   | "budget"
   | "revenue-tracker"
   | "holiday"
@@ -52,8 +53,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<DashboardRole, DashboardTab[] | ["
     "sales",
     "ecommerce",
   ],
-  ops1: ["inventory", "production", "fulfillment", "production-planning", "voc", "budget"],
-  ops2: ["inventory", "production", "fulfillment", "production-planning", "voc", "budget", "revenue-tracker"],
+  ops1: ["inventory", "production", "fulfillment", "production-planning", "restoration", "voc", "budget"],
+  ops2: ["inventory", "production", "fulfillment", "production-planning", "restoration", "voc", "budget", "revenue-tracker"],
   standard: ["inventory", "fulfillment", "budget", "revenue-tracker", "holiday", "voc", "marketing", "sales", "ecommerce"],
   sales: ["inventory", "fulfillment", "budget", "revenue-tracker", "holiday", "voc", "marketing", "sales", "ecommerce"],
 };
@@ -76,6 +77,7 @@ export const DEFAULT_ROLE_DEFAULTS: Record<DashboardRole, DashboardTab> = {
 export const DEFAULT_TAB_ORDER: DashboardTab[] = [
   "inventory",
   "production",
+  "restoration",
   "budget",
   "revenue-tracker",
   "holiday",
@@ -99,6 +101,7 @@ export const TAB_CONFIG: Record<
   production: { label: "PRODUCTION", group: "operations" },
   fulfillment: { label: "FULFILLMENT", group: "operations" },
   "production-planning": { label: "PLANNING", group: "operations" },
+  restoration: { label: "RESTORATION", group: "operations" },
   budget: { label: "BUDGET V ACTUAL", group: "analytics" },
   "revenue-tracker": { label: "REVENUE", group: "analytics" },
   holiday: { label: "Q4 PACE", group: "analytics" },
@@ -198,6 +201,7 @@ export const ALL_TABS: DashboardTab[] = [
   "production",
   "fulfillment",
   "production-planning",
+  "restoration",
   "budget",
   "revenue-tracker",
   "holiday",

@@ -20,6 +20,7 @@ import {
   Settings,
   LogOut,
   FileText,
+  Wrench,
 } from "lucide-react";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
@@ -66,6 +67,7 @@ const TAB_ICONS: Record<DashboardTab, React.ComponentType<{ className?: string }
   production: Hammer,
   fulfillment: Package,
   "production-planning": Calculator,
+  restoration: Wrench,
   budget: Target,
   "revenue-tracker": DollarSign,
   holiday: Gift,
@@ -84,6 +86,7 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   production: "PRODUCTION",
   fulfillment: "FULFILLMENT",
   "production-planning": "PLANNING",
+  restoration: "RESTORATION",
   budget: "BUDGET V ACTUAL",
   "revenue-tracker": "REVENUE",
   holiday: "Q4 PACE",
@@ -102,6 +105,7 @@ const TAB_GROUPS: Record<DashboardTab, string> = {
   production: "operations",
   fulfillment: "operations",
   "production-planning": "operations",
+  restoration: "operations",
   budget: "analytics",
   "revenue-tracker": "analytics",
   holiday: "analytics",
@@ -170,7 +174,7 @@ export default function DashboardLayout({
 
     // Check if it's a valid dashboard tab (not admin or other routes)
     const allValidTabs: DashboardTab[] = [
-      "inventory", "production", "fulfillment", "production-planning",
+      "inventory", "production", "fulfillment", "production-planning", "restoration",
       "budget", "revenue-tracker", "holiday", "pl", "voc", "marketing", "sales", "ecommerce"
     ];
 
