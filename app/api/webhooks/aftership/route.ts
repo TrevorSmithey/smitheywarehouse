@@ -467,15 +467,24 @@ async function handleReturnResolved(
 /**
  * Lookup order by order number
  * Returns order ID and whether it's a POS order
+ *
+ * AfterShip sends order_number as "371909" (plain number)
+ * Our order_name can be "S371909" (current) or "#371909" (legacy)
  */
 async function lookupOrder(
   supabase: ReturnType<typeof createServiceClient>,
   orderNumber: string
 ): Promise<{ id: number; isPOS: boolean } | null> {
+  // Strip any existing prefix to get raw number
+  const rawNumber = orderNumber.replace(/^[#S]/i, "");
+
+  // Try "S" prefix first (current format), then "#" prefix (legacy)
+  const variants = [`S${rawNumber}`, `#${rawNumber}`];
+
   const { data } = await supabase
     .from("orders")
     .select("id, source_name")
-    .eq("order_name", orderNumber)
+    .in("order_name", variants)
     .maybeSingle();
 
   if (!data?.id) return null;
