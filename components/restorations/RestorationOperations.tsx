@@ -105,8 +105,15 @@ interface KanbanCardProps {
 
 function KanbanCard({ item, stage, onClick }: KanbanCardProps) {
   const config = STAGE_CONFIG[stage];
-  const daysColor = getDaysColor(item.days_in_status, stage);
-  const isOverdue = item.days_in_status > config.thresholds.amber;
+  // Defensive: ensure days_in_status is a number
+  const daysInStatus = typeof item.days_in_status === "number" ? item.days_in_status : 0;
+  const daysColor = getDaysColor(daysInStatus, stage);
+  const isOverdue = daysInStatus > config.thresholds.amber;
+
+  // Defensive: ensure string fields are strings
+  const orderName = typeof item.order_name === "string" ? item.order_name : null;
+  const rmaNumber = typeof item.rma_number === "string" ? item.rma_number : null;
+  const magnetNumber = typeof item.magnet_number === "string" ? item.magnet_number : null;
 
   return (
     <button
@@ -120,7 +127,7 @@ function KanbanCard({ item, stage, onClick }: KanbanCardProps) {
       {/* Order Name + POS badge */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold text-accent-blue group-hover:underline">
-          {item.order_name || item.rma_number || `#${item.id}`}
+          {orderName || rmaNumber || `#${item.id}`}
         </span>
         {item.is_pos && (
           <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/30 text-purple-300 rounded font-medium">
@@ -132,11 +139,11 @@ function KanbanCard({ item, stage, onClick }: KanbanCardProps) {
       {/* Days + Magnet */}
       <div className="flex items-center justify-between text-xs">
         <span className={`font-bold tabular-nums ${daysColor}`}>
-          {item.days_in_status}d
+          {daysInStatus}d
           {isOverdue && <span className="ml-1 text-red-400">!</span>}
         </span>
-        {item.magnet_number && (
-          <span className="text-text-tertiary font-medium">{item.magnet_number}</span>
+        {magnetNumber && (
+          <span className="text-text-tertiary font-medium">{magnetNumber}</span>
         )}
       </div>
     </button>
@@ -156,10 +163,18 @@ interface KanbanColumnProps {
 
 function KanbanColumn({ stage, items, onAction, onCardClick }: KanbanColumnProps) {
   const config = STAGE_CONFIG[stage];
-  const overdueCount = items.filter((i) => i.days_in_status > config.thresholds.amber).length;
+  // Defensive: ensure days_in_status is a number before comparison
+  const overdueCount = items.filter((i) => {
+    const days = typeof i.days_in_status === "number" ? i.days_in_status : 0;
+    return days > config.thresholds.amber;
+  }).length;
 
   // Sort by days_in_status descending (longest waiting at top)
-  const sortedItems = [...items].sort((a, b) => b.days_in_status - a.days_in_status);
+  const sortedItems = [...items].sort((a, b) => {
+    const aDays = typeof a.days_in_status === "number" ? a.days_in_status : 0;
+    const bDays = typeof b.days_in_status === "number" ? b.days_in_status : 0;
+    return bDays - aDays;
+  });
 
   return (
     <div className="flex flex-col min-w-[260px] max-w-[320px] flex-1">
