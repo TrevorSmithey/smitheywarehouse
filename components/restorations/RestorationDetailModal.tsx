@@ -305,25 +305,8 @@ export function RestorationDetailModal({
     }
   }, [notes, magnetNumber, photos, restoration]);
 
-  if (!isOpen || !restoration) return null;
-
-  // Defensive: ensure status is a string for config lookup
-  const statusKey = typeof restoration.status === "string" ? restoration.status : "pending_label";
-  const config = STAGE_CONFIG[statusKey] || {
-    label: statusKey,
-    color: "text-text-secondary",
-    bgColor: "bg-bg-tertiary",
-    borderColor: "border-border",
-  };
-
-  // Defensive: ensure numeric fields are numbers
-  const daysInStatus = typeof restoration.days_in_status === "number" ? restoration.days_in_status : 0;
-  const totalDays = typeof restoration.total_days === "number" ? restoration.total_days : 0;
-  const orderName = typeof restoration.order_name === "string" ? restoration.order_name : null;
-
-  const advanceConfig = STATUS_ADVANCE[statusKey];
-  const AdvanceIcon = advanceConfig?.icon;
-
+  // IMPORTANT: This useCallback must be BEFORE the early return to comply with Rules of Hooks
+  // The callback safely handles restoration being null with an early return inside
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !restoration) return;
@@ -582,6 +565,45 @@ export function RestorationDetailModal({
     }
     onClose();
   };
+
+  // =============================================================================
+  // EARLY RETURN - Must come AFTER all hooks to comply with Rules of Hooks
+  // =============================================================================
+  if (!isOpen || !restoration) return null;
+
+  // =============================================================================
+  // COMPUTED VALUES - Safe to access restoration now (guaranteed non-null)
+  // =============================================================================
+
+  // Defensive: ensure status is a string for config lookup
+  const statusKey = typeof restoration.status === "string" ? restoration.status : "pending_label";
+  const config = STAGE_CONFIG[statusKey] || {
+    label: "Unknown",
+    color: "text-slate-400",
+    bgColor: "bg-slate-500/20",
+    borderColor: "border-slate-500",
+  };
+
+  // Defensive: extract order name safely
+  const orderName = typeof restoration.order_name === "string" ? restoration.order_name : null;
+
+  // Calculate days in current status
+  const statusChangedAt = restoration.status_changed_at || restoration.created_at;
+  const daysInStatus = Math.floor(
+    (Date.now() - new Date(statusChangedAt).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Calculate total days since order created
+  const totalDays = restoration.order_created_at
+    ? Math.floor(
+        (Date.now() - new Date(restoration.order_created_at).getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
+    : 0;
+
+  // Get advance config for the primary action button (if status can be advanced)
+  const advanceConfig = STATUS_ADVANCE[restoration.status] || null;
+  const AdvanceIcon = advanceConfig?.icon || null;
 
   return (
     <div
