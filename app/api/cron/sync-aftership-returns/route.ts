@@ -365,10 +365,12 @@ function mapTimestamps(
     timestamps.label_sent_at = raw.approved_at;
   }
 
-  // Customer shipped when tracking shows InfoReceived or beyond
-  if (parsed.return_tracking_status && parsed.return_tracking_status !== "InfoReceived") {
-    // Use return created date as approximation (actual ship date not available)
-    timestamps.customer_shipped_at = parsed.created_at;
+  // Customer shipped when tracking shows movement (InTransit, OutForDelivery, Delivered, etc.)
+  // InfoReceived means carrier has info but package not yet picked up
+  const inMotionStatuses = ["InTransit", "OutForDelivery", "Delivered", "AvailableForPickup", "AttemptFail", "Exception"];
+  if (parsed.return_tracking_status && inMotionStatuses.includes(parsed.return_tracking_status)) {
+    // Use best available timestamp - prefer created_at, fall back to approved_at, then current time
+    timestamps.customer_shipped_at = parsed.created_at || raw.approved_at || new Date().toISOString();
   }
 
   // Delivered to warehouse

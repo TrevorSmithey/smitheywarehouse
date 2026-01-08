@@ -375,11 +375,13 @@ async function ensureRestorationRecord(
 
     // Create new restoration record for this order
     // Status is "pending_label" - will be updated when Aftership generates label
+    const isPOS = order.source_name === "pos";
     const { data: newRecord, error } = await supabase
       .from("restorations")
       .insert({
         order_id: order.id,
         status: "pending_label",
+        is_pos: isPOS,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

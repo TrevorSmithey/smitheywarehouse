@@ -99,9 +99,20 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    // Enhanced error logging for debugging
     console.error("[AFTERSHIP WEBHOOK] Processing error:", error);
+    console.error("[AFTERSHIP WEBHOOK] Error type:", typeof error);
+    console.error("[AFTERSHIP WEBHOOK] Error constructor:", error?.constructor?.name);
+    if (typeof error === "object" && error !== null) {
+      console.error("[AFTERSHIP WEBHOOK] Error details:", JSON.stringify(error, null, 2));
+    }
 
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    // Handle various error types - Supabase PostgrestError is not an Error instance
+    const errorMessage = error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String((error as { message: unknown }).message)
+        : "Unknown error";
     const elapsed = Date.now() - startTime;
 
     // Log failure for debugging
