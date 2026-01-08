@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -175,7 +175,7 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
         <div className="flex items-center justify-between">
           <span className={`text-lg font-bold tabular-nums ${daysColor}`}>
             {daysInStatus}d
-            {isOverdue && <span className="ml-1 text-red-400">!</span>}
+            {isOverdue && <span className="ml-1 text-red-300 animate-pulse">!</span>}
           </span>
           {magnetNumber ? (
             <span className="text-sm text-text-secondary font-medium bg-bg-tertiary/50 px-2 py-0.5 rounded">
@@ -249,7 +249,7 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
             </span>
           </div>
           {overdueCount > 0 && (
-            <span className="text-[10px] px-2 py-1 bg-red-500/20 text-red-400 rounded font-semibold animate-pulse">
+            <span className="text-[10px] px-2 py-1 bg-red-500/30 text-red-300 rounded font-bold tracking-wide uppercase animate-pulse">
               {overdueCount} late
             </span>
           )}
@@ -319,6 +319,9 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
   const [activeItem, setActiveItem] = useState<RestorationRecord | null>(null);
   const [activeStage, setActiveStage] = useState<PipelineStage | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Track in-flight status updates to prevent race conditions
+  const inFlightUpdatesRef = useRef<Set<number>>(new Set());
 
   // Modal states
   const [showCheckIn, setShowCheckIn] = useState(false);
@@ -429,8 +432,16 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
       return; // Invalid transition, ignore
     }
 
-    // Update via API
+    // Prevent concurrent updates for the same item (race condition protection)
+    if (inFlightUpdatesRef.current.has(item.id)) {
+      console.log(`[DRAG] Skipping update for ${item.id} - already in flight`);
+      return;
+    }
+
+    // Mark as in-flight
+    inFlightUpdatesRef.current.add(item.id);
     setIsUpdating(true);
+
     try {
       const res = await fetch(`/api/restorations/${item.id}`, {
         method: "PATCH",
@@ -449,6 +460,8 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
       console.error("Error updating status:", error);
       alert(error instanceof Error ? error.message : "Failed to update status");
     } finally {
+      // Remove from in-flight set
+      inFlightUpdatesRef.current.delete(item.id);
       setIsUpdating(false);
     }
   }, [onRefresh]);
@@ -529,12 +542,12 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             </div>
           </div>
 
-          {/* Filter Chips */}
+          {/* Filter Chips - 44px min touch targets for iOS accessibility */}
           <div className="flex items-center gap-2 flex-wrap">
             <Filter className="w-4 h-4 text-text-muted" />
             <button
               onClick={() => setActiveFilter("all")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+              className={`px-4 py-2 min-h-[44px] text-xs font-medium rounded-full transition-colors flex items-center justify-center ${
                 activeFilter === "all"
                   ? "bg-accent-blue text-white"
                   : "bg-bg-secondary text-text-secondary hover:bg-border"
@@ -545,7 +558,7 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             {totalOverdue > 0 && (
               <button
                 onClick={() => setActiveFilter(activeFilter === "overdue" ? "all" : "overdue")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                className={`px-4 py-2 min-h-[44px] text-xs font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 ${
                   activeFilter === "overdue"
                     ? "bg-red-500 text-white"
                     : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
@@ -558,7 +571,7 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             {totalPOS > 0 && (
               <button
                 onClick={() => setActiveFilter(activeFilter === "pos" ? "all" : "pos")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                className={`px-4 py-2 min-h-[44px] text-xs font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 ${
                   activeFilter === "pos"
                     ? "bg-purple-500 text-white"
                     : "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
@@ -571,7 +584,7 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             {totalNoMagnet > 0 && (
               <button
                 onClick={() => setActiveFilter(activeFilter === "no_magnet" ? "all" : "no_magnet")}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                className={`px-4 py-2 min-h-[44px] text-xs font-medium rounded-full transition-colors flex items-center justify-center gap-1.5 ${
                   activeFilter === "no_magnet"
                     ? "bg-amber-500 text-white"
                     : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"

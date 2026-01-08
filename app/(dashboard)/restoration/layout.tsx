@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
+import { ReactNode, createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useDashboard } from "../layout";
@@ -108,7 +108,7 @@ export default function RestorationLayout({
       if (option && option.days !== null) {
         const start = new Date();
         start.setDate(start.getDate() - option.days);
-        params.set("start", start.toISOString());
+        params.set("periodStart", start.toISOString());
       }
 
       const url = params.toString() ? `/api/restorations?${params}` : "/api/restorations";
@@ -139,13 +139,19 @@ export default function RestorationLayout({
     }
   }, [data, loading, fetchRestorations]);
 
-  // Refetch when date range changes
+  // Refetch when date range changes (only after initial load)
+  // Using a ref to track the previous value avoids re-fetch on every fetchRestorations change
+  const prevDateRangeRef = useRef(dateRange);
   useEffect(() => {
+    // Skip if this is the initial mount (no previous value to compare)
+    if (prevDateRangeRef.current === dateRange) return;
+
+    // Only refetch if we already have data (not during initial load)
     if (data) {
+      prevDateRangeRef.current = dateRange;
       fetchRestorations();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange]);
+  }, [dateRange, data, fetchRestorations]);
 
   // Context value
   const contextValue: RestorationContextType = {

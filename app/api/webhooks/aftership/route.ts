@@ -149,14 +149,15 @@ async function handleShipmentProvided(
   } else {
     // Create new restoration record if not exists
     // First, try to find the order
-    const orderId = await lookupOrderId(supabase, data.order.order_number);
+    const orderData = await lookupOrder(supabase, data.order.order_number);
 
     const { data: newRecord, error } = await supabase
       .from("restorations")
       .insert({
         aftership_return_id: data.id,
         rma_number: data.rma_number,
-        order_id: orderId,
+        order_id: orderData?.id || null,
+        is_pos: orderData?.isPOS || false,
         status: "label_sent",
         return_tracking_number: primaryShipment.tracking_number,
         return_carrier: primaryShipment.slug || primaryShipment.label?.slug,
@@ -350,19 +351,25 @@ async function handleReturnResolved(
 }
 
 /**
- * Lookup order ID by order number
+ * Lookup order by order number
+ * Returns order ID and whether it's a POS order
  */
-async function lookupOrderId(
+async function lookupOrder(
   supabase: ReturnType<typeof createServiceClient>,
   orderNumber: string
-): Promise<number | null> {
+): Promise<{ id: number; isPOS: boolean } | null> {
   const { data } = await supabase
     .from("orders")
-    .select("id")
+    .select("id, source_name")
     .eq("order_name", orderNumber)
     .maybeSingle();
 
-  return data?.id || null;
+  if (!data?.id) return null;
+
+  return {
+    id: data.id,
+    isPOS: data.source_name === "pos",
+  };
 }
 
 /**

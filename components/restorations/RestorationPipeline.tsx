@@ -245,18 +245,17 @@ interface InternalCycleBreakdownProps {
     atRestoration: number;
     restorationToShipped: number;
     totalInternal: number;
-    monthlyTrend: Array<{ month: string; medianDays: number; count: number }>;
   };
+  internalCycleTrend?: Array<{ month: string; medianDays: number; count: number }>;
 }
 
-function InternalCycleBreakdown({ internalCycle }: InternalCycleBreakdownProps) {
+function InternalCycleBreakdown({ internalCycle, internalCycleTrend }: InternalCycleBreakdownProps) {
   const stages = [
     { label: "Check-in → Send Out", days: internalCycle.receivedToRestoration, color: "bg-emerald-500" },
     { label: "At Restoration", days: internalCycle.atRestoration, color: "bg-purple-500" },
     { label: "Back → Shipped", days: internalCycle.restorationToShipped, color: "bg-blue-500" },
   ];
 
-  const totalDays = stages.reduce((sum, s) => sum + (s.days || 0), 0);
   const maxStage = Math.max(...stages.map(s => s.days || 0));
 
   // Format month for display
@@ -266,10 +265,8 @@ function InternalCycleBreakdown({ internalCycle }: InternalCycleBreakdownProps) 
     return monthNames[parseInt(month) - 1] || monthStr;
   };
 
-  // Trend sparkline
-  const trendData = internalCycle.monthlyTrend.filter(m => m.count > 0);
-  const maxTrend = Math.max(...trendData.map(m => m.medianDays));
-  const minTrend = Math.min(...trendData.map(m => m.medianDays));
+  // Trend sparkline (optional)
+  const trendData = internalCycleTrend?.filter(m => m.count > 0) || [];
 
   return (
     <div className="space-y-4">
@@ -419,6 +416,20 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
   const needsShipping = filteredGroups["ready_to_ship"]?.length || 0;
   const totalActionable = needsCheckIn + needsToRestoration + needsShipping;
 
+  // Compute alerts from restorations data
+  const restorations = data?.restorations || [];
+  const alerts = useMemo(() => ({
+    deliveredNotReceived: restorations.filter(
+      r => r.status === "delivered_warehouse" && r.days_in_status > 2
+    ).length,
+    atRestorationTooLong: restorations.filter(
+      r => r.status === "at_restoration" && r.days_in_status > 14
+    ).length,
+    timeoutCandidates: restorations.filter(
+      r => r.total_days > 56 && !["shipped", "delivered", "cancelled"].includes(r.status)
+    ).length,
+  }), [restorations]);
+
   // Get cycle time trend direction
   const monthlyData = stats?.monthlyVolume || [];
   const recentMonths = monthlyData.slice(0, 3);
@@ -441,7 +452,7 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
             <StaleTimestamp date={lastRefresh} prefix="Updated" />
           </div>
           <p className="text-sm text-text-secondary mt-1">
-            {stats?.active || 0} active items • {totalActionable > 0 ? (
+            {stats?.current?.activeQueue || 0} active items • {totalActionable > 0 ? (
               <span className="text-amber-400 font-medium">{totalActionable} need action</span>
             ) : (
               <span className="text-emerald-400">All caught up</span>
@@ -551,13 +562,13 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
               <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Active Queue</span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-text-primary">{stats.active}</span>
+              <span className="text-3xl font-bold text-text-primary">{stats.current?.activeQueue || 0}</span>
               <span className="text-sm text-text-tertiary">items</span>
             </div>
             <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
-              <span>{preWarehouseCount} pre-warehouse</span>
+              <span>{stats.current?.preWarehouse || 0} pre-warehouse</span>
               <span className="text-text-tertiary">•</span>
-              <span>{stats.active - preWarehouseCount} in-house</span>
+              <span>{stats.current?.inHouse || 0} in-house</span>
             </div>
           </div>
 
@@ -571,17 +582,17 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-text-primary">
-                {stats.cycleTime?.medianDays || "—"}
+                {stats.period?.medianCycleTime || "—"}
               </span>
               <span className="text-sm text-text-tertiary">days</span>
-              {stats.cycleTime?.medianDays && stats.cycleTime.medianDays <= 21 ? (
+              {stats.period?.medianCycleTime && stats.period.medianCycleTime <= 21 ? (
                 <span className="text-emerald-400 text-xs ml-1">On target</span>
               ) : (
                 <span className="text-amber-400 text-xs ml-1">Above 21d goal</span>
               )}
             </div>
             <div className="mt-2 text-xs text-text-secondary">
-              D2C: {stats.cycleTime?.d2cMedian || "—"}d • POS: {stats.cycleTime?.posMedian || "—"}d
+              D2C: {stats.period?.d2cInternalMedian || "—"}d • POS: {stats.period?.posInternalMedian || "—"}d
             </div>
           </div>
 
@@ -595,15 +606,15 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
             </div>
             <div className="flex items-baseline gap-2">
               <span className={`text-3xl font-bold ${
-                (stats.cycleTime?.slaRate || 0) >= 80 ? "text-emerald-400" :
-                (stats.cycleTime?.slaRate || 0) >= 60 ? "text-amber-400" : "text-red-400"
+                (stats.period?.slaRate || 0) >= 80 ? "text-emerald-400" :
+                (stats.period?.slaRate || 0) >= 60 ? "text-amber-400" : "text-red-400"
               }`}>
-                {stats.cycleTime?.slaRate || 0}%
+                {stats.period?.slaRate || 0}%
               </span>
               <span className="text-sm text-text-tertiary">≤21 days</span>
             </div>
             <div className="mt-2 text-xs text-text-secondary">
-              {stats.cycleTime?.meetingSLA || 0} of {stats.cycleTime?.completed || 0} meet goal
+              {stats.period?.meetingSLA || 0} of {stats.period?.completed || 0} meet goal
             </div>
           </div>
 
@@ -622,7 +633,7 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-3xl font-bold text-text-primary">
-                  {stats.cycleTime?.completed || 0}
+                  {stats.period?.completed || 0}
                 </span>
                 <span className="text-sm text-text-tertiary ml-2">shipped</span>
               </div>
@@ -645,7 +656,7 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
       {/* ============================================================ */}
       {/* YOUR CYCLE TIME - The part you control */}
       {/* ============================================================ */}
-      {stats && stats.internalCycle && (
+      {stats && stats.period?.internalCycle && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Internal Cycle Breakdown - 2 cols wide */}
           <div className="lg:col-span-2 bg-bg-secondary rounded-lg border border-border p-4">
@@ -655,7 +666,10 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
                 Your Cycle Time (Received → Shipped)
               </h3>
             </div>
-            <InternalCycleBreakdown internalCycle={stats.internalCycle} />
+            <InternalCycleBreakdown
+              internalCycle={stats.period.internalCycle}
+              internalCycleTrend={stats.internalCycleTrend}
+            />
           </div>
 
           {/* All-Time Summary - 1 col */}
@@ -672,11 +686,11 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-text-tertiary uppercase tracking-wider">Total Processed</span>
                   <span className="text-xl font-bold text-text-primary">
-                    {stats.allTime?.totalEver?.toLocaleString() || 0}
+                    {stats.allTime?.totalProcessed?.toLocaleString() || 0}
                   </span>
                 </div>
                 <div className="mt-1 text-xs text-text-secondary">
-                  {stats.allTime?.completedEver?.toLocaleString() || 0} completed • {stats.allTime?.cancelledEver || 0} cancelled
+                  {stats.allTime?.completedCount?.toLocaleString() || 0} completed • {stats.allTime?.cancelledCount || 0} cancelled
                 </div>
               </div>
 
@@ -733,29 +747,29 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
       {/* ============================================================ */}
       {/* ALERT BADGES - Issues needing attention */}
       {/* ============================================================ */}
-      {stats && (stats.alerts.deliveredNotReceived > 0 || stats.alerts.atRestorationTooLong > 0 || stats.alerts.timeoutCandidates > 0) && (
+      {(alerts.deliveredNotReceived > 0 || alerts.atRestorationTooLong > 0 || alerts.timeoutCandidates > 0) && (
         <div className="flex flex-wrap gap-2">
-          {stats.alerts.deliveredNotReceived > 0 && (
+          {alerts.deliveredNotReceived > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/10 border border-orange-500/30 rounded-full text-xs">
               <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
               <span className="text-orange-400">
-                {stats.alerts.deliveredNotReceived} delivered &gt;2d, not checked in
+                {alerts.deliveredNotReceived} delivered &gt;2d, not checked in
               </span>
             </div>
           )}
-          {stats.alerts.atRestorationTooLong > 0 && (
+          {alerts.atRestorationTooLong > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/30 rounded-full text-xs">
               <Clock className="w-3.5 h-3.5 text-purple-400" />
               <span className="text-purple-400">
-                {stats.alerts.atRestorationTooLong} at restoration &gt;14d
+                {alerts.atRestorationTooLong} at restoration &gt;14d
               </span>
             </div>
           )}
-          {stats.alerts.timeoutCandidates > 0 && (
+          {alerts.timeoutCandidates > 0 && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-full text-xs">
               <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
               <span className="text-red-400">
-                {stats.alerts.timeoutCandidates} over 8 weeks
+                {alerts.timeoutCandidates} over 8 weeks
               </span>
             </div>
           )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   X,
   ExternalLink,
@@ -258,7 +258,7 @@ export function RestorationDetailModal({
   const [saving, setSaving] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -292,20 +292,18 @@ export function RestorationDetailModal({
       // Defensive: ensure photos is an array before filtering
       const photosArray = Array.isArray(restoration.photos) ? restoration.photos : [];
       setPhotos(photosArray.filter((url): url is string => typeof url === "string" && isValidPhotoUrl(url)));
-      setHasChanges(false);
       setShowStatusDropdown(false);
       setLoadedImages(new Set()); // Reset loaded images tracking
     }
   }, [restoration]);
 
-  // Track changes
-  useEffect(() => {
-    if (restoration) {
-      const notesChanged = notes !== (restoration.notes || "");
-      const magnetChanged = magnetNumber !== (restoration.magnet_number || "");
-      const photosChanged = JSON.stringify(photos) !== JSON.stringify(restoration.photos || []);
-      setHasChanges(notesChanged || magnetChanged || photosChanged);
-    }
+  // Compute hasChanges as a derived value (avoids extra render cycle from useState + useEffect)
+  const hasChanges = useMemo(() => {
+    if (!restoration) return false;
+    const notesChanged = notes !== (restoration.notes || "");
+    const magnetChanged = magnetNumber !== (restoration.magnet_number || "");
+    const photosChanged = JSON.stringify(photos) !== JSON.stringify(restoration.photos || []);
+    return notesChanged || magnetChanged || photosChanged;
   }, [notes, magnetNumber, photos, restoration]);
 
   // IMPORTANT: This useCallback must be BEFORE the early return to comply with Rules of Hooks
@@ -332,7 +330,14 @@ export function RestorationDetailModal({
       const filesToUpload = Array.from(files).slice(0, remainingSlots);
       const newPhotoUrls: string[] = [];
 
-      for (const file of filesToUpload) {
+      // Initialize progress tracking
+      setUploadProgress({ current: 0, total: filesToUpload.length });
+
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+
+        // Update progress
+        setUploadProgress({ current: i + 1, total: filesToUpload.length });
         // Check if aborted or unmounted before each file
         if (abortController.signal.aborted || !isMountedRef.current) {
           break;
@@ -421,6 +426,7 @@ export function RestorationDetailModal({
       // Only update state if still mounted
       if (isMountedRef.current) {
         setUploading(false);
+        setUploadProgress(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
@@ -485,7 +491,8 @@ export function RestorationDetailModal({
 
       if (!res.ok) throw new Error("Failed to save");
 
-      setHasChanges(false);
+      // Note: hasChanges will automatically recalculate to false once parent
+      // refetches and passes updated restoration prop
       onSave();
     } catch (error) {
       console.error("Error saving restoration:", error);
@@ -514,7 +521,8 @@ export function RestorationDetailModal({
 
       if (!res.ok) throw new Error("Failed to advance status");
 
-      setHasChanges(false);
+      // Note: hasChanges will automatically recalculate to false once parent
+      // refetches and passes updated restoration prop
       onSave();
     } catch (error) {
       console.error("Error advancing status:", error);
@@ -550,7 +558,8 @@ export function RestorationDetailModal({
         throw new Error(data.error || "Failed to change status");
       }
 
-      setHasChanges(false);
+      // Note: hasChanges will automatically recalculate to false once parent
+      // refetches and passes updated restoration prop
       setShowStatusDropdown(false);
       onSave();
     } catch (error) {
@@ -837,7 +846,7 @@ export function RestorationDetailModal({
                     onClick={() => setLightboxIndex(index)}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && setLightboxIndex(index)}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setLightboxIndex(index))}
                     aria-label={`View photo ${index + 1} fullscreen`}
                   >
                     {/* Loading skeleton */}
@@ -896,8 +905,13 @@ export function RestorationDetailModal({
                   >
                     {uploading ? (
                       <>
-                        <Loader2 className="w-8 h-8 animate-spin" aria-hidden="true" />
-                        <span className="sr-only">Uploading...</span>
+                        <Loader2 className="w-8 h-8 animate-spin text-accent-blue" aria-hidden="true" />
+                        {uploadProgress && (
+                          <span className="text-xs font-semibold text-accent-blue">
+                            {uploadProgress.current}/{uploadProgress.total}
+                          </span>
+                        )}
+                        <span className="sr-only">Uploading photo {uploadProgress?.current} of {uploadProgress?.total}...</span>
                       </>
                     ) : (
                       <>

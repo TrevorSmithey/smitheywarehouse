@@ -13,8 +13,24 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+// All known status values
+const KNOWN_STATUSES = [
+  "pending_label",
+  "label_sent",
+  "in_transit_inbound",
+  "delivered_warehouse",
+  "received",
+  "at_restoration",
+  "ready_to_ship",
+  "shipped",
+  "delivered",
+  "cancelled",
+] as const;
+
+type KnownStatus = (typeof KNOWN_STATUSES)[number];
+
 // Valid status transitions
-const VALID_TRANSITIONS: Record<string, string[]> = {
+const VALID_TRANSITIONS: Record<KnownStatus, KnownStatus[]> = {
   pending_label: ["label_sent", "cancelled"],
   label_sent: ["in_transit_inbound", "cancelled"],
   in_transit_inbound: ["delivered_warehouse", "cancelled"],
@@ -26,6 +42,11 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   delivered: [], // Terminal state
   cancelled: [], // Terminal state
 };
+
+/** Validates that a status is a known status value */
+function isKnownStatus(status: string): status is KnownStatus {
+  return KNOWN_STATUSES.includes(status as KnownStatus);
+}
 
 // Status timestamp field mapping
 const STATUS_TIMESTAMP_FIELDS: Record<string, string> = {
@@ -138,7 +159,27 @@ export async function PATCH(
 
     // Handle status transition
     if (body.status && body.status !== current.status) {
-      const validNextStatuses = VALID_TRANSITIONS[current.status] || [];
+      // First validate that the requested status is a known value
+      if (!isKnownStatus(body.status)) {
+        return NextResponse.json(
+          {
+            error: `Unknown status value: '${body.status}'`,
+            valid_statuses: KNOWN_STATUSES,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Also validate current status is known (should always be true, but defense in depth)
+      if (!isKnownStatus(current.status)) {
+        console.error(`[RESTORATION API] Invalid current status in DB: ${current.status}`);
+        return NextResponse.json(
+          { error: "Internal error: restoration has invalid status" },
+          { status: 500 }
+        );
+      }
+
+      const validNextStatuses = VALID_TRANSITIONS[current.status];
 
       if (!validNextStatuses.includes(body.status)) {
         return NextResponse.json(
