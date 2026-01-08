@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
-const VALID_ROLES = ["admin", "exec", "ops1", "ops2", "standard", "sales"];
+const VALID_ROLES = ["admin", "exec", "ops1", "ops2", "standard", "sales", "fulfillment"];
 
 /**
  * PATCH /api/admin/users/[id]

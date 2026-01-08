@@ -23,7 +23,7 @@ const IMPERSONATION_STORAGE_KEY = "smithey_warehouse_impersonating";
 const AUTH_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Valid roles for session validation
-const VALID_ROLES = ["admin", "exec", "ops1", "ops2", "standard", "sales"];
+const VALID_ROLES = ["admin", "exec", "ops1", "ops2", "standard", "sales", "fulfillment"];
 
 /**
  * Get current auth session from localStorage
