@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -27,12 +27,15 @@ import {
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
 import { useDashboard } from "@/app/(dashboard)/layout";
+import { type RestorationDateRange, DATE_RANGE_OPTIONS } from "@/app/(dashboard)/restoration/layout";
 
 interface RestorationAnalyticsProps {
   data: RestorationResponse | null;
   loading: boolean;
   onRefresh: () => void;
   onItemClick?: (restoration: RestorationRecord) => void;
+  dateRange: RestorationDateRange;
+  onDateRangeChange: (range: RestorationDateRange) => void;
 }
 
 // Pipeline stages
@@ -407,39 +410,18 @@ function TrendChart({ data, height = 48 }: TrendChartProps) {
 // MAIN COMPONENT
 // ============================================================================
 
-// Date range options (chip-style toggle, matching VoC pattern)
-type DateRange = "30" | "90" | "365" | "730" | "all";
-const DATE_RANGE_OPTIONS: { value: DateRange; label: string; days: number | null }[] = [
-  { value: "30", label: "30D", days: 30 },
-  { value: "90", label: "90D", days: 90 },
-  { value: "365", label: "1Y", days: 365 },
-  { value: "730", label: "2Y", days: 730 },
-  { value: "all", label: "All", days: null },
-];
-
-export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: RestorationAnalyticsProps) {
+export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, dateRange, onDateRangeChange }: RestorationAnalyticsProps) {
   const { lastRefresh } = useDashboard();
-  const [dateRange, setDateRange] = useState<DateRange>("all");
 
   const stats = data?.stats;
   const restorations = data?.restorations || [];
 
-  // Filter restorations by date range
-  const filteredRestorations = useMemo(() => {
-    const option = DATE_RANGE_OPTIONS.find((o) => o.value === dateRange);
-    if (!option || option.days === null) return restorations;
-
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - option.days);
-    return restorations.filter((r) => new Date(r.order_created_at) >= cutoff);
-  }, [restorations, dateRange]);
-
-  // Export to CSV
+  // Export to CSV (uses server-filtered data)
   const handleExportCSV = useCallback(() => {
     if (!restorations.length) return;
 
     const headers = ["Order", "RMA", "Status", "Days in Status", "Total Days", "Created", "Is POS"];
-    const rows = filteredRestorations.map((r) => [
+    const rows = restorations.map((r) => [
       r.order_name || "",
       r.rma_number || "",
       r.status,
@@ -457,7 +439,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
     a.download = `restorations-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [filteredRestorations, restorations.length]);
+  }, [restorations]);
 
   // Pre-warehouse count
   const preWarehouseCount = useMemo(() => {
@@ -519,7 +501,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
             {DATE_RANGE_OPTIONS.map((option) => (
               <button
                 key={option.value}
-                onClick={() => setDateRange(option.value)}
+                onClick={() => onDateRangeChange(option.value)}
                 className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
                   dateRange === option.value
                     ? "bg-accent-blue text-white"

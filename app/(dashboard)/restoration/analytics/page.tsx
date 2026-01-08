@@ -7,7 +7,7 @@ import { RestorationDetailModal } from "@/components/restorations/RestorationDet
 import type { RestorationRecord } from "@/app/api/restorations/route";
 
 export default function RestorationAnalyticsPage() {
-  const { data, loading, error, refresh } = useRestoration();
+  const { data, loading, error, refresh, dateRange, setDateRange } = useRestoration();
   const [selectedRestoration, setSelectedRestoration] = useState<RestorationRecord | null>(null);
 
   const handleItemClick = useCallback((restoration: RestorationRecord) => {
@@ -41,6 +41,8 @@ export default function RestorationAnalyticsPage() {
         loading={loading}
         onRefresh={refresh}
         onItemClick={handleItemClick}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
       />
       <RestorationDetailModal
         isOpen={!!selectedRestoration}

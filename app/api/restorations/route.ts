@@ -131,12 +131,14 @@ export interface RestorationResponse {
   statusOrder: typeof STATUS_ORDER;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = createServiceClient();
+    const { searchParams } = new URL(request.url);
+    const startDate = searchParams.get("start");
 
-    // Fetch all active restorations with order details and customer email
-    const { data: restorations, error: restorationsError } = await supabase
+    // Build the query
+    let query = supabase
       .from("restorations")
       .select(`
         id,
@@ -168,8 +170,14 @@ export async function GET() {
           canceled,
           shopify_customer_id
         )
-      `)
-      .order("created_at", { ascending: false });
+      `);
+
+    // Filter by start date if provided
+    if (startDate) {
+      query = query.gte("created_at", startDate);
+    }
+
+    const { data: restorations, error: restorationsError } = await query.order("created_at", { ascending: false });
 
     // Fetch customer emails for CS callouts
     const customerIds = new Set<number>();

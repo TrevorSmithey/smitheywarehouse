@@ -8,6 +8,20 @@ import type { RestorationResponse } from "@/app/api/restorations/route";
 import { BarChart3, Wrench } from "lucide-react";
 
 // ============================================================================
+// DATE RANGE OPTIONS
+// ============================================================================
+
+export type RestorationDateRange = "30" | "90" | "365" | "730" | "all";
+
+export const DATE_RANGE_OPTIONS: { value: RestorationDateRange; label: string; days: number | null }[] = [
+  { value: "30", label: "30D", days: 30 },
+  { value: "90", label: "90D", days: 90 },
+  { value: "365", label: "1Y", days: 365 },
+  { value: "730", label: "2Y", days: 730 },
+  { value: "all", label: "All", days: null },
+];
+
+// ============================================================================
 // CONTEXT FOR SHARED STATE
 // ============================================================================
 
@@ -15,6 +29,8 @@ interface RestorationContextType {
   data: RestorationResponse | null;
   loading: boolean;
   error: string | null;
+  dateRange: RestorationDateRange;
+  setDateRange: (range: RestorationDateRange) => void;
   refresh: () => void;
 }
 
@@ -78,13 +94,25 @@ export default function RestorationLayout({
   const [data, setData] = useState<RestorationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<RestorationDateRange>("all");
 
   const fetchRestorations = useCallback(async () => {
     try {
       setLoading(true);
       setIsRefreshing(true);
       setError(null);
-      const res = await fetch("/api/restorations");
+
+      // Build query params with date range
+      const params = new URLSearchParams();
+      const option = DATE_RANGE_OPTIONS.find((o) => o.value === dateRange);
+      if (option && option.days !== null) {
+        const start = new Date();
+        start.setDate(start.getDate() - option.days);
+        params.set("start", start.toISOString());
+      }
+
+      const url = params.toString() ? `/api/restorations?${params}` : "/api/restorations";
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch restoration data");
       const result: RestorationResponse = await res.json();
       setData(result);
@@ -96,7 +124,7 @@ export default function RestorationLayout({
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [setLastRefresh, setIsRefreshing]);
+  }, [dateRange, setLastRefresh, setIsRefreshing]);
 
   // Register refresh handler with parent layout
   useEffect(() => {
@@ -111,11 +139,21 @@ export default function RestorationLayout({
     }
   }, [data, loading, fetchRestorations]);
 
+  // Refetch when date range changes
+  useEffect(() => {
+    if (data) {
+      fetchRestorations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange]);
+
   // Context value
   const contextValue: RestorationContextType = {
     data,
     loading,
     error,
+    dateRange,
+    setDateRange,
     refresh: fetchRestorations,
   };
 
