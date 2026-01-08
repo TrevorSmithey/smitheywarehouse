@@ -31,10 +31,9 @@ interface RestorationOperationsProps {
   onRefresh: () => void;
 }
 
-// Visual pipeline stages (simplified 4-stage model)
+// Visual pipeline stages (simplified 3-stage model)
 const PIPELINE_STAGES = [
-  "inbound",
-  "processing",
+  "incoming",
   "at_restoration",
   "outbound",
 ] as const;
@@ -43,24 +42,21 @@ type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 // Map visual stages to database statuses
 const STAGE_STATUS_MAP: Record<PipelineStage, string[]> = {
-  inbound: ["in_transit_inbound", "delivered_warehouse"],
-  processing: ["received"],
+  incoming: ["in_transit_inbound", "delivered_warehouse", "received"],
   at_restoration: ["at_restoration"],
   outbound: ["ready_to_ship"],
 };
 
 // Valid drag transitions (only allow moving forward one step)
 const VALID_DRAG_TRANSITIONS: Record<PipelineStage, PipelineStage | null> = {
-  inbound: "processing",
-  processing: "at_restoration",
+  incoming: "at_restoration",
   at_restoration: "outbound",
   outbound: null, // Can't drag forward from here
 };
 
-// Map database status -> target database status when advancing
+// Map database status -> target database status when advancing via drag
 const STAGE_ADVANCE_MAP: Record<PipelineStage, string> = {
-  inbound: "received",          // Check in -> received
-  processing: "at_restoration", // Send out -> at_restoration
+  incoming: "at_restoration",   // Send to restoration
   at_restoration: "ready_to_ship",
   outbound: "shipped",
 };
@@ -88,22 +84,13 @@ const STAGE_CONFIG: Record<PipelineStage, {
   headerBg: string;
   thresholds: { green: number; amber: number };
 }> = {
-  inbound: {
-    label: "Inbound",
-    shortLabel: "INBOUND",
+  incoming: {
+    label: "Incoming",
+    shortLabel: "INCOMING",
     color: "text-sky-400",
     bgColor: "bg-sky-500/10",
     borderColor: "border-sky-500/30",
     headerBg: "bg-sky-500/20",
-    thresholds: { green: 2, amber: 5 },
-  },
-  processing: {
-    label: "Processing",
-    shortLabel: "PROCESSING",
-    color: "text-emerald-400",
-    bgColor: "bg-emerald-500/10",
-    borderColor: "border-emerald-500/30",
-    headerBg: "bg-emerald-500/20",
     thresholds: { green: 3, amber: 7 },
   },
   at_restoration: {
@@ -118,10 +105,10 @@ const STAGE_CONFIG: Record<PipelineStage, {
   outbound: {
     label: "Ready to Ship",
     shortLabel: "READY TO SHIP",
-    color: "text-blue-400",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/30",
-    headerBg: "bg-blue-500/20",
+    color: "text-emerald-400",
+    bgColor: "bg-emerald-500/10",
+    borderColor: "border-emerald-500/30",
+    headerBg: "bg-emerald-500/20",
     thresholds: { green: 2, amber: 5 },
   },
 };
@@ -162,21 +149,31 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
 
   const canDrag = VALID_DRAG_TRANSITIONS[stage] !== null;
 
-  // Items that have arrived at warehouse need attention (pulsing amber indicator)
-  const needsCheckIn = item.status === "delivered_warehouse";
+  // Visual state based on database status
+  const isInTransit = item.status === "in_transit_inbound";
+  const isArrived = item.status === "delivered_warehouse";
+  const isHere = item.status === "received"; // Checked in, being processed
+
+  // Determine card styling based on status
+  const getCardStyle = () => {
+    if (isOverdue) {
+      return "bg-red-500/5 border-red-500/40 hover:border-red-500/60";
+    }
+    if (isInTransit) {
+      return "bg-slate-500/5 border-slate-500/30 hover:border-slate-400/50 opacity-60";
+    }
+    if (isArrived) {
+      return "bg-amber-500/10 border-amber-500/50 hover:border-amber-400 animate-pulse";
+    }
+    return `${config.bgColor} ${config.borderColor} hover:border-opacity-60`;
+  };
 
   return (
     <div
       ref={setNodeRef}
       className={`group w-full text-left rounded-lg border transition-all ${
         isDragging ? "opacity-40" : ""
-      } ${isDragOverlay ? "shadow-xl ring-2 ring-accent-blue" : ""} ${
-        isOverdue
-          ? "bg-red-500/5 border-red-500/40 hover:border-red-500/60"
-          : needsCheckIn
-            ? "bg-amber-500/10 border-amber-500/50 hover:border-amber-400 animate-pulse"
-            : `${config.bgColor} ${config.borderColor} hover:border-opacity-60`
-      } hover:shadow-md active:scale-[0.98]`}
+      } ${isDragOverlay ? "shadow-xl ring-2 ring-accent-blue" : ""} ${getCardStyle()} hover:shadow-md active:scale-[0.98]`}
     >
       {/* Card is one big tap target */}
       <button
@@ -189,9 +186,19 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
             {orderName || rmaNumber || `#${item.id}`}
           </span>
           <div className="flex items-center gap-1.5">
-            {needsCheckIn && (
+            {isInTransit && (
+              <span className="text-[10px] px-2 py-1 bg-slate-500/30 text-slate-300 rounded font-semibold">
+                In Transit
+              </span>
+            )}
+            {isArrived && (
               <span className="text-[10px] px-2 py-1 bg-amber-500/30 text-amber-300 rounded font-semibold">
                 Arrived
+              </span>
+            )}
+            {isHere && (
+              <span className="text-[10px] px-2 py-1 bg-emerald-500/30 text-emerald-300 rounded font-semibold">
+                Here
               </span>
             )}
             {item.is_pos && (
@@ -397,8 +404,7 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
   // Group by visual stage (mapping DB statuses to visual stages)
   const itemsByStage = useMemo(() => {
     const grouped: Record<PipelineStage, RestorationRecord[]> = {
-      inbound: [],
-      processing: [],
+      incoming: [],
       at_restoration: [],
       outbound: [],
     };
@@ -504,9 +510,9 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-12 bg-bg-secondary rounded-lg" />
-        <div className="flex gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex-1 h-96 bg-bg-secondary rounded-lg" />
+        <div className="flex gap-4 justify-center">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex-1 max-w-[340px] h-96 bg-bg-secondary rounded-lg" />
           ))}
         </div>
       </div>
@@ -639,16 +645,10 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}
           >
             <DroppableColumn
-              stage="inbound"
-              items={itemsByStage.inbound}
+              stage="incoming"
+              items={itemsByStage.incoming}
               onCardClick={setSelectedRestoration}
-              isDropTarget={getDropTarget("inbound")}
-            />
-            <DroppableColumn
-              stage="processing"
-              items={itemsByStage.processing}
-              onCardClick={setSelectedRestoration}
-              isDropTarget={getDropTarget("processing")}
+              isDropTarget={getDropTarget("incoming")}
             />
             <DroppableColumn
               stage="at_restoration"
