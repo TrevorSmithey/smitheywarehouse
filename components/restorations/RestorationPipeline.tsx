@@ -45,15 +45,23 @@ interface RestorationPipelineProps {
   onRefresh: () => void;
 }
 
-// Active pipeline stages
+// Pipeline stages - simplified 4-stage model
 const PIPELINE_STAGES = [
-  "delivered_warehouse",
-  "received",
+  "inbound",
+  "processing",
   "at_restoration",
-  "ready_to_ship",
+  "outbound",
 ] as const;
 
 type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+// Map visual stages to database statuses
+const STAGE_STATUS_MAP: Record<PipelineStage, string[]> = {
+  inbound: ["in_transit_inbound", "delivered_warehouse"],
+  processing: ["received"],
+  at_restoration: ["at_restoration"],
+  outbound: ["ready_to_ship"],
+};
 
 // Stage display configuration
 const STAGE_CONFIG: Record<PipelineStage, {
@@ -64,16 +72,16 @@ const STAGE_CONFIG: Record<PipelineStage, {
   alertThreshold: number;
   actionLabel?: string;
 }> = {
-  delivered_warehouse: {
-    label: "Delivered",
+  inbound: {
+    label: "Inbound",
     icon: Truck,
-    color: "text-orange-400",
-    bgColor: "bg-orange-500/10 border-orange-500/30",
-    alertThreshold: 2,
+    color: "text-sky-400",
+    bgColor: "bg-sky-500/10 border-sky-500/30",
+    alertThreshold: 2, // Delivered items sitting >2d
     actionLabel: "Check In",
   },
-  received: {
-    label: "Received",
+  processing: {
+    label: "Processing",
     icon: Inbox,
     color: "text-emerald-400",
     bgColor: "bg-emerald-500/10 border-emerald-500/30",
@@ -87,8 +95,8 @@ const STAGE_CONFIG: Record<PipelineStage, {
     bgColor: "bg-purple-500/10 border-purple-500/30",
     alertThreshold: 14,
   },
-  ready_to_ship: {
-    label: "Ready to Ship",
+  outbound: {
+    label: "Outbound",
     icon: Send,
     color: "text-blue-400",
     bgColor: "bg-blue-500/10 border-blue-500/30",
@@ -333,7 +341,6 @@ function InternalCycleBreakdown({ internalCycle, internalCycleTrend }: InternalC
 export function RestorationPipeline({ data, loading, onRefresh }: RestorationPipelineProps) {
   const { lastRefresh } = useDashboard();
   const [searchTerm, setSearchTerm] = useState("");
-  const [showPreWarehouse, setShowPreWarehouse] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [expandedStage, setExpandedStage] = useState<PipelineStage | null>(null);
 
@@ -342,23 +349,48 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
   const [showToRestoration, setShowToRestoration] = useState(false);
   const [showFromRestoration, setShowFromRestoration] = useState(false);
 
-  // Group restorations by stage
+  // Group restorations by visual pipeline stage
   const groupedRestorations = useMemo(() => {
     if (!data?.restorations) return {};
 
+    // First, group by database status for non-pipeline statuses
+    const byStatus: Record<string, RestorationRecord[]> = {};
+    for (const r of data.restorations) {
+      if (!byStatus[r.status]) {
+        byStatus[r.status] = [];
+      }
+      byStatus[r.status].push(r);
+    }
+
+    // Then, create visual stage groups by combining statuses
     const groups: Record<string, RestorationRecord[]> = {};
 
-    for (const r of data.restorations) {
-      if (!groups[r.status]) {
-        groups[r.status] = [];
+    // Map pipeline stages
+    for (const stage of PIPELINE_STAGES) {
+      const statuses = STAGE_STATUS_MAP[stage];
+      const items: RestorationRecord[] = [];
+      for (const status of statuses) {
+        if (byStatus[status]) {
+          items.push(...byStatus[status]);
+        }
       }
-      groups[r.status].push(r);
+      // Sort by: delivered items first (need action), then by days_in_status
+      items.sort((a, b) => {
+        const aDelivered = a.status === "delivered_warehouse" || a.return_tracking_status === "Delivered";
+        const bDelivered = b.status === "delivered_warehouse" || b.return_tracking_status === "Delivered";
+        if (aDelivered && !bDelivered) return -1;
+        if (!aDelivered && bDelivered) return 1;
+        return b.days_in_status - a.days_in_status;
+      });
+      groups[stage] = items;
     }
 
-    // Sort each group by days_in_status descending (longest first)
-    for (const status of Object.keys(groups)) {
-      groups[status].sort((a, b) => b.days_in_status - a.days_in_status);
-    }
+    // Also keep non-pipeline statuses for other sections
+    groups["pending_label"] = byStatus["pending_label"] || [];
+    groups["label_sent"] = byStatus["label_sent"] || [];
+    groups["shipped"] = byStatus["shipped"] || [];
+    groups["delivered"] = byStatus["delivered"] || [];
+    groups["cancelled"] = byStatus["cancelled"] || [];
 
     return groups;
   }, [data?.restorations]);
@@ -406,14 +438,18 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
   }
 
   const stats = data?.stats;
-  const preWarehouseCount = (filteredGroups["pending_label"]?.length || 0) +
-    (filteredGroups["label_sent"]?.length || 0) +
-    (filteredGroups["in_transit_inbound"]?.length || 0);
 
-  // Calculate what needs action
-  const needsCheckIn = filteredGroups["delivered_warehouse"]?.length || 0;
-  const needsToRestoration = filteredGroups["received"]?.length || 0;
-  const needsShipping = filteredGroups["ready_to_ship"]?.length || 0;
+  // Items awaiting customer action (not in our pipeline yet)
+  const awaitingCustomer = (filteredGroups["pending_label"]?.length || 0) +
+    (filteredGroups["label_sent"]?.length || 0);
+
+  // Calculate what needs action - items that are delivered need check-in
+  const inboundItems = filteredGroups["inbound"] || [];
+  const needsCheckIn = inboundItems.filter(
+    r => r.status === "delivered_warehouse" || r.return_tracking_status === "Delivered"
+  ).length;
+  const needsToRestoration = filteredGroups["processing"]?.length || 0;
+  const needsShipping = filteredGroups["outbound"]?.length || 0;
   const totalActionable = needsCheckIn + needsToRestoration + needsShipping;
 
   // Compute alerts from restorations data
@@ -456,6 +492,11 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
               <span className="text-amber-400 font-medium">{totalActionable} need action</span>
             ) : (
               <span className="text-emerald-400">All caught up</span>
+            )}
+            {awaitingCustomer > 0 && (
+              <span className="text-text-tertiary ml-2">
+                • {awaitingCustomer} awaiting customer
+              </span>
             )}
           </p>
         </div>
@@ -502,11 +543,11 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
                   Actions Needed Today
                 </h3>
                 <p className="text-text-secondary text-sm mt-0.5">
-                  {needsCheckIn > 0 && <span>{needsCheckIn} need check-in</span>}
+                  {needsCheckIn > 0 && <span className="text-sky-400">{needsCheckIn} delivered, need check-in</span>}
                   {needsCheckIn > 0 && needsToRestoration > 0 && " • "}
-                  {needsToRestoration > 0 && <span className="text-purple-400 font-medium">{needsToRestoration} ready to send to restoration</span>}
+                  {needsToRestoration > 0 && <span className="text-emerald-400">{needsToRestoration} processing, ready to send out</span>}
                   {(needsCheckIn > 0 || needsToRestoration > 0) && needsShipping > 0 && " • "}
-                  {needsShipping > 0 && <span>{needsShipping} ready to ship</span>}
+                  {needsShipping > 0 && <span className="text-blue-400">{needsShipping} ready to ship</span>}
                 </p>
               </div>
             </div>
@@ -781,7 +822,7 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
       {/* ============================================================ */}
       <div>
         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">
-          In-House Pipeline
+          Pipeline
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PIPELINE_STAGES.map((stage) => {
@@ -789,13 +830,19 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
             const items = filteredGroups[stage] || [];
             const Icon = config.icon;
             const isExpanded = expandedStage === stage;
-            const hasAlert = items.some(item => item.days_in_status > config.alertThreshold);
+            // For inbound, check if any delivered items are sitting too long
+            const hasAlert = stage === "inbound"
+              ? items.some(item =>
+                  (item.status === "delivered_warehouse" || item.return_tracking_status === "Delivered") &&
+                  item.days_in_status > config.alertThreshold
+                )
+              : items.some(item => item.days_in_status > config.alertThreshold);
 
             return (
               <div
                 key={stage}
                 className={`rounded-lg border ${config.bgColor} overflow-hidden ${
-                  items.length > 0 && stage === "received" ? "ring-2 ring-purple-500/50" : ""
+                  items.length > 0 && stage === "processing" ? "ring-2 ring-emerald-500/50" : ""
                 }`}
               >
                 {/* Column Header */}
@@ -833,13 +880,19 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
                     </div>
                   ) : (
                     <div className="divide-y divide-border/20">
-                      {items.map((item) => (
-                        <RestorationCard
-                          key={item.id}
-                          item={item}
-                          alertThreshold={config.alertThreshold}
-                        />
-                      ))}
+                      {items.map((item) => {
+                        // For inbound stage, mark items that are delivered and need check-in
+                        const needsAction = stage === "inbound" &&
+                          (item.status === "delivered_warehouse" || item.return_tracking_status === "Delivered");
+                        return (
+                          <RestorationCard
+                            key={item.id}
+                            item={item}
+                            alertThreshold={config.alertThreshold}
+                            needsAction={needsAction}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -856,49 +909,6 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
             );
           })}
         </div>
-      </div>
-
-      {/* ============================================================ */}
-      {/* PRE-WAREHOUSE - Collapsible */}
-      {/* ============================================================ */}
-      <div className="border-t border-border pt-4">
-        <button
-          onClick={() => setShowPreWarehouse(!showPreWarehouse)}
-          className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors w-full"
-        >
-          {showPreWarehouse ? (
-            <ChevronUp className="w-4 h-4" />
-          ) : (
-            <ChevronDown className="w-4 h-4" />
-          )}
-          <span className="font-semibold uppercase tracking-wider">Pre-Warehouse</span>
-          <span className="text-text-tertiary">
-            ({preWarehouseCount} items waiting on customers)
-          </span>
-        </button>
-
-        {showPreWarehouse && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Pending Label */}
-            <PreWarehouseColumn
-              label="Pending Label"
-              color="slate"
-              items={filteredGroups["pending_label"] || []}
-            />
-            {/* Label Sent */}
-            <PreWarehouseColumn
-              label="Label Sent"
-              color="amber"
-              items={filteredGroups["label_sent"] || []}
-            />
-            {/* In Transit */}
-            <PreWarehouseColumn
-              label="In Transit"
-              color="sky"
-              items={filteredGroups["in_transit_inbound"] || []}
-            />
-          </div>
-        )}
       </div>
 
       {/* ============================================================ */}
@@ -998,53 +1008,6 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
 }
 
 // ============================================================================
-// PRE-WAREHOUSE COLUMN - Simplified column for waiting items
-// ============================================================================
-
-interface PreWarehouseColumnProps {
-  label: string;
-  color: "slate" | "amber" | "sky";
-  items: RestorationRecord[];
-}
-
-function PreWarehouseColumn({ label, color, items }: PreWarehouseColumnProps) {
-  const colorClasses = {
-    slate: { bg: "bg-slate-500/10", border: "border-slate-500/30", text: "text-slate-400" },
-    amber: { bg: "bg-amber-500/10", border: "border-amber-500/30", text: "text-amber-400" },
-    sky: { bg: "bg-sky-500/10", border: "border-sky-500/30", text: "text-sky-400" },
-  };
-
-  const classes = colorClasses[color];
-
-  return (
-    <div className={`rounded-lg border ${classes.bg} ${classes.border} overflow-hidden`}>
-      <div className="flex items-center justify-between p-3">
-        <span className={`text-sm font-semibold uppercase tracking-wider ${classes.text}`}>
-          {label}
-        </span>
-        <span className={`text-lg font-bold ${classes.text}`}>
-          {items.length}
-        </span>
-      </div>
-      <div className="max-h-32 overflow-y-auto scrollbar-thin">
-        {items.length === 0 ? (
-          <div className="p-3 text-center text-text-tertiary text-xs">None</div>
-        ) : (
-          items.slice(0, 5).map((item) => (
-            <RestorationCard key={item.id} item={item} compact />
-          ))
-        )}
-        {items.length > 5 && (
-          <div className="px-3 py-2 text-xs text-text-tertiary text-center">
-            +{items.length - 5} more
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // RESTORATION CARD COMPONENT
 // ============================================================================
 
@@ -1052,9 +1015,10 @@ interface RestorationCardProps {
   item: RestorationRecord;
   alertThreshold?: number;
   compact?: boolean;
+  needsAction?: boolean; // Pulsing indicator for delivered items needing check-in
 }
 
-function RestorationCard({ item, alertThreshold, compact }: RestorationCardProps) {
+function RestorationCard({ item, alertThreshold, compact, needsAction }: RestorationCardProps) {
   const isOverdue = alertThreshold && item.days_in_status > alertThreshold;
 
   if (compact) {
@@ -1074,10 +1038,21 @@ function RestorationCard({ item, alertThreshold, compact }: RestorationCardProps
 
   return (
     <div
-      className={`px-3 py-3 hover:bg-white/5 transition-colors ${
-        isOverdue ? "border-l-2 border-l-orange-500" : ""
+      className={`px-3 py-3 hover:bg-white/5 transition-colors relative ${
+        needsAction
+          ? "border-l-2 border-l-amber-500 bg-amber-500/5"
+          : isOverdue
+            ? "border-l-2 border-l-orange-500"
+            : ""
       }`}
     >
+      {/* Pulsing "needs action" badge */}
+      {needsAction && (
+        <div className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/20 rounded text-[10px] text-amber-400 font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+          Check In
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {/* Order Name - Links to Shopify Admin */}
