@@ -117,10 +117,6 @@
     {
       "path": "/api/cron/backfill-warehouse",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-aftership-returns",
-      "schedule": "0 */4 * * *"
     }
   ]
 }
