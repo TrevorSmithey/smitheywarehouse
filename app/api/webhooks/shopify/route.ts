@@ -339,11 +339,9 @@ async function ensureRestorationRecord(
       .maybeSingle();
 
     if (existing) {
-      // If order is now fulfilled and restoration is ready_to_ship, mark as shipped
-      if (
-        fulfilledAt &&
-        existing.status === "ready_to_ship"
-      ) {
+      // If order is fulfilled, mark restoration as shipped regardless of current status
+      // This prevents stale cards from lingering in the ops board
+      if (fulfilledAt && existing.status !== "shipped") {
         const { error } = await supabase
           .from("restorations")
           .update({
@@ -354,7 +352,8 @@ async function ensureRestorationRecord(
           .eq("id", existing.id);
 
         if (!error) {
-          // Log shipment event
+          // Log shipment event (note if it skipped stages)
+          const skippedStages = existing.status !== "ready_to_ship";
           await supabase.from("restoration_events").insert({
             restoration_id: existing.id,
             event_type: "shipped",
@@ -362,12 +361,14 @@ async function ensureRestorationRecord(
             event_data: {
               order_name: order.name,
               fulfillment_status: order.fulfillment_status,
+              previous_status: existing.status,
+              skipped_stages: skippedStages,
             },
             source: "shopify_webhook",
             created_by: "system",
           });
 
-          console.log(`[RESTORATION] Marked ${order.name} as shipped`);
+          console.log(`[RESTORATION] Marked ${order.name} as shipped (was: ${existing.status})`);
         }
       }
       return;
