@@ -33,23 +33,52 @@ interface RestorationOperationsProps {
   onRefresh: () => void;
 }
 
-// Active pipeline stages (internal - what we control)
+// Visual pipeline stages (simplified 4-stage model)
 const PIPELINE_STAGES = [
-  "delivered_warehouse",
-  "received",
+  "inbound",
+  "processing",
   "at_restoration",
-  "ready_to_ship",
+  "outbound",
 ] as const;
 
 type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
+// Map visual stages to database statuses
+const STAGE_STATUS_MAP: Record<PipelineStage, string[]> = {
+  inbound: ["in_transit_inbound", "delivered_warehouse"],
+  processing: ["received"],
+  at_restoration: ["at_restoration"],
+  outbound: ["ready_to_ship"],
+};
+
 // Valid drag transitions (only allow moving forward one step)
 const VALID_DRAG_TRANSITIONS: Record<PipelineStage, PipelineStage | null> = {
-  delivered_warehouse: "received",
-  received: "at_restoration",
-  at_restoration: "ready_to_ship",
-  ready_to_ship: null, // Can't drag forward from here
+  inbound: "processing",
+  processing: "at_restoration",
+  at_restoration: "outbound",
+  outbound: null, // Can't drag forward from here
 };
+
+// Map database status -> target database status when advancing
+const STAGE_ADVANCE_MAP: Record<PipelineStage, string> = {
+  inbound: "received",          // Check in -> received
+  processing: "at_restoration", // Send out -> at_restoration
+  at_restoration: "ready_to_ship",
+  outbound: "shipped",
+};
+
+// All database statuses we care about
+const ALL_PIPELINE_STATUSES = Object.values(STAGE_STATUS_MAP).flat();
+
+// Get visual stage for a database status
+function getStageForStatus(dbStatus: string): PipelineStage | null {
+  for (const [stage, statuses] of Object.entries(STAGE_STATUS_MAP)) {
+    if (statuses.includes(dbStatus)) {
+      return stage as PipelineStage;
+    }
+  }
+  return null;
+}
 
 // Stage configuration
 const STAGE_CONFIG: Record<PipelineStage, {
@@ -63,27 +92,27 @@ const STAGE_CONFIG: Record<PipelineStage, {
   action?: string;
   actionHint?: string;
 }> = {
-  delivered_warehouse: {
-    label: "Delivered",
-    shortLabel: "DELIVERED",
-    color: "text-orange-400",
-    bgColor: "bg-orange-500/10",
-    borderColor: "border-orange-500/30",
-    headerBg: "bg-orange-500/20",
+  inbound: {
+    label: "Inbound",
+    shortLabel: "INBOUND",
+    color: "text-sky-400",
+    bgColor: "bg-sky-500/10",
+    borderColor: "border-sky-500/30",
+    headerBg: "bg-sky-500/20",
     thresholds: { green: 2, amber: 5 },
     action: "Bulk Check In",
-    actionHint: "Select multiple items to check in",
+    actionHint: "Check in delivered items",
   },
-  received: {
-    label: "Received",
-    shortLabel: "RECEIVED",
+  processing: {
+    label: "Processing",
+    shortLabel: "PROCESSING",
     color: "text-emerald-400",
     bgColor: "bg-emerald-500/10",
     borderColor: "border-emerald-500/30",
     headerBg: "bg-emerald-500/20",
     thresholds: { green: 3, amber: 7 },
     action: "Bulk Send Out",
-    actionHint: "Select multiple items to send to restoration",
+    actionHint: "Send items to restoration",
   },
   at_restoration: {
     label: "At Restoration",
@@ -94,9 +123,9 @@ const STAGE_CONFIG: Record<PipelineStage, {
     headerBg: "bg-purple-500/20",
     thresholds: { green: 7, amber: 14 },
     action: "Bulk Mark Ready",
-    actionHint: "Select multiple items to mark ready to ship",
+    actionHint: "Mark items ready to ship",
   },
-  ready_to_ship: {
+  outbound: {
     label: "Ready to Ship",
     shortLabel: "READY TO SHIP",
     color: "text-blue-400",
@@ -143,6 +172,9 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
 
   const canDrag = VALID_DRAG_TRANSITIONS[stage] !== null;
 
+  // Items that have arrived at warehouse need attention (pulsing amber indicator)
+  const needsCheckIn = item.status === "delivered_warehouse";
+
   return (
     <div
       ref={setNodeRef}
@@ -151,7 +183,9 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
       } ${isDragOverlay ? "shadow-xl ring-2 ring-accent-blue" : ""} ${
         isOverdue
           ? "bg-red-500/5 border-red-500/40 hover:border-red-500/60"
-          : `${config.bgColor} ${config.borderColor} hover:border-opacity-60`
+          : needsCheckIn
+            ? "bg-amber-500/10 border-amber-500/50 hover:border-amber-400 animate-pulse"
+            : `${config.bgColor} ${config.borderColor} hover:border-opacity-60`
       } hover:shadow-md active:scale-[0.98]`}
     >
       {/* Card is one big tap target */}
@@ -159,16 +193,23 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
         onClick={onClick}
         className="w-full text-left p-4"
       >
-        {/* Top row: Order Name + POS badge */}
+        {/* Top row: Order Name + badges */}
         <div className="flex items-center justify-between mb-3">
           <span className="text-base font-semibold text-accent-blue">
             {orderName || rmaNumber || `#${item.id}`}
           </span>
-          {item.is_pos && (
-            <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold">
-              POS
-            </span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {needsCheckIn && (
+              <span className="text-[10px] px-2 py-1 bg-amber-500/30 text-amber-300 rounded font-semibold">
+                Arrived
+              </span>
+            )}
+            {item.is_pos && (
+              <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold">
+                POS
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Bottom row: Days + Magnet */}
@@ -339,11 +380,11 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     })
   );
 
-  // Filter to active pipeline items only
+  // Filter to active pipeline items only (using ALL database statuses we care about)
   const pipelineItems = useMemo(() => {
     if (!data?.restorations) return [];
     return data.restorations.filter((r) =>
-      PIPELINE_STAGES.includes(r.status as PipelineStage)
+      ALL_PIPELINE_STATUSES.includes(r.status)
     );
   }, [data?.restorations]);
 
@@ -356,8 +397,8 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
       items = items.filter((r) => r.is_pos);
     } else if (activeFilter === "overdue") {
       items = items.filter((r) => {
-        const stage = r.status as PipelineStage;
-        const config = STAGE_CONFIG[stage];
+        const stage = getStageForStatus(r.status);
+        const config = stage ? STAGE_CONFIG[stage] : null;
         return config && r.days_in_status > config.thresholds.amber;
       });
     } else if (activeFilter === "no_magnet") {
@@ -378,17 +419,17 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     return items;
   }, [pipelineItems, searchTerm, activeFilter]);
 
-  // Group by stage
+  // Group by visual stage (mapping DB statuses to visual stages)
   const itemsByStage = useMemo(() => {
     const grouped: Record<PipelineStage, RestorationRecord[]> = {
-      delivered_warehouse: [],
-      received: [],
+      inbound: [],
+      processing: [],
       at_restoration: [],
-      ready_to_ship: [],
+      outbound: [],
     };
     for (const item of filteredItems) {
-      const stage = item.status as PipelineStage;
-      if (grouped[stage]) {
+      const stage = getStageForStatus(item.status);
+      if (stage && grouped[stage]) {
         grouped[stage].push(item);
       }
     }
@@ -398,12 +439,20 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
   // Totals and filter counts
   const totalActive = pipelineItems.length;
   const totalOverdue = pipelineItems.filter((r) => {
-    const stage = r.status as PipelineStage;
-    const config = STAGE_CONFIG[stage];
+    const stage = getStageForStatus(r.status);
+    const config = stage ? STAGE_CONFIG[stage] : null;
     return config && r.days_in_status > config.thresholds.amber;
   }).length;
   const totalPOS = pipelineItems.filter((r) => r.is_pos).length;
   const totalNoMagnet = pipelineItems.filter((r) => !r.magnet_number).length;
+
+  // Count items waiting for customer (not shown on board but tracked in header)
+  const awaitingCustomer = useMemo(() => {
+    if (!data?.restorations) return 0;
+    return data.restorations.filter(
+      (r) => r.status === "pending_label" || r.status === "label_sent"
+    ).length;
+  }, [data?.restorations]);
 
   // Handle drag start
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -442,11 +491,14 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     inFlightUpdatesRef.current.add(item.id);
     setIsUpdating(true);
 
+    // Get the target database status (visual stage -> DB status)
+    const targetDbStatus = STAGE_ADVANCE_MAP[fromStage];
+
     try {
       const res = await fetch(`/api/restorations/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: toStage }),
+        body: JSON.stringify({ status: targetDbStatus }),
       });
 
       if (!res.ok) {
@@ -510,6 +562,9 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
                 {totalActive} active
                 {totalOverdue > 0 && (
                   <span className="text-red-400 ml-2">• {totalOverdue} overdue</span>
+                )}
+                {awaitingCustomer > 0 && (
+                  <span className="text-text-muted ml-2">• {awaitingCustomer} awaiting customer</span>
                 )}
                 <span className="text-text-muted ml-2">• Drag cards to advance</span>
               </p>
@@ -609,18 +664,18 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}
           >
             <DroppableColumn
-              stage="delivered_warehouse"
-              items={itemsByStage.delivered_warehouse}
+              stage="inbound"
+              items={itemsByStage.inbound}
               onAction={() => setShowCheckIn(true)}
               onCardClick={setSelectedRestoration}
-              isDropTarget={getDropTarget("delivered_warehouse")}
+              isDropTarget={getDropTarget("inbound")}
             />
             <DroppableColumn
-              stage="received"
-              items={itemsByStage.received}
+              stage="processing"
+              items={itemsByStage.processing}
               onAction={() => setShowToRestoration(true)}
               onCardClick={setSelectedRestoration}
-              isDropTarget={getDropTarget("received")}
+              isDropTarget={getDropTarget("processing")}
             />
             <DroppableColumn
               stage="at_restoration"
@@ -630,10 +685,10 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
               isDropTarget={getDropTarget("at_restoration")}
             />
             <DroppableColumn
-              stage="ready_to_ship"
-              items={itemsByStage.ready_to_ship}
+              stage="outbound"
+              items={itemsByStage.outbound}
               onCardClick={setSelectedRestoration}
-              isDropTarget={getDropTarget("ready_to_ship")}
+              isDropTarget={getDropTarget("outbound")}
             />
           </div>
         </div>
