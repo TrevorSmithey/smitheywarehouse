@@ -658,7 +658,7 @@ export function RestorationDetailModal({
             <div
               role="listbox"
               aria-label="Status options"
-              className="absolute top-[72px] left-5 z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 min-w-[220px] max-h-[300px] overflow-y-auto"
+              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[220px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 max-h-[50vh] overflow-y-auto"
             >
               {/* Current status - always shown first */}
               <div className="px-4 py-3 text-sm text-text-tertiary border-b border-border/50 mb-1">
@@ -881,7 +881,7 @@ export function RestorationDetailModal({
                     ) : (
                       <>
                         <Camera className="w-8 h-8" aria-hidden="true" />
-                        <span className="text-xs font-semibold">Take Photo</span>
+                        <span className="text-xs font-semibold">Add Photo</span>
                       </>
                     )}
                   </button>
@@ -890,12 +890,12 @@ export function RestorationDetailModal({
                 {/* Empty slots removed - "Add Photo" button is sufficient indicator */}
               </div>
 
-              {/* Hidden file input - capture="environment" for back camera (iOS only allows single capture) */}
+              {/* Hidden file input - no capture attribute to allow both camera and photo library selection */}
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                multiple
                 onChange={handlePhotoUpload}
                 className="hidden"
                 aria-hidden="true"
@@ -918,6 +918,22 @@ export function RestorationDetailModal({
                   {formatDate(restoration.order_created_at)}
                 </span>
               </div>
+              {restoration.label_sent_at && (
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-text-tertiary">Return Label Sent</span>
+                  <span className="text-text-primary font-medium">
+                    {formatDateTime(restoration.label_sent_at)}
+                  </span>
+                </div>
+              )}
+              {restoration.customer_shipped_at && (
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-text-tertiary">Customer Shipped</span>
+                  <span className="text-text-primary font-medium">
+                    {formatDateTime(restoration.customer_shipped_at)}
+                  </span>
+                </div>
+              )}
               {restoration.delivered_to_warehouse_at && (
                 <div className="flex items-center justify-between py-2 border-b border-border/30">
                   <span className="text-text-tertiary">Delivered to Warehouse</span>
@@ -944,9 +960,25 @@ export function RestorationDetailModal({
               )}
               {restoration.back_from_restoration_at && (
                 <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Back from Restoration</span>
+                  <span className="text-text-tertiary">Ready to Ship</span>
                   <span className="text-text-primary font-medium">
                     {formatDateTime(restoration.back_from_restoration_at)}
+                  </span>
+                </div>
+              )}
+              {restoration.shipped_at && (
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-text-tertiary">Shipped to Customer</span>
+                  <span className="text-text-primary font-medium">
+                    {formatDateTime(restoration.shipped_at)}
+                  </span>
+                </div>
+              )}
+              {restoration.delivered_at && (
+                <div className="flex items-center justify-between py-2 border-b border-border/30">
+                  <span className="text-text-tertiary">Delivered to Customer</span>
+                  <span className="text-text-primary font-medium">
+                    {formatDateTime(restoration.delivered_at)}
                   </span>
                 </div>
               )}
@@ -1042,7 +1074,7 @@ export function RestorationDetailModal({
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  Save Only
+                  Save Changes
                 </>
               )}
             </button>

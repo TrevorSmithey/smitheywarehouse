@@ -31,6 +31,7 @@ interface RestorationAnalyticsProps {
   data: RestorationResponse | null;
   loading: boolean;
   onRefresh: () => void;
+  onItemClick?: (restoration: RestorationRecord) => void;
 }
 
 // Pipeline stages
@@ -87,13 +88,13 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
         </defs>
         <XAxis
           dataKey="month"
-          stroke="#64748B"
+          stroke="#94A3B8"
           fontSize={11}
           tickLine={false}
           axisLine={false}
         />
         <YAxis
-          stroke="#64748B"
+          stroke="#94A3B8"
           fontSize={11}
           tickLine={false}
           axisLine={false}
@@ -103,12 +104,12 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: "#12151F",
-            border: "1px solid rgba(255,255,255,0.06)",
-            borderRadius: "6px",
+            backgroundColor: "#1E293B",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "8px",
             fontSize: "12px",
           }}
-          labelStyle={{ color: "#94A3B8" }}
+          labelStyle={{ color: "#E2E8F0" }}
           formatter={(value: number) => [
             <span key="v" style={{ color: "#f59e0b", fontWeight: 600 }}>{value}d</span>,
             "Median Cycle",
@@ -207,9 +208,10 @@ function StageBreakdown({ internalCycle }: StageBreakdownProps) {
 
 interface CSActionItemsProps {
   restorations: RestorationRecord[];
+  onItemClick?: (restoration: RestorationRecord) => void;
 }
 
-function CSActionItems({ restorations }: CSActionItemsProps) {
+function CSActionItems({ restorations, onItemClick }: CSActionItemsProps) {
   // Group items by CS action type
   const deliveredTooLong = restorations.filter(
     (r) => r.status === "delivered_warehouse" && r.days_in_status > CS_THRESHOLDS.delivered_warehouse
@@ -229,9 +231,8 @@ function CSActionItems({ restorations }: CSActionItemsProps) {
 
   if (!hasItems) {
     return (
-      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-6 text-center">
-        <div className="text-emerald-400 font-semibold mb-1">All Clear</div>
-        <div className="text-sm text-text-secondary">No customers need proactive outreach right now</div>
+      <div className="bg-bg-secondary border border-border rounded-lg p-4 text-center">
+        <div className="text-text-secondary text-sm">No customers need proactive outreach right now</div>
       </div>
     );
   }
@@ -252,7 +253,7 @@ function CSActionItems({ restorations }: CSActionItemsProps) {
           </p>
           <div className="space-y-2">
             {deliveredTooLong.slice(0, 5).map((item) => (
-              <CSItem key={item.id} item={item} />
+              <CSItem key={item.id} item={item} onItemClick={onItemClick} />
             ))}
             {deliveredTooLong.length > 5 && (
               <div className="text-xs text-text-muted">+{deliveredTooLong.length - 5} more</div>
@@ -275,7 +276,7 @@ function CSActionItems({ restorations }: CSActionItemsProps) {
           </p>
           <div className="space-y-2">
             {atRestorationTooLong.slice(0, 5).map((item) => (
-              <CSItem key={item.id} item={item} />
+              <CSItem key={item.id} item={item} onItemClick={onItemClick} />
             ))}
             {atRestorationTooLong.length > 5 && (
               <div className="text-xs text-text-muted">+{atRestorationTooLong.length - 5} more</div>
@@ -298,7 +299,7 @@ function CSActionItems({ restorations }: CSActionItemsProps) {
           </p>
           <div className="space-y-2">
             {timeoutApproaching.slice(0, 5).map((item) => (
-              <CSItem key={item.id} item={item} showTotalDays />
+              <CSItem key={item.id} item={item} showTotalDays onItemClick={onItemClick} />
             ))}
             {timeoutApproaching.length > 5 && (
               <div className="text-xs text-text-muted">+{timeoutApproaching.length - 5} more</div>
@@ -313,26 +314,30 @@ function CSActionItems({ restorations }: CSActionItemsProps) {
 interface CSItemProps {
   item: RestorationRecord;
   showTotalDays?: boolean;
+  onItemClick?: (restoration: RestorationRecord) => void;
 }
 
-function CSItem({ item, showTotalDays }: CSItemProps) {
+function CSItem({ item, showTotalDays, onItemClick }: CSItemProps) {
   return (
-    <div className="flex items-center justify-between py-1.5 px-2 bg-bg-secondary/50 rounded">
+    <button
+      onClick={() => onItemClick?.(item)}
+      className="w-full flex items-center justify-between py-2 px-3 bg-bg-secondary/50 rounded hover:bg-bg-secondary transition-colors cursor-pointer text-left"
+    >
       <div className="flex items-center gap-3">
-        {item.shopify_order_id ? (
+        <span className="text-sm text-text-primary font-medium">
+          {item.order_name || `#${item.id}`}
+        </span>
+        {item.shopify_order_id && (
           <a
             href={`https://admin.shopify.com/store/smithey-iron-ware/orders/${item.shopify_order_id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-accent-blue hover:underline font-medium flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-accent-blue hover:underline flex items-center gap-0.5"
           >
-            {item.order_name || `#${item.id}`}
-            <ExternalLink className="w-3 h-3" />
+            Shopify
+            <ExternalLink className="w-2.5 h-2.5" />
           </a>
-        ) : (
-          <span className="text-sm text-text-primary font-medium">
-            {item.order_name || `#${item.id}`}
-          </span>
         )}
       </div>
       <div className="flex items-center gap-1.5 text-xs text-text-secondary">
@@ -341,7 +346,7 @@ function CSItem({ item, showTotalDays }: CSItemProps) {
           {showTotalDays ? `${item.total_days}d total` : `${item.days_in_status}d`}
         </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -387,7 +392,7 @@ function TrendChart({ data, height = 48 }: TrendChartProps) {
 // MAIN COMPONENT
 // ============================================================================
 
-export function RestorationAnalytics({ data, loading, onRefresh }: RestorationAnalyticsProps) {
+export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: RestorationAnalyticsProps) {
   const { lastRefresh } = useDashboard();
 
   const stats = data?.stats;
@@ -575,7 +580,7 @@ export function RestorationAnalytics({ data, loading, onRefresh }: RestorationAn
           <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">
             CS Action Items
           </h2>
-          <CSActionItems restorations={restorations} />
+          <CSActionItems restorations={restorations} onItemClick={onItemClick} />
         </div>
 
         {/* Stage Breakdown - 1 col */}
