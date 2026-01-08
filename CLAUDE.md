@@ -347,6 +347,40 @@ function isValidPhotoUrl(url: string): boolean {
 
 ---
 
+## Restoration UI - Remaining Work (January 2026)
+
+### Completed
+- RestorationDetailModal with iPad-optimized photo upload
+- Canvas-based image compression (3MB → 200-400KB)
+- Supabase storage bucket with 5MB limit
+- Status advancement from modal
+- XSS protection, memory leak fixes, accessibility
+
+### TODO: Page-Level Restructure
+The plan (`~/.claude/plans/zesty-popping-orbit.md`) calls for separating Operations from Analytics:
+
+1. **Create `/restoration/analytics` route**
+   - Move charts/KPIs to separate page
+   - Add CS Action Items (customers waiting >X days)
+   - Add trend charts, SLA tracking
+
+2. **Simplify Operations page (`/restoration`)**
+   - Strip to pipeline columns + action buttons only
+   - Consider table layout vs current Kanban cards
+   - Remove all analytics/charts from main view
+
+3. **Add tab navigation in layout.tsx**
+   - "Operations" tab → `/restoration`
+   - "Analytics" tab → `/restoration/analytics`
+
+### Key Files
+- `components/restorations/RestorationDetailModal.tsx` - Photo upload, status changes
+- `components/restorations/RestorationOperations.tsx` - Kanban board
+- `app/(dashboard)/restoration/page.tsx` - Current combined view
+- `app/api/restorations/[id]/route.ts` - PATCH for status updates
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development
