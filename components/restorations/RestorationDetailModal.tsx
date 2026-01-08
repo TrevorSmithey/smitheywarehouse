@@ -466,7 +466,7 @@ export function RestorationDetailModal({
 
   // Save changes without advancing status
   const handleSave = async () => {
-    if (!hasChanges) return;
+    if (!hasChanges || !restoration) return;
 
     setSaving(true);
     try {
@@ -494,7 +494,7 @@ export function RestorationDetailModal({
 
   // Save AND advance status in one action
   const handleAdvanceStatus = async () => {
-    if (!advanceConfig) return;
+    if (!advanceConfig || !restoration) return;
 
     setAdvancing(true);
     try {
@@ -523,6 +523,7 @@ export function RestorationDetailModal({
 
   // Manual status change
   const handleManualStatusChange = async (newStatus: string) => {
+    if (!restoration) return;
     if (newStatus === restoration.status) {
       setShowStatusDropdown(false);
       return;
@@ -587,19 +588,9 @@ export function RestorationDetailModal({
   // Defensive: extract order name safely
   const orderName = typeof restoration.order_name === "string" ? restoration.order_name : null;
 
-  // Calculate days in current status
-  const statusChangedAt = restoration.status_changed_at || restoration.created_at;
-  const daysInStatus = Math.floor(
-    (Date.now() - new Date(statusChangedAt).getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  // Calculate total days since order created
-  const totalDays = restoration.order_created_at
-    ? Math.floor(
-        (Date.now() - new Date(restoration.order_created_at).getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
-    : 0;
+  // Use pre-computed values from API (already calculated server-side)
+  const daysInStatus = restoration.days_in_status ?? 0;
+  const totalDays = restoration.total_days ?? 0;
 
   // Get advance config for the primary action button (if status can be advanced)
   const advanceConfig = STATUS_ADVANCE[restoration.status] || null;
