@@ -23,6 +23,7 @@ const roleGradients: Record<DashboardRole, string> = {
   ops2: "bg-gradient-to-br from-sky-500 to-sky-700",
   standard: "bg-gradient-to-br from-slate-500 to-slate-700",
   sales: "bg-gradient-to-br from-blue-500 to-blue-700",
+  fulfillment: "bg-gradient-to-br from-emerald-500 to-emerald-700",
 };
 
 // Subtle ring color per role
@@ -33,6 +34,7 @@ const roleRings: Record<DashboardRole, string> = {
   ops2: "ring-sky-500/20",
   standard: "ring-slate-500/20",
   sales: "ring-blue-500/20",
+  fulfillment: "ring-emerald-500/20",
 };
 
 // Size classes with better proportions
