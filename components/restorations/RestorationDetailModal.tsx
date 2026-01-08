@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   X,
   ExternalLink,
@@ -21,6 +21,34 @@ import {
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
 import { createClient } from "@/lib/supabase/client";
+
+// =============================================================================
+// SECURITY UTILITIES
+// =============================================================================
+
+/**
+ * Validates that a URL is a safe Supabase storage URL for restoration photos.
+ * Prevents XSS attacks from malicious URLs stored in the database.
+ */
+function isValidPhotoUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+
+  try {
+    const parsed = new URL(url);
+    // Only allow Supabase storage URLs from our project
+    const validHosts = [
+      "rpfkpxoyucocriifutfy.supabase.co",
+      // Add any CDN domains if used
+    ];
+    return (
+      validHosts.includes(parsed.hostname) &&
+      parsed.pathname.includes("/restoration-photos/") &&
+      parsed.protocol === "https:"
+    );
+  } catch {
+    return false;
+  }
+}
 
 interface RestorationDetailModalProps {
   isOpen: boolean;
@@ -117,13 +145,49 @@ function formatDateTime(dateStr: string | null): string {
  * - Resizes to max 1200px on longest side
  * - Converts to JPEG at 0.8 quality
  * - Reduces iPad photos from ~3MB to ~200-400KB
+ * - Supports AbortSignal for cancellation (prevents memory leaks on unmount)
  */
-async function compressImage(file: File, maxDimension = 1200, quality = 0.8): Promise<Blob> {
+async function compressImage(
+  file: File,
+  maxDimension = 1200,
+  quality = 0.8,
+  signal?: AbortSignal
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    // Check if already aborted before starting
+    if (signal?.aborted) {
+      reject(new DOMException("Compression aborted", "AbortError"));
+      return;
+    }
+
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
 
+    // Cleanup function to revoke URL and remove listeners
+    const cleanup = () => {
+      URL.revokeObjectURL(objectUrl);
+      img.onload = null;
+      img.onerror = null;
+    };
+
+    // Handle abort signal
+    const abortHandler = () => {
+      cleanup();
+      reject(new DOMException("Compression aborted", "AbortError"));
+    };
+
+    signal?.addEventListener("abort", abortHandler, { once: true });
+
     img.onload = () => {
+      signal?.removeEventListener("abort", abortHandler);
+
+      // Check if aborted during load
+      if (signal?.aborted) {
+        cleanup();
+        reject(new DOMException("Compression aborted", "AbortError"));
+        return;
+      }
+
       // Clean up object URL to prevent memory leak
       URL.revokeObjectURL(objectUrl);
 
@@ -153,6 +217,10 @@ async function compressImage(file: File, maxDimension = 1200, quality = 0.8): Pr
       // Export as JPEG
       canvas.toBlob(
         (blob) => {
+          if (signal?.aborted) {
+            reject(new DOMException("Compression aborted", "AbortError"));
+            return;
+          }
           if (blob) {
             resolve(blob);
           } else {
@@ -165,7 +233,8 @@ async function compressImage(file: File, maxDimension = 1200, quality = 0.8): Pr
     };
 
     img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
+      signal?.removeEventListener("abort", abortHandler);
+      cleanup();
       reject(new Error("Failed to load image"));
     };
 
@@ -190,14 +259,34 @@ export function RestorationDetailModal({
   const [hasChanges, setHasChanges] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+
+  // Refs for async operation safety
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
+  const uploadAbortControllerRef = useRef<AbortController | null>(null);
+
+  // Track mount state to prevent state updates after unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      // Abort any pending uploads on unmount
+      uploadAbortControllerRef.current?.abort();
+      // Clear file input reference
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    };
+  }, []);
 
   // Reset form when restoration changes
   useEffect(() => {
     if (restoration) {
       setNotes(restoration.notes || "");
       setMagnetNumber(restoration.magnet_number || "");
-      setPhotos(restoration.photos || []);
+      // Filter to only valid photo URLs for security
+      setPhotos((restoration.photos || []).filter(isValidPhotoUrl));
       setHasChanges(false);
       setShowStatusDropdown(false);
       setLoadedImages(new Set()); // Reset loaded images tracking
@@ -226,15 +315,20 @@ export function RestorationDetailModal({
   const advanceConfig = STATUS_ADVANCE[restoration.status];
   const AdvanceIcon = advanceConfig?.icon;
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || !restoration) return;
 
     const remainingSlots = MAX_PHOTOS - photos.length;
     if (remainingSlots <= 0) {
       alert("Maximum 3 photos allowed");
       return;
     }
+
+    // Create new AbortController for this upload session
+    uploadAbortControllerRef.current?.abort(); // Cancel any previous pending upload
+    const abortController = new AbortController();
+    uploadAbortControllerRef.current = abortController;
 
     setUploading(true);
     const supabase = createClient();
@@ -244,6 +338,11 @@ export function RestorationDetailModal({
       const newPhotoUrls: string[] = [];
 
       for (const file of filesToUpload) {
+        // Check if aborted or unmounted before each file
+        if (abortController.signal.aborted || !isMountedRef.current) {
+          break;
+        }
+
         // Validate file type (be lenient for iOS camera output including HEIC)
         if (!file.type.match(/^image\//)) {
           console.warn(`Skipping non-image file: ${file.type}`);
@@ -252,7 +351,12 @@ export function RestorationDetailModal({
 
         try {
           // Compress image before upload (converts to JPEG, resizes to max 1200px)
-          const compressedBlob = await compressImage(file);
+          const compressedBlob = await compressImage(file, 1200, 0.8, abortController.signal);
+
+          // Check again after compression
+          if (abortController.signal.aborted || !isMountedRef.current) {
+            break;
+          }
 
           // Always use .jpg extension since compression converts to JPEG
           const filename = `${restoration.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
@@ -274,8 +378,16 @@ export function RestorationDetailModal({
             .from("restoration-photos")
             .getPublicUrl(data.path);
 
-          newPhotoUrls.push(urlData.publicUrl);
+          // Only add if it's a valid URL (security check)
+          if (isValidPhotoUrl(urlData.publicUrl)) {
+            newPhotoUrls.push(urlData.publicUrl);
+          }
         } catch (compressionError) {
+          // If aborted, don't log as error
+          if (compressionError instanceof DOMException && compressionError.name === "AbortError") {
+            break;
+          }
+
           console.error("Compression error, uploading original:", compressionError);
           // Fallback: upload original file if compression fails
           const ext = file.name.split(".").pop() || "jpg";
@@ -292,24 +404,34 @@ export function RestorationDetailModal({
             const { data: urlData } = supabase.storage
               .from("restoration-photos")
               .getPublicUrl(data.path);
-            newPhotoUrls.push(urlData.publicUrl);
+            // Only add if it's a valid URL (security check)
+            if (isValidPhotoUrl(urlData.publicUrl)) {
+              newPhotoUrls.push(urlData.publicUrl);
+            }
           }
         }
       }
 
-      if (newPhotoUrls.length > 0) {
+      // Only update state if still mounted and not aborted
+      if (isMountedRef.current && !abortController.signal.aborted && newPhotoUrls.length > 0) {
         setPhotos((prev) => [...prev, ...newPhotoUrls].slice(0, MAX_PHOTOS));
       }
     } catch (error) {
-      console.error("Error uploading photos:", error);
-      alert("Failed to upload photos. Please try again.");
+      // Only show error if not aborted and still mounted
+      if (isMountedRef.current && !(error instanceof DOMException && (error as DOMException).name === "AbortError")) {
+        console.error("Error uploading photos:", error);
+        alert("Failed to upload photos. Please try again.");
+      }
     } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      // Only update state if still mounted
+      if (isMountedRef.current) {
+        setUploading(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       }
     }
-  };
+  }, [photos.length, restoration]);
 
   const handleRemovePhoto = async (photoUrl: string) => {
     // Update UI immediately for responsiveness
@@ -453,11 +575,17 @@ export function RestorationDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="restoration-modal-title"
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={handleClose}
+        aria-hidden="true"
       />
 
       {/* Modal - optimized for iPad */}
@@ -470,14 +598,17 @@ export function RestorationDetailModal({
             {/* Status Badge - Tappable for manual override */}
             <button
               onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+              aria-expanded={showStatusDropdown}
+              aria-haspopup="listbox"
+              aria-label={`Current status: ${config.label}. Tap to change status`}
               className={`inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider px-3 py-2 rounded-lg ${config.bgColor} ${config.color} min-h-[44px] active:opacity-80 transition-opacity`}
             >
-              <span className="w-2 h-2 rounded-full bg-current" />
+              <span className="w-2 h-2 rounded-full bg-current" aria-hidden="true" />
               {config.label}
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showStatusDropdown ? "rotate-180" : ""}`} />
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showStatusDropdown ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
             {restoration.is_pos && (
-              <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold">
+              <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold" aria-label="Point of Sale order">
                 POS
               </span>
             )}
@@ -485,9 +616,11 @@ export function RestorationDetailModal({
           {/* Close Button - 44px touch target */}
           <button
             onClick={handleClose}
+            type="button"
+            aria-label="Close restoration details"
             className="p-2.5 text-text-tertiary hover:text-text-primary hover:bg-bg-tertiary rounded-xl transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -500,7 +633,11 @@ export function RestorationDetailModal({
               onClick={() => setShowStatusDropdown(false)}
               aria-hidden="true"
             />
-            <div className="absolute top-[72px] left-5 z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 min-w-[220px] max-h-[300px] overflow-y-auto">
+            <div
+              role="listbox"
+              aria-label="Status options"
+              className="absolute top-[72px] left-5 z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 min-w-[220px] max-h-[300px] overflow-y-auto"
+            >
               {/* Current status - always shown first */}
               <div className="px-4 py-3 text-sm text-text-tertiary border-b border-border/50 mb-1">
                 Current: <span className="font-medium text-text-primary">{STATUS_LABELS[restoration.status]}</span>
@@ -509,12 +646,14 @@ export function RestorationDetailModal({
               {/* Valid next statuses */}
               {(VALID_TRANSITIONS[restoration.status] || []).length > 0 ? (
                 <>
-                  <div className="px-4 py-1 text-xs text-text-muted uppercase tracking-wider">
+                  <div className="px-4 py-1 text-xs text-text-muted uppercase tracking-wider" id="status-dropdown-label">
                     Move to
                   </div>
                   {(VALID_TRANSITIONS[restoration.status] || []).map((statusValue) => (
                     <button
                       key={statusValue}
+                      role="option"
+                      aria-selected={false}
                       onClick={() => handleManualStatusChange(statusValue)}
                       disabled={saving}
                       className="w-full text-left px-4 py-3 text-sm text-text-primary hover:bg-bg-secondary transition-colors min-h-[44px]"
@@ -546,30 +685,35 @@ export function RestorationDetailModal({
                 <div className="text-xs text-text-tertiary uppercase tracking-wider mb-1">
                   Order Number
                 </div>
-                <div className="text-2xl font-bold text-text-primary tracking-tight">
+                <h2
+                  id="restoration-modal-title"
+                  className="text-2xl font-bold text-text-primary tracking-tight"
+                >
                   {restoration.order_name || `#${restoration.id}`}
-                </div>
+                </h2>
               </div>
               {restoration.shopify_order_id && (
                 <a
                   href={`https://admin.shopify.com/store/smithey-iron-ware/orders/${restoration.shopify_order_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label="View order in Shopify admin (opens in new tab)"
                   className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-accent-blue transition-colors p-2 -m-2 min-h-[44px]"
                 >
                   Shopify
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
                 </a>
               )}
             </div>
 
             {/* Internal ID (Magnet #) - Editable Hero */}
             <div>
-              <label className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
-                <Tag className="w-3.5 h-3.5" />
+              <label htmlFor="magnet-number-input" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
+                <Tag className="w-3.5 h-3.5" aria-hidden="true" />
                 Internal ID (Magnet #)
               </label>
               <input
+                id="magnet-number-input"
                 type="text"
                 inputMode="text"
                 autoComplete="off"
@@ -588,7 +732,7 @@ export function RestorationDetailModal({
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-bg-secondary rounded-xl p-4 border border-border">
                 <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
-                  <Clock className="w-3.5 h-3.5" />
+                  <Clock className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>In Stage</span>
                 </div>
                 <div
@@ -605,7 +749,7 @@ export function RestorationDetailModal({
               </div>
               <div className="bg-bg-secondary rounded-xl p-4 border border-border">
                 <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
-                  <Calendar className="w-3.5 h-3.5" />
+                  <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>Total Time</span>
                 </div>
                 <div
@@ -629,11 +773,12 @@ export function RestorationDetailModal({
           <div className="space-y-4 pt-2 border-t border-border/50">
             {/* Notes */}
             <div>
-              <label className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
-                <FileText className="w-3.5 h-3.5" />
+              <label htmlFor="restoration-notes" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
+                <FileText className="w-3.5 h-3.5" aria-hidden="true" />
                 Notes
               </label>
               <textarea
+                id="restoration-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add any notes about this restoration..."
@@ -646,13 +791,13 @@ export function RestorationDetailModal({
 
             {/* Photos */}
             <div>
-              <label className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-3">
-                <Camera className="w-3.5 h-3.5" />
+              <span className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-3">
+                <Camera className="w-3.5 h-3.5" aria-hidden="true" />
                 Photos ({photos.length}/{MAX_PHOTOS})
-              </label>
+              </span>
 
               {/* Photo Grid - Larger for iPad */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3" role="group" aria-label="Restoration photos">
                 {/* Existing Photos */}
                 {photos.map((photoUrl, index) => (
                   <div
@@ -662,27 +807,32 @@ export function RestorationDetailModal({
                     {/* Loading skeleton */}
                     {!loadedImages.has(photoUrl) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-bg-secondary animate-pulse">
-                        <Loader2 className="w-6 h-6 text-text-muted animate-spin" />
+                        <Loader2 className="w-6 h-6 text-text-muted animate-spin" aria-hidden="true" />
+                        <span className="sr-only">Loading photo {index + 1}</span>
                       </div>
                     )}
-                    <img
-                      src={photoUrl}
-                      alt={`Restoration photo ${index + 1}`}
-                      loading="lazy"
-                      onLoad={() => setLoadedImages((prev) => new Set(prev).add(photoUrl))}
-                      className={`w-full h-full object-cover transition-opacity duration-200 ${
-                        loadedImages.has(photoUrl) ? "opacity-100" : "opacity-0"
-                      }`}
-                    />
+                    {/* Only render img if URL is valid (defense in depth) */}
+                    {isValidPhotoUrl(photoUrl) && (
+                      <img
+                        src={photoUrl}
+                        alt={`Restoration photo ${index + 1} of ${photos.length}`}
+                        loading="lazy"
+                        onLoad={() => setLoadedImages((prev) => new Set(prev).add(photoUrl))}
+                        className={`w-full h-full object-cover transition-opacity duration-200 ${
+                          loadedImages.has(photoUrl) ? "opacity-100" : "opacity-0"
+                        }`}
+                      />
+                    )}
                     {/* Delete Button - ALWAYS VISIBLE, 44px touch target */}
                     <button
                       onClick={() => handleRemovePhoto(photoUrl)}
+                      type="button"
+                      aria-label={`Remove photo ${index + 1}`}
                       className="absolute top-2 right-2 w-11 h-11 bg-red-500/90 text-white rounded-xl
                         flex items-center justify-center shadow-lg
                         hover:bg-red-600 active:bg-red-700 active:scale-95 transition-all"
-                      title="Remove photo"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="w-5 h-5" aria-hidden="true" />
                     </button>
                   </div>
                 ))}
@@ -692,6 +842,9 @@ export function RestorationDetailModal({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
+                    type="button"
+                    aria-label={uploading ? "Uploading photo, please wait" : `Take photo (${photos.length} of ${MAX_PHOTOS} used)`}
+                    aria-busy={uploading}
                     className="aspect-square bg-bg-secondary border-2 border-dashed border-border rounded-xl
                       flex flex-col items-center justify-center gap-2 text-text-tertiary
                       hover:border-accent-blue hover:text-accent-blue hover:bg-accent-blue/5
@@ -699,10 +852,13 @@ export function RestorationDetailModal({
                       min-h-[100px]"
                   >
                     {uploading ? (
-                      <Loader2 className="w-8 h-8 animate-spin" />
+                      <>
+                        <Loader2 className="w-8 h-8 animate-spin" aria-hidden="true" />
+                        <span className="sr-only">Uploading...</span>
+                      </>
                     ) : (
                       <>
-                        <Camera className="w-8 h-8" />
+                        <Camera className="w-8 h-8" aria-hidden="true" />
                         <span className="text-xs font-semibold">Take Photo</span>
                       </>
                     )}
@@ -720,6 +876,8 @@ export function RestorationDetailModal({
                 capture="environment"
                 onChange={handlePhotoUpload}
                 className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
               />
             </div>
           </div>
@@ -783,7 +941,7 @@ export function RestorationDetailModal({
               </h3>
               <div className="bg-bg-secondary rounded-xl p-4 border border-border">
                 <div className="flex items-center gap-2 mb-1">
-                  <Truck className="w-4 h-4 text-text-tertiary" />
+                  <Truck className="w-4 h-4 text-text-tertiary" aria-hidden="true" />
                   <span className="text-sm font-mono text-text-primary">
                     {restoration.return_tracking_number}
                   </span>
@@ -806,21 +964,28 @@ export function RestorationDetailModal({
           {advanceConfig && (
             <button
               onClick={handleAdvanceStatus}
-              disabled={advancing || saving}
+              disabled={advancing || saving || uploading}
+              aria-busy={advancing}
+              aria-label={`${advanceConfig.label} - advances restoration to ${advanceConfig.nextStatus} status`}
               className={`w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
                 ${advanceConfig.bgClass} disabled:opacity-50 disabled:cursor-not-allowed
                 min-h-[56px] mb-3 transition-all active:scale-[0.98]`}
             >
               {advancing ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Processing...
+                  <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                  <span>Processing...</span>
+                </>
+              ) : uploading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                  <span>Wait for upload...</span>
                 </>
               ) : (
                 <>
-                  {AdvanceIcon && <AdvanceIcon className="w-5 h-5" />}
+                  {AdvanceIcon && <AdvanceIcon className="w-5 h-5" aria-hidden="true" />}
                   {advanceConfig.label}
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-5 h-5" aria-hidden="true" />
                 </>
               )}
             </button>
@@ -830,15 +995,19 @@ export function RestorationDetailModal({
           <div className="flex items-center justify-between gap-3">
             <button
               onClick={handleClose}
+              type="button"
+              aria-label="Cancel and close modal"
               className="px-4 py-3 text-sm text-text-secondary hover:text-text-primary transition-colors min-h-[44px]"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              disabled={!hasChanges || saving || advancing}
+              disabled={!hasChanges || saving || advancing || uploading}
+              aria-busy={saving}
+              aria-label="Save changes without advancing status"
               className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-xl transition-all min-h-[44px] ${
-                hasChanges && !saving && !advancing
+                hasChanges && !saving && !advancing && !uploading
                   ? "bg-bg-tertiary text-text-primary hover:bg-border active:scale-95"
                   : "bg-bg-tertiary/50 text-text-muted cursor-not-allowed"
               }`}
