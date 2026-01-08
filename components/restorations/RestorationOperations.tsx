@@ -146,55 +146,61 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
   return (
     <div
       ref={setNodeRef}
-      className={`group w-full text-left p-3 rounded-lg border transition-all ${
+      className={`group w-full text-left rounded-lg border transition-all ${
         isDragging ? "opacity-40" : ""
       } ${isDragOverlay ? "shadow-xl ring-2 ring-accent-blue" : ""} ${
         isOverdue
-          ? "bg-red-500/5 border-red-500/40"
-          : `${config.bgColor} ${config.borderColor}`
-      }`}
+          ? "bg-red-500/5 border-red-500/40 hover:border-red-500/60"
+          : `${config.bgColor} ${config.borderColor} hover:border-opacity-60`
+      } hover:shadow-md active:scale-[0.98]`}
     >
-      {/* Drag Handle + Order Name */}
-      <div className="flex items-center gap-2 mb-2">
-        {canDrag && (
-          <button
-            {...attributes}
-            {...listeners}
-            className="touch-none p-1 -ml-1 text-text-muted hover:text-text-secondary cursor-grab active:cursor-grabbing"
-            aria-label="Drag to move"
-          >
-            <GripVertical className="w-4 h-4" />
-          </button>
-        )}
-        <button
-          onClick={onClick}
-          className="flex-1 text-left"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-accent-blue hover:underline">
-              {orderName || rmaNumber || `#${item.id}`}
+      {/* Card is one big tap target */}
+      <button
+        onClick={onClick}
+        className="w-full text-left p-4"
+      >
+        {/* Top row: Order Name + POS badge */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-base font-semibold text-accent-blue">
+            {orderName || rmaNumber || `#${item.id}`}
+          </span>
+          {item.is_pos && (
+            <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold">
+              POS
             </span>
-            {item.is_pos && (
-              <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/30 text-purple-300 rounded font-medium">
-                POS
-              </span>
-            )}
-          </div>
-        </button>
-      </div>
+          )}
+        </div>
 
-      {/* Days + Magnet */}
-      <button onClick={onClick} className="w-full text-left">
-        <div className="flex items-center justify-between text-xs">
-          <span className={`font-bold tabular-nums ${daysColor}`}>
+        {/* Bottom row: Days + Magnet */}
+        <div className="flex items-center justify-between">
+          <span className={`text-lg font-bold tabular-nums ${daysColor}`}>
             {daysInStatus}d
             {isOverdue && <span className="ml-1 text-red-400">!</span>}
           </span>
-          {magnetNumber && (
-            <span className="text-text-tertiary font-medium">{magnetNumber}</span>
+          {magnetNumber ? (
+            <span className="text-sm text-text-secondary font-medium bg-bg-tertiary/50 px-2 py-0.5 rounded">
+              {magnetNumber}
+            </span>
+          ) : (
+            <span className="text-xs text-amber-400/70 italic">needs ID</span>
           )}
         </div>
       </button>
+
+      {/* Drag handle - separate from tap area, larger touch target */}
+      {canDrag && (
+        <div className="border-t border-current/10 px-4 py-2">
+          <button
+            {...attributes}
+            {...listeners}
+            className="w-full flex items-center justify-center gap-2 py-1 text-text-muted hover:text-text-secondary cursor-grab active:cursor-grabbing touch-none"
+            aria-label="Drag to advance"
+          >
+            <GripVertical className="w-5 h-5" />
+            <span className="text-[10px] uppercase tracking-wider">Drag to advance</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -230,24 +236,35 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
   });
 
   return (
-    <div className="flex flex-col min-w-[260px] max-w-[320px] flex-1">
+    <div className="flex flex-col min-w-[280px] max-w-[340px] flex-1">
       {/* Column Header */}
       <div className={`rounded-t-lg px-4 py-3 ${config.headerBg} border-b ${config.borderColor}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-bold uppercase tracking-wider ${config.color}`}>
+            <span className={`text-sm font-bold uppercase tracking-wider ${config.color}`}>
               {config.shortLabel}
             </span>
-            <span className="text-xs text-text-tertiary font-medium">
+            <span className="text-sm text-text-tertiary font-medium">
               ({items.length})
             </span>
           </div>
           {overdueCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded font-semibold animate-pulse">
+            <span className="text-[10px] px-2 py-1 bg-red-500/20 text-red-400 rounded font-semibold animate-pulse">
               {overdueCount} late
             </span>
           )}
         </div>
+        {/* Action button in header - always visible */}
+        {config.action && items.length > 0 && onAction && (
+          <button
+            onClick={onAction}
+            className={`w-full py-2.5 text-sm font-semibold rounded-lg
+              bg-bg-primary/50 ${config.color} border ${config.borderColor}
+              hover:bg-bg-primary/80 active:scale-[0.98] transition-all`}
+          >
+            {config.action}
+          </button>
+        )}
       </div>
 
       {/* Column Body - Droppable */}
@@ -284,19 +301,6 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
           ))
         )}
       </div>
-
-      {/* Action Button */}
-      {config.action && items.length > 0 && onAction && (
-        <button
-          onClick={onAction}
-          title={config.actionHint}
-          className={`mt-2 w-full py-2.5 text-xs font-semibold uppercase tracking-wider rounded-lg
-            ${config.bgColor} ${config.color} border ${config.borderColor}
-            hover:bg-opacity-30 transition-colors`}
-        >
-          {config.action} ({items.length})
-        </button>
-      )}
     </div>
   );
 }
@@ -573,7 +577,7 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
                     : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                 }`}
               >
-                No Magnet# ({totalNoMagnet})
+                Needs ID ({totalNoMagnet})
                 {activeFilter === "no_magnet" && <X className="w-3 h-3" />}
               </button>
             )}
