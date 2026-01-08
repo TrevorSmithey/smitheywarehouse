@@ -117,6 +117,11 @@ function Card({ item, stage, onClick }: CardProps) {
             <span className="text-lg font-bold text-white truncate">
               {orderName}
             </span>
+            {item.is_pos && (
+              <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
+                POS
+              </span>
+            )}
             {isLate && (
               <span className="shrink-0 text-xs font-black px-2 py-0.5 bg-red-500 text-white rounded uppercase">
                 Late
