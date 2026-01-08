@@ -408,12 +408,13 @@ function TrendChart({ data, height = 48 }: TrendChartProps) {
 // ============================================================================
 
 // Date range options (chip-style toggle, matching VoC pattern)
-type DateRange = "30" | "60" | "90" | "all";
-const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
-  { value: "30", label: "30D" },
-  { value: "60", label: "60D" },
-  { value: "90", label: "90D" },
-  { value: "all", label: "All" },
+type DateRange = "30" | "90" | "365" | "730" | "all";
+const DATE_RANGE_OPTIONS: { value: DateRange; label: string; days: number | null }[] = [
+  { value: "30", label: "30D", days: 30 },
+  { value: "90", label: "90D", days: 90 },
+  { value: "365", label: "1Y", days: 365 },
+  { value: "730", label: "2Y", days: 730 },
+  { value: "all", label: "All", days: null },
 ];
 
 export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: RestorationAnalyticsProps) {
@@ -425,10 +426,11 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
 
   // Filter restorations by date range
   const filteredRestorations = useMemo(() => {
-    if (dateRange === "all") return restorations;
-    const days = parseInt(dateRange);
+    const option = DATE_RANGE_OPTIONS.find((o) => o.value === dateRange);
+    if (!option || option.days === null) return restorations;
+
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    cutoff.setDate(cutoff.getDate() - option.days);
     return restorations.filter((r) => new Date(r.order_created_at) >= cutoff);
   }, [restorations, dateRange]);
 
