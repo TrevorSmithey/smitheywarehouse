@@ -24,14 +24,36 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
   try {
-    // Get raw body for HMAC verification
+    // Get raw body
     const body = await request.text();
-    const signature = request.headers.get("as-signature");
 
-    // Verify webhook signature
+    // Verify webhook authentication (REQUIRED - never skip)
+    // AfterShip sends the secret via custom header X-Webhook-Secret
     const webhookSecret = process.env.AFTERSHIP_WEBHOOK_SECRET;
-    if (webhookSecret && !verifyAftershipWebhook(body, signature, webhookSecret)) {
-      console.error("[AFTERSHIP WEBHOOK] Signature verification failed");
+    if (!webhookSecret) {
+      console.error("[AFTERSHIP WEBHOOK] AFTERSHIP_WEBHOOK_SECRET not configured");
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+    }
+
+    // Check custom header (AfterShip 2026-01 API version)
+    const headerSecret = request.headers.get("x-webhook-secret");
+    // Also check legacy HMAC signature for backwards compatibility
+    const hmacSignature = request.headers.get("as-signature");
+
+    if (headerSecret) {
+      // Custom header authentication
+      if (headerSecret !== webhookSecret) {
+        console.error("[AFTERSHIP WEBHOOK] Custom header secret mismatch");
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    } else if (hmacSignature) {
+      // Legacy HMAC signature verification
+      if (!verifyAftershipWebhook(body, hmacSignature, webhookSecret)) {
+        console.error("[AFTERSHIP WEBHOOK] HMAC signature verification failed");
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    } else {
+      console.error("[AFTERSHIP WEBHOOK] No authentication header provided");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
