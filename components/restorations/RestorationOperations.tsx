@@ -21,8 +21,6 @@ import {
   X,
 } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
-import { RestorationCheckIn } from "./RestorationCheckIn";
-import { RestorationHandoff } from "./RestorationHandoff";
 import { RestorationDetailModal } from "./RestorationDetailModal";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
 import { useDashboard } from "@/app/(dashboard)/layout";
@@ -89,8 +87,6 @@ const STAGE_CONFIG: Record<PipelineStage, {
   borderColor: string;
   headerBg: string;
   thresholds: { green: number; amber: number };
-  action?: string;
-  actionHint?: string;
 }> = {
   inbound: {
     label: "Inbound",
@@ -100,8 +96,6 @@ const STAGE_CONFIG: Record<PipelineStage, {
     borderColor: "border-sky-500/30",
     headerBg: "bg-sky-500/20",
     thresholds: { green: 2, amber: 5 },
-    action: "Bulk Check In",
-    actionHint: "Check in delivered items",
   },
   processing: {
     label: "Processing",
@@ -111,8 +105,6 @@ const STAGE_CONFIG: Record<PipelineStage, {
     borderColor: "border-emerald-500/30",
     headerBg: "bg-emerald-500/20",
     thresholds: { green: 3, amber: 7 },
-    action: "Bulk Send Out",
-    actionHint: "Send items to restoration",
   },
   at_restoration: {
     label: "At Restoration",
@@ -122,8 +114,6 @@ const STAGE_CONFIG: Record<PipelineStage, {
     borderColor: "border-purple-500/30",
     headerBg: "bg-purple-500/20",
     thresholds: { green: 7, amber: 14 },
-    action: "Bulk Mark Ready",
-    actionHint: "Mark items ready to ship",
   },
   outbound: {
     label: "Ready to Ship",
@@ -253,12 +243,11 @@ function DraggableCard({ item, stage, onClick, isDragOverlay }: DraggableCardPro
 interface DroppableColumnProps {
   stage: PipelineStage;
   items: RestorationRecord[];
-  onAction?: () => void;
   onCardClick: (item: RestorationRecord) => void;
   isDropTarget?: boolean;
 }
 
-function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: DroppableColumnProps) {
+function DroppableColumn({ stage, items, onCardClick, isDropTarget }: DroppableColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${stage}`,
     data: { stage },
@@ -280,7 +269,7 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
     <div className="flex flex-col min-w-[280px] max-w-[340px] flex-1">
       {/* Column Header */}
       <div className={`rounded-t-lg px-4 py-3 ${config.headerBg} border-b ${config.borderColor}`}>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className={`text-sm font-bold uppercase tracking-wider ${config.color}`}>
               {config.shortLabel}
@@ -295,17 +284,6 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
             </span>
           )}
         </div>
-        {/* Action button in header - always visible */}
-        {config.action && items.length > 0 && onAction && (
-          <button
-            onClick={onAction}
-            className={`w-full py-2.5 text-sm font-semibold rounded-lg
-              bg-bg-primary/50 ${config.color} border ${config.borderColor}
-              hover:bg-bg-primary/80 active:scale-[0.98] transition-all`}
-          >
-            {config.action}
-          </button>
-        )}
       </div>
 
       {/* Column Body - Droppable */}
@@ -364,10 +342,7 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
   // Track in-flight status updates to prevent race conditions
   const inFlightUpdatesRef = useRef<Set<number>>(new Set());
 
-  // Modal states
-  const [showCheckIn, setShowCheckIn] = useState(false);
-  const [showToRestoration, setShowToRestoration] = useState(false);
-  const [showFromRestoration, setShowFromRestoration] = useState(false);
+  // Modal state
   const [selectedRestoration, setSelectedRestoration] = useState<RestorationRecord | null>(null);
 
   // DnD sensors - pointer for mouse, touch for iPad
@@ -666,21 +641,18 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
             <DroppableColumn
               stage="inbound"
               items={itemsByStage.inbound}
-              onAction={() => setShowCheckIn(true)}
               onCardClick={setSelectedRestoration}
               isDropTarget={getDropTarget("inbound")}
             />
             <DroppableColumn
               stage="processing"
               items={itemsByStage.processing}
-              onAction={() => setShowToRestoration(true)}
               onCardClick={setSelectedRestoration}
               isDropTarget={getDropTarget("processing")}
             />
             <DroppableColumn
               stage="at_restoration"
               items={itemsByStage.at_restoration}
-              onAction={() => setShowFromRestoration(true)}
               onCardClick={setSelectedRestoration}
               isDropTarget={getDropTarget("at_restoration")}
             />
@@ -706,40 +678,8 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
         </DragOverlay>
 
         {/* ============================================================ */}
-        {/* MODALS */}
+        {/* DETAIL MODAL */}
         {/* ============================================================ */}
-        <RestorationCheckIn
-          isOpen={showCheckIn}
-          onClose={() => setShowCheckIn(false)}
-          onSuccess={() => {
-            setShowCheckIn(false);
-            onRefresh();
-          }}
-          restorations={data?.restorations || []}
-        />
-
-        <RestorationHandoff
-          isOpen={showToRestoration}
-          onClose={() => setShowToRestoration(false)}
-          onSuccess={() => {
-            setShowToRestoration(false);
-            onRefresh();
-          }}
-          restorations={data?.restorations || []}
-          handoffType="to_restoration"
-        />
-
-        <RestorationHandoff
-          isOpen={showFromRestoration}
-          onClose={() => setShowFromRestoration(false)}
-          onSuccess={() => {
-            setShowFromRestoration(false);
-            onRefresh();
-          }}
-          restorations={data?.restorations || []}
-          handoffType="from_restoration"
-        />
-
         <RestorationDetailModal
           isOpen={!!selectedRestoration}
           onClose={() => setSelectedRestoration(null)}
