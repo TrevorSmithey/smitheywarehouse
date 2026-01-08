@@ -283,10 +283,12 @@ export function RestorationDetailModal({
   // Reset form when restoration changes
   useEffect(() => {
     if (restoration) {
-      setNotes(restoration.notes || "");
-      setMagnetNumber(restoration.magnet_number || "");
+      setNotes(typeof restoration.notes === "string" ? restoration.notes : "");
+      setMagnetNumber(typeof restoration.magnet_number === "string" ? restoration.magnet_number : "");
       // Filter to only valid photo URLs for security
-      setPhotos((restoration.photos || []).filter(isValidPhotoUrl));
+      // Defensive: ensure photos is an array before filtering
+      const photosArray = Array.isArray(restoration.photos) ? restoration.photos : [];
+      setPhotos(photosArray.filter((url): url is string => typeof url === "string" && isValidPhotoUrl(url)));
       setHasChanges(false);
       setShowStatusDropdown(false);
       setLoadedImages(new Set()); // Reset loaded images tracking
@@ -305,14 +307,21 @@ export function RestorationDetailModal({
 
   if (!isOpen || !restoration) return null;
 
-  const config = STAGE_CONFIG[restoration.status] || {
-    label: restoration.status,
+  // Defensive: ensure status is a string for config lookup
+  const statusKey = typeof restoration.status === "string" ? restoration.status : "pending_label";
+  const config = STAGE_CONFIG[statusKey] || {
+    label: statusKey,
     color: "text-text-secondary",
     bgColor: "bg-bg-tertiary",
     borderColor: "border-border",
   };
 
-  const advanceConfig = STATUS_ADVANCE[restoration.status];
+  // Defensive: ensure numeric fields are numbers
+  const daysInStatus = typeof restoration.days_in_status === "number" ? restoration.days_in_status : 0;
+  const totalDays = typeof restoration.total_days === "number" ? restoration.total_days : 0;
+  const orderName = typeof restoration.order_name === "string" ? restoration.order_name : null;
+
+  const advanceConfig = STATUS_ADVANCE[statusKey];
   const AdvanceIcon = advanceConfig?.icon;
 
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -689,7 +698,7 @@ export function RestorationDetailModal({
                   id="restoration-modal-title"
                   className="text-2xl font-bold text-text-primary tracking-tight"
                 >
-                  {restoration.order_name || `#${restoration.id}`}
+                  {orderName || `#${restoration.id}`}
                 </h2>
               </div>
               {restoration.shopify_order_id && (
@@ -737,14 +746,14 @@ export function RestorationDetailModal({
                 </div>
                 <div
                   className={`text-2xl font-bold tabular-nums ${
-                    restoration.days_in_status <= 3
+                    daysInStatus <= 3
                       ? "text-emerald-400"
-                      : restoration.days_in_status <= 7
+                      : daysInStatus <= 7
                       ? "text-amber-400"
                       : "text-red-400"
                   }`}
                 >
-                  {restoration.days_in_status}d
+                  {daysInStatus}d
                 </div>
               </div>
               <div className="bg-bg-secondary rounded-xl p-4 border border-border">
@@ -754,14 +763,14 @@ export function RestorationDetailModal({
                 </div>
                 <div
                   className={`text-2xl font-bold tabular-nums ${
-                    restoration.total_days <= 14
+                    totalDays <= 14
                       ? "text-emerald-400"
-                      : restoration.total_days <= 21
+                      : totalDays <= 21
                       ? "text-amber-400"
                       : "text-red-400"
                   }`}
                 >
-                  {restoration.total_days}d
+                  {totalDays}d
                 </div>
               </div>
             </div>
