@@ -226,10 +226,8 @@ export async function POST(request: NextRequest) {
  * Lookup orders by order_number (matches order_name in our database)
  * Returns Map of order_number -> order_id
  *
- * AfterShip sends order_number as "371909" (plain number)
- * Our order_name can be:
- * - "S371909" (current Shopify format with "S" prefix)
- * - "#371909" (legacy format with "#" prefix)
+ * AfterShip sends order_number in same format as Shopify (e.g., "S371909")
+ * Just match directly - no prefix manipulation needed
  */
 async function lookupOrdersByNumber(
   supabase: ReturnType<typeof createServiceClient>,
@@ -237,20 +235,10 @@ async function lookupOrdersByNumber(
 ): Promise<Map<string, number>> {
   const orderMap = new Map<string, number>();
 
-  // Strip any existing prefix to get raw number
-  const rawNumbers = orderNumbers.map((n) =>
-    n.replace(/^[#S]/i, "")
-  );
-
-  // Try both "S" prefix (current) and "#" prefix (legacy)
-  const normalizedWithS = rawNumbers.map((n) => `S${n}`);
-  const normalizedWithHash = rawNumbers.map((n) => `#${n}`);
-  const allVariants = [...new Set([...normalizedWithS, ...normalizedWithHash])];
-
   // Query in batches of 500 to avoid query size limits
   const BATCH_SIZE = 500;
-  for (let i = 0; i < allVariants.length; i += BATCH_SIZE) {
-    const batch = allVariants.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < orderNumbers.length; i += BATCH_SIZE) {
+    const batch = orderNumbers.slice(i, i + BATCH_SIZE);
 
     const { data, error } = await supabase
       .from("orders")
@@ -263,9 +251,7 @@ async function lookupOrdersByNumber(
     }
 
     for (const order of data || []) {
-      // Strip prefix for the map key to match Aftership format
-      const orderNumber = order.order_name.replace(/^[#S]/i, "");
-      orderMap.set(orderNumber, order.id);
+      orderMap.set(order.order_name, order.id);
     }
   }
 
