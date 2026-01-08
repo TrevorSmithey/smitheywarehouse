@@ -622,8 +622,8 @@ export function RestorationDetailModal({
         aria-hidden="true"
       />
 
-      {/* Modal - optimized for iPad */}
-      <div className="relative bg-bg-primary border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      {/* Modal - optimized for iPad LANDSCAPE */}
+      <div className="relative bg-bg-primary border border-border rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
         {/* ================================================================ */}
         {/* HEADER - Status Badge + Close */}
         {/* ================================================================ */}
@@ -712,132 +712,183 @@ export function RestorationDetailModal({
         )}
 
         {/* ================================================================ */}
-        {/* CONTENT - Scrollable */}
+        {/* CONTENT - 2-Column Grid for iPad Landscape */}
         {/* ================================================================ */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-          {/* ============================================================ */}
-          {/* SECTION 1: HEROES - Order # + Internal ID */}
-          {/* ============================================================ */}
-          <div className="space-y-4">
-            {/* Order Number - THE HERO */}
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-xs text-text-tertiary uppercase tracking-wider mb-1">
-                  Order Number
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* ============================================================ */}
+            {/* LEFT COLUMN - Order Info, Inputs */}
+            {/* ============================================================ */}
+            <div className="space-y-5">
+              {/* Order Number - THE HERO */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-xs text-text-tertiary uppercase tracking-wider mb-1">
+                    Order Number
+                  </div>
+                  <h2
+                    id="restoration-modal-title"
+                    className="text-2xl font-bold text-text-primary tracking-tight"
+                  >
+                    {orderName || `#${restoration.id}`}
+                  </h2>
                 </div>
-                <h2
-                  id="restoration-modal-title"
-                  className="text-2xl font-bold text-text-primary tracking-tight"
-                >
-                  {orderName || `#${restoration.id}`}
-                </h2>
+                {restoration.shopify_order_id && (
+                  <a
+                    href={`https://admin.shopify.com/store/smithey-iron-ware/orders/${restoration.shopify_order_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="View order in Shopify admin (opens in new tab)"
+                    className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-accent-blue transition-colors p-2 -m-2 min-h-[44px]"
+                  >
+                    Shopify
+                    <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                  </a>
+                )}
               </div>
-              {restoration.shopify_order_id && (
-                <a
-                  href={`https://admin.shopify.com/store/smithey-iron-ware/orders/${restoration.shopify_order_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="View order in Shopify admin (opens in new tab)"
-                  className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-accent-blue transition-colors p-2 -m-2 min-h-[44px]"
-                >
-                  Shopify
-                  <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
-                </a>
+
+              {/* Key Metrics Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-bg-secondary rounded-xl p-4 border border-border">
+                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
+                    <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>In Stage</span>
+                  </div>
+                  <div
+                    className={`text-2xl font-bold tabular-nums ${
+                      daysInStatus <= 3
+                        ? "text-emerald-400"
+                        : daysInStatus <= 7
+                        ? "text-amber-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {daysInStatus}d
+                  </div>
+                </div>
+                <div className="bg-bg-secondary rounded-xl p-4 border border-border">
+                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
+                    <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Total Time</span>
+                  </div>
+                  <div
+                    className={`text-2xl font-bold tabular-nums ${
+                      totalDays <= 14
+                        ? "text-emerald-400"
+                        : totalDays <= 21
+                        ? "text-amber-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {totalDays}d
+                  </div>
+                </div>
+              </div>
+
+              {/* Internal ID (Magnet #) */}
+              <div>
+                <label htmlFor="magnet-number-input" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
+                  <Tag className="w-3.5 h-3.5" aria-hidden="true" />
+                  Internal ID (Magnet #)
+                </label>
+                <input
+                  id="magnet-number-input"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  value={magnetNumber}
+                  onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g., M-042"
+                  className="w-full px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
+                    text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
+                    transition-colors min-h-[56px]"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label htmlFor="restoration-notes" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
+                  <FileText className="w-3.5 h-3.5" aria-hidden="true" />
+                  Notes
+                </label>
+                <textarea
+                  id="restoration-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add any notes about this restoration..."
+                  rows={3}
+                  className="w-full px-4 py-3 text-sm bg-bg-secondary border border-border rounded-xl
+                    text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
+                    resize-none transition-colors min-h-[88px]"
+                />
+              </div>
+
+              {/* Timeline - Compact Horizontal Layout */}
+              <div className="pt-3 border-t border-border/50">
+                <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
+                  Timeline
+                </h3>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="px-2.5 py-1.5 bg-bg-secondary rounded-lg text-text-secondary">
+                    Created {formatDate(restoration.order_created_at)}
+                  </span>
+                  {restoration.delivered_to_warehouse_at && (
+                    <span className="px-2.5 py-1.5 bg-orange-500/20 text-orange-300 rounded-lg">
+                      Delivered {formatDate(restoration.delivered_to_warehouse_at)}
+                    </span>
+                  )}
+                  {restoration.received_at && (
+                    <span className="px-2.5 py-1.5 bg-emerald-500/20 text-emerald-300 rounded-lg">
+                      Checked In {formatDate(restoration.received_at)}
+                    </span>
+                  )}
+                  {restoration.sent_to_restoration_at && (
+                    <span className="px-2.5 py-1.5 bg-purple-500/20 text-purple-300 rounded-lg">
+                      At Resto {formatDate(restoration.sent_to_restoration_at)}
+                    </span>
+                  )}
+                  {restoration.back_from_restoration_at && (
+                    <span className="px-2.5 py-1.5 bg-blue-500/20 text-blue-300 rounded-lg">
+                      Ready {formatDate(restoration.back_from_restoration_at)}
+                    </span>
+                  )}
+                  {restoration.shipped_at && (
+                    <span className="px-2.5 py-1.5 bg-cyan-500/20 text-cyan-300 rounded-lg">
+                      Shipped {formatDate(restoration.shipped_at)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Return Tracking - Inline */}
+              {restoration.return_tracking_number && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border text-sm">
+                  <Truck className="w-4 h-4 text-text-tertiary shrink-0" aria-hidden="true" />
+                  <span className="font-mono text-text-primary truncate">
+                    {restoration.return_tracking_number}
+                  </span>
+                  {restoration.return_carrier && (
+                    <span className="text-text-tertiary shrink-0">
+                      ({restoration.return_carrier})
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
-            {/* Internal ID (Magnet #) - Editable Hero */}
-            <div>
-              <label htmlFor="magnet-number-input" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
-                <Tag className="w-3.5 h-3.5" aria-hidden="true" />
-                Internal ID (Magnet #)
-              </label>
-              <input
-                id="magnet-number-input"
-                type="text"
-                inputMode="text"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="characters"
-                value={magnetNumber}
-                onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
-                placeholder="e.g., M-042"
-                className="w-full px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
-                  text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
-                  transition-colors min-h-[56px]"
-              />
-            </div>
-
-            {/* Key Metrics Row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-                <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
-                  <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>In Stage</span>
-                </div>
-                <div
-                  className={`text-2xl font-bold tabular-nums ${
-                    daysInStatus <= 3
-                      ? "text-emerald-400"
-                      : daysInStatus <= 7
-                      ? "text-amber-400"
-                      : "text-red-400"
-                  }`}
-                >
-                  {daysInStatus}d
-                </div>
-              </div>
-              <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-                <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
-                  <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Total Time</span>
-                </div>
-                <div
-                  className={`text-2xl font-bold tabular-nums ${
-                    totalDays <= 14
-                      ? "text-emerald-400"
-                      : totalDays <= 21
-                      ? "text-amber-400"
-                      : "text-red-400"
-                  }`}
-                >
-                  {totalDays}d
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ============================================================ */}
-          {/* SECTION 2: NOTES + PHOTOS */}
-          {/* ============================================================ */}
-          <div className="space-y-4 pt-2 border-t border-border/50">
-            {/* Notes */}
-            <div>
-              <label htmlFor="restoration-notes" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
-                <FileText className="w-3.5 h-3.5" aria-hidden="true" />
-                Notes
-              </label>
-              <textarea
-                id="restoration-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add any notes about this restoration..."
-                rows={3}
-                className="w-full px-4 py-4 text-sm bg-bg-secondary border border-border rounded-xl
-                  text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
-                  resize-none transition-colors min-h-[100px]"
-              />
-            </div>
-
-            {/* Photos */}
-            <div>
-              <span className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-3">
+            {/* ============================================================ */}
+            {/* RIGHT COLUMN - Photos (Prominent) */}
+            {/* ============================================================ */}
+            <div className="space-y-4">
+              <span className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider">
                 <Camera className="w-3.5 h-3.5" aria-hidden="true" />
                 Photos ({photos.length}/{MAX_PHOTOS})
               </span>
 
-              {/* Photo Grid - Larger for iPad */}
-              <div className="grid grid-cols-3 gap-3" role="group" aria-label="Restoration photos">
+              {/* Photo Grid - Larger squares for iPad */}
+              <div className="grid grid-cols-2 gap-3" role="group" aria-label="Restoration photos">
                 {/* Existing Photos */}
                 {photos.map((photoUrl, index) => (
                   <div
@@ -852,7 +903,7 @@ export function RestorationDetailModal({
                     {/* Loading skeleton */}
                     {!loadedImages.has(photoUrl) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-bg-secondary animate-pulse">
-                        <Loader2 className="w-6 h-6 text-text-muted animate-spin" aria-hidden="true" />
+                        <Loader2 className="w-8 h-8 text-text-muted animate-spin" aria-hidden="true" />
                         <span className="sr-only">Loading photo {index + 1}</span>
                       </div>
                     )}
@@ -868,13 +919,11 @@ export function RestorationDetailModal({
                         }`}
                       />
                     )}
-                    {/* Hover overlay with expand hint */}
+                    {/* Hover overlay */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                      <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                        Tap to expand
-                      </span>
+                      <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover:opacity-80 transition-opacity" />
                     </div>
-                    {/* Delete Button - Hidden until hover/focus, 44px touch target */}
+                    {/* Delete Button */}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleRemovePhoto(photoUrl); }}
                       type="button"
@@ -889,7 +938,7 @@ export function RestorationDetailModal({
                   </div>
                 ))}
 
-                {/* Add Photo Button - iPad-friendly, goes directly to camera */}
+                {/* Add Photo Button */}
                 {photos.length < MAX_PHOTOS && (
                   <button
                     onClick={() => fileInputRef.current?.click()}
@@ -900,14 +949,13 @@ export function RestorationDetailModal({
                     className="aspect-square bg-bg-secondary border-2 border-dashed border-border rounded-xl
                       flex flex-col items-center justify-center gap-2 text-text-tertiary
                       hover:border-accent-blue hover:text-accent-blue hover:bg-accent-blue/5
-                      active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                      min-h-[100px]"
+                      active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {uploading ? (
                       <>
-                        <Loader2 className="w-8 h-8 animate-spin text-accent-blue" aria-hidden="true" />
+                        <Loader2 className="w-10 h-10 animate-spin text-accent-blue" aria-hidden="true" />
                         {uploadProgress && (
-                          <span className="text-xs font-semibold text-accent-blue">
+                          <span className="text-sm font-semibold text-accent-blue">
                             {uploadProgress.current}/{uploadProgress.total}
                           </span>
                         )}
@@ -915,17 +963,15 @@ export function RestorationDetailModal({
                       </>
                     ) : (
                       <>
-                        <Camera className="w-8 h-8" aria-hidden="true" />
-                        <span className="text-xs font-semibold">Add Photo</span>
+                        <Camera className="w-10 h-10" aria-hidden="true" />
+                        <span className="text-sm font-semibold">Add Photo</span>
                       </>
                     )}
                   </button>
                 )}
-
-                {/* Empty slots removed - "Add Photo" button is sufficient indicator */}
               </div>
 
-              {/* Hidden file input - no capture attribute to allow both camera and photo library selection */}
+              {/* Hidden file input */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -936,113 +982,15 @@ export function RestorationDetailModal({
                 aria-hidden="true"
                 tabIndex={-1}
               />
-            </div>
-          </div>
 
-          {/* ============================================================ */}
-          {/* SECTION 3: TIMELINE */}
-          {/* ============================================================ */}
-          <div className="space-y-3 pt-2 border-t border-border/50">
-            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-              Timeline
-            </h3>
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between py-2 border-b border-border/30">
-                <span className="text-text-tertiary">Order Created</span>
-                <span className="text-text-primary font-medium">
-                  {formatDate(restoration.order_created_at)}
-                </span>
-              </div>
-              {restoration.label_sent_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Return Label Sent</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.label_sent_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.customer_shipped_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Customer Shipped</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.customer_shipped_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.delivered_to_warehouse_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Delivered to Warehouse</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.delivered_to_warehouse_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.received_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Checked In</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.received_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.sent_to_restoration_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Sent to Restoration</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.sent_to_restoration_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.back_from_restoration_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Ready to Ship</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.back_from_restoration_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.shipped_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Shipped to Customer</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.shipped_at)}
-                  </span>
-                </div>
-              )}
-              {restoration.delivered_at && (
-                <div className="flex items-center justify-between py-2 border-b border-border/30">
-                  <span className="text-text-tertiary">Delivered to Customer</span>
-                  <span className="text-text-primary font-medium">
-                    {formatDateTime(restoration.delivered_at)}
-                  </span>
-                </div>
+              {/* Empty state hint */}
+              {photos.length === 0 && !uploading && (
+                <p className="text-sm text-text-muted text-center py-4">
+                  Tap above to add photos of the item
+                </p>
               )}
             </div>
           </div>
-
-          {/* ============================================================ */}
-          {/* SECTION 4: TRACKING (Least Important - Bottom) */}
-          {/* ============================================================ */}
-          {restoration.return_tracking_number && (
-            <div className="space-y-3 pt-2 border-t border-border/50">
-              <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                Return Tracking
-              </h3>
-              <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-                <div className="flex items-center gap-2 mb-1">
-                  <Truck className="w-4 h-4 text-text-tertiary" aria-hidden="true" />
-                  <span className="text-sm font-mono text-text-primary">
-                    {restoration.return_tracking_number}
-                  </span>
-                </div>
-                {restoration.return_carrier && (
-                  <span className="text-xs text-text-tertiary">
-                    via {restoration.return_carrier}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ================================================================ */}
