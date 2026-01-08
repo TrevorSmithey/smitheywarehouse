@@ -189,7 +189,7 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
   }).length;
 
   return (
-    <div className="flex flex-col flex-1 min-w-[300px] max-w-[400px]">
+    <div className="flex flex-col flex-1 min-w-[300px] max-w-[400px] lg:max-w-none">
       {/* Column Header - Large, clear */}
       <div className={`rounded-t-xl px-5 py-4 ${config.bgColor} border-b-2 ${config.borderColor}`}>
         <div className="flex items-center justify-between">
@@ -307,8 +307,8 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
         </button>
       </div>
 
-      {/* Three Column Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4 px-2">
+      {/* Three Column Board - flex on mobile/iPad, grid on desktop */}
+      <div className="flex gap-4 overflow-x-auto pb-4 px-2 lg:grid lg:grid-cols-3 lg:overflow-visible">
         <Column
           stage="here"
           items={itemsByStage.here}
