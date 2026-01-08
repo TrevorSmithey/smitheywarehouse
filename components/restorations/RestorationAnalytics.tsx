@@ -18,12 +18,12 @@ import {
   TrendingUp,
   TrendingDown,
   Award,
-  Calendar,
   AlertTriangle,
   ExternalLink,
   Clock,
   Download,
   ChevronDown,
+  Calendar,
 } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
@@ -466,6 +466,13 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
     ).length;
   }, [restorations]);
 
+  // Overdue count (memoized to avoid recalculating on every render)
+  const overdueCount = useMemo(() => {
+    return restorations.filter(
+      (r) => PIPELINE_STAGES.includes(r.status as PipelineStage) && r.total_days > 21
+    ).length;
+  }, [restorations]);
+
   // Throughput trend
   const monthlyData = stats?.monthlyVolume || [];
   const recentMonths = monthlyData.slice(0, 3);
@@ -504,24 +511,32 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Date Range Selector */}
+          {/* Export with Date Range Dropdown */}
           <div className="relative">
             <button
               onClick={() => setShowDateDropdown(!showDateDropdown)}
-              className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors"
+              disabled={!restorations.length}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
+              title="Export to CSV"
             >
-              <Calendar className="w-4 h-4" />
-              {DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label}
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Export</span>
+              <span className="text-text-muted hidden sm:inline">
+                ({DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label})
+              </span>
               <ChevronDown className={`w-4 h-4 transition-transform ${showDateDropdown ? "rotate-180" : ""}`} />
             </button>
             {showDateDropdown && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowDateDropdown(false)} />
-                <div className="absolute right-0 top-full mt-1 z-20 bg-bg-primary border border-border rounded-lg shadow-xl py-1 min-w-[150px]">
+                <div className="absolute right-0 top-full mt-1 z-20 bg-bg-primary border border-border rounded-lg shadow-xl py-1 min-w-[180px]">
+                  <div className="px-3 py-2 text-[10px] text-text-muted uppercase tracking-wider border-b border-border">
+                    Export Range
+                  </div>
                   {DATE_RANGE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
-                      onClick={() => { setDateRange(option.value); setShowDateDropdown(false); }}
+                      onClick={() => { setDateRange(option.value); }}
                       className={`w-full px-4 py-2 text-sm text-left transition-colors ${
                         dateRange === option.value
                           ? "bg-accent-blue/10 text-accent-blue"
@@ -531,21 +546,18 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
                       {option.label}
                     </button>
                   ))}
+                  <div className="border-t border-border mt-1 pt-1">
+                    <button
+                      onClick={() => { handleExportCSV(); setShowDateDropdown(false); }}
+                      className="w-full px-4 py-2 text-sm text-left text-accent-blue hover:bg-accent-blue/10 transition-colors font-medium"
+                    >
+                      Download CSV
+                    </button>
+                  </div>
                 </div>
               </>
             )}
           </div>
-
-          {/* Export Button */}
-          <button
-            onClick={handleExportCSV}
-            disabled={!restorations.length}
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
-            title="Export to CSV"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
 
           {/* Refresh */}
           <button
@@ -567,13 +579,12 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
           {/* Hero Metrics Row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Active Queue - Hero */}
-            <button
-              onClick={() => onItemClick && restorations[0] && onItemClick(restorations[0])}
-              className="bg-gradient-to-br from-sky-500/10 to-sky-600/5 rounded-xl p-5 border border-sky-500/20 hover:border-sky-500/40 transition-all text-left group"
+            <div
+              className="bg-gradient-to-br from-sky-500/10 to-sky-600/5 rounded-xl p-5 border border-sky-500/20"
               aria-label={`Active queue: ${stats.active} items. ${preWarehouseCount} pre-warehouse, ${stats.active - preWarehouseCount} in-house.`}
             >
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2.5 bg-sky-500/20 rounded-lg group-hover:scale-105 transition-transform">
+                <div className="p-2.5 bg-sky-500/20 rounded-lg">
                   <Activity className="w-5 h-5 text-sky-400" />
                 </div>
                 <span className="text-xs text-sky-400/80 uppercase tracking-wider font-medium">Active Queue</span>
@@ -586,7 +597,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
                 <span className="px-2 py-0.5 bg-bg-tertiary/50 rounded">{preWarehouseCount} pre-warehouse</span>
                 <span className="px-2 py-0.5 bg-bg-tertiary/50 rounded">{stats.active - preWarehouseCount} in-house</span>
               </div>
-            </button>
+            </div>
 
             {/* Cycle Time - Hero */}
             <div
@@ -701,7 +712,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
             {/* Overdue Count */}
             <div
               className="bg-bg-secondary rounded-lg p-3 border border-border"
-              aria-label={`Overdue items in queue.`}
+              aria-label={`${overdueCount} items overdue, past 21-day SLA target.`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-red-500/10 rounded">
@@ -710,12 +721,8 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
                 <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Overdue</span>
               </div>
               <div className="flex items-baseline gap-1.5">
-                <span className={`text-2xl font-bold ${
-                  restorations.filter((r) => PIPELINE_STAGES.includes(r.status as PipelineStage) && r.total_days > 21).length > 0
-                    ? "text-red-400"
-                    : "text-emerald-400"
-                }`}>
-                  {restorations.filter((r) => PIPELINE_STAGES.includes(r.status as PipelineStage) && r.total_days > 21).length}
+                <span className={`text-2xl font-bold ${overdueCount > 0 ? "text-red-400" : "text-emerald-400"}`}>
+                  {overdueCount}
                 </span>
                 <span className="text-xs text-text-tertiary">&gt;21d</span>
               </div>
