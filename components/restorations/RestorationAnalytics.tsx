@@ -369,7 +369,8 @@ interface TrendChartProps {
 function TrendChart({ data, height = 48 }: TrendChartProps) {
   if (!data || data.length < 2) return null;
 
-  const chartData = [...data].slice(0, 6).reverse();
+  // Data is already ordered oldest-to-newest from API, no need to reverse
+  const chartData = [...data].slice(-6);
   const maxValue = Math.max(...chartData.flatMap((d) => [d.created, d.completed]));
   const width = 180;
   const padding = 4;
@@ -430,7 +431,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
     const days = parseInt(dateRange);
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
-    return restorations.filter((r) => new Date(r.created_at) >= cutoff);
+    return restorations.filter((r) => new Date(r.order_created_at) >= cutoff);
   }, [restorations, dateRange]);
 
   // Export to CSV
@@ -474,9 +475,11 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
   }, [restorations]);
 
   // Throughput trend
+  // monthlyVolume is ordered: [5mo ago, 4mo ago, 3mo ago, 2mo ago, 1mo ago, current]
+  // So slice(3,6) = recent 3 months, slice(0,3) = older 3 months
   const monthlyData = stats?.monthlyVolume || [];
-  const recentMonths = monthlyData.slice(0, 3);
-  const olderMonths = monthlyData.slice(3, 6);
+  const olderMonths = monthlyData.slice(0, 3);   // indices 0,1,2 = 5,4,3 months ago
+  const recentMonths = monthlyData.slice(3, 6);  // indices 3,4,5 = 2,1,current months
   const recentCompleted = recentMonths.reduce((sum, m) => sum + m.completed, 0);
   const olderCompleted = olderMonths.reduce((sum, m) => sum + m.completed, 0);
   const throughputTrend = recentCompleted > olderCompleted ? "up" : recentCompleted < olderCompleted ? "down" : "flat";
