@@ -22,7 +22,6 @@ import {
   ExternalLink,
   Clock,
   Download,
-  ChevronDown,
   Calendar,
 } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
@@ -408,19 +407,18 @@ function TrendChart({ data, height = 48 }: TrendChartProps) {
 // MAIN COMPONENT
 // ============================================================================
 
-// Date range options
+// Date range options (chip-style toggle, matching VoC pattern)
 type DateRange = "30" | "60" | "90" | "all";
 const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
-  { value: "30", label: "Last 30 days" },
-  { value: "60", label: "Last 60 days" },
-  { value: "90", label: "Last 90 days" },
-  { value: "all", label: "All time" },
+  { value: "30", label: "30D" },
+  { value: "60", label: "60D" },
+  { value: "90", label: "90D" },
+  { value: "all", label: "All" },
 ];
 
 export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: RestorationAnalyticsProps) {
   const { lastRefresh } = useDashboard();
   const [dateRange, setDateRange] = useState<DateRange>("all");
-  const [showDateDropdown, setShowDateDropdown] = useState(false);
 
   const stats = data?.stats;
   const restorations = data?.restorations || [];
@@ -514,53 +512,33 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Export with Date Range Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowDateDropdown(!showDateDropdown)}
-              disabled={!restorations.length}
-              className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
-              title="Export to CSV"
-            >
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export</span>
-              <span className="text-text-muted hidden sm:inline">
-                ({DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label})
-              </span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${showDateDropdown ? "rotate-180" : ""}`} />
-            </button>
-            {showDateDropdown && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowDateDropdown(false)} />
-                <div className="absolute right-0 top-full mt-1 z-20 bg-bg-primary border border-border rounded-lg shadow-xl py-1 min-w-[180px]">
-                  <div className="px-3 py-2 text-[10px] text-text-muted uppercase tracking-wider border-b border-border">
-                    Export Range
-                  </div>
-                  {DATE_RANGE_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => { setDateRange(option.value); }}
-                      className={`w-full px-4 py-2 text-sm text-left transition-colors ${
-                        dateRange === option.value
-                          ? "bg-accent-blue/10 text-accent-blue"
-                          : "text-text-secondary hover:bg-bg-secondary"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                  <div className="border-t border-border mt-1 pt-1">
-                    <button
-                      onClick={() => { handleExportCSV(); setShowDateDropdown(false); }}
-                      className="w-full px-4 py-2 text-sm text-left text-accent-blue hover:bg-accent-blue/10 transition-colors font-medium"
-                    >
-                      Download CSV
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+          {/* Date Range Toggle (chip-style, matching VoC pattern) */}
+          <div className="flex items-center gap-0.5 bg-bg-tertiary rounded-lg p-0.5">
+            {DATE_RANGE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setDateRange(option.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                  dateRange === option.value
+                    ? "bg-accent-blue text-white"
+                    : "text-text-tertiary hover:text-text-secondary"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
+
+          {/* Export CSV */}
+          <button
+            onClick={handleExportCSV}
+            disabled={!restorations.length}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
+            title="Export to CSV"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
 
           {/* Refresh */}
           <button
