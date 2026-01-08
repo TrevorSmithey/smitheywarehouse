@@ -138,6 +138,13 @@ export async function POST(request: NextRequest) {
 
 /**
  * Handle return.shipment.provided - Label was generated
+ *
+ * This links AfterShip return data to existing restoration records.
+ * Records can exist from two sources:
+ * - Shopify webhook: Creates record with order_id but no aftership_return_id
+ * - AfterShip sync: Creates record with aftership_return_id
+ *
+ * We check both to avoid duplicate key violations.
  */
 async function handleShipmentProvided(
   supabase: ReturnType<typeof createServiceClient>,
@@ -149,18 +156,35 @@ async function handleShipmentProvided(
     return;
   }
 
-  // Find existing restoration by aftership_return_id
-  const { data: existing } = await supabase
+  // First, try to find existing restoration by aftership_return_id
+  let existing = await supabase
     .from("restorations")
     .select("id, status")
     .eq("aftership_return_id", data.id)
-    .maybeSingle();
+    .maybeSingle()
+    .then(r => r.data);
+
+  // If not found by aftership_return_id, check by order_id
+  // (Shopify webhook creates records without aftership_return_id)
+  if (!existing) {
+    const orderData = await lookupOrder(supabase, data.order.order_number);
+    if (orderData?.id) {
+      existing = await supabase
+        .from("restorations")
+        .select("id, status")
+        .eq("order_id", orderData.id)
+        .maybeSingle()
+        .then(r => r.data);
+    }
+  }
 
   if (existing) {
-    // Update existing record
+    // Update existing record with AfterShip data
     const { error } = await supabase
       .from("restorations")
       .update({
+        aftership_return_id: data.id,
+        rma_number: data.rma_number,
         return_tracking_number: primaryShipment.tracking_number,
         return_carrier: primaryShipment.slug || primaryShipment.label?.slug,
         return_tracking_status: primaryShipment.tracking_status,
@@ -176,12 +200,12 @@ async function handleShipmentProvided(
     await logRestorationEvent(supabase, existing.id, "label_created", {
       tracking_number: primaryShipment.tracking_number,
       carrier: primaryShipment.slug,
+      rma_number: data.rma_number,
     });
 
-    console.log(`[AFTERSHIP WEBHOOK] Updated restoration ${existing.id} with tracking`);
+    console.log(`[AFTERSHIP WEBHOOK] Updated restoration ${existing.id} with tracking and RMA ${data.rma_number}`);
   } else {
     // Create new restoration record if not exists
-    // First, try to find the order
     const orderData = await lookupOrder(supabase, data.order.order_number);
 
     const { data: newRecord, error } = await supabase
@@ -208,9 +232,10 @@ async function handleShipmentProvided(
     await logRestorationEvent(supabase, newRecord.id, "created_from_webhook", {
       event: "return.shipment.provided",
       tracking_number: primaryShipment.tracking_number,
+      rma_number: data.rma_number,
     });
 
-    console.log(`[AFTERSHIP WEBHOOK] Created restoration ${newRecord.id}`);
+    console.log(`[AFTERSHIP WEBHOOK] Created restoration ${newRecord.id} with RMA ${data.rma_number}`);
   }
 }
 
@@ -227,15 +252,29 @@ async function handleShipmentUpdated(
     return;
   }
 
-  // Find existing restoration
-  const { data: existing } = await supabase
+  // Find existing restoration - first by aftership_return_id, then by order_id
+  let existing = await supabase
     .from("restorations")
     .select("id, status, return_tracking_status, customer_shipped_at, delivered_to_warehouse_at")
     .eq("aftership_return_id", data.id)
-    .maybeSingle();
+    .maybeSingle()
+    .then(r => r.data);
+
+  // Fallback to order_id lookup if not found by aftership_return_id
+  if (!existing) {
+    const orderData = await lookupOrder(supabase, data.order.order_number);
+    if (orderData?.id) {
+      existing = await supabase
+        .from("restorations")
+        .select("id, status, return_tracking_status, customer_shipped_at, delivered_to_warehouse_at")
+        .eq("order_id", orderData.id)
+        .maybeSingle()
+        .then(r => r.data);
+    }
+  }
 
   if (!existing) {
-    console.log(`[AFTERSHIP WEBHOOK] Restoration not found for ${data.id}`);
+    console.log(`[AFTERSHIP WEBHOOK] Restoration not found for ${data.id} (order: ${data.order.order_number})`);
     return;
   }
 
@@ -307,14 +346,28 @@ async function handleReturnReceived(
   supabase: ReturnType<typeof createServiceClient>,
   data: AftershipReturn
 ) {
-  const { data: existing } = await supabase
+  // Find by aftership_return_id first, then by order_id
+  let existing = await supabase
     .from("restorations")
     .select("id, status")
     .eq("aftership_return_id", data.id)
-    .maybeSingle();
+    .maybeSingle()
+    .then(r => r.data);
 
   if (!existing) {
-    console.log(`[AFTERSHIP WEBHOOK] Restoration not found for ${data.id}`);
+    const orderData = await lookupOrder(supabase, data.order.order_number);
+    if (orderData?.id) {
+      existing = await supabase
+        .from("restorations")
+        .select("id, status")
+        .eq("order_id", orderData.id)
+        .maybeSingle()
+        .then(r => r.data);
+    }
+  }
+
+  if (!existing) {
+    console.log(`[AFTERSHIP WEBHOOK] Restoration not found for ${data.id} (order: ${data.order.order_number})`);
     return;
   }
 
@@ -349,11 +402,25 @@ async function handleReturnApproved(
   supabase: ReturnType<typeof createServiceClient>,
   data: AftershipReturn
 ) {
-  const { data: existing } = await supabase
+  // Find by aftership_return_id first, then by order_id
+  let existing = await supabase
     .from("restorations")
     .select("id")
     .eq("aftership_return_id", data.id)
-    .maybeSingle();
+    .maybeSingle()
+    .then(r => r.data);
+
+  if (!existing) {
+    const orderData = await lookupOrder(supabase, data.order.order_number);
+    if (orderData?.id) {
+      existing = await supabase
+        .from("restorations")
+        .select("id")
+        .eq("order_id", orderData.id)
+        .maybeSingle()
+        .then(r => r.data);
+    }
+  }
 
   if (existing) {
     // Just log the event - status will be updated when shipment is provided
@@ -370,11 +437,25 @@ async function handleReturnResolved(
   supabase: ReturnType<typeof createServiceClient>,
   data: AftershipReturn
 ) {
-  const { data: existing } = await supabase
+  // Find by aftership_return_id first, then by order_id
+  let existing = await supabase
     .from("restorations")
     .select("id")
     .eq("aftership_return_id", data.id)
-    .maybeSingle();
+    .maybeSingle()
+    .then(r => r.data);
+
+  if (!existing) {
+    const orderData = await lookupOrder(supabase, data.order.order_number);
+    if (orderData?.id) {
+      existing = await supabase
+        .from("restorations")
+        .select("id")
+        .eq("order_id", orderData.id)
+        .maybeSingle()
+        .then(r => r.data);
+    }
+  }
 
   if (existing) {
     await logRestorationEvent(supabase, existing.id, "aftership_resolved", {
