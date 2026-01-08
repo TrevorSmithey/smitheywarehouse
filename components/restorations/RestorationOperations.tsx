@@ -17,6 +17,8 @@ import {
   RefreshCw,
   Search,
   GripVertical,
+  Filter,
+  X,
 } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 import { RestorationCheckIn } from "./RestorationCheckIn";
@@ -241,7 +243,7 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
             </span>
           </div>
           {overdueCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded font-semibold">
+            <span className="text-[10px] px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded font-semibold animate-pulse">
               {overdueCount} late
             </span>
           )}
@@ -303,9 +305,13 @@ function DroppableColumn({ stage, items, onAction, onCardClick, isDropTarget }: 
 // MAIN COMPONENT
 // ============================================================================
 
+// Filter chip options
+type FilterOption = "all" | "pos" | "overdue" | "no_magnet";
+
 export function RestorationOperations({ data, loading, onRefresh }: RestorationOperationsProps) {
   const { lastRefresh } = useDashboard();
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
   const [activeItem, setActiveItem] = useState<RestorationRecord | null>(null);
   const [activeStage, setActiveStage] = useState<PipelineStage | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -334,17 +340,36 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     );
   }, [data?.restorations]);
 
-  // Apply search filter
+  // Apply search and filter
   const filteredItems = useMemo(() => {
-    if (!searchTerm) return pipelineItems;
-    const term = searchTerm.toLowerCase();
-    return pipelineItems.filter(
-      (r) =>
-        r.order_name?.toLowerCase().includes(term) ||
-        r.rma_number?.toLowerCase().includes(term) ||
-        r.magnet_number?.toLowerCase().includes(term)
-    );
-  }, [pipelineItems, searchTerm]);
+    let items = pipelineItems;
+
+    // Apply filter chip
+    if (activeFilter === "pos") {
+      items = items.filter((r) => r.is_pos);
+    } else if (activeFilter === "overdue") {
+      items = items.filter((r) => {
+        const stage = r.status as PipelineStage;
+        const config = STAGE_CONFIG[stage];
+        return config && r.days_in_status > config.thresholds.amber;
+      });
+    } else if (activeFilter === "no_magnet") {
+      items = items.filter((r) => !r.magnet_number);
+    }
+
+    // Apply search
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      items = items.filter(
+        (r) =>
+          r.order_name?.toLowerCase().includes(term) ||
+          r.rma_number?.toLowerCase().includes(term) ||
+          r.magnet_number?.toLowerCase().includes(term)
+      );
+    }
+
+    return items;
+  }, [pipelineItems, searchTerm, activeFilter]);
 
   // Group by stage
   const itemsByStage = useMemo(() => {
@@ -363,13 +388,15 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     return grouped;
   }, [filteredItems]);
 
-  // Totals
+  // Totals and filter counts
   const totalActive = pipelineItems.length;
   const totalOverdue = pipelineItems.filter((r) => {
     const stage = r.status as PipelineStage;
     const config = STAGE_CONFIG[stage];
     return config && r.days_in_status > config.thresholds.amber;
   }).length;
+  const totalPOS = pipelineItems.filter((r) => r.is_pos).length;
+  const totalNoMagnet = pipelineItems.filter((r) => !r.magnet_number).length;
 
   // Handle drag start
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -453,81 +480,145 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
         {/* ============================================================ */}
         {/* HEADER */}
         {/* ============================================================ */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-semibold text-text-primary uppercase tracking-wider">
-                Restoration Queue
-              </h1>
-              <StaleTimestamp date={lastRefresh} prefix="Updated" />
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold text-text-primary uppercase tracking-wider">
+                  Restoration Queue
+                </h1>
+                <StaleTimestamp date={lastRefresh} prefix="Updated" />
+              </div>
+              <p className="text-sm text-text-secondary mt-1">
+                {totalActive} active
+                {totalOverdue > 0 && (
+                  <span className="text-red-400 ml-2">• {totalOverdue} overdue</span>
+                )}
+                <span className="text-text-muted ml-2">• Drag cards to advance</span>
+              </p>
             </div>
-            <p className="text-sm text-text-secondary mt-1">
-              {totalActive} active
-              {totalOverdue > 0 && (
-                <span className="text-red-400 ml-2">• {totalOverdue} overdue</span>
-              )}
-              <span className="text-text-muted ml-2">• Drag cards to advance</span>
-            </p>
+
+            <div className="flex items-center gap-3">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
+                <input
+                  type="text"
+                  placeholder="Search order..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 pr-4 py-2 text-sm bg-bg-secondary border border-border rounded-lg
+                    text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent-blue
+                    w-40 sm:w-48"
+                />
+              </div>
+
+              {/* Refresh */}
+              <button
+                onClick={onRefresh}
+                disabled={loading || isUpdating}
+                className="p-2 text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-5 h-5 ${loading || isUpdating ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-              <input
-                type="text"
-                placeholder="Search order..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-4 py-2 text-sm bg-bg-secondary border border-border rounded-lg
-                  text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent-blue
-                  w-40 sm:w-48"
-              />
-            </div>
-
-            {/* Refresh */}
+          {/* Filter Chips */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="w-4 h-4 text-text-muted" />
             <button
-              onClick={onRefresh}
-              disabled={loading || isUpdating}
-              className="p-2 text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
-              title="Refresh data"
+              onClick={() => setActiveFilter("all")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                activeFilter === "all"
+                  ? "bg-accent-blue text-white"
+                  : "bg-bg-secondary text-text-secondary hover:bg-border"
+              }`}
             >
-              <RefreshCw className={`w-5 h-5 ${loading || isUpdating ? "animate-spin" : ""}`} />
+              All ({totalActive})
             </button>
+            {totalOverdue > 0 && (
+              <button
+                onClick={() => setActiveFilter(activeFilter === "overdue" ? "all" : "overdue")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                  activeFilter === "overdue"
+                    ? "bg-red-500 text-white"
+                    : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                }`}
+              >
+                Overdue ({totalOverdue})
+                {activeFilter === "overdue" && <X className="w-3 h-3" />}
+              </button>
+            )}
+            {totalPOS > 0 && (
+              <button
+                onClick={() => setActiveFilter(activeFilter === "pos" ? "all" : "pos")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                  activeFilter === "pos"
+                    ? "bg-purple-500 text-white"
+                    : "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
+                }`}
+              >
+                POS ({totalPOS})
+                {activeFilter === "pos" && <X className="w-3 h-3" />}
+              </button>
+            )}
+            {totalNoMagnet > 0 && (
+              <button
+                onClick={() => setActiveFilter(activeFilter === "no_magnet" ? "all" : "no_magnet")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                  activeFilter === "no_magnet"
+                    ? "bg-amber-500 text-white"
+                    : "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                }`}
+              >
+                No Magnet# ({totalNoMagnet})
+                {activeFilter === "no_magnet" && <X className="w-3 h-3" />}
+              </button>
+            )}
           </div>
         </div>
 
         {/* ============================================================ */}
         {/* KANBAN BOARD */}
         {/* ============================================================ */}
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          <DroppableColumn
-            stage="delivered_warehouse"
-            items={itemsByStage.delivered_warehouse}
-            onAction={() => setShowCheckIn(true)}
-            onCardClick={setSelectedRestoration}
-            isDropTarget={getDropTarget("delivered_warehouse")}
-          />
-          <DroppableColumn
-            stage="received"
-            items={itemsByStage.received}
-            onAction={() => setShowToRestoration(true)}
-            onCardClick={setSelectedRestoration}
-            isDropTarget={getDropTarget("received")}
-          />
-          <DroppableColumn
-            stage="at_restoration"
-            items={itemsByStage.at_restoration}
-            onAction={() => setShowFromRestoration(true)}
-            onCardClick={setSelectedRestoration}
-            isDropTarget={getDropTarget("at_restoration")}
-          />
-          <DroppableColumn
-            stage="ready_to_ship"
-            items={itemsByStage.ready_to_ship}
-            onCardClick={setSelectedRestoration}
-            isDropTarget={getDropTarget("ready_to_ship")}
-          />
+        <div className="relative">
+          {/* Scroll fade indicators */}
+          <div className="absolute left-0 top-0 bottom-4 w-8 bg-gradient-to-r from-bg-primary to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-4 w-8 bg-gradient-to-l from-bg-primary to-transparent z-10 pointer-events-none" />
+
+          <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory"
+            style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}
+          >
+            <DroppableColumn
+              stage="delivered_warehouse"
+              items={itemsByStage.delivered_warehouse}
+              onAction={() => setShowCheckIn(true)}
+              onCardClick={setSelectedRestoration}
+              isDropTarget={getDropTarget("delivered_warehouse")}
+            />
+            <DroppableColumn
+              stage="received"
+              items={itemsByStage.received}
+              onAction={() => setShowToRestoration(true)}
+              onCardClick={setSelectedRestoration}
+              isDropTarget={getDropTarget("received")}
+            />
+            <DroppableColumn
+              stage="at_restoration"
+              items={itemsByStage.at_restoration}
+              onAction={() => setShowFromRestoration(true)}
+              onCardClick={setSelectedRestoration}
+              isDropTarget={getDropTarget("at_restoration")}
+            />
+            <DroppableColumn
+              stage="ready_to_ship"
+              items={itemsByStage.ready_to_ship}
+              onCardClick={setSelectedRestoration}
+              isDropTarget={getDropTarget("ready_to_ship")}
+            />
+          </div>
         </div>
 
         {/* Drag Overlay - shows card being dragged */}

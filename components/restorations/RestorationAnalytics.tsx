@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   ExternalLink,
   Clock,
+  Download,
+  ChevronDown,
 } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 import { StaleTimestamp } from "@/components/StaleTimestamp";
@@ -78,6 +80,10 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
   const maxValue = Math.max(...data.map((d) => d.medianDays), 25);
 
   return (
+    <div
+      role="img"
+      aria-label={`Internal cycle time trend chart showing ${data.length} months of data. Latest month: ${data[data.length - 1]?.medianDays || 0} days median cycle time.`}
+    >
     <ResponsiveContainer width="100%" height={200}>
       <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
@@ -133,6 +139,7 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
         />
       </AreaChart>
     </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -373,8 +380,16 @@ function TrendChart({ data, height = 48 }: TrendChartProps) {
   const createdPath = chartData.map((d, i) => `${i === 0 ? "M" : "L"} ${getX(i)} ${getY(d.created)}`).join(" ");
   const completedPath = chartData.map((d, i) => `${i === 0 ? "M" : "L"} ${getX(i)} ${getY(d.completed)}`).join(" ");
 
+  const latestMonth = chartData[chartData.length - 1];
+
   return (
-    <svg width={width} height={height} className="overflow-visible">
+    <svg
+      width={width}
+      height={height}
+      className="overflow-visible"
+      role="img"
+      aria-label={`Trend chart showing ${chartData.length} months. Latest: ${latestMonth?.created || 0} created, ${latestMonth?.completed || 0} completed.`}
+    >
       <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="currentColor" strokeOpacity="0.1" strokeWidth="1" />
       <path d={createdPath} fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
       <path d={completedPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />
@@ -392,11 +407,56 @@ function TrendChart({ data, height = 48 }: TrendChartProps) {
 // MAIN COMPONENT
 // ============================================================================
 
+// Date range options
+type DateRange = "30" | "60" | "90" | "all";
+const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
+  { value: "30", label: "Last 30 days" },
+  { value: "60", label: "Last 60 days" },
+  { value: "90", label: "Last 90 days" },
+  { value: "all", label: "All time" },
+];
+
 export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: RestorationAnalyticsProps) {
   const { lastRefresh } = useDashboard();
+  const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
 
   const stats = data?.stats;
   const restorations = data?.restorations || [];
+
+  // Filter restorations by date range
+  const filteredRestorations = useMemo(() => {
+    if (dateRange === "all") return restorations;
+    const days = parseInt(dateRange);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return restorations.filter((r) => new Date(r.created_at) >= cutoff);
+  }, [restorations, dateRange]);
+
+  // Export to CSV
+  const handleExportCSV = useCallback(() => {
+    if (!restorations.length) return;
+
+    const headers = ["Order", "RMA", "Status", "Days in Status", "Total Days", "Created", "Is POS"];
+    const rows = filteredRestorations.map((r) => [
+      r.order_name || "",
+      r.rma_number || "",
+      r.status,
+      r.days_in_status,
+      r.total_days,
+      r.created_at,
+      r.is_pos ? "Yes" : "No",
+    ]);
+
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `restorations-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredRestorations, restorations.length]);
 
   // Pre-warehouse count
   const preWarehouseCount = useMemo(() => {
@@ -434,7 +494,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
       {/* ============================================================ */}
       {/* HEADER */}
       {/* ============================================================ */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-text-primary uppercase tracking-wider">
             Restoration Analytics
@@ -443,117 +503,225 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick }: 
             <StaleTimestamp date={lastRefresh} prefix="Updated" />
           </div>
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="p-2 text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
-          title="Refresh data"
-        >
-          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Date Range Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDateDropdown(!showDateDropdown)}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors"
+            >
+              <Calendar className="w-4 h-4" />
+              {DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label}
+              <ChevronDown className={`w-4 h-4 transition-transform ${showDateDropdown ? "rotate-180" : ""}`} />
+            </button>
+            {showDateDropdown && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowDateDropdown(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 bg-bg-primary border border-border rounded-lg shadow-xl py-1 min-w-[150px]">
+                  {DATE_RANGE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => { setDateRange(option.value); setShowDateDropdown(false); }}
+                      className={`w-full px-4 py-2 text-sm text-left transition-colors ${
+                        dateRange === option.value
+                          ? "bg-accent-blue/10 text-accent-blue"
+                          : "text-text-secondary hover:bg-bg-secondary"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Export Button */}
+          <button
+            onClick={handleExportCSV}
+            disabled={!restorations.length}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-bg-secondary border border-border rounded-lg text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
+            title="Export to CSV"
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+
+          {/* Refresh */}
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-2 text-text-secondary hover:text-accent-blue transition-colors disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* ============================================================ */}
-      {/* KPI CARDS */}
+      {/* KPI CARDS - Hero metrics + Secondary metrics */}
       {/* ============================================================ */}
       {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Active Queue */}
-          <div className="bg-bg-secondary rounded-lg p-4 border border-border">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-sky-500/10 rounded-lg">
-                <Activity className="w-4 h-4 text-sky-400" />
+        <div className="space-y-4">
+          {/* Hero Metrics Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Active Queue - Hero */}
+            <button
+              onClick={() => onItemClick && restorations[0] && onItemClick(restorations[0])}
+              className="bg-gradient-to-br from-sky-500/10 to-sky-600/5 rounded-xl p-5 border border-sky-500/20 hover:border-sky-500/40 transition-all text-left group"
+              aria-label={`Active queue: ${stats.active} items. ${preWarehouseCount} pre-warehouse, ${stats.active - preWarehouseCount} in-house.`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2.5 bg-sky-500/20 rounded-lg group-hover:scale-105 transition-transform">
+                  <Activity className="w-5 h-5 text-sky-400" />
+                </div>
+                <span className="text-xs text-sky-400/80 uppercase tracking-wider font-medium">Active Queue</span>
               </div>
-              <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Active Queue</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-text-primary">{stats.active}</span>
-              <span className="text-sm text-text-tertiary">items</span>
-            </div>
-            <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
-              <span>{preWarehouseCount} pre-warehouse</span>
-              <span className="text-text-tertiary">•</span>
-              <span>{stats.active - preWarehouseCount} in-house</span>
-            </div>
-          </div>
-
-          {/* Cycle Time */}
-          <div className="bg-bg-secondary rounded-lg p-4 border border-border">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-amber-500/10 rounded-lg">
-                <Timer className="w-4 h-4 text-amber-400" />
+              <div className="flex items-baseline gap-3">
+                <span className="text-5xl font-bold text-text-primary">{stats.active}</span>
+                <span className="text-lg text-text-tertiary">items</span>
               </div>
-              <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Median Cycle</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-text-primary">{stats.cycleTime?.medianDays || "—"}</span>
-              <span className="text-sm text-text-tertiary">days</span>
-              {stats.cycleTime?.medianDays && stats.cycleTime.medianDays <= 21 ? (
-                <span className="text-emerald-400 text-xs ml-1">On target</span>
-              ) : (
-                <span className="text-amber-400 text-xs ml-1">Above 21d goal</span>
-              )}
-            </div>
-            <div className="mt-2 text-xs text-text-secondary">
-              D2C: {stats.cycleTime?.d2cMedian || "—"}d • POS: {stats.cycleTime?.posMedian || "—"}d
-            </div>
-          </div>
-
-          {/* SLA Performance */}
-          <div className="bg-bg-secondary rounded-lg p-4 border border-border">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <Target className="w-4 h-4 text-emerald-400" />
+              <div className="mt-3 flex items-center gap-3 text-sm text-text-secondary">
+                <span className="px-2 py-0.5 bg-bg-tertiary/50 rounded">{preWarehouseCount} pre-warehouse</span>
+                <span className="px-2 py-0.5 bg-bg-tertiary/50 rounded">{stats.active - preWarehouseCount} in-house</span>
               </div>
-              <span className="text-[10px] text-text-tertiary uppercase tracking-wider">SLA Rate</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span
-                className={`text-3xl font-bold ${
-                  (stats.cycleTime?.slaRate || 0) >= 80
-                    ? "text-emerald-400"
-                    : (stats.cycleTime?.slaRate || 0) >= 60
-                    ? "text-amber-400"
-                    : "text-red-400"
-                }`}
-              >
-                {stats.cycleTime?.slaRate || 0}%
-              </span>
-              <span className="text-sm text-text-tertiary">≤21 days</span>
-            </div>
-            <div className="mt-2 text-xs text-text-secondary">
-              {stats.cycleTime?.meetingSLA || 0} of {stats.cycleTime?.completed || 0} meet goal
-            </div>
-          </div>
+            </button>
 
-          {/* Throughput Trend */}
-          <div className="bg-bg-secondary rounded-lg p-4 border border-border">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`p-2 rounded-lg ${throughputTrend === "up" ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
-                {throughputTrend === "up" ? (
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+            {/* Cycle Time - Hero */}
+            <div
+              className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 rounded-xl p-5 border border-amber-500/20"
+              aria-label={`Median cycle time: ${stats.cycleTime?.medianDays || 0} days. D2C: ${stats.cycleTime?.d2cMedian || 0} days. POS: ${stats.cycleTime?.posMedian || 0} days.`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2.5 bg-amber-500/20 rounded-lg">
+                  <Timer className="w-5 h-5 text-amber-400" />
+                </div>
+                <span className="text-xs text-amber-400/80 uppercase tracking-wider font-medium">Median Cycle</span>
+              </div>
+              <div className="flex items-baseline gap-3">
+                <span className="text-5xl font-bold text-text-primary">{stats.cycleTime?.medianDays || "—"}</span>
+                <span className="text-lg text-text-tertiary">days</span>
+                {stats.cycleTime?.medianDays && stats.cycleTime.medianDays <= 21 ? (
+                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-full font-medium">On target</span>
                 ) : (
-                  <TrendingDown className="w-4 h-4 text-red-400" />
+                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full font-medium">Above 21d goal</span>
                 )}
               </div>
-              <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Throughput</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-3xl font-bold text-text-primary">{stats.cycleTime?.completed || 0}</span>
-                <span className="text-sm text-text-tertiary ml-2">shipped</span>
+              <div className="mt-3 flex items-center gap-3 text-sm text-text-secondary">
+                <span className="px-2 py-0.5 bg-bg-tertiary/50 rounded">D2C: {stats.cycleTime?.d2cMedian || "—"}d</span>
+                <span className="px-2 py-0.5 bg-bg-tertiary/50 rounded">POS: {stats.cycleTime?.posMedian || "—"}d</span>
               </div>
-              <TrendChart data={stats.monthlyVolume} />
             </div>
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span className="text-text-tertiary">Created</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span className="text-text-tertiary">Completed</span>
-              </span>
+          </div>
+
+          {/* Secondary Metrics Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* SLA Performance */}
+            <div
+              className="bg-bg-secondary rounded-lg p-3 border border-border"
+              aria-label={`SLA rate: ${stats.cycleTime?.slaRate || 0}%. ${stats.cycleTime?.meetingSLA || 0} of ${stats.cycleTime?.completed || 0} completed within 21 days.`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-emerald-500/10 rounded">
+                  <Target className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">SLA Rate</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span
+                  className={`text-2xl font-bold ${
+                    (stats.cycleTime?.slaRate || 0) >= 80
+                      ? "text-emerald-400"
+                      : (stats.cycleTime?.slaRate || 0) >= 60
+                      ? "text-amber-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {stats.cycleTime?.slaRate || 0}%
+                </span>
+                <span className="text-xs text-text-tertiary">≤21d</span>
+              </div>
+              <div className="mt-1.5 text-[10px] text-text-muted">
+                {stats.cycleTime?.meetingSLA || 0}/{stats.cycleTime?.completed || 0} meet goal
+              </div>
+            </div>
+
+            {/* Throughput */}
+            <div
+              className="bg-bg-secondary rounded-lg p-3 border border-border"
+              aria-label={`Throughput: ${stats.cycleTime?.completed || 0} items shipped. Trend is ${throughputTrend}.`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`p-1.5 rounded ${throughputTrend === "up" ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+                  {throughputTrend === "up" ? (
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <TrendingDown className="w-3.5 h-3.5 text-red-400" />
+                  )}
+                </div>
+                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Throughput</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-bold text-text-primary">{stats.cycleTime?.completed || 0}</span>
+                <span className="text-xs text-text-tertiary">shipped</span>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  <span className="text-text-muted">In</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span className="text-text-muted">Out</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Pre-Warehouse */}
+            <div
+              className="bg-bg-secondary rounded-lg p-3 border border-border"
+              aria-label={`Pre-warehouse: ${preWarehouseCount} items awaiting arrival.`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-purple-500/10 rounded">
+                  <Clock className="w-3.5 h-3.5 text-purple-400" />
+                </div>
+                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Pre-Warehouse</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-bold text-text-primary">{preWarehouseCount}</span>
+                <span className="text-xs text-text-tertiary">awaiting</span>
+              </div>
+              <div className="mt-1.5 text-[10px] text-text-muted">
+                Labels sent, in transit
+              </div>
+            </div>
+
+            {/* Overdue Count */}
+            <div
+              className="bg-bg-secondary rounded-lg p-3 border border-border"
+              aria-label={`Overdue items in queue.`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 bg-red-500/10 rounded">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                </div>
+                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Overdue</span>
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className={`text-2xl font-bold ${
+                  restorations.filter((r) => PIPELINE_STAGES.includes(r.status as PipelineStage) && r.total_days > 21).length > 0
+                    ? "text-red-400"
+                    : "text-emerald-400"
+                }`}>
+                  {restorations.filter((r) => PIPELINE_STAGES.includes(r.status as PipelineStage) && r.total_days > 21).length}
+                </span>
+                <span className="text-xs text-text-tertiary">&gt;21d</span>
+              </div>
+              <div className="mt-1.5 text-[10px] text-text-muted">
+                Past SLA target
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   X,
   ExternalLink,
@@ -14,10 +15,13 @@ import {
   Camera,
   Trash2,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   CheckCircle,
   Package,
   Wrench,
+  ZoomIn,
+  QrCode,
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
 import { createClient } from "@/lib/supabase/client";
@@ -259,6 +263,8 @@ export function RestorationDetailModal({
   const [hasChanges, setHasChanges] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [showQRCode, setShowQRCode] = useState(false);
 
   // Refs for async operation safety
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -618,17 +624,23 @@ export function RestorationDetailModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             {/* Status Badge - Tappable for manual override */}
-            <button
-              onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-              aria-expanded={showStatusDropdown}
-              aria-haspopup="listbox"
-              aria-label={`Current status: ${config.label}. Tap to change status`}
-              className={`inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider px-3 py-2 rounded-lg ${config.bgColor} ${config.color} min-h-[44px] active:opacity-80 transition-opacity`}
-            >
-              <span className="w-2 h-2 rounded-full bg-current" aria-hidden="true" />
-              {config.label}
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showStatusDropdown ? "rotate-180" : ""}`} aria-hidden="true" />
-            </button>
+            <div className="relative group">
+              <button
+                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                aria-expanded={showStatusDropdown}
+                aria-haspopup="listbox"
+                aria-label={`Current status: ${config.label}. Tap to change status`}
+                className={`inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider px-3 py-2 rounded-lg ${config.bgColor} ${config.color} min-h-[44px] active:opacity-80 transition-all border-2 border-transparent hover:border-current/30`}
+              >
+                <span className="w-2 h-2 rounded-full bg-current" aria-hidden="true" />
+                {config.label}
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showStatusDropdown ? "rotate-180" : ""}`} aria-hidden="true" />
+              </button>
+              {/* Hint tooltip on hover */}
+              <div className="absolute -bottom-6 left-0 text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                Tap to change status
+              </div>
+            </div>
             {restoration.is_pos && (
               <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold" aria-label="Point of Sale order">
                 POS
@@ -734,20 +746,57 @@ export function RestorationDetailModal({
                 <Tag className="w-3.5 h-3.5" aria-hidden="true" />
                 Internal ID (Magnet #)
               </label>
-              <input
-                id="magnet-number-input"
-                type="text"
-                inputMode="text"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="characters"
-                value={magnetNumber}
-                onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
-                placeholder="e.g., M-042"
-                className="w-full px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
-                  text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
-                  transition-colors min-h-[56px]"
-              />
+              <div className="flex gap-2">
+                <input
+                  id="magnet-number-input"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  value={magnetNumber}
+                  onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
+                  placeholder="e.g., M-042"
+                  className="flex-1 px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
+                    text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
+                    transition-colors min-h-[56px]"
+                />
+                {/* QR Code Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowQRCode(!showQRCode)}
+                  disabled={!magnetNumber.trim()}
+                  className={`px-4 flex items-center justify-center rounded-xl border-2 transition-all ${
+                    magnetNumber.trim()
+                      ? showQRCode
+                        ? "bg-accent-blue/20 border-accent-blue text-accent-blue"
+                        : "bg-bg-secondary border-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/50"
+                      : "bg-bg-secondary border-border text-text-muted cursor-not-allowed opacity-50"
+                  }`}
+                  title={magnetNumber.trim() ? (showQRCode ? "Hide QR Code" : "Show QR Code") : "Enter a magnet number first"}
+                  aria-label={magnetNumber.trim() ? (showQRCode ? "Hide QR Code" : "Show QR Code") : "Enter a magnet number first"}
+                >
+                  <QrCode className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* QR Code Display */}
+              {showQRCode && magnetNumber.trim() && (
+                <div className="mt-3 p-4 bg-white rounded-xl border-2 border-border flex flex-col items-center gap-3">
+                  <QRCodeSVG
+                    value={`SMITHEY-RESTORATION:${magnetNumber}`}
+                    size={160}
+                    level="M"
+                    includeMargin={false}
+                    bgColor="#FFFFFF"
+                    fgColor="#000000"
+                  />
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-slate-800">{magnetNumber}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Scan to identify item</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Key Metrics Row */}
@@ -824,7 +873,12 @@ export function RestorationDetailModal({
                 {photos.map((photoUrl, index) => (
                   <div
                     key={photoUrl}
-                    className="relative aspect-square bg-bg-secondary rounded-xl border border-border overflow-hidden"
+                    className="group relative aspect-square bg-bg-secondary rounded-xl border border-border overflow-hidden cursor-pointer"
+                    onClick={() => setLightboxIndex(index)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && setLightboxIndex(index)}
+                    aria-label={`View photo ${index + 1} fullscreen`}
                   >
                     {/* Loading skeleton */}
                     {!loadedImages.has(photoUrl) && (
@@ -845,14 +899,21 @@ export function RestorationDetailModal({
                         }`}
                       />
                     )}
-                    {/* Delete Button - ALWAYS VISIBLE, 44px touch target */}
+                    {/* Hover overlay with expand hint */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <span className="text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                        Tap to expand
+                      </span>
+                    </div>
+                    {/* Delete Button - Hidden until hover/focus, 44px touch target */}
                     <button
-                      onClick={() => handleRemovePhoto(photoUrl)}
+                      onClick={(e) => { e.stopPropagation(); handleRemovePhoto(photoUrl); }}
                       type="button"
                       aria-label={`Remove photo ${index + 1}`}
                       className="absolute top-2 right-2 w-11 h-11 bg-red-500/90 text-white rounded-xl
                         flex items-center justify-center shadow-lg
-                        hover:bg-red-600 active:bg-red-700 active:scale-95 transition-all"
+                        opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity
+                        hover:bg-red-600 active:bg-red-700 active:scale-95"
                     >
                       <Trash2 className="w-5 h-5" aria-hidden="true" />
                     </button>
@@ -1081,6 +1142,69 @@ export function RestorationDetailModal({
           </div>
         </div>
       </div>
+
+      {/* ================================================================ */}
+      {/* LIGHTBOX MODAL */}
+      {/* ================================================================ */}
+      {lightboxIndex !== null && photos[lightboxIndex] && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
+          onClick={() => setLightboxIndex(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo lightbox viewer"
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setLightboxIndex(null)}
+            className="absolute top-4 right-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors min-w-[44px] min-h-[44px]"
+            aria-label="Close lightbox"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* Previous button */}
+          {photos.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex((prev) => (prev !== null ? (prev - 1 + photos.length) % photos.length : 0));
+              }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors min-w-[44px] min-h-[44px]"
+              aria-label="Previous photo"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* Image */}
+          <img
+            src={photos[lightboxIndex]}
+            alt={`Restoration photo ${lightboxIndex + 1} of ${photos.length}`}
+            className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          {/* Next button */}
+          {photos.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex((prev) => (prev !== null ? (prev + 1) % photos.length : 0));
+              }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors min-w-[44px] min-h-[44px]"
+              aria-label="Next photo"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          )}
+
+          {/* Photo counter */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-white/10 text-white/80 text-sm font-medium rounded-full">
+            {lightboxIndex + 1} / {photos.length}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
