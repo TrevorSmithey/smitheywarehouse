@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { QRCodeSVG } from "qrcode.react";
 import {
   X,
   ExternalLink,
@@ -21,7 +20,6 @@ import {
   Package,
   Wrench,
   ZoomIn,
-  QrCode,
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
 import { createClient } from "@/lib/supabase/client";
@@ -264,7 +262,6 @@ export function RestorationDetailModal({
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [showQRCode, setShowQRCode] = useState(false);
 
   // Refs for async operation safety
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -746,57 +743,20 @@ export function RestorationDetailModal({
                 <Tag className="w-3.5 h-3.5" aria-hidden="true" />
                 Internal ID (Magnet #)
               </label>
-              <div className="flex gap-2">
-                <input
-                  id="magnet-number-input"
-                  type="text"
-                  inputMode="text"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="characters"
-                  value={magnetNumber}
-                  onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
-                  placeholder="e.g., M-042"
-                  className="flex-1 px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
-                    text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
-                    transition-colors min-h-[56px]"
-                />
-                {/* QR Code Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowQRCode(!showQRCode)}
-                  disabled={!magnetNumber.trim()}
-                  className={`px-4 flex items-center justify-center rounded-xl border-2 transition-all ${
-                    magnetNumber.trim()
-                      ? showQRCode
-                        ? "bg-accent-blue/20 border-accent-blue text-accent-blue"
-                        : "bg-bg-secondary border-border text-text-secondary hover:text-accent-blue hover:border-accent-blue/50"
-                      : "bg-bg-secondary border-border text-text-muted cursor-not-allowed opacity-50"
-                  }`}
-                  title={magnetNumber.trim() ? (showQRCode ? "Hide QR Code" : "Show QR Code") : "Enter a magnet number first"}
-                  aria-label={magnetNumber.trim() ? (showQRCode ? "Hide QR Code" : "Show QR Code") : "Enter a magnet number first"}
-                >
-                  <QrCode className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* QR Code Display */}
-              {showQRCode && magnetNumber.trim() && (
-                <div className="mt-3 p-4 bg-white rounded-xl border-2 border-border flex flex-col items-center gap-3">
-                  <QRCodeSVG
-                    value={`SMITHEY-RESTORATION:${magnetNumber}`}
-                    size={160}
-                    level="M"
-                    includeMargin={false}
-                    bgColor="#FFFFFF"
-                    fgColor="#000000"
-                  />
-                  <div className="text-center">
-                    <p className="text-sm font-bold text-slate-800">{magnetNumber}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">Scan to identify item</p>
-                  </div>
-                </div>
-              )}
+              <input
+                id="magnet-number-input"
+                type="text"
+                inputMode="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="characters"
+                value={magnetNumber}
+                onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
+                placeholder="e.g., M-042"
+                className="w-full px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
+                  text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
+                  transition-colors min-h-[56px]"
+              />
             </div>
 
             {/* Key Metrics Row */}
