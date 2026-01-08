@@ -271,6 +271,82 @@ When `sync-meta` and `sync-google-ads` run concurrently, they can overwrite each
 
 ---
 
+## React Async Safety Patterns (January 2026)
+
+### The Problem
+Photo upload in RestorationDetailModal caused memory leaks and race conditions when:
+- Component unmounted during upload (state updates on unmounted component)
+- User rapidly triggered multiple uploads (concurrent operations)
+- Large images took time to compress (user could navigate away)
+
+### The Patterns
+
+**1. Mounted Ref Pattern**
+```typescript
+const isMountedRef = useRef(true);
+
+useEffect(() => {
+  isMountedRef.current = true;
+  return () => { isMountedRef.current = false; };
+}, []);
+
+// In async handlers:
+if (isMountedRef.current) {
+  setState(newValue); // Only update if still mounted
+}
+```
+Why useRef not useState: Ref doesn't trigger re-renders, and the cleanup function guarantees it's set to false before any pending async operations could complete.
+
+**2. AbortController for Cancellable Operations**
+```typescript
+const abortControllerRef = useRef<AbortController | null>(null);
+
+const handleUpload = async () => {
+  abortControllerRef.current?.abort(); // Cancel previous
+  const controller = new AbortController();
+  abortControllerRef.current = controller;
+
+  try {
+    await someAsyncOperation(controller.signal);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return; // Silently ignore abort errors
+    }
+    throw e;
+  }
+};
+
+// Cleanup on unmount
+useEffect(() => () => abortControllerRef.current?.abort(), []);
+```
+
+**3. URL Validation for XSS Prevention (Defense in Depth)**
+```typescript
+function isValidPhotoUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === "rpfkpxoyucocriifutfy.supabase.co" &&
+      parsed.pathname.includes("/restoration-photos/") &&
+      parsed.protocol === "https:"
+    );
+  } catch { return false; }
+}
+
+// Apply at multiple layers:
+// 1. When loading from database
+// 2. When receiving from storage upload
+// 3. When rendering (conditional render)
+```
+
+### When to Apply These Patterns
+- Any component with file uploads or long-running operations
+- Modals that can be closed mid-operation
+- Forms with async validation
+- Any `await` inside an event handler
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development
