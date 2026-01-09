@@ -149,11 +149,11 @@ function getForwardTransitions(status: string): string[] {
   return [STATUS_ORDER[statusIndex + 1]];
 }
 
-/** Get backward transitions for a status */
-function getBackwardTransitions(status: string): string[] {
+/** Get backward transition for a status - only ONE step back (not all) */
+function getBackwardTransition(status: string): string | null {
   const statusIndex = STATUS_ORDER.indexOf(status as typeof STATUS_ORDER[number]);
-  if (statusIndex <= 0) return [];
-  return STATUS_ORDER.slice(0, statusIndex).reverse() as unknown as string[];
+  if (statusIndex <= 0) return null;
+  return STATUS_ORDER[statusIndex - 1];
 }
 
 // All statuses with labels for display
@@ -836,90 +836,71 @@ export function RestorationDetailModal({
             <div
               role="listbox"
               aria-label="Status options"
-              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[280px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 max-h-[50vh] overflow-y-auto scrollbar-thin"
+              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[240px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-1 max-h-[50vh] overflow-y-auto scrollbar-thin"
             >
-              {/* Current status - always shown first */}
-              <div className="px-4 py-3 text-sm text-text-tertiary border-b border-border/50 mb-1">
-                Current: <span className="font-medium text-text-primary">{STATUS_LABELS[restoration.status]}</span>
-              </div>
+              {/* Forward transition - primary action */}
+              {getForwardTransitions(restoration.status).map((statusValue) => (
+                <button
+                  key={statusValue}
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => handleManualStatusChange(statusValue)}
+                  disabled={saving}
+                  className="w-full text-left px-4 py-3 text-sm font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors min-h-[44px] flex items-center gap-2"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                  {STATUS_LABELS[statusValue]}
+                </button>
+              ))}
 
-              {/* Forward transitions */}
-              {getForwardTransitions(restoration.status).length > 0 && (
+              {/* Backward transition - just ONE step back */}
+              {getBackwardTransition(restoration.status) && (
                 <>
-                  <div className="px-4 py-1 text-xs text-emerald-400 uppercase tracking-wider font-semibold">
-                    Move Forward
-                  </div>
-                  {getForwardTransitions(restoration.status).map((statusValue) => (
-                    <button
-                      key={statusValue}
-                      role="option"
-                      aria-selected={false}
-                      onClick={() => handleManualStatusChange(statusValue)}
-                      disabled={saving}
-                      className="w-full text-left px-4 py-3 text-sm text-text-primary hover:bg-emerald-500/10 transition-colors min-h-[44px] flex items-center gap-2"
-                    >
-                      <ChevronRight className="w-4 h-4 text-emerald-400" />
-                      {STATUS_LABELS[statusValue]}
-                    </button>
-                  ))}
+                  <div className="border-t border-border/30 my-1" />
+                  <button
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => handleManualStatusChange(getBackwardTransition(restoration.status)!)}
+                    disabled={saving}
+                    className="w-full text-left px-4 py-3 text-sm text-amber-300/80 hover:bg-amber-500/10 transition-colors min-h-[44px] flex items-center gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-amber-400" />
+                    Undo → {STATUS_LABELS[getBackwardTransition(restoration.status)!]}
+                  </button>
                 </>
               )}
 
-              {/* Backward transitions */}
-              {getBackwardTransitions(restoration.status).length > 0 && (
-                <>
-                  <div className="px-4 py-1 text-xs text-amber-400 uppercase tracking-wider font-semibold mt-2">
-                    Move Back
-                  </div>
-                  {getBackwardTransitions(restoration.status).map((statusValue) => (
-                    <button
-                      key={statusValue}
-                      role="option"
-                      aria-selected={false}
-                      onClick={() => handleManualStatusChange(statusValue)}
-                      disabled={saving}
-                      className="w-full text-left px-4 py-3 text-sm text-amber-300/80 hover:bg-amber-500/10 transition-colors min-h-[44px] flex items-center gap-2"
-                    >
-                      <ArrowLeft className="w-4 h-4 text-amber-400" />
-                      {STATUS_LABELS[statusValue]}
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {/* Terminal statuses - only show if current status can transition to them */}
+              {/* Terminal statuses - compact, less prominent */}
               {(VALID_TRANSITIONS[restoration.status] || []).some(s => s === "cancelled" || s === "damaged") && (
                 <>
-                  <div className="px-4 py-1 text-xs text-rose-400 uppercase tracking-wider font-semibold mt-2 border-t border-border/50 pt-2">
-                    Terminal
+                  <div className="border-t border-border/30 my-1" />
+                  <div className="flex gap-1 px-3 py-2">
+                    {(VALID_TRANSITIONS[restoration.status] || []).includes("cancelled") && (
+                      <button
+                        role="option"
+                        aria-selected={false}
+                        onClick={() => handleManualStatusChange("cancelled")}
+                        disabled={saving}
+                        className="flex-1 text-center px-3 py-2 text-xs text-rose-400/70 hover:bg-rose-500/10 hover:text-rose-400 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    {(VALID_TRANSITIONS[restoration.status] || []).includes("damaged") && (
+                      <button
+                        role="option"
+                        aria-selected={false}
+                        onClick={() => {
+                          setShowStatusDropdown(false);
+                          setShowDamageDialog(true);
+                        }}
+                        disabled={saving}
+                        className="flex-1 text-center px-3 py-2 text-xs text-rose-400/70 hover:bg-rose-500/10 hover:text-rose-400 rounded-lg transition-colors"
+                      >
+                        Damaged
+                      </button>
+                    )}
                   </div>
-                  {(VALID_TRANSITIONS[restoration.status] || []).includes("cancelled") && (
-                    <button
-                      role="option"
-                      aria-selected={false}
-                      onClick={() => handleManualStatusChange("cancelled")}
-                      disabled={saving}
-                      className="w-full text-left px-4 py-3 text-sm text-rose-400/80 hover:bg-rose-500/10 transition-colors min-h-[44px] flex items-center gap-2"
-                    >
-                      <X className="w-4 h-4 text-rose-400" />
-                      Cancel Order
-                    </button>
-                  )}
-                  {(VALID_TRANSITIONS[restoration.status] || []).includes("damaged") && (
-                    <button
-                      role="option"
-                      aria-selected={false}
-                      onClick={() => {
-                        setShowStatusDropdown(false);
-                        setShowDamageDialog(true);
-                      }}
-                      disabled={saving}
-                      className="w-full text-left px-4 py-3 text-sm text-rose-400/80 hover:bg-rose-500/10 transition-colors min-h-[44px] flex items-center gap-2"
-                    >
-                      <AlertTriangle className="w-4 h-4 text-rose-400" />
-                      Mark as Damaged
-                    </button>
-                  )}
                 </>
               )}
 
