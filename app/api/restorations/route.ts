@@ -398,8 +398,8 @@ export async function GET(request: Request) {
       // Filter out if order was archived (old/completed)
       if (orderArchived) return false;
 
-      // Filter out if order was never fulfilled (customer never received item - nothing to restore)
-      if (!orderFulfillmentStatus) return false;
+      // Filter out if order was fulfilled (completed/closed)
+      if (orderFulfillmentStatus === 'fulfilled') return false;
 
       return true;
     })
