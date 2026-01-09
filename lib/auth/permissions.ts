@@ -180,16 +180,24 @@ export function getAccessibleTabs(
   const rolePerms = permissions?.[role] ?? DEFAULT_ROLE_PERMISSIONS[role];
   const hasWildcard = rolePerms.includes("*");
 
-  return order.filter((tab) => {
-    // Globally hidden tabs are hidden from everyone
+  // Get tabs that are in the specified order
+  const orderedTabs = order.filter((tab) => {
     if (hidden.has(tab)) return false;
-
-    // Admin wildcard sees all non-hidden tabs
     if (hasWildcard) return true;
-
-    // Check specific permission
     return rolePerms.includes(tab);
   });
+
+  // Append any permitted tabs missing from the order (prevents silent hiding)
+  // This ensures adding a tab to permissions always makes it visible
+  const orderedSet = new Set(order);
+  const missingPermittedTabs = (hasWildcard ? ALL_TABS : rolePerms)
+    .filter((tab): tab is DashboardTab =>
+      !orderedSet.has(tab as DashboardTab) &&
+      !hidden.has(tab) &&
+      ALL_TABS.includes(tab as DashboardTab)
+    );
+
+  return [...orderedTabs, ...missingPermittedTabs];
 }
 
 /**
