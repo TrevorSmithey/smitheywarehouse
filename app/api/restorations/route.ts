@@ -392,8 +392,9 @@ export async function GET(request: Request) {
       // Filter out if order was cancelled
       if (orderCanceled) return false;
 
-      // Filter out if order was fulfilled (completed/closed)
-      if (orderFulfillmentStatus === 'fulfilled') return false;
+      // Filter out if order was never shipped (null) - customer never got item, nothing to restore
+      // These are ghost records from old/test data
+      if (!orderFulfillmentStatus) return false;
 
       return true;
     })
