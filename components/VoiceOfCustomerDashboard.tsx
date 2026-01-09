@@ -794,7 +794,7 @@ export function VoiceOfCustomerDashboard({
             </span>
           </div>
 
-          <div className="space-y-1 max-h-[400px] overflow-y-auto pr-2">
+          <div className="space-y-1 max-h-[400px] overflow-y-auto scrollbar-thin pr-2">
             {categoryCounts.slice(0, 15).map((cat) => (
               <CategoryBar
                 key={cat.category}

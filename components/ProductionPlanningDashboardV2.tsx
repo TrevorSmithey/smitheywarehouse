@@ -607,7 +607,7 @@ function YearlyOverview({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-4 max-h-64 overflow-y-auto">
+              <div className="grid grid-cols-3 gap-4 max-h-64 overflow-y-auto scrollbar-thin">
                 {['cast_iron', 'carbon_steel', 'accessory'].map(category => {
                   const categoryData = getMonthSkuData(selectedMonth - 1).filter(s => s.category === category);
                   const categoryTotal = categoryData.reduce((sum, s) => sum + s.target, 0);

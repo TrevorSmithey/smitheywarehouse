@@ -642,7 +642,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
 
               {/* Expanded list of overdue items */}
               {overdueExpanded && overdueItems.length > 0 && (
-                <div className="border-t border-red-500/20 bg-red-500/5 max-h-60 overflow-y-auto">
+                <div className="border-t border-red-500/20 bg-red-500/5 max-h-60 overflow-y-auto scrollbar-thin">
                   <div className="p-2 space-y-1.5">
                     {overdueItems.map((item) => {
                       const internalStart = getInternalStart(item);

@@ -881,7 +881,7 @@ export default function CustomerDetailPage() {
             </span>
           </div>
 
-          <div className="divide-y divide-border/10 max-h-[400px] overflow-y-auto custom-scrollbar">
+          <div className="divide-y divide-border/10 max-h-[400px] overflow-y-auto scrollbar-thin">
             {orderHistory.map((order, idx) => (
               <div
                 key={order.ns_transaction_id}

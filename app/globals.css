@@ -156,27 +156,7 @@ body {
     box-shadow: var(--shadow-card-hover);
   }
 
-  /* Custom scrollbars for dark theme */
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: var(--color-bg-tertiary);
-    border-radius: 3px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--color-border-hover);
-    border-radius: 3px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-muted);
-  }
-
-  /* Thin subtle scrollbar - ember tint, nearly invisible */
+  /* Scrollbar styling - thin, subtle ember-tinted scrollbar */
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: rgba(249, 115, 22, 0.15) transparent;

@@ -43,7 +43,7 @@ function SkuTable({ items, warehouse }: { items: SkuInQueue[]; warehouse: string
         {warehouse.toUpperCase()}
       </div>
       {items.length > 0 ? (
-        <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+        <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
           <table className="w-full">
             <thead className="sticky top-0 bg-bg-secondary">
               <tr className="border-b border-border">

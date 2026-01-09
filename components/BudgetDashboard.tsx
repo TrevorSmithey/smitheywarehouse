@@ -88,17 +88,16 @@ export function BudgetDashboard({
   };
 
   // Get color based on PACE and BUDGET ACHIEVEMENT
-  // Coloring logic:
-  // - Bright green (#22C55E): 90%+ of budget achieved (goal nearly hit)
-  // - Emerald: 90%+ pace (on track or ahead)
+  // Coloring logic (uses design system colors):
+  // - Emerald: 90%+ of budget achieved OR 90%+ pace (on track or ahead)
   // - Amber: 80-89% pace (slightly behind)
   // - Rose: <80% pace (needs attention)
   // - Slate: No budget set (N/A - not a failure)
   const getPaceColor = (pace: number, pctOfBudget?: number, budget?: number) => {
     // No budget = not applicable (gray, not red)
     if (budget !== undefined && budget === 0) return colors.slate;
-    // Hit 90%+ of budget = bright green (celebrate!)
-    if (pctOfBudget !== undefined && pctOfBudget >= 90) return "#22C55E";
+    // Hit 90%+ of budget = emerald (celebrate!)
+    if (pctOfBudget !== undefined && pctOfBudget >= 90) return colors.emerald;
     // On pace (90%+) = emerald
     if (pace >= 90) return colors.emerald;
     // Slightly behind (80-89%) = amber
@@ -109,7 +108,7 @@ export function BudgetDashboard({
 
   const getPaceColorDark = (pace: number, pctOfBudget?: number, budget?: number) => {
     if (budget !== undefined && budget === 0) return colors.slate;
-    if (pctOfBudget !== undefined && pctOfBudget >= 90) return "#16A34A";
+    if (pctOfBudget !== undefined && pctOfBudget >= 90) return colors.emeraldDark;
     if (pace >= 90) return colors.emeraldDark;
     if (pace >= 80) return colors.amberDark;
     return colors.roseDark;

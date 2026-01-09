@@ -208,7 +208,7 @@ export function RestorationHandoff({
               )}
 
               {/* Items List */}
-              <div className="max-h-64 overflow-y-auto space-y-1">
+              <div className="max-h-64 overflow-y-auto scrollbar-thin space-y-1">
                 {eligibleItems.length === 0 ? (
                   <p className="text-center text-text-tertiary text-sm py-8">
                     No items in {config.sourceLabel} status

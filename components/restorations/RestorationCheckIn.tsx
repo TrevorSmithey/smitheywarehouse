@@ -145,7 +145,7 @@ export function RestorationCheckIn({
               </div>
 
               {/* Items List */}
-              <div className="max-h-64 overflow-y-auto space-y-1">
+              <div className="max-h-64 overflow-y-auto scrollbar-thin space-y-1">
                 {filteredItems.length === 0 ? (
                   <p className="text-center text-text-tertiary text-sm py-8">
                     {searchTerm

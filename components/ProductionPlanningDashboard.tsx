@@ -1681,7 +1681,7 @@ function ExecuteTab({ data, onTargetChange, onSkuDrillDown, selectedMonth, onMon
           <div className="bg-[#161b22] px-4 py-2 border-b border-[#30363d]">
             <span className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider">Monthly Progress by SKU</span>
           </div>
-          <div className="p-4 space-y-2 max-h-[300px] overflow-y-auto">
+          <div className="p-4 space-y-2 max-h-[300px] overflow-y-auto scrollbar-thin">
             {activeSkus.map((sku) => {
               const percent = sku.percentToMonthlyTarget;
               const status = sku.hasConstraint ? "bad" : getStatus(percent);
@@ -2669,7 +2669,7 @@ export default function ProductionPlanningDashboard({ data, loading, onRefresh, 
       <TabNav activeTab={activeTab} onTabChange={setActiveTab} orderBookCount={orderBookCount} />
 
       {/* Tab Content */}
-      <div className="max-h-[calc(100vh-180px)] overflow-y-auto">
+      <div className="max-h-[calc(100vh-180px)] overflow-y-auto scrollbar-thin">
         {activeTab === "execute" && (
           <ExecuteTab
             data={dataWithOverrides}

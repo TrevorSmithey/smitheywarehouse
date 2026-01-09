@@ -211,7 +211,7 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
 
       {/* Column Body - Scrollable */}
       <div
-        className={`flex-1 p-3 space-y-3 overflow-y-auto border-x-2 border-b-2 rounded-b-xl ${config.borderColor} ${config.bgColor}`}
+        className={`flex-1 p-3 space-y-3 overflow-y-auto scrollbar-thin border-x-2 border-b-2 rounded-b-xl ${config.borderColor} ${config.bgColor}`}
         style={{ maxHeight: "calc(100vh - 240px)", minHeight: "300px" }}
       >
         {sortedItems.length === 0 ? (

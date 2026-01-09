@@ -123,7 +123,7 @@ function StuckShipmentsPanel({
             SMITHEY ({formatNumber(smithey.length)})
           </div>
           {smithey.length > 0 ? (
-            <div className="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="max-h-[320px] overflow-y-auto pr-2 scrollbar-thin">
               {smithey.map(renderShipment)}
             </div>
           ) : (
@@ -135,7 +135,7 @@ function StuckShipmentsPanel({
             SELERY ({formatNumber(selery.length)})
           </div>
           {selery.length > 0 ? (
-            <div className="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="max-h-[320px] overflow-y-auto pr-2 scrollbar-thin">
               {selery.map(renderShipment)}
             </div>
           ) : (

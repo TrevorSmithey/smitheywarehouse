@@ -201,6 +201,293 @@ If any answer is no, cut it.
 
 ---
 
+## Design System (January 2026)
+
+This section defines the visual language for building new features. **Follow these patterns exactly** to ensure new UI looks native without iteration.
+
+### Color System
+
+All colors are defined as CSS variables in `globals.css`. **Never use hardcoded hex values** - always reference variables or Tailwind classes.
+
+#### Backgrounds (Depth Hierarchy)
+| Variable | Value | Tailwind | Use Case |
+|----------|-------|----------|----------|
+| `--color-bg-primary` | `#0B0E1A` | `bg-bg-primary` | Base page canvas |
+| `--color-bg-secondary` | `#12151F` | `bg-bg-secondary` | Cards, panels, modals |
+| `--color-bg-tertiary` | `#1A1D2A` | `bg-bg-tertiary` | Hover states, elevated elements, table headers |
+
+#### Text (Information Hierarchy)
+| Variable | Value | Tailwind | Use Case |
+|----------|-------|----------|----------|
+| `--color-text-primary` | `#FFFFFF` | `text-text-primary` | Headlines, key metrics, primary content |
+| `--color-text-secondary` | `#94A3B8` | `text-text-secondary` | Labels, descriptions, supporting text |
+| `--color-text-tertiary` | `#64748B` | `text-text-tertiary` | De-emphasized content, timestamps |
+| `--color-text-muted` | `#475569` | `text-text-muted` | Nearly invisible, decorative text |
+
+#### Status Colors (Use ONLY for Status)
+| Variable | Value | Tailwind | When to Use |
+|----------|-------|----------|-------------|
+| `--color-status-good` | `#10B981` | `text-status-good` | On-track, healthy, success, within target |
+| `--color-status-warning` | `#F59E0B` | `text-status-warning` | Needs attention, approaching limits |
+| `--color-status-bad` | `#DC2626` | `text-status-bad` | Problem, urgent, behind target |
+
+**Important**: Status colors are for status indication ONLY. Don't use green just because you want something to "pop."
+
+#### Accent Colors
+| Variable | Value | Tailwind | Use Case |
+|----------|-------|----------|----------|
+| `--color-accent-blue` | `#0EA5E9` | `text-accent-blue` | Links, active states, primary data series |
+| `--color-accent-cyan` | `#06B6D4` | `text-accent-cyan` | Secondary accent (use sparingly) |
+
+#### Borders
+| Variable | Opacity | Tailwind | Use Case |
+|----------|---------|----------|----------|
+| `--color-border` | 6% white | `border-border` | Standard card/section borders |
+| `--color-border-subtle` | 3% white | `border-border-subtle` | Row dividers, subtle separators |
+| `--color-border-hover` | 10% white | `border-border-hover` | Hover states |
+
+**Pattern**: Use `/30` opacity modifier for softer borders: `border-border/30`
+
+---
+
+### Typography Scale
+
+#### Custom Utility Classes (defined in globals.css)
+```jsx
+// Large metric numbers (hero stats)
+<span className="text-metric">1,234</span>  // 42px, line-height: 1
+
+// Section labels (uppercase headers)
+<span className="text-label">IN QUEUE</span>  // 11px, uppercase, tracking-wider
+
+// Body context text
+<span className="text-context">Additional details</span>  // 13px
+```
+
+#### Standard Tailwind Sizes
+| Size | Pixels | Use Case |
+|------|--------|----------|
+| `text-4xl` | 36px | Hero metrics (alternative to .text-metric) |
+| `text-2xl` | 24px | Large card values |
+| `text-lg` | 18px | Card titles, section headers |
+| `text-sm` | 14px | Body text, table content |
+| `text-xs` | 12px | Secondary labels, help text |
+
+#### Font Weights
+- **`font-bold`** - Metric values, important numbers
+- **`font-semibold`** - Section headers, card titles
+- **`font-medium`** - Labels, button text
+- **`font-normal`** - Body text, descriptions
+
+#### Section Labels Pattern
+```jsx
+// Standard section header
+<h3 className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">
+  SECTION TITLE
+</h3>
+
+// Or use the utility
+<span className="text-label font-medium text-text-tertiary">
+  SECTION TITLE
+</span>
+```
+
+---
+
+### Spacing Conventions
+
+#### Card Padding
+| Context | Class | Use Case |
+|---------|-------|----------|
+| Standard card | `p-5` | Most dashboard cards |
+| Compact card | `p-4` | Smaller info boxes, nested cards |
+| Spacious card | `p-6` | Full-width sections, hero areas |
+
+#### Gap Between Items
+| Context | Class | Use Case |
+|---------|-------|----------|
+| Tight | `gap-2` | Between small badges, inline items |
+| Standard | `gap-3` or `gap-4` | Between cards, list items |
+| Spacious | `gap-6` | Between major sections |
+
+#### Vertical Spacing
+| Context | Class | Use Case |
+|---------|-------|----------|
+| Between label and value | `mt-1` | Metric label below number |
+| Between sections | `mb-6` | Standard section spacing |
+| Within card sections | `space-y-4` or `space-y-5` | Stacked content |
+
+---
+
+### Component Patterns
+
+#### Standard Card
+```jsx
+<div className="bg-bg-secondary rounded-xl border border-border/30 p-5 transition-all hover:border-border-hover">
+  <h3 className="text-label font-medium text-text-tertiary mb-4">
+    CARD TITLE
+  </h3>
+  {/* content */}
+</div>
+```
+
+#### Metric Display
+```jsx
+<div>
+  <div className="text-4xl font-bold tabular-nums text-text-primary">
+    {formatNumber(value)}
+  </div>
+  <div className="text-xs text-text-muted mt-1">METRIC LABEL</div>
+</div>
+
+// With status coloring
+<div className={`text-4xl font-bold tabular-nums ${
+  value > threshold ? "text-status-warning" : "text-text-primary"
+}`}>
+  {formatNumber(value)}
+</div>
+```
+
+#### Button Styles
+```jsx
+// Primary action
+<button className="px-3 py-1.5 rounded-md text-sm font-medium bg-accent-blue text-white hover:bg-accent-blue/90 transition-colors">
+  Primary Action
+</button>
+
+// Secondary/default action
+<button className="px-3 py-1.5 rounded-md text-sm font-medium bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors">
+  Secondary Action
+</button>
+
+// Filter/toggle pills
+<button className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
+  isActive
+    ? "bg-accent-blue text-white"
+    : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
+}`}>
+  Filter Option
+</button>
+```
+
+#### Table Pattern
+```jsx
+<div className="max-h-[400px] overflow-y-auto scrollbar-thin">
+  <table className="w-full">
+    <thead className="sticky top-0 bg-bg-tertiary/95 backdrop-blur-sm z-10">
+      <tr className="border-b border-border/20">
+        <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+          Column
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr className="border-b border-border-subtle hover:bg-white/[0.02] transition-colors">
+        <td className="py-2.5 px-4 text-sm text-text-primary">Content</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+```
+
+#### Scrollable Container
+```jsx
+// Always use scrollbar-thin for vertical scroll
+<div className="max-h-[400px] overflow-y-auto scrollbar-thin">
+  {/* content */}
+</div>
+```
+
+#### Status Indicators
+```jsx
+// Colored text
+<span className="text-status-good">On track</span>
+<span className="text-status-warning">Needs attention</span>
+<span className="text-status-bad">Critical</span>
+
+// Colored background badges
+<span className="px-2 py-0.5 text-xs font-medium rounded bg-status-good/20 text-status-good">
+  GOOD
+</span>
+
+// Pulsing indicator for urgent items
+<span className="animate-soft-pulse text-status-warning">Urgent</span>
+```
+
+#### Empty States
+```jsx
+<div className="flex flex-col items-center justify-center py-8 text-text-muted">
+  <IconComponent className="w-8 h-8 mx-auto mb-2 opacity-40" />
+  <span className="text-sm">No items found</span>
+</div>
+```
+
+---
+
+### Border Radius
+
+| Use Case | Class |
+|----------|-------|
+| Cards, modals, large containers | `rounded-xl` |
+| Buttons, inputs, smaller elements | `rounded-lg` or `rounded-md` |
+| Badges, pills | `rounded-full` |
+| Progress bars | `rounded-sm` |
+
+---
+
+### Shadows
+
+Use sparingly. Most cards use borders, not shadows.
+
+```jsx
+// Standard card shadow
+<div className="shadow-card">
+
+// Hover state shadow
+<div className="shadow-card-hover">
+
+// Dropdowns/modals (more pronounced)
+<div className="shadow-xl">
+```
+
+---
+
+### Animation Classes
+
+Defined in `globals.css`:
+- `.animate-soft-pulse` - Gentle pulsing for urgent items
+- `.animate-peck` - Quail pecking animation
+- `.animate-idle-sway` - Gentle idle movement
+- Tailwind: `transition-all`, `transition-colors`
+
+---
+
+### Known Exceptions
+
+#### ProductionPlanningDashboard
+The Production Planning dashboard intentionally uses a **different visual language** (GitHub dark theme, spreadsheet aesthetic) for its control-panel style interface. This is documented as an exception:
+
+- Uses hardcoded GitHub colors (`#1e3a5f`, `#58a6ff`, `#3fb950`, etc.)
+- Has dense, spreadsheet-like layout with editable cells
+- Not subject to standard design system colors
+
+**Do NOT** copy ProductionPlanningDashboard patterns for new dashboards. Follow this design system instead.
+
+---
+
+### Quick Reference Checklist
+
+Before shipping new UI:
+- [ ] Using CSS variables / Tailwind theme classes (not hardcoded hex)
+- [ ] Cards use `bg-bg-secondary rounded-xl border border-border/30 p-5`
+- [ ] Tables have sticky headers with `scrollbar-thin` containers
+- [ ] Status colors only used for actual status (not decoration)
+- [ ] Font sizes match typography scale
+- [ ] Padding follows spacing conventions
+- [ ] Empty states have centered icon + message
+
+---
+
 ## Paid Media Integration (January 2026)
 
 ### Architecture Decisions

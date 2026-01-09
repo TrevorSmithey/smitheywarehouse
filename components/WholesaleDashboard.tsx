@@ -737,7 +737,7 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
         </span>
       </div>
 
-      <div className="max-h-[400px] overflow-y-auto">
+      <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
         {customers.map((customer) => (
           <Link
             key={customer.ns_customer_id}
@@ -912,7 +912,7 @@ function NewCustomersSection({
         </div>
       )}
 
-      <div className="max-h-[350px] overflow-y-auto flex-1">
+      <div className="max-h-[350px] overflow-y-auto scrollbar-thin flex-1">
         {customers.map((customer, idx) => {
           // Flag new customers with low YTD revenue for proactive sales outreach
           // All customers in this section are already first-time buyers this year by definition
@@ -1007,7 +1007,7 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
         Former customers who haven&apos;t ordered in over a year. Excludes corporate accounts.
       </p>
 
-      <div className="max-h-[500px] overflow-y-auto">
+      <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
         {nonCorporateCustomers.map((customer) => {
           const churnedRecently = isChurnedThisYear(customer);
           return (
@@ -1205,7 +1205,7 @@ function OrderingAnomaliesSection({
           )}
         </div>
 
-        <div className="max-h-[500px] overflow-y-auto pr-1">
+        <div className="max-h-[500px] overflow-y-auto scrollbar-thin pr-1">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {filtered.map((anomaly) => (
               <OrderingAnomalyCard key={anomaly.ns_customer_id} anomaly={anomaly} />
@@ -1247,7 +1247,7 @@ function TopSkusSection({ skus }: { skus: WholesaleSkuStats[] }) {
           No SKU data available for this period
         </div>
       ) : (
-      <div className="max-h-[350px] overflow-y-auto">
+      <div className="max-h-[350px] overflow-y-auto scrollbar-thin">
         <table className="w-full">
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-border/20 bg-bg-tertiary/95 backdrop-blur-sm">
@@ -1317,7 +1317,7 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
           No transactions in this period
         </div>
       ) : (
-      <div className="max-h-[350px] overflow-y-auto">
+      <div className="max-h-[350px] overflow-y-auto scrollbar-thin">
         {transactions.slice(0, displayLimit).map((txn) => (
           <div
             key={txn.ns_transaction_id}
@@ -1387,7 +1387,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
       </div>
 
       {/* Customer List - No slicing, show all */}
-      <div className="max-h-[280px] overflow-y-auto flex-1">
+      <div className="max-h-[280px] overflow-y-auto scrollbar-thin flex-1">
         {customers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-text-muted">
             <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -1709,7 +1709,7 @@ function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomer
                 </div>
 
                 {/* Clickable at-risk accounts */}
-                <div className="max-h-[280px] overflow-y-auto space-y-2 pr-1">
+                <div className="max-h-[280px] overflow-y-auto scrollbar-thin space-y-2 pr-1">
                   {aiInsights.predictions.slice(0, 5).map((prediction) => {
                     const isExpanded = expandedPrediction === prediction.ns_customer_id;
                     const borderColor = prediction.riskLevel === "critical"
@@ -2335,7 +2335,7 @@ export function WholesaleDashboard({
               </div>
             </button>
 
-            <div className="max-h-[400px] overflow-y-auto rounded-lg border border-border/20 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="max-h-[400px] overflow-y-auto scrollbar-thin rounded-lg border border-border/20 animate-in fade-in slide-in-from-top-2 duration-200">
               {(() => {
                 // Use the new customersByHealth field which has ALL customers for each status
                 const healthKey = selectedHealthFilter as keyof typeof data.customersByHealth;
@@ -2516,7 +2516,7 @@ export function WholesaleDashboard({
 
           {displayedCustomers.length > 0 ? (
             <>
-              <div className="overflow-x-auto max-h-[450px] overflow-y-auto">
+              <div className="overflow-x-auto max-h-[450px] overflow-y-auto scrollbar-thin">
                 <table className="w-full min-w-[500px]">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b border-border/20 bg-bg-tertiary/95 backdrop-blur-sm">

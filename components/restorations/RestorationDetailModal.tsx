@@ -676,7 +676,7 @@ export function RestorationDetailModal({
             <div
               role="listbox"
               aria-label="Status options"
-              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[220px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 max-h-[50vh] overflow-y-auto"
+              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[220px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 max-h-[50vh] overflow-y-auto scrollbar-thin"
             >
               {/* Current status - always shown first */}
               <div className="px-4 py-3 text-sm text-text-tertiary border-b border-border/50 mb-1">
@@ -714,7 +714,7 @@ export function RestorationDetailModal({
         {/* ================================================================ */}
         {/* CONTENT - 2-Column Grid for iPad Landscape */}
         {/* ================================================================ */}
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* ============================================================ */}
             {/* LEFT COLUMN - Order Info, Inputs */}

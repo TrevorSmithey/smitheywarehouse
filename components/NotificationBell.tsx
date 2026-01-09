@@ -163,7 +163,7 @@ export function NotificationBell() {
           )}
 
           {/* Content */}
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto scrollbar-thin">
             {count === 0 ? (
               <div className="px-4 py-8 text-center">
                 <p className="text-text-tertiary text-sm">All caught up</p>
