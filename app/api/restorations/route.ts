@@ -331,7 +331,7 @@ export async function GET(request: Request) {
 
       const ordersRaw = r.orders as unknown;
       const orderData = (Array.isArray(ordersRaw) ? ordersRaw[0] : ordersRaw) as
-        { id: number; order_name: string; created_at: string; canceled: boolean; shopify_customer_id: number | null } | null;
+        { id: number; order_name: string; created_at: string; canceled: boolean; fulfillment_status: string | null; shopify_customer_id: number | null } | null;
 
       const orderCreatedAt = orderData?.created_at || r.created_at;
       const totalDays = Math.floor(
