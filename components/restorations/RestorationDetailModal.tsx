@@ -146,7 +146,16 @@ function isBackwardTransition(from: string, to: string): boolean {
 function getForwardTransitions(status: string): string[] {
   const statusIndex = STATUS_ORDER.indexOf(status as typeof STATUS_ORDER[number]);
   if (statusIndex < 0 || statusIndex >= STATUS_ORDER.length - 1) return [];
-  return [STATUS_ORDER[statusIndex + 1]];
+
+  const nextStatus = STATUS_ORDER[statusIndex + 1];
+
+  // Skip delivered_warehouse - it's handled automatically by AfterShip webhook
+  // when tracking shows delivery. No manual option needed.
+  if (nextStatus === "delivered_warehouse") {
+    return [];
+  }
+
+  return [nextStatus];
 }
 
 /** Get backward transition for a status - only ONE step back (not all) */

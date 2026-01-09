@@ -111,53 +111,90 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
     return `${base} ${config.bgColor} ${config.borderColor}`;
   };
 
+  // HERE stage: Order number primary, tags secondary
+  // OUT/SHIP stages: Tags primary, order number secondary
+  const isHereStage = stage === "here";
+
   return (
     <button onClick={onClick} className={getCardClasses()}>
       <div className="px-4 py-3 flex items-center justify-between gap-3">
-        {/* Left side: Tags (PRIMARY) + Order (secondary) */}
         <div className="flex-1 min-w-0">
-          {/* Tags as primary identifier - large, monospace, prominent */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {hasTags ? (
-              tags.map((tag, idx) => (
-                <span
-                  key={idx}
-                  className="text-lg font-black text-white font-mono tracking-wider"
-                >
-                  {tag}
+          {isHereStage ? (
+            // HERE: Order number primary
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg font-black text-white">
+                  {orderName}
                 </span>
-              ))
-            ) : (
-              <span className="text-lg font-bold text-amber-400">
-                NEEDS TAG
-              </span>
-            )}
-            {/* Status badges inline with tags */}
-            {item.is_pos && (
-              <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
-                POS
-              </span>
-            )}
-            {isLate && (
-              <span className="shrink-0 text-xs font-black px-2 py-0.5 bg-red-500 text-white rounded uppercase">
-                Late
-              </span>
-            )}
-            {isArrived && !isLate && (
-              <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-amber-500/80 text-black rounded">
-                Dock
-              </span>
-            )}
-            {isInbound && (
-              <span className="shrink-0 text-xs px-2 py-0.5 bg-slate-600/50 text-slate-300 rounded">
-                Inbound
-              </span>
-            )}
-          </div>
-          {/* Order name as secondary - smaller, muted */}
-          <div className="mt-1">
-            <span className="text-sm text-text-tertiary">{orderName}</span>
-          </div>
+                {/* Status badges */}
+                {item.is_pos && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
+                    POS
+                  </span>
+                )}
+                {isLate && (
+                  <span className="shrink-0 text-xs font-black px-2 py-0.5 bg-red-500 text-white rounded uppercase">
+                    Late
+                  </span>
+                )}
+                {isArrived && !isLate && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-amber-500/80 text-black rounded">
+                    Dock
+                  </span>
+                )}
+                {isInbound && (
+                  <span className="shrink-0 text-xs px-2 py-0.5 bg-slate-600/50 text-slate-300 rounded">
+                    Inbound
+                  </span>
+                )}
+              </div>
+              {/* Tags as secondary */}
+              {hasTags && (
+                <div className="mt-1 flex items-center gap-1.5">
+                  {tags.map((tag, idx) => (
+                    <span key={idx} className="text-sm text-text-tertiary font-mono">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            // OUT/SHIP: Tags primary
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                {hasTags ? (
+                  tags.map((tag, idx) => (
+                    <span
+                      key={idx}
+                      className="text-lg font-black text-white font-mono tracking-wider"
+                    >
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-lg font-bold text-amber-400">
+                    NEEDS TAG
+                  </span>
+                )}
+                {/* Status badges */}
+                {item.is_pos && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
+                    POS
+                  </span>
+                )}
+                {isLate && (
+                  <span className="shrink-0 text-xs font-black px-2 py-0.5 bg-red-500 text-white rounded uppercase">
+                    Late
+                  </span>
+                )}
+              </div>
+              {/* Order name as secondary */}
+              <div className="mt-1">
+                <span className="text-sm text-text-tertiary">{orderName}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right side: Days counter - BIG */}
