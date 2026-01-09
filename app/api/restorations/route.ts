@@ -269,6 +269,7 @@ export async function GET(request: Request) {
           order_name,
           created_at,
           canceled,
+          archived,
           fulfillment_status,
           shopify_customer_id
         )
@@ -331,7 +332,7 @@ export async function GET(request: Request) {
 
       const ordersRaw = r.orders as unknown;
       const orderData = (Array.isArray(ordersRaw) ? ordersRaw[0] : ordersRaw) as
-        { id: number; order_name: string; created_at: string; canceled: boolean; fulfillment_status: string | null; shopify_customer_id: number | null } | null;
+        { id: number; order_name: string; created_at: string; canceled: boolean; archived: boolean; fulfillment_status: string | null; shopify_customer_id: number | null } | null;
 
       const orderCreatedAt = orderData?.created_at || r.created_at;
       const totalDays = Math.floor(
@@ -375,6 +376,7 @@ export async function GET(request: Request) {
         days_in_status: daysInStatus,
         total_days: totalDays,
         _orderCanceled: orderData?.canceled || false,
+        _orderArchived: orderData?.archived || false,
         _orderFulfillmentStatus: orderData?.fulfillment_status || null,
       };
     })
@@ -385,20 +387,23 @@ export async function GET(request: Request) {
       // POS items don't have Shopify orders - always keep them
       if (r.is_pos) return true;
 
-      // Shopify order checks
+      // Shopify order checks - cancelled, archived, or fulfilled = filter out
       const orderCanceled = (r as { _orderCanceled?: boolean })._orderCanceled;
+      const orderArchived = (r as { _orderArchived?: boolean })._orderArchived;
       const orderFulfillmentStatus = (r as { _orderFulfillmentStatus?: string | null })._orderFulfillmentStatus;
 
       // Filter out if order was cancelled
       if (orderCanceled) return false;
 
-      // Filter out if order was never shipped (null) - customer never got item, nothing to restore
-      // These are ghost records from old/test data
-      if (!orderFulfillmentStatus) return false;
+      // Filter out if order was archived
+      if (orderArchived) return false;
+
+      // Filter out if order was fulfilled (completed)
+      if (orderFulfillmentStatus === 'fulfilled') return false;
 
       return true;
     })
-    .map(({ _orderCanceled, _orderFulfillmentStatus, ...rest }) => rest as RestorationRecord);
+    .map(({ _orderCanceled, _orderArchived, _orderFulfillmentStatus, ...rest }) => rest as RestorationRecord);
 
     // =========================================================================
     // COMPUTE CURRENT STATE METRICS (STOCK - never filtered)
