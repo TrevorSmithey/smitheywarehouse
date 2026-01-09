@@ -20,6 +20,9 @@ import {
   Package,
   Wrench,
   ZoomIn,
+  AlertTriangle,
+  Plus,
+  ArrowLeft,
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
 import { createClient } from "@/lib/supabase/client";
@@ -71,6 +74,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bgColor: stri
   shipped: { label: "Shipped", color: "text-cyan-400", bgColor: "bg-cyan-500/20", borderColor: "border-cyan-500" },
   delivered: { label: "Delivered", color: "text-green-400", bgColor: "bg-green-500/20", borderColor: "border-green-500" },
   cancelled: { label: "Cancelled", color: "text-red-400", bgColor: "bg-red-500/20", borderColor: "border-red-500" },
+  damaged: { label: "Damaged", color: "text-rose-400", bgColor: "bg-rose-500/20", borderColor: "border-rose-500" },
 };
 
 // Status advancement configuration
@@ -95,19 +99,62 @@ const STATUS_ADVANCE: Record<string, { nextStatus: string; label: string; icon: 
   },
 };
 
-// Valid status transitions (mirrors API validation)
+// Status order for determining forward/backward
+const STATUS_ORDER = [
+  "pending_label",
+  "label_sent",
+  "in_transit_inbound",
+  "delivered_warehouse",
+  "received",
+  "at_restoration",
+  "ready_to_ship",
+  "shipped",
+  "delivered",
+] as const;
+
+// Valid status transitions - includes backward movement and damaged (mirrors API)
 const VALID_TRANSITIONS: Record<string, string[]> = {
-  pending_label: ["label_sent", "cancelled"],
-  label_sent: ["in_transit_inbound", "cancelled"],
-  in_transit_inbound: ["delivered_warehouse", "cancelled"],
-  delivered_warehouse: ["received", "cancelled"],
-  received: ["at_restoration", "cancelled"],
-  at_restoration: ["ready_to_ship", "cancelled"],
-  ready_to_ship: ["shipped", "cancelled"],
-  shipped: ["delivered"],
+  pending_label: ["label_sent", "cancelled", "damaged"],
+  label_sent: ["in_transit_inbound", "pending_label", "cancelled", "damaged"],
+  in_transit_inbound: ["delivered_warehouse", "label_sent", "pending_label", "cancelled", "damaged"],
+  delivered_warehouse: ["received", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
+  received: ["at_restoration", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
+  at_restoration: ["ready_to_ship", "received", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
+  ready_to_ship: ["shipped", "at_restoration", "received", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
+  shipped: ["delivered", "ready_to_ship", "at_restoration", "received", "damaged"],
   delivered: [], // Terminal state
   cancelled: [], // Terminal state
+  damaged: [], // Terminal state
 };
+
+// Damage reason options
+const DAMAGE_REASONS = [
+  { value: "broken_beyond_repair", label: "Broken Beyond Repair" },
+  { value: "defective_material", label: "Defective Material" },
+  { value: "lost", label: "Lost" },
+  { value: "other", label: "Other" },
+] as const;
+
+/** Check if a status transition is backward */
+function isBackwardTransition(from: string, to: string): boolean {
+  const fromIndex = STATUS_ORDER.indexOf(from as typeof STATUS_ORDER[number]);
+  const toIndex = STATUS_ORDER.indexOf(to as typeof STATUS_ORDER[number]);
+  return fromIndex >= 0 && toIndex >= 0 && toIndex < fromIndex;
+}
+
+/** Get forward transitions for a status */
+function getForwardTransitions(status: string): string[] {
+  const statusIndex = STATUS_ORDER.indexOf(status as typeof STATUS_ORDER[number]);
+  if (statusIndex < 0 || statusIndex >= STATUS_ORDER.length - 1) return [];
+  return [STATUS_ORDER[statusIndex + 1]];
+}
+
+/** Get backward transitions for a status */
+function getBackwardTransitions(status: string): string[] {
+  const statusIndex = STATUS_ORDER.indexOf(status as typeof STATUS_ORDER[number]);
+  if (statusIndex <= 0) return [];
+  return STATUS_ORDER.slice(0, statusIndex).reverse() as unknown as string[];
+}
 
 // All statuses with labels for display
 const STATUS_LABELS: Record<string, string> = {
@@ -121,6 +168,7 @@ const STATUS_LABELS: Record<string, string> = {
   shipped: "Shipped",
   delivered: "Delivered to Customer",
   cancelled: "Cancelled",
+  damaged: "Damaged",
 };
 
 function formatDate(dateStr: string | null): string {
@@ -253,7 +301,8 @@ export function RestorationDetailModal({
   onSave,
 }: RestorationDetailModalProps) {
   const [notes, setNotes] = useState("");
-  const [magnetNumber, setMagnetNumber] = useState("");
+  const [tagNumbers, setTagNumbers] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [advancing, setAdvancing] = useState(false);
@@ -262,11 +311,16 @@ export function RestorationDetailModal({
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // Damaged dialog state
+  const [showDamageDialog, setShowDamageDialog] = useState(false);
+  const [selectedDamageReason, setSelectedDamageReason] = useState<string>("");
 
   // Refs for async operation safety
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMountedRef = useRef(true);
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
+  // Mutex to prevent concurrent status update operations (prevents race conditions)
+  const statusUpdateInProgressRef = useRef(false);
 
   // Track mount state to prevent state updates after unmount
   useEffect(() => {
@@ -287,12 +341,21 @@ export function RestorationDetailModal({
   useEffect(() => {
     if (restoration) {
       setNotes(typeof restoration.notes === "string" ? restoration.notes : "");
-      setMagnetNumber(typeof restoration.magnet_number === "string" ? restoration.magnet_number : "");
+      // Use tag_numbers array, fallback to magnet_number for backward compatibility
+      const tags = Array.isArray(restoration.tag_numbers) && restoration.tag_numbers.length > 0
+        ? restoration.tag_numbers
+        : restoration.magnet_number
+          ? [restoration.magnet_number]
+          : [];
+      setTagNumbers(tags);
+      setNewTagInput("");
       // Filter to only valid photo URLs for security
       // Defensive: ensure photos is an array before filtering
       const photosArray = Array.isArray(restoration.photos) ? restoration.photos : [];
       setPhotos(photosArray.filter((url): url is string => typeof url === "string" && isValidPhotoUrl(url)));
       setShowStatusDropdown(false);
+      setShowDamageDialog(false);
+      setSelectedDamageReason("");
       setLoadedImages(new Set()); // Reset loaded images tracking
     }
   }, [restoration]);
@@ -301,10 +364,16 @@ export function RestorationDetailModal({
   const hasChanges = useMemo(() => {
     if (!restoration) return false;
     const notesChanged = notes !== (restoration.notes || "");
-    const magnetChanged = magnetNumber !== (restoration.magnet_number || "");
+    // Compare tag_numbers array, fallback to magnet_number for compatibility
+    const originalTags = Array.isArray(restoration.tag_numbers) && restoration.tag_numbers.length > 0
+      ? restoration.tag_numbers
+      : restoration.magnet_number
+        ? [restoration.magnet_number]
+        : [];
+    const tagsChanged = JSON.stringify(tagNumbers) !== JSON.stringify(originalTags);
     const photosChanged = JSON.stringify(photos) !== JSON.stringify(restoration.photos || []);
-    return notesChanged || magnetChanged || photosChanged;
-  }, [notes, magnetNumber, photos, restoration]);
+    return notesChanged || tagsChanged || photosChanged;
+  }, [notes, tagNumbers, photos, restoration]);
 
   // IMPORTANT: This useCallback must be BEFORE the early return to comply with Rules of Hooks
   // The callback safely handles restoration being null with an early return inside
@@ -484,7 +553,7 @@ export function RestorationDetailModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes: notes || null,
-          magnet_number: magnetNumber || null,
+          tag_numbers: tagNumbers,
           photos: photos,
         }),
       });
@@ -504,7 +573,8 @@ export function RestorationDetailModal({
 
   // Save AND advance status in one action
   const handleAdvanceStatus = async () => {
-    if (!advanceConfig || !restoration) return;
+    if (!advanceConfig || !restoration || statusUpdateInProgressRef.current) return;
+    statusUpdateInProgressRef.current = true;
 
     setAdvancing(true);
     try {
@@ -514,7 +584,7 @@ export function RestorationDetailModal({
         body: JSON.stringify({
           status: advanceConfig.nextStatus,
           notes: notes || null,
-          magnet_number: magnetNumber || null,
+          tag_numbers: tagNumbers,
           photos: photos,
         }),
       });
@@ -528,18 +598,31 @@ export function RestorationDetailModal({
       console.error("Error advancing status:", error);
       alert("Failed to advance status. Please try again.");
     } finally {
-      setAdvancing(false);
+      statusUpdateInProgressRef.current = false;
+      if (isMountedRef.current) {
+        setAdvancing(false);
+      }
     }
   };
 
   // Manual status change
-  const handleManualStatusChange = async (newStatus: string) => {
-    if (!restoration) return;
+  const handleManualStatusChange = async (newStatus: string, skipConfirm = false) => {
+    if (!restoration || statusUpdateInProgressRef.current) return;
     if (newStatus === restoration.status) {
       setShowStatusDropdown(false);
       return;
     }
 
+    // Confirmation for backward movement
+    const isBackward = isBackwardTransition(restoration.status, newStatus);
+    if (isBackward && !skipConfirm) {
+      const confirmed = confirm(
+        "Moving backward will clear timestamps for skipped stages. This is recorded in the audit log. Continue?"
+      );
+      if (!confirmed) return;
+    }
+
+    statusUpdateInProgressRef.current = true;
     setSaving(true);
     try {
       const res = await fetch(`/api/restorations/${restoration.id}`, {
@@ -548,7 +631,7 @@ export function RestorationDetailModal({
         body: JSON.stringify({
           status: newStatus,
           notes: notes || null,
-          magnet_number: magnetNumber || null,
+          tag_numbers: tagNumbers,
           photos: photos,
         }),
       });
@@ -566,12 +649,89 @@ export function RestorationDetailModal({
       console.error("Error changing status:", error);
       alert(error instanceof Error ? error.message : "Failed to change status");
     } finally {
-      setSaving(false);
+      statusUpdateInProgressRef.current = false;
+      if (isMountedRef.current) {
+        setSaving(false);
+      }
     }
   };
 
+  // Handle marking as damaged
+  const handleMarkDamaged = async () => {
+    if (!restoration || !selectedDamageReason || statusUpdateInProgressRef.current) return;
+    statusUpdateInProgressRef.current = true;
+
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/restorations/${restoration.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "damaged",
+          damage_reason: selectedDamageReason,
+          notes: notes || null,
+          tag_numbers: tagNumbers,
+          photos: photos,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to mark as damaged");
+      }
+
+      setShowDamageDialog(false);
+      setSelectedDamageReason("");
+      onSave();
+    } catch (error) {
+      console.error("Error marking as damaged:", error);
+      alert(error instanceof Error ? error.message : "Failed to mark as damaged");
+    } finally {
+      statusUpdateInProgressRef.current = false;
+      if (isMountedRef.current) {
+        setSaving(false);
+      }
+    }
+  };
+
+  // Tag management handlers
+  const handleAddTag = () => {
+    const tag = newTagInput.trim().toUpperCase();
+    if (!tag) return;
+    if (tagNumbers.length >= 10) {
+      alert("Maximum 10 tags allowed");
+      return;
+    }
+    if (tagNumbers.includes(tag)) {
+      alert("Tag already exists");
+      setNewTagInput("");
+      return;
+    }
+    // Validate: alphanumeric + dash, max 20 chars
+    if (!/^[A-Z0-9-]+$/i.test(tag) || tag.length > 20) {
+      alert("Tags must be alphanumeric with dashes, max 20 characters");
+      return;
+    }
+    setTagNumbers([...tagNumbers, tag]);
+    setNewTagInput("");
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTagNumbers(tagNumbers.filter((t) => t !== tagToRemove));
+  };
+
   const handleClose = () => {
-    if (hasChanges) {
+    // Check if upload is in progress - warn user before closing
+    if (uploading) {
+      if (!confirm("Photo upload in progress. Cancel upload and discard unsaved changes?")) {
+        return;
+      }
+      // Abort the upload
+      uploadAbortControllerRef.current?.abort();
+    }
+
+    // Check for unsaved changes (separate from upload check)
+    if (hasChanges && !uploading) {
       if (!confirm("You have unsaved changes. Discard them?")) {
         return;
       }
@@ -676,35 +836,97 @@ export function RestorationDetailModal({
             <div
               role="listbox"
               aria-label="Status options"
-              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[220px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 max-h-[50vh] overflow-y-auto scrollbar-thin"
+              className="absolute top-[68px] left-4 right-4 sm:right-auto sm:min-w-[280px] z-10 bg-bg-primary border border-border rounded-xl shadow-xl py-2 max-h-[50vh] overflow-y-auto scrollbar-thin"
             >
               {/* Current status - always shown first */}
               <div className="px-4 py-3 text-sm text-text-tertiary border-b border-border/50 mb-1">
                 Current: <span className="font-medium text-text-primary">{STATUS_LABELS[restoration.status]}</span>
               </div>
 
-              {/* Valid next statuses */}
-              {(VALID_TRANSITIONS[restoration.status] || []).length > 0 ? (
+              {/* Forward transitions */}
+              {getForwardTransitions(restoration.status).length > 0 && (
                 <>
-                  <div className="px-4 py-1 text-xs text-text-muted uppercase tracking-wider" id="status-dropdown-label">
-                    Move to
+                  <div className="px-4 py-1 text-xs text-emerald-400 uppercase tracking-wider font-semibold">
+                    Move Forward
                   </div>
-                  {(VALID_TRANSITIONS[restoration.status] || []).map((statusValue) => (
+                  {getForwardTransitions(restoration.status).map((statusValue) => (
                     <button
                       key={statusValue}
                       role="option"
                       aria-selected={false}
                       onClick={() => handleManualStatusChange(statusValue)}
                       disabled={saving}
-                      className="w-full text-left px-4 py-3 text-sm text-text-primary hover:bg-bg-secondary transition-colors min-h-[44px]"
+                      className="w-full text-left px-4 py-3 text-sm text-text-primary hover:bg-emerald-500/10 transition-colors min-h-[44px] flex items-center gap-2"
                     >
+                      <ChevronRight className="w-4 h-4 text-emerald-400" />
                       {STATUS_LABELS[statusValue]}
                     </button>
                   ))}
                 </>
-              ) : (
+              )}
+
+              {/* Backward transitions */}
+              {getBackwardTransitions(restoration.status).length > 0 && (
+                <>
+                  <div className="px-4 py-1 text-xs text-amber-400 uppercase tracking-wider font-semibold mt-2">
+                    Move Back
+                  </div>
+                  {getBackwardTransitions(restoration.status).map((statusValue) => (
+                    <button
+                      key={statusValue}
+                      role="option"
+                      aria-selected={false}
+                      onClick={() => handleManualStatusChange(statusValue)}
+                      disabled={saving}
+                      className="w-full text-left px-4 py-3 text-sm text-amber-300/80 hover:bg-amber-500/10 transition-colors min-h-[44px] flex items-center gap-2"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-amber-400" />
+                      {STATUS_LABELS[statusValue]}
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {/* Terminal statuses - only show if current status can transition to them */}
+              {(VALID_TRANSITIONS[restoration.status] || []).some(s => s === "cancelled" || s === "damaged") && (
+                <>
+                  <div className="px-4 py-1 text-xs text-rose-400 uppercase tracking-wider font-semibold mt-2 border-t border-border/50 pt-2">
+                    Terminal
+                  </div>
+                  {(VALID_TRANSITIONS[restoration.status] || []).includes("cancelled") && (
+                    <button
+                      role="option"
+                      aria-selected={false}
+                      onClick={() => handleManualStatusChange("cancelled")}
+                      disabled={saving}
+                      className="w-full text-left px-4 py-3 text-sm text-rose-400/80 hover:bg-rose-500/10 transition-colors min-h-[44px] flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4 text-rose-400" />
+                      Cancel Order
+                    </button>
+                  )}
+                  {(VALID_TRANSITIONS[restoration.status] || []).includes("damaged") && (
+                    <button
+                      role="option"
+                      aria-selected={false}
+                      onClick={() => {
+                        setShowStatusDropdown(false);
+                        setShowDamageDialog(true);
+                      }}
+                      disabled={saving}
+                      className="w-full text-left px-4 py-3 text-sm text-rose-400/80 hover:bg-rose-500/10 transition-colors min-h-[44px] flex items-center gap-2"
+                    >
+                      <AlertTriangle className="w-4 h-4 text-rose-400" />
+                      Mark as Damaged
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* No transitions available */}
+              {(VALID_TRANSITIONS[restoration.status] || []).length === 0 && (
                 <div className="px-4 py-3 text-sm text-text-muted italic">
-                  No available transitions
+                  This is a terminal status
                 </div>
               )}
             </div>
@@ -785,26 +1007,79 @@ export function RestorationDetailModal({
                 </div>
               </div>
 
-              {/* Internal ID (Magnet #) */}
+              {/* Tag Numbers - PRIMARY IDENTIFIER */}
               <div>
-                <label htmlFor="magnet-number-input" className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
+                <label className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
                   <Tag className="w-3.5 h-3.5" aria-hidden="true" />
-                  Internal ID (Magnet #)
+                  Tag Numbers ({tagNumbers.length}/10)
                 </label>
-                <input
-                  id="magnet-number-input"
-                  type="text"
-                  inputMode="text"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="characters"
-                  value={magnetNumber}
-                  onChange={(e) => setMagnetNumber(e.target.value.toUpperCase())}
-                  placeholder="e.g., M-042"
-                  className="w-full px-4 py-4 text-lg font-semibold bg-bg-secondary border-2 border-border rounded-xl
-                    text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
-                    transition-colors min-h-[56px]"
-                />
+
+                {/* Tag Chips Display */}
+                {tagNumbers.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3" role="list" aria-label="Current tag numbers">
+                    {tagNumbers.map((tag, index) => (
+                      <div
+                        key={tag}
+                        role="listitem"
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-accent-blue/20 border border-accent-blue/40 rounded-lg text-accent-blue font-mono font-semibold text-lg"
+                      >
+                        <span>{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag)}
+                          aria-label={`Remove tag ${tag}`}
+                          className="p-0.5 hover:bg-accent-blue/30 rounded transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Tag Input */}
+                {tagNumbers.length < 10 && (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="characters"
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                      }}
+                      placeholder="e.g., M-042"
+                      aria-label="Add new tag number"
+                      className="flex-1 px-4 py-3 text-lg font-mono font-semibold bg-bg-secondary border-2 border-border rounded-xl
+                        text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
+                        transition-colors min-h-[52px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddTag}
+                      disabled={!newTagInput.trim()}
+                      aria-label="Add tag"
+                      className="px-4 py-3 bg-accent-blue text-white font-semibold rounded-xl
+                        hover:bg-accent-blue/90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed
+                        transition-all min-w-[52px] min-h-[52px] flex items-center justify-center"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Empty state hint */}
+                {tagNumbers.length === 0 && (
+                  <p className="text-xs text-text-muted mt-2">
+                    Add tag numbers to identify this item (Enter to add)
+                  </p>
+                )}
               </div>
 
               {/* Notes */}
@@ -913,7 +1188,12 @@ export function RestorationDetailModal({
                         src={photoUrl}
                         alt={`Restoration photo ${index + 1} of ${photos.length}`}
                         loading="lazy"
-                        onLoad={() => setLoadedImages((prev) => new Set(prev).add(photoUrl))}
+                        onLoad={() => {
+                          // Check mount state before updating state (prevents memory leak)
+                          if (isMountedRef.current) {
+                            setLoadedImages((prev) => new Set(prev).add(photoUrl));
+                          }
+                        }}
                         className={`w-full h-full object-cover transition-opacity duration-200 ${
                           loadedImages.has(photoUrl) ? "opacity-100" : "opacity-0"
                         }`}
@@ -971,17 +1251,32 @@ export function RestorationDetailModal({
                 )}
               </div>
 
-              {/* Hidden file input */}
+              {/* Hidden file input - capture="environment" opens rear camera directly on iPad */}
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                capture="environment"
                 multiple
                 onChange={handlePhotoUpload}
                 className="hidden"
                 aria-hidden="true"
                 tabIndex={-1}
               />
+
+              {/* ARIA live region for upload progress - announces to screen readers */}
+              <div
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="sr-only"
+              >
+                {uploading && uploadProgress
+                  ? `Uploading photo ${uploadProgress.current} of ${uploadProgress.total}`
+                  : uploading
+                  ? "Upload in progress"
+                  : null}
+              </div>
 
               {/* Empty state hint */}
               {photos.length === 0 && !uploading && (
@@ -1066,21 +1361,127 @@ export function RestorationDetailModal({
       </div>
 
       {/* ================================================================ */}
-      {/* LIGHTBOX MODAL */}
+      {/* DAMAGE CONFIRMATION DIALOG */}
       {/* ================================================================ */}
-      {lightboxIndex !== null && photos[lightboxIndex] && (
+      {showDamageDialog && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowDamageDialog(false);
+            setSelectedDamageReason("");
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="damage-dialog-title"
+        >
+          <div
+            className="bg-bg-secondary rounded-2xl border border-border w-full max-w-md overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-border bg-rose-500/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 id="damage-dialog-title" className="text-lg font-semibold text-text-primary">
+                    Mark as Damaged
+                  </h3>
+                  <p className="text-sm text-text-secondary">This action cannot be undone</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-text-secondary">
+                Select a reason for marking this restoration as damaged. The item will be removed from the active pipeline.
+              </p>
+
+              {/* Reason Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-text-muted uppercase tracking-wider">
+                  Damage Reason
+                </label>
+                <div className="space-y-2">
+                  {DAMAGE_REASONS.map((reason) => (
+                    <button
+                      key={reason.value}
+                      onClick={() => setSelectedDamageReason(reason.value)}
+                      className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                        selectedDamageReason === reason.value
+                          ? "border-rose-500 bg-rose-500/10 text-text-primary"
+                          : "border-border hover:border-border-hover bg-bg-tertiary/50 text-text-secondary hover:text-text-primary"
+                      }`}
+                    >
+                      {reason.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-border bg-bg-tertiary/30 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowDamageDialog(false);
+                  setSelectedDamageReason("");
+                }}
+                className="px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMarkDamaged}
+                disabled={!selectedDamageReason || saving}
+                className={`px-5 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                  selectedDamageReason && !saving
+                    ? "bg-rose-500 text-white hover:bg-rose-600 active:scale-95"
+                    : "bg-rose-500/30 text-rose-300/50 cursor-not-allowed"
+                }`}
+              >
+                {saving ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  "Confirm Damage"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* LIGHTBOX MODAL - Keyboard navigable (Escape, Arrow keys) */}
+      {/* ================================================================ */}
+      {lightboxIndex !== null && photos[lightboxIndex] && isValidPhotoUrl(photos[lightboxIndex]) && (
         <div
           className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
           onClick={() => setLightboxIndex(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setLightboxIndex(null);
+            } else if (e.key === "ArrowLeft" && photos.length > 1) {
+              setLightboxIndex((prev) => (prev !== null ? (prev - 1 + photos.length) % photos.length : 0));
+            } else if (e.key === "ArrowRight" && photos.length > 1) {
+              setLightboxIndex((prev) => (prev !== null ? (prev + 1) % photos.length : 0));
+            }
+          }}
+          tabIndex={0}
           role="dialog"
           aria-modal="true"
-          aria-label="Photo lightbox viewer"
+          aria-label={`Photo lightbox viewer. Photo ${lightboxIndex + 1} of ${photos.length}. Press Escape to close${photos.length > 1 ? ", arrow keys to navigate" : ""}.`}
         >
           {/* Close button */}
           <button
             onClick={() => setLightboxIndex(null)}
             className="absolute top-4 right-4 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors min-w-[44px] min-h-[44px]"
-            aria-label="Close lightbox"
+            aria-label="Close lightbox (Escape)"
           >
             <X className="w-6 h-6" />
           </button>
@@ -1093,7 +1494,7 @@ export function RestorationDetailModal({
                 setLightboxIndex((prev) => (prev !== null ? (prev - 1 + photos.length) % photos.length : 0));
               }}
               className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors min-w-[44px] min-h-[44px]"
-              aria-label="Previous photo"
+              aria-label="Previous photo (Left arrow)"
             >
               <ChevronLeft className="w-6 h-6" />
             </button>
@@ -1115,14 +1516,14 @@ export function RestorationDetailModal({
                 setLightboxIndex((prev) => (prev !== null ? (prev + 1) % photos.length : 0));
               }}
               className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors min-w-[44px] min-h-[44px]"
-              aria-label="Next photo"
+              aria-label="Next photo (Right arrow)"
             >
               <ChevronRight className="w-6 h-6" />
             </button>
           )}
 
           {/* Photo counter */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-white/10 text-white/80 text-sm font-medium rounded-full">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-white/10 text-white/80 text-sm font-medium rounded-full" aria-hidden="true">
             {lightboxIndex + 1} / {photos.length}
           </div>
         </div>

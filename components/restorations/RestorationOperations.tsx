@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, memo } from "react";
 import { RefreshCw } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 import { RestorationDetailModal } from "./RestorationDetailModal";
@@ -77,14 +77,17 @@ interface CardProps {
   onClick: () => void;
 }
 
-function Card({ item, stage, onClick }: CardProps) {
+// Memoized card component - prevents re-renders when parent re-renders but props unchanged
+const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const config = STAGE_CONFIG[stage];
   const days = typeof item.days_in_status === "number" ? item.days_in_status : 0;
   const isLate = days > config.thresholds.amber;
   const isWarning = days > config.thresholds.green && !isLate;
 
   const orderName = item.order_name || item.rma_number || `#${item.id}`;
-  const magnetNumber = item.magnet_number;
+  // Use tag_numbers array (new) or fall back to magnet_number (legacy)
+  const tags = item.tag_numbers?.length ? item.tag_numbers : (item.magnet_number ? [item.magnet_number] : []);
+  const hasTags = tags.length > 0;
 
   // Sub-status for HERE column
   const isInbound = item.status === "in_transit_inbound";
@@ -111,12 +114,25 @@ function Card({ item, stage, onClick }: CardProps) {
   return (
     <button onClick={onClick} className={getCardClasses()}>
       <div className="px-4 py-3 flex items-center justify-between gap-3">
-        {/* Left side: Order + Status */}
+        {/* Left side: Tags (PRIMARY) + Order (secondary) */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-white truncate">
-              {orderName}
-            </span>
+          {/* Tags as primary identifier - large, monospace, prominent */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {hasTags ? (
+              tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="text-lg font-black text-white font-mono tracking-wider"
+                >
+                  {tag}
+                </span>
+              ))
+            ) : (
+              <span className="text-lg font-bold text-amber-400">
+                NEEDS TAG
+              </span>
+            )}
+            {/* Status badges inline with tags */}
             {item.is_pos && (
               <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
                 POS
@@ -138,13 +154,9 @@ function Card({ item, stage, onClick }: CardProps) {
               </span>
             )}
           </div>
-          {/* Magnet number or needs ID */}
+          {/* Order name as secondary - smaller, muted */}
           <div className="mt-1">
-            {magnetNumber ? (
-              <span className="text-sm text-text-secondary">{magnetNumber}</span>
-            ) : (
-              <span className="text-sm text-amber-400 font-medium">Needs ID</span>
-            )}
+            <span className="text-sm text-text-tertiary">{orderName}</span>
           </div>
         </div>
 
@@ -156,7 +168,7 @@ function Card({ item, stage, onClick }: CardProps) {
       </div>
     </button>
   );
-}
+});
 
 // ============================================================================
 // COLUMN - Simple scrollable list

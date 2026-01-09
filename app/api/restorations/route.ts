@@ -33,6 +33,7 @@ const STATUS_ORDER = [
   "shipped",
   "delivered",
   "cancelled",
+  "damaged", // Terminal status for damaged items
 ] as const;
 
 type RestorationStatus = (typeof STATUS_ORDER)[number];
@@ -67,6 +68,7 @@ const STATUS_CONFIG: Record<RestorationStatus, { label: string; color: string }>
   shipped: { label: "Shipped", color: "cyan" },
   delivered: { label: "Delivered to Customer", color: "green" },
   cancelled: { label: "Cancelled", color: "red" },
+  damaged: { label: "Damaged", color: "rose" },
 };
 
 export interface RestorationRecord {
@@ -75,7 +77,8 @@ export interface RestorationRecord {
   aftership_return_id: string | null;
   rma_number: string | null;
   status: RestorationStatus;
-  magnet_number: string | null;
+  tag_numbers: string[]; // Array of tag numbers (replaces magnet_number as primary)
+  magnet_number: string | null; // Legacy - kept for backward compatibility
   return_tracking_number: string | null;
   return_carrier: string | null;
   return_tracking_status: string | null;
@@ -87,6 +90,8 @@ export interface RestorationRecord {
   back_from_restoration_at: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
+  damaged_at: string | null; // When marked as damaged
+  damage_reason: string | null; // Reason for damage
   is_pos: boolean;
   notes: string | null;
   photos: string[];
@@ -239,6 +244,7 @@ export async function GET(request: Request) {
         aftership_return_id,
         rma_number,
         status,
+        tag_numbers,
         magnet_number,
         return_tracking_number,
         return_carrier,
@@ -251,6 +257,8 @@ export async function GET(request: Request) {
         back_from_restoration_at,
         shipped_at,
         delivered_at,
+        damaged_at,
+        damage_reason,
         is_pos,
         notes,
         photos,
@@ -312,6 +320,7 @@ export async function GET(request: Request) {
         shipped: r.shipped_at,
         delivered: r.delivered_at,
         cancelled: null,
+        damaged: r.damaged_at,
       };
 
       const currentStatusTimestamp = statusTimestamps[r.status as RestorationStatus];
@@ -338,6 +347,7 @@ export async function GET(request: Request) {
         aftership_return_id: r.aftership_return_id,
         rma_number: r.rma_number,
         status: r.status as RestorationStatus,
+        tag_numbers: r.tag_numbers || [],
         magnet_number: r.magnet_number,
         return_tracking_number: r.return_tracking_number,
         return_carrier: r.return_carrier,
@@ -350,6 +360,8 @@ export async function GET(request: Request) {
         back_from_restoration_at: r.back_from_restoration_at,
         shipped_at: r.shipped_at,
         delivered_at: r.delivered_at,
+        damaged_at: r.damaged_at,
+        damage_reason: r.damage_reason,
         is_pos: r.is_pos || false,
         notes: r.notes,
         photos: r.photos || [],
@@ -365,7 +377,8 @@ export async function GET(request: Request) {
       };
     })
     .filter(r => {
-      if (r.status === "cancelled") return true;
+      // Keep terminal statuses regardless of order status
+      if (r.status === "cancelled" || r.status === "damaged") return true;
       return !(r as { _orderCanceled?: boolean })._orderCanceled;
     })
     .map(({ _orderCanceled, ...rest }) => rest as RestorationRecord);
