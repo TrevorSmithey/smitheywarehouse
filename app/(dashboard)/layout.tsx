@@ -209,14 +209,13 @@ export default function DashboardLayout({
     fetch("/api/activity/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include", // Include cookies for session auth
       body: JSON.stringify({
-        userId: session.userId,
         action: "page_view",
         tab: currentTab,
       }),
-    }).catch((err) => {
+    }).catch(() => {
       // Silent fail - activity logging shouldn't break navigation
-      console.error("Failed to log activity:", err);
     });
   }, [pathname, session, isLoading]);
 
