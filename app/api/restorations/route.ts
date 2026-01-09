@@ -269,6 +269,7 @@ export async function GET(request: Request) {
           order_name,
           created_at,
           canceled,
+          fulfillment_status,
           shopify_customer_id
         )
       `)
@@ -374,14 +375,29 @@ export async function GET(request: Request) {
         days_in_status: daysInStatus,
         total_days: totalDays,
         _orderCanceled: orderData?.canceled || false,
+        _orderFulfillmentStatus: orderData?.fulfillment_status || null,
       };
     })
     .filter(r => {
       // Keep terminal statuses regardless of order status
       if (r.status === "cancelled" || r.status === "damaged") return true;
-      return !(r as { _orderCanceled?: boolean })._orderCanceled;
+
+      // POS items don't have Shopify orders - always keep them
+      if (r.is_pos) return true;
+
+      // Shopify order checks - cancelled trumps fulfilled
+      const orderCanceled = (r as { _orderCanceled?: boolean })._orderCanceled;
+      const orderFulfillmentStatus = (r as { _orderFulfillmentStatus?: string | null })._orderFulfillmentStatus;
+
+      // Filter out if order was cancelled
+      if (orderCanceled) return false;
+
+      // Filter out if order was never fulfilled (customer never received item - nothing to restore)
+      if (!orderFulfillmentStatus) return false;
+
+      return true;
     })
-    .map(({ _orderCanceled, ...rest }) => rest as RestorationRecord);
+    .map(({ _orderCanceled, _orderFulfillmentStatus, ...rest }) => rest as RestorationRecord);
 
     // =========================================================================
     // COMPUTE CURRENT STATE METRICS (STOCK - never filtered)
