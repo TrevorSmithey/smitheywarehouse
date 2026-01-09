@@ -330,7 +330,13 @@ async function handleShipmentUpdated(
 }
 
 /**
- * Handle return.received - Item marked as received in Aftership
+ * Handle return.received - AfterShip marks return as "received"
+ *
+ * IMPORTANT: AfterShip "received" means package delivered to warehouse (tracking event).
+ * This is different from our "received" status which means warehouse staff checked in.
+ *
+ * This handler sets status to "delivered_warehouse", NOT "received".
+ * Warehouse staff manually advances to "received" status during check-in.
  */
 async function handleReturnReceived(
   supabase: ReturnType<typeof createServiceClient>,
@@ -362,26 +368,29 @@ async function handleReturnReceived(
   }
 
   // Only update if not already past this stage
+  // Note: AfterShip "received" = package delivered to dock (tracking event)
+  // Our "received" status = warehouse staff checked in (manual action)
+  // So we set delivered_warehouse status, NOT received status
   if (["pending_label", "label_sent", "in_transit_inbound", "delivered_warehouse"].includes(existing.status)) {
-    const receivedAt = data.receivings?.[0]?.received_at || new Date().toISOString();
+    const deliveredAt = data.receivings?.[0]?.received_at || new Date().toISOString();
 
     const { error } = await supabase
       .from("restorations")
       .update({
         status: "delivered_warehouse",
-        delivered_to_warehouse_at: receivedAt,
-        received_at: receivedAt,
+        delivered_to_warehouse_at: deliveredAt,
+        // DO NOT set received_at here - that's for manual check-in by warehouse staff
         updated_at: new Date().toISOString(),
       })
       .eq("id", existing.id);
 
     if (error) throw error;
 
-    await logRestorationEvent(supabase, existing.id, "aftership_received", {
-      received_at: receivedAt,
+    await logRestorationEvent(supabase, existing.id, "aftership_delivered", {
+      delivered_at: deliveredAt,
     });
 
-    console.log(`[AFTERSHIP WEBHOOK] Marked restoration ${existing.id} as received`);
+    console.log(`[AFTERSHIP WEBHOOK] Marked restoration ${existing.id} as delivered to warehouse`);
   }
 }
 
