@@ -126,31 +126,45 @@ export async function GET(request: Request) {
     console.log("[NETSUITE] Computing customer metrics...");
 
     const { error: computeError } = await supabase.rpc("compute_customer_metrics");
+    const metricsComputed = !computeError;
+
     if (computeError) {
-      console.error("[NETSUITE] Failed to compute metrics:", computeError.message);
-      // Don't fail the sync - the raw data is still valid
+      // CRITICAL: RPC failure means customer metrics are STALE
+      // Dashboard will show wrong health_status, days_since_last_order, etc.
+      console.error("[NETSUITE] CRITICAL: Failed to compute metrics:", computeError.message);
+      console.error("[NETSUITE] Customer metrics are now STALE - dashboard data may be incorrect");
     } else {
       console.log("[NETSUITE] Customer metrics computed successfully");
     }
+
+    // Sync status reflects whether ALL operations succeeded
+    // "partial" = raw data synced but metrics computation failed
+    const syncStatus = metricsComputed ? "success" : "partial";
+    const errorMsg = metricsComputed
+      ? null
+      : `Metrics computation failed: ${computeError?.message}. Customer metrics are stale.`;
 
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_transactions",
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
-      status: "success",
+      status: syncStatus,
       records_expected: totalFetched,
       records_synced: totalUpserted,
       duration_ms: elapsed,
+      error_message: errorMsg,
     });
 
     return NextResponse.json({
-      success: true,
+      success: true, // Raw data sync succeeded
+      metricsComputed,
       type: "transactions",
       mode: isFullSync ? "full" : `incremental_${DEFAULT_SYNC_DAYS}d`,
       fetched: totalFetched,
       upserted: totalUpserted,
       batches: batchCount,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
+      ...(computeError && { metricsError: computeError.message }),
     });
   } catch (error) {
     console.error("[NETSUITE] Transactions sync failed:", error);

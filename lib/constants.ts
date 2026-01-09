@@ -134,6 +134,13 @@ export const QUERY_LIMITS = {
   INVENTORY_RETAIL_SALES: 500000,
   INVENTORY_B2B_SALES: 100000,
   INVENTORY_VELOCITY: 100000,
+
+  // Wholesale API - CRITICAL: Without limits, Supabase defaults to 1000 rows
+  // 2025 had 3,298 transactions → would silently truncate 70% of data!
+  // Verified via audit query on 2026-01-09
+  WHOLESALE_CUSTOMERS: 2000, // ~749 customers with transactions, 3x buffer
+  WHOLESALE_TRANSACTIONS_YTD: 10000, // ~3,298 YTD 2025, 3x buffer
+  WHOLESALE_TRANSACTIONS_24M: 15000, // 24-month queries need more headroom
 } as const;
 
 /**

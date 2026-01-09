@@ -23,6 +23,7 @@ import type {
   CustomerSegment,
 } from "@/lib/types";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
+import { QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -163,7 +164,8 @@ export async function GET(request: Request) {
         .from("ns_wholesale_customers")
         .select("*")
         .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
-        .order("lifetime_revenue", { ascending: false }),
+        .order("lifetime_revenue", { ascending: false })
+        .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS),
       // Transactions in current period with customer name join (excluding D2C)
       supabase
         .from("ns_wholesale_transactions")
@@ -171,14 +173,16 @@ export async function GET(request: Request) {
         .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .gte("tran_date", formatDate(rangeStart))
         .lte("tran_date", formatDate(rangeEnd))
-        .order("tran_date", { ascending: false }),
+        .order("tran_date", { ascending: false })
+        .limit(QUERY_LIMITS.WHOLESALE_TRANSACTIONS_YTD),
       // Previous period transactions for comparison (excluding D2C)
       supabase
         .from("ns_wholesale_transactions")
         .select("ns_customer_id, foreign_total")
         .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .gte("tran_date", formatDate(prevRangeStart))
-        .lte("tran_date", formatDate(prevRangeEnd)),
+        .lte("tran_date", formatDate(prevRangeEnd))
+        .limit(QUERY_LIMITS.WHOLESALE_TRANSACTIONS_YTD),
       // Top SKUs from view
       supabase
         .from("ns_wholesale_sku_summary")
@@ -186,6 +190,23 @@ export async function GET(request: Request) {
         .order("total_revenue", { ascending: false })
         .limit(50),
     ]);
+
+    // Check for potential data truncation (CRITICAL: silent data loss prevention)
+    checkQueryLimit(
+      customersResult.data?.length || 0,
+      QUERY_LIMITS.WHOLESALE_CUSTOMERS,
+      "wholesale_customers"
+    );
+    checkQueryLimit(
+      transactionsResult.data?.length || 0,
+      QUERY_LIMITS.WHOLESALE_TRANSACTIONS_YTD,
+      "wholesale_transactions_current"
+    );
+    checkQueryLimit(
+      prevTransactionsResult.data?.length || 0,
+      QUERY_LIMITS.WHOLESALE_TRANSACTIONS_YTD,
+      "wholesale_transactions_prev"
+    );
 
     // Build monthly stats from raw data if RPC doesn't exist
     let monthly: WholesaleMonthlyStats[] = [];
@@ -277,7 +298,15 @@ export async function GET(request: Request) {
       .from("ns_wholesale_transactions")
       .select("ns_customer_id, foreign_total, tran_date")
       .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
-      .gte("tran_date", monthlyBreakdownStart.toISOString().split("T")[0]);
+      .gte("tran_date", monthlyBreakdownStart.toISOString().split("T")[0])
+      .limit(QUERY_LIMITS.WHOLESALE_TRANSACTIONS_24M);
+
+    // Check for potential truncation on 24-month query
+    checkQueryLimit(
+      monthlyTxns?.length || 0,
+      QUERY_LIMITS.WHOLESALE_TRANSACTIONS_24M,
+      "wholesale_transactions_24m"
+    );
 
     // Group transactions by month and calculate corporate vs regular revenue
     const monthlyRevenueBreakdown = new Map<string, { corporate: number; regular: number }>();
