@@ -28,6 +28,7 @@ import {
 } from "@/lib/aftership";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
+import { lookupOrdersByNumber } from "@/lib/database-helpers";
 
 const LOCK_NAME = "sync-aftership-returns";
 
@@ -220,42 +221,6 @@ export async function POST(request: NextRequest) {
   } finally {
     await releaseCronLock(supabase, LOCK_NAME);
   }
-}
-
-/**
- * Lookup orders by order_number (matches order_name in our database)
- * Returns Map of order_number -> order_id
- *
- * AfterShip sends order_number in same format as Shopify (e.g., "S371909")
- * Just match directly - no prefix manipulation needed
- */
-async function lookupOrdersByNumber(
-  supabase: ReturnType<typeof createServiceClient>,
-  orderNumbers: string[]
-): Promise<Map<string, number>> {
-  const orderMap = new Map<string, number>();
-
-  // Query in batches of 500 to avoid query size limits
-  const BATCH_SIZE = 500;
-  for (let i = 0; i < orderNumbers.length; i += BATCH_SIZE) {
-    const batch = orderNumbers.slice(i, i + BATCH_SIZE);
-
-    const { data, error } = await supabase
-      .from("orders")
-      .select("id, order_name")
-      .in("order_name", batch);
-
-    if (error) {
-      console.error("[AFTERSHIP SYNC] Error looking up orders:", error);
-      continue;
-    }
-
-    for (const order of data || []) {
-      orderMap.set(order.order_name, order.id);
-    }
-  }
-
-  return orderMap;
 }
 
 /**

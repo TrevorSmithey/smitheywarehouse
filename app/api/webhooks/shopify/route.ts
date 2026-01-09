@@ -5,6 +5,7 @@ import {
   extractWarehouse,
   calculateFulfilledAt,
 } from "@/lib/shopify";
+import { extractErrorMessage } from "@/lib/database-helpers";
 import type { ShopifyOrder } from "@/lib/types";
 
 // Shopify fulfillments/create webhook payload
@@ -61,15 +62,11 @@ export async function POST(request: NextRequest) {
     // Failures are still logged below for debugging
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Webhook processing error:", error);
+    const errorMessage = extractErrorMessage(error);
+    console.error("Webhook processing error:", errorMessage);
 
     // Log failed D2C webhook for health tracking
     const elapsed = Date.now() - startTime;
-    const errorMessage = error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : JSON.stringify(error) || "Unknown error";
     try {
       const supabase = createServiceClient();
       await supabase.from("sync_logs").insert({

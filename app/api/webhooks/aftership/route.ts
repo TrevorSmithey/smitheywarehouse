@@ -19,6 +19,7 @@ import {
   type AftershipReturn,
   AftershipClient,
 } from "@/lib/aftership";
+import { lookupOrderByNumber, extractErrorMessage } from "@/lib/database-helpers";
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -99,20 +100,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    // Enhanced error logging for debugging
-    console.error("[AFTERSHIP WEBHOOK] Processing error:", error);
-    console.error("[AFTERSHIP WEBHOOK] Error type:", typeof error);
-    console.error("[AFTERSHIP WEBHOOK] Error constructor:", error?.constructor?.name);
-    if (typeof error === "object" && error !== null) {
-      console.error("[AFTERSHIP WEBHOOK] Error details:", JSON.stringify(error, null, 2));
-    }
+    const errorMessage = extractErrorMessage(error);
+    console.error("[AFTERSHIP WEBHOOK] Processing error:", errorMessage);
 
-    // Handle various error types - Supabase PostgrestError is not an Error instance
-    const errorMessage = error instanceof Error
-      ? error.message
-      : typeof error === "object" && error !== null && "message" in error
-        ? String((error as { message: unknown }).message)
-        : "Unknown error";
     const elapsed = Date.now() - startTime;
 
     // Log failure for debugging
@@ -167,7 +157,7 @@ async function handleShipmentProvided(
   // If not found by aftership_return_id, check by order_id
   // (Shopify webhook creates records without aftership_return_id)
   if (!existing) {
-    const orderData = await lookupOrder(supabase, data.order.order_number);
+    const orderData = await lookupOrderByNumber(supabase, data.order.order_number);
     if (orderData?.id) {
       existing = await supabase
         .from("restorations")
@@ -206,7 +196,7 @@ async function handleShipmentProvided(
     console.log(`[AFTERSHIP WEBHOOK] Updated restoration ${existing.id} with tracking and RMA ${data.rma_number}`);
   } else {
     // Create new restoration record if not exists
-    const orderData = await lookupOrder(supabase, data.order.order_number);
+    const orderData = await lookupOrderByNumber(supabase, data.order.order_number);
 
     const { data: newRecord, error } = await supabase
       .from("restorations")
@@ -262,7 +252,7 @@ async function handleShipmentUpdated(
 
   // Fallback to order_id lookup if not found by aftership_return_id
   if (!existing) {
-    const orderData = await lookupOrder(supabase, data.order.order_number);
+    const orderData = await lookupOrderByNumber(supabase, data.order.order_number);
     if (orderData?.id) {
       existing = await supabase
         .from("restorations")
@@ -355,7 +345,7 @@ async function handleReturnReceived(
     .then(r => r.data);
 
   if (!existing) {
-    const orderData = await lookupOrder(supabase, data.order.order_number);
+    const orderData = await lookupOrderByNumber(supabase, data.order.order_number);
     if (orderData?.id) {
       existing = await supabase
         .from("restorations")
@@ -411,7 +401,7 @@ async function handleReturnApproved(
     .then(r => r.data);
 
   if (!existing) {
-    const orderData = await lookupOrder(supabase, data.order.order_number);
+    const orderData = await lookupOrderByNumber(supabase, data.order.order_number);
     if (orderData?.id) {
       existing = await supabase
         .from("restorations")
@@ -446,7 +436,7 @@ async function handleReturnResolved(
     .then(r => r.data);
 
   if (!existing) {
-    const orderData = await lookupOrder(supabase, data.order.order_number);
+    const orderData = await lookupOrderByNumber(supabase, data.order.order_number);
     if (orderData?.id) {
       existing = await supabase
         .from("restorations")
@@ -462,30 +452,6 @@ async function handleReturnResolved(
       resolved_at: data.resolved_at,
     });
   }
-}
-
-/**
- * Lookup order by order number
- * Returns order ID and whether it's a POS order
- *
- * AfterShip sends order_number in same format as Shopify (e.g., "S371909")
- */
-async function lookupOrder(
-  supabase: ReturnType<typeof createServiceClient>,
-  orderNumber: string
-): Promise<{ id: number; isPOS: boolean } | null> {
-  const { data } = await supabase
-    .from("orders")
-    .select("id, source_name")
-    .eq("order_name", orderNumber)
-    .maybeSingle();
-
-  if (!data?.id) return null;
-
-  return {
-    id: data.id,
-    isPOS: data.source_name === "pos",
-  };
 }
 
 /**
