@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, memo } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Search, X } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 import { RestorationDetailModal } from "./RestorationDetailModal";
 import { useDashboard } from "@/app/(dashboard)/layout";
@@ -289,12 +289,31 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
 export function RestorationOperations({ data, loading, onRefresh }: RestorationOperationsProps) {
   const { lastRefresh } = useDashboard();
   const [selectedRestoration, setSelectedRestoration] = useState<RestorationRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Filter to active pipeline items
   const pipelineItems = useMemo(() => {
     if (!data?.restorations) return [];
     return data.restorations.filter((r) => ALL_PIPELINE_STATUSES.includes(r.status));
   }, [data?.restorations]);
+
+  // Filter by search query (order number or tag number)
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return pipelineItems;
+
+    const query = searchQuery.trim().toUpperCase();
+    return pipelineItems.filter((item) => {
+      // Match order name
+      const orderName = (item.order_name || item.rma_number || "").toUpperCase();
+      if (orderName.includes(query)) return true;
+
+      // Match any tag number
+      const tags = item.tag_numbers || (item.magnet_number ? [item.magnet_number] : []);
+      if (tags.some((tag) => tag.toUpperCase().includes(query))) return true;
+
+      return false;
+    });
+  }, [pipelineItems, searchQuery]);
 
   // Group by visual stage
   const itemsByStage = useMemo(() => {
@@ -303,12 +322,12 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
       out: [],
       ship: [],
     };
-    for (const item of pipelineItems) {
+    for (const item of filteredItems) {
       const stage = getStageForStatus(item.status);
       if (stage) grouped[stage].push(item);
     }
     return grouped;
-  }, [pipelineItems]);
+  }, [filteredItems]);
 
   // Counts
   const totalActive = pipelineItems.length;
@@ -332,28 +351,51 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
 
   return (
     <div className="space-y-4">
-      {/* Minimal Header */}
-      <div className="flex items-center justify-between px-2">
+      {/* Header with Search */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2">
         <div className="flex items-baseline gap-4">
           <h1 className="text-2xl font-black text-white tracking-tight">
             RESTORATIONS
           </h1>
           <span className="text-lg text-text-secondary">
-            {totalActive} active
-            {totalLate > 0 && (
+            {searchQuery ? `${filteredItems.length} of ${totalActive}` : `${totalActive} active`}
+            {totalLate > 0 && !searchQuery && (
               <span className="text-red-400 ml-2">• {totalLate} late</span>
             )}
           </span>
         </div>
 
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="p-3 rounded-xl bg-bg-secondary hover:bg-border transition-colors disabled:opacity-50"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`w-6 h-6 text-text-secondary ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search order or tag..."
+              className="pl-9 pr-8 py-2 w-[200px] sm:w-[240px] rounded-lg bg-bg-secondary border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-muted hover:text-text-secondary"
+                aria-label="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="p-2.5 rounded-lg bg-bg-secondary hover:bg-border transition-colors disabled:opacity-50"
+            aria-label="Refresh"
+          >
+            <RefreshCw className={`w-5 h-5 text-text-secondary ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Three Column Board - flex on mobile/iPad, grid on desktop */}
