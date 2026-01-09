@@ -35,6 +35,9 @@
     },
     "app/api/cron/sync-aftership-returns/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/sync-archived-orders/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

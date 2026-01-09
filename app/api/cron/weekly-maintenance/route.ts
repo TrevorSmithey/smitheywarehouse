@@ -5,6 +5,7 @@
  * 1. ShipHero token refresh
  * 2. Shopify stats reconciliation
  * 3. Sync logs cleanup (prevents table bloat)
+ * 4. Archived orders sync (catches orders archived in Shopify admin)
  *
  * Runs Sundays at 2:00 AM UTC (9:00 PM EST Saturday)
  */
@@ -103,6 +104,30 @@ export async function GET(request: Request) {
       error: error instanceof Error ? error.message : "Unknown error",
     };
     console.error("[WEEKLY] Sync logs cleanup error:", error);
+  }
+
+  // 4. Sync archived orders from Shopify (catches orders archived in admin)
+  console.log("[WEEKLY] Starting archived orders sync...");
+  const archivedStart = Date.now();
+  try {
+    const res = await fetch(`${baseUrl}/api/cron/sync-archived-orders`, {
+      method: "GET",
+      headers,
+    });
+    const data = await res.json();
+    results.archivedOrdersSync = {
+      success: res.ok,
+      duration: Date.now() - archivedStart,
+      error: data.error,
+    };
+    console.log(`[WEEKLY] Archived orders sync: ${res.ok ? "success" : "failed"} - marked ${data.ordersMarkedArchived || 0} orders`);
+  } catch (error) {
+    results.archivedOrdersSync = {
+      success: false,
+      duration: Date.now() - archivedStart,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+    console.error("[WEEKLY] Archived orders sync error:", error);
   }
 
   const totalDuration = Date.now() - startTime;

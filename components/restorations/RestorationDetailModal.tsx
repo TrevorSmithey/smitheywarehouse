@@ -998,79 +998,110 @@ export function RestorationDetailModal({
               </div>
 
               {/* Tag Numbers - PRIMARY IDENTIFIER */}
-              <div>
-                <label className="flex items-center gap-2 text-xs text-text-tertiary uppercase tracking-wider mb-2">
-                  <Tag className="w-3.5 h-3.5" aria-hidden="true" />
-                  Tag Numbers ({tagNumbers.length}/10)
-                </label>
+              {/* Enhanced visual treatment when tag is required for check-in */}
+              {(() => {
+                const isCheckInState = restoration.status === "delivered_warehouse";
+                const needsTag = isCheckInState && tagNumbers.length === 0;
 
-                {/* Tag Chips Display */}
-                {tagNumbers.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3" role="list" aria-label="Current tag numbers">
-                    {tagNumbers.map((tag, index) => (
-                      <div
-                        key={tag}
-                        role="listitem"
-                        className="inline-flex items-center gap-2 px-3 py-2 bg-accent-blue/20 border border-accent-blue/40 rounded-lg text-accent-blue font-mono font-semibold text-lg"
-                      >
-                        <span>{tag}</span>
+                return (
+                  <div className={`rounded-xl p-4 transition-all ${
+                    needsTag
+                      ? "bg-emerald-500/10 border-2 border-emerald-500/50 ring-2 ring-emerald-500/20"
+                      : "bg-transparent"
+                  }`}>
+                    <label className={`flex items-center justify-between text-xs uppercase tracking-wider mb-3 ${
+                      needsTag ? "text-emerald-400" : "text-text-tertiary"
+                    }`}>
+                      <span className="flex items-center gap-2">
+                        <Tag className="w-3.5 h-3.5" aria-hidden="true" />
+                        Tag Number{tagNumbers.length !== 1 ? "s" : ""} ({tagNumbers.length}/10)
+                      </span>
+                      {needsTag && (
+                        <span className="flex items-center gap-1.5 text-emerald-400 font-semibold animate-pulse">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          REQUIRED FOR CHECK IN
+                        </span>
+                      )}
+                    </label>
+
+                    {/* Tag Chips Display */}
+                    {tagNumbers.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3" role="list" aria-label="Current tag numbers">
+                        {tagNumbers.map((tag) => (
+                          <div
+                            key={tag}
+                            role="listitem"
+                            className="inline-flex items-center gap-2 px-3 py-2 bg-accent-blue/20 border border-accent-blue/40 rounded-lg text-accent-blue font-mono font-semibold text-lg"
+                          >
+                            <span>{tag}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTag(tag)}
+                              aria-label={`Remove tag ${tag}`}
+                              className="p-0.5 hover:bg-accent-blue/30 rounded transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add Tag Input - Enhanced when required */}
+                    {tagNumbers.length < 10 && (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          inputMode="text"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="characters"
+                          autoFocus={needsTag}
+                          value={newTagInput}
+                          onChange={(e) => setNewTagInput(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddTag();
+                            }
+                          }}
+                          placeholder={needsTag ? "Enter tag # to check in..." : "e.g., M-042"}
+                          aria-label="Add new tag number"
+                          aria-required={needsTag}
+                          className={`flex-1 px-4 py-3 text-lg font-mono font-semibold rounded-xl
+                            text-text-primary placeholder-text-muted focus:outline-none transition-all min-h-[52px]
+                            ${needsTag
+                              ? "bg-bg-primary border-2 border-emerald-500/60 focus:border-emerald-400 placeholder-emerald-400/50"
+                              : "bg-bg-secondary border-2 border-border focus:border-accent-blue"
+                            }`}
+                        />
                         <button
                           type="button"
-                          onClick={() => handleRemoveTag(tag)}
-                          aria-label={`Remove tag ${tag}`}
-                          className="p-0.5 hover:bg-accent-blue/30 rounded transition-colors"
+                          onClick={handleAddTag}
+                          disabled={!newTagInput.trim()}
+                          aria-label="Add tag"
+                          className={`px-4 py-3 font-semibold rounded-xl
+                            active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed
+                            transition-all min-w-[52px] min-h-[52px] flex items-center justify-center
+                            ${needsTag
+                              ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                              : "bg-accent-blue text-white hover:bg-accent-blue/90"
+                            }`}
                         >
-                          <X className="w-4 h-4" />
+                          <Plus className="w-5 h-5" />
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    )}
 
-                {/* Add Tag Input */}
-                {tagNumbers.length < 10 && (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      inputMode="text"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="characters"
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value.toUpperCase())}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddTag();
-                        }
-                      }}
-                      placeholder="e.g., M-042"
-                      aria-label="Add new tag number"
-                      className="flex-1 px-4 py-3 text-lg font-mono font-semibold bg-bg-secondary border-2 border-border rounded-xl
-                        text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue
-                        transition-colors min-h-[52px]"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddTag}
-                      disabled={!newTagInput.trim()}
-                      aria-label="Add tag"
-                      className="px-4 py-3 bg-accent-blue text-white font-semibold rounded-xl
-                        hover:bg-accent-blue/90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed
-                        transition-all min-w-[52px] min-h-[52px] flex items-center justify-center"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
+                    {/* Contextual hint */}
+                    {tagNumbers.length === 0 && !needsTag && (
+                      <p className="text-xs text-text-muted mt-2">
+                        Add tag numbers to identify this item (Enter to add)
+                      </p>
+                    )}
                   </div>
-                )}
-
-                {/* Empty state hint */}
-                {tagNumbers.length === 0 && (
-                  <p className="text-xs text-text-muted mt-2">
-                    Add tag numbers to identify this item (Enter to add)
-                  </p>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Notes */}
               <div>
@@ -1286,7 +1317,7 @@ export function RestorationDetailModal({
           {advanceConfig && (
             <button
               onClick={handleAdvanceStatus}
-              disabled={advancing || saving || uploading}
+              disabled={advancing || saving || uploading || (restoration.status === "delivered_warehouse" && tagNumbers.length === 0)}
               aria-busy={advancing}
               aria-label={`${advanceConfig.label} - advances restoration to ${advanceConfig.nextStatus} status`}
               className={`w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
@@ -1302,6 +1333,11 @@ export function RestorationDetailModal({
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
                   <span>Wait for upload...</span>
+                </>
+              ) : restoration.status === "delivered_warehouse" && tagNumbers.length === 0 ? (
+                <>
+                  <Tag className="w-5 h-5" aria-hidden="true" />
+                  <span>Add Tag # to Check In</span>
                 </>
               ) : (
                 <>

@@ -188,6 +188,7 @@ export interface ShopifyOrder {
   tags: string; // comma-separated
   created_at: string;
   cancelled_at: string | null;
+  closed_at: string | null; // When order was archived/closed
   fulfillment_status: string | null; // null, 'partial', 'fulfilled'
   fulfillments: ShopifyFulfillment[];
   line_items: ShopifyLineItem[];

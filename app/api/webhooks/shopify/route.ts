@@ -138,6 +138,7 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
       warehouse,
       fulfillment_status: order.fulfillment_status || null,
       canceled: !!order.cancelled_at,
+      archived: !!order.closed_at, // Shopify uses closed_at for archived orders
       created_at: order.created_at,
       fulfilled_at: fulfilledAt,
       is_restoration: isRestoration,
