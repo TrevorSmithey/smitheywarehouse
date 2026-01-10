@@ -95,6 +95,7 @@ export interface RestorationRecord {
   is_pos: boolean;
   notes: string | null;
   photos: string[];
+  archived_at: string | null; // When set, hidden from ops board
   created_at: string;
   updated_at: string;
   order_name: string | null;
@@ -230,13 +231,16 @@ export async function GET(request: Request) {
     const supabase = createServiceClient();
     const { searchParams } = new URL(request.url);
     const periodStart = searchParams.get("periodStart");
+    const includeArchived = searchParams.get("includeArchived") === "true";
 
     const periodStartDate = periodStart ? new Date(periodStart) : null;
 
     // =========================================================================
-    // FETCH ACTIVE RESTORATIONS (excludes archived items from ops board)
+    // FETCH RESTORATIONS
+    // - Default: excludes archived items (for ops board)
+    // - With includeArchived=true: returns all (for analytics)
     // =========================================================================
-    const { data: restorations, error: restorationsError } = await supabase
+    let query = supabase
       .from("restorations")
       .select(`
         id,
@@ -262,6 +266,7 @@ export async function GET(request: Request) {
         is_pos,
         notes,
         photos,
+        archived_at,
         created_at,
         updated_at,
         orders!left (
@@ -273,9 +278,14 @@ export async function GET(request: Request) {
           fulfillment_status,
           shopify_customer_id
         )
-      `)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false });
+      `);
+
+    // Only filter out archived items for ops board (default behavior)
+    if (!includeArchived) {
+      query = query.is("archived_at", null);
+    }
+
+    const { data: restorations, error: restorationsError } = await query.order("created_at", { ascending: false });
 
     if (restorationsError) {
       console.error("[RESTORATIONS API] Error:", restorationsError);
@@ -368,6 +378,7 @@ export async function GET(request: Request) {
         is_pos: r.is_pos || false,
         notes: r.notes,
         photos: r.photos || [],
+        archived_at: r.archived_at,
         created_at: r.created_at,
         updated_at: r.updated_at,
         order_name: orderData?.order_name || null,

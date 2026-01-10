@@ -111,7 +111,10 @@ export default function RestorationLayout({
         params.set("periodStart", start.toISOString());
       }
 
-      const url = params.toString() ? `/api/restorations?${params}` : "/api/restorations";
+      // Always include archived items - analytics needs all data
+      // Ops board filters out archived items client-side
+      params.set("includeArchived", "true");
+      const url = `/api/restorations?${params}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch restoration data");
       const result: RestorationResponse = await res.json();

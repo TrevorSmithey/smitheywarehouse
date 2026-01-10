@@ -312,7 +312,9 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
   // Filter to active pipeline items
   const pipelineItems = useMemo(() => {
     if (!data?.restorations) return [];
-    return data.restorations.filter((r) => ALL_PIPELINE_STATUSES.includes(r.status));
+    return data.restorations.filter((r) =>
+      ALL_PIPELINE_STATUSES.includes(r.status) && !r.archived_at
+    );
   }, [data?.restorations]);
 
   // Filter by search query (order number or tag number)
