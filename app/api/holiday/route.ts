@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/server";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -72,7 +73,10 @@ function dayNumberToDate2025(dayNumber: number): string {
   }
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAuth(request);
+  if (error) return error;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`holiday:${ip}`, RATE_LIMITS.API);

@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useState, useCallback, useEffect,
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { RestorationResponse } from "@/app/api/restorations/route";
 import { BarChart3, Wrench } from "lucide-react";
 
@@ -115,7 +116,7 @@ export default function RestorationLayout({
       // Ops board filters out archived items client-side
       params.set("includeArchived", "true");
       const url = `/api/restorations?${params}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch restoration data");
       const result: RestorationResponse = await res.json();
       setData(result);

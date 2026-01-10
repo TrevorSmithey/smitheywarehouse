@@ -2,6 +2,7 @@
 
 import { useRef } from "react";
 import { Download, Upload } from "lucide-react";
+import { getAuthHeaders } from "@/lib/auth";
 import type { AnnualSkuTarget } from "@/app/api/production-planning/route";
 
 const MONTH_ABBREVS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -126,7 +127,7 @@ export default function AnnualBudgetTab({ annualSkuTargets, year, currentMonth }
     try {
       const response = await fetch('/api/production-planning/targets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ year, updates }),
       });
 

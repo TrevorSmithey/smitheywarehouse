@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useDashboard } from "../../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import { PaidMediaDashboard, type AdsResponse } from "@/components/PaidMediaDashboard";
 
 type AdsPeriod = "ttm" | "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
@@ -20,7 +21,7 @@ export default function PaidMediaPage() {
       setIsRefreshing(true);
       setError(null); // Clear previous errors
 
-      const res = await fetch(`/api/ads?period=${period}`);
+      const res = await fetch(`/api/ads?period=${period}`, { headers: getAuthHeaders() });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));

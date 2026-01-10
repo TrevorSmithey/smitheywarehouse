@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import { EcommerceAnalyticsDashboard } from "@/components/EcommerceAnalyticsDashboard";
 
 export type AnalyticsPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d" | "12m";
@@ -194,7 +195,7 @@ export default function EcommercePage() {
       setIsRefreshing(true);
       setError(null);
 
-      const res = await fetch(`/api/analytics?period=${period}`);
+      const res = await fetch(`/api/analytics?period=${period}`, { headers: getAuthHeaders() });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to fetch analytics (${res.status})`);

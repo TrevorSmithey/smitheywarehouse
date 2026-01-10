@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useState, useCallback, useEffect 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import { Mail, TrendingUp } from "lucide-react";
 import type { KlaviyoResponse } from "@/lib/types";
 
@@ -90,7 +91,7 @@ export default function MarketingLayout({
     try {
       setLoading(true);
       setIsRefreshing(true);
-      const res = await fetch(`/api/klaviyo?period=${period}`);
+      const res = await fetch(`/api/klaviyo?period=${period}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch Klaviyo data");
       const result: KlaviyoResponse = await res.json();
       setData(result);

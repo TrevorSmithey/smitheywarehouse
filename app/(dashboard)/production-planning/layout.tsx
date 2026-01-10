@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { ProductionPlanningResponse } from "@/app/api/production-planning/route";
 
 // ============================================================================
@@ -54,7 +55,7 @@ export default function ProductionPlanningLayout({
         url += `?demo=${period.year}-${monthStr}`;
       }
 
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch production planning data");
       const result: ProductionPlanningResponse = await res.json();
       setData(result);

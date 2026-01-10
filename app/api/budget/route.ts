@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { requireAuth } from "@/lib/auth/server";
 import { SHOPIFY_API_VERSION } from "@/lib/shopify";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -617,7 +618,10 @@ async function fetchSalesData(
   return salesBySku;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAuth(request);
+  if (error) return error;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`budget:${ip}`, RATE_LIMITS.API);

@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { AssemblyResponse } from "@/lib/types";
 
 // ============================================================================
@@ -45,7 +46,7 @@ export default function ProductionLayout({
       setLoading(true);
       setIsRefreshing(true);
       setError(null);
-      const res = await fetch("/api/assembly");
+      const res = await fetch("/api/assembly", { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch assembly data");
       const result: AssemblyResponse = await res.json();
       setData(result);

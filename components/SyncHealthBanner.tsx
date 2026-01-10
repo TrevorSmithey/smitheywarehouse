@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { useAuth } from "@/lib/auth";
+import { useAuth, getAuthHeaders } from "@/lib/auth";
 
 interface SyncStatus {
   type: string;
@@ -47,7 +47,7 @@ export function SyncHealthBanner() {
 
   const fetchHealth = useCallback(async () => {
     try {
-      const res = await fetch("/api/sync-health");
+      const res = await fetch("/api/sync-health", { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch sync health");
       const data = await res.json();
       setHealth(data);

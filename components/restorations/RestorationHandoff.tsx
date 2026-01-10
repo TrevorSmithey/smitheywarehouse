@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
+import { getAuthHeaders } from "@/lib/auth";
 
 type HandoffType = "to_restoration" | "from_restoration";
 
@@ -104,7 +105,7 @@ export function RestorationHandoff({
       try {
         const response = await fetch(`/api/restorations/${itemId}`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({ status: config.targetStatus }),
         });
 

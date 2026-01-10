@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { RevenueTrackerResponse, RevenueTrackerChannel } from "@/lib/types";
 
 // ============================================================================
@@ -64,7 +65,7 @@ export default function RevenueTrackerLayout({ children }: { children: ReactNode
       setLoading(true);
       setIsRefreshing(true);
       setError(null);
-      const res = await fetch(`/api/revenue-tracker?year=${year}&channel=${ch}`);
+      const res = await fetch(`/api/revenue-tracker?year=${year}&channel=${ch}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch revenue data");
       const result: RevenueTrackerResponse = await res.json();
       setData(result);
@@ -84,7 +85,7 @@ export default function RevenueTrackerLayout({ children }: { children: ReactNode
       setLoading(true);
       setIsRefreshing(true);
       setError(null);
-      const res = await fetch(`/api/revenue-tracker?trailing=${days}&channel=${ch}`);
+      const res = await fetch(`/api/revenue-tracker?trailing=${days}&channel=${ch}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch revenue data");
       const result: RevenueTrackerResponse = await res.json();
       setData(result);

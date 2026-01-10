@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { BudgetResponse, BudgetDateRange, BudgetChannel } from "@/lib/types";
 
 // ============================================================================
@@ -79,7 +80,7 @@ export default function BudgetLayout({
         params.set("end", customEnd);
       }
 
-      const res = await fetch(`/api/budget?${params}`);
+      const res = await fetch(`/api/budget?${params}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch budget data");
       const result: BudgetResponse = await res.json();
       setData(result);

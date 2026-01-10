@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { HolidayResponse } from "@/lib/types";
 
 // ============================================================================
@@ -45,7 +46,7 @@ export default function HolidayLayout({
       setLoading(true);
       setIsRefreshing(true);
       setError(null);
-      const res = await fetch("/api/holiday");
+      const res = await fetch("/api/holiday", { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch holiday data");
       const result: HolidayResponse = await res.json();
       setData(result);

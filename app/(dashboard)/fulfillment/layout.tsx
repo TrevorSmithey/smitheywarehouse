@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { format } from "date-fns";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { MetricsResponse, StuckShipment, DailyBacklog } from "@/lib/types";
 import { Calendar } from "lucide-react";
 import { getDateBounds, parseLocalDate, type DateRangeOption } from "@/lib/dashboard-utils";
@@ -103,7 +104,7 @@ export default function FulfillmentLayout({
         end: end.toISOString(),
       });
 
-      const res = await fetch(`/api/metrics?${params}`);
+      const res = await fetch(`/api/metrics?${params}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch metrics");
       const data: MetricsResponse = await res.json();
       setMetrics(data);

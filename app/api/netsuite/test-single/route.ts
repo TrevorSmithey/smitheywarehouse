@@ -3,13 +3,16 @@
  * Use ?test=1,2,3,4,5 to run specific test
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { executeSuiteQL, hasNetSuiteCredentials, fetchWholesaleCustomers } from "@/lib/netsuite";
+import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAdmin(request);
+  if (error) return error;
   if (!hasNetSuiteCredentials()) {
     return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
   }

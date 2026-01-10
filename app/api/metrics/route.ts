@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/server";
 import { QUERY_LIMITS, checkQueryLimit, safeArrayAccess } from "@/lib/constants";
 import { checkRateLimit, rateLimitedResponse, addRateLimitHeaders, RATE_LIMITS } from "@/lib/rate-limit";
 import type {
@@ -68,7 +69,10 @@ async function fetchAllPaginated<T>(
   return allData;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAuth(request);
+  if (error) return error;
+
   // Rate limiting - use IP or forwarded IP
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
              request.headers.get("x-real-ip") ||

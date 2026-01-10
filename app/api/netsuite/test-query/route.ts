@@ -2,13 +2,16 @@
  * NetSuite Query Test - Debug endpoint
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { executeSuiteQL, hasNetSuiteCredentials } from "@/lib/netsuite";
+import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAdmin(request);
+  if (error) return error;
   if (!hasNetSuiteCredentials()) {
     return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
   }

@@ -6,8 +6,9 @@
  * Supports periods: mtd, last_month, qtd, ytd, 30d, 90d, 12m
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -1264,7 +1265,10 @@ async function getProductInsights(
   }
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAuth(request);
+  if (error) return error;
+
   const url = new URL(request.url);
   const period = (url.searchParams.get("period") || "ytd") as AnalyticsPeriod;
 

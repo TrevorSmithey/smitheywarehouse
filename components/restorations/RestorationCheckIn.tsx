@@ -11,6 +11,7 @@ import {
   Hash,
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
+import { getAuthHeaders } from "@/lib/auth";
 
 interface RestorationCheckInProps {
   isOpen: boolean;
@@ -59,7 +60,7 @@ export function RestorationCheckIn({
     try {
       const response = await fetch(`/api/restorations/${selectedItem.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           status: "received",
           magnet_number: magnetNumber.trim(),

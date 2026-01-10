@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
 import { createClient } from "@/lib/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
 
 // =============================================================================
 // SECURITY UTILITIES
@@ -559,7 +560,7 @@ export function RestorationDetailModal({
     try {
       const res = await fetch(`/api/restorations/${restoration.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           notes: notes || null,
           tag_numbers: tagNumbers,
@@ -589,7 +590,7 @@ export function RestorationDetailModal({
     try {
       const res = await fetch(`/api/restorations/${restoration.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           status: advanceConfig.nextStatus,
           notes: notes || null,
@@ -636,7 +637,7 @@ export function RestorationDetailModal({
     try {
       const res = await fetch(`/api/restorations/${restoration.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           status: newStatus,
           notes: notes || null,
@@ -674,7 +675,7 @@ export function RestorationDetailModal({
     try {
       const res = await fetch(`/api/restorations/${restoration.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
           status: "damaged",
           damage_reason: selectedDamageReason,

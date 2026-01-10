@@ -3,8 +3,9 @@
  * Returns campaign performance data for month-end reporting and inventory planning
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth/server";
 import type {
   KlaviyoResponse,
   KlaviyoCampaignSummary,
@@ -20,7 +21,10 @@ import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-lim
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAuth(request);
+  if (error) return error;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`klaviyo:${ip}`, RATE_LIMITS.API);

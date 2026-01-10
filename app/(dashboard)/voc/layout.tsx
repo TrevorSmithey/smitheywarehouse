@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { TicketsResponse, TicketCategory } from "@/lib/types";
 import type { DateRangeOption } from "@/lib/dashboard-utils";
 
@@ -110,7 +111,7 @@ export default function VOCLayout({
         params.set("search", search);
       }
 
-      const res = await fetch(`/api/tickets?${params}`);
+      const res = await fetch(`/api/tickets?${params}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error("Failed to fetch tickets");
       const result: TicketsResponse = await res.json();
       setData(result);
