@@ -18,7 +18,7 @@
 import crypto from "crypto";
 
 const AFTERSHIP_API_BASE = "https://api.aftership.com/returns";
-const AFTERSHIP_API_VERSION = "2024-10";
+const AFTERSHIP_API_VERSION = "2025-07";
 
 // ============================================================
 // Types
@@ -102,16 +102,19 @@ interface AftershipApiResponse<T> {
   data: T;
 }
 
+// API 2025-07: data is now an object with { returns: [], pagination: {} }
 interface AftershipListResponse<T> {
   meta: {
     code: number;
     type: string;
     message: string;
   };
-  data: T[];
-  pagination?: {
-    cursor?: string;
-    has_next_page?: boolean;
+  data: {
+    returns: T[];
+    pagination?: {
+      cursor?: string;
+      has_next_page?: boolean;
+    };
   };
 }
 
@@ -266,9 +269,10 @@ export class AftershipClient {
 
     const response = await this.request<AftershipListResponse<AftershipReturn>>(endpoint);
 
+    // API 2025-07: data is { returns: [], pagination: {} }
     return {
-      returns: response.data || [],
-      nextCursor: response.pagination?.has_next_page ? response.pagination.cursor || null : null,
+      returns: response.data?.returns || [],
+      nextCursor: response.data?.pagination?.has_next_page ? response.data.pagination.cursor || null : null,
     };
   }
 
