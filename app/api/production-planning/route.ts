@@ -20,7 +20,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { requireAdmin } from "@/lib/auth/server";
+import { requireAuth } from "@/lib/auth/server";
 import { fetchAllProducts, normalizeToShipHeroSku, SKU_DISPLAY_NAMES } from "@/lib/shiphero";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -423,7 +423,7 @@ function addMonths(year: number, month: number, add: number): { year: number; mo
 
 export async function GET(request: NextRequest) {
   // Auth check - requires admin session
-  const { error: authError } = await requireAdmin(request);
+  const { error: authError } = await requireAuth(request);
   if (authError) return authError;
 
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";

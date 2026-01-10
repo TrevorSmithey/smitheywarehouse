@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireAdmin } from "@/lib/auth/server";
+import { requireAuth } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ interface RequestBody {
 
 export async function POST(request: NextRequest) {
   // Auth check - requires admin session
-  const { error: authError } = await requireAdmin(request);
+  const { error: authError } = await requireAuth(request);
   if (authError) return authError;
 
   try {

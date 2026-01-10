@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/server";
+import { requireAuth } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // Verify admin access
-  const auth = await requireAdmin(request);
+  const auth = await requireAuth(request);
   if (auth.error) return auth.error;
 
   try {
@@ -69,7 +69,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // Verify admin access
-  const auth = await requireAdmin(request);
+  const auth = await requireAuth(request);
   if (auth.error) return auth.error;
 
   try {

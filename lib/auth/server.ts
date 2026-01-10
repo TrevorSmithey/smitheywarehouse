@@ -90,7 +90,24 @@ export function forbiddenResponse(message = "Forbidden"): NextResponse {
 }
 
 /**
+ * Require authentication - returns error response or null if authenticated
+ * Use this for routes that any logged-in user can access
+ */
+export async function requireAuth(
+  request: NextRequest
+): Promise<{ session: ServerSession; error: null } | { session: null; error: NextResponse }> {
+  const session = await getServerSession(request);
+
+  if (!session) {
+    return { session: null, error: unauthorizedResponse() };
+  }
+
+  return { session, error: null };
+}
+
+/**
  * Require admin access - returns error response or null if authorized
+ * Use this for routes that only admins can access (admin panel, user management, etc.)
  */
 export async function requireAdmin(
   request: NextRequest

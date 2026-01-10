@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/server";
+import { requireAuth } from "@/lib/auth/server";
 import { getTTMBoundaries, getLastNMonthsBoundaries, getNowEST } from "@/lib/date-utils";
 
 export const dynamic = "force-dynamic";
@@ -134,7 +134,7 @@ const VALID_MODES = ["ttm", "year"] as const;
 
 export async function GET(request: NextRequest) {
   // Auth check - requires admin session
-  const { error: authError } = await requireAdmin(request);
+  const { error: authError } = await requireAuth(request);
   if (authError) return authError;
 
   const url = new URL(request.url);

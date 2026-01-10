@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/server";
+import { requireAuth } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +137,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // Auth check - requires admin session
-  const { error: authError } = await requireAdmin(request);
+  const { error: authError } = await requireAuth(request);
   if (authError) return authError;
 
   try {
@@ -197,7 +197,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   // Auth check - requires admin session
-  const { error: authError } = await requireAdmin(request);
+  const { error: authError } = await requireAuth(request);
   if (authError) return authError;
 
   try {
