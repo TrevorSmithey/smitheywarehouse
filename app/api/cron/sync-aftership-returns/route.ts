@@ -251,6 +251,15 @@ async function upsertRestoration(
   // Determine stage timestamps based on current data
   const timestamps = mapTimestamps(parsed, raw);
 
+  // DEBUG: Log tracking_status_updated_at for specific RMA to diagnose timestamp issue
+  if (raw.rma_number === "PW0Y4GRR") {
+    const ps = raw.shipments?.[0];
+    console.log(`[DEBUG PW0Y4GRR] tracking_status_updated_at: ${ps?.tracking_status_updated_at}`);
+    console.log(`[DEBUG PW0Y4GRR] parsed.received_at: ${parsed.received_at}`);
+    console.log(`[DEBUG PW0Y4GRR] timestamps.delivered_to_warehouse_at: ${timestamps.delivered_to_warehouse_at}`);
+    console.log(`[DEBUG PW0Y4GRR] raw shipment keys: ${ps ? Object.keys(ps).join(", ") : "no shipment"}`);
+  }
+
   const record = {
     aftership_return_id: parsed.aftership_return_id,
     rma_number: parsed.rma_number,
