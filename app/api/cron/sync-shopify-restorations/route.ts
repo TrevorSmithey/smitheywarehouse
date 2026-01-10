@@ -123,10 +123,19 @@ export async function POST(request: NextRequest) {
       throw new Error(`Failed to query orders: ${queryError.message}`);
     }
 
-    stats.ordersScanned = restorationOrders?.length || 0;
-    console.log(`[SHOPIFY RESTO SYNC] Found ${stats.ordersScanned} restoration orders`);
+    // Dedupe orders (inner join on line_items can return duplicates for multi-SKU orders)
+    const uniqueOrdersMap = new Map<number, (typeof restorationOrders)[number]>();
+    for (const order of restorationOrders || []) {
+      if (!uniqueOrdersMap.has(order.id)) {
+        uniqueOrdersMap.set(order.id, order);
+      }
+    }
+    const uniqueOrders = Array.from(uniqueOrdersMap.values());
 
-    if (!restorationOrders || restorationOrders.length === 0) {
+    stats.ordersScanned = uniqueOrders.length;
+    console.log(`[SHOPIFY RESTO SYNC] Found ${stats.ordersScanned} unique restoration orders`);
+
+    if (uniqueOrders.length === 0) {
       const duration = Date.now() - startTime;
       return NextResponse.json({
         success: true,
@@ -137,7 +146,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get existing restoration order_ids to avoid duplicates
-    const orderIds = restorationOrders.map((o) => o.id);
+    const orderIds = uniqueOrders.map((o) => o.id);
     const { data: existingRestorations } = await supabase
       .from("restorations")
       .select("order_id")
@@ -146,7 +155,7 @@ export async function POST(request: NextRequest) {
     const existingOrderIds = new Set(existingRestorations?.map((r) => r.order_id) || []);
 
     // Process each order
-    for (const order of restorationOrders) {
+    for (const order of uniqueOrders) {
       // Skip if restoration record already exists
       if (existingOrderIds.has(order.id)) {
         stats.alreadyExists++;
