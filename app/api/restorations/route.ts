@@ -393,13 +393,16 @@ export async function GET(request: Request) {
       };
     })
     .filter(r => {
-      // Keep terminal statuses regardless of order status
+      // Keep terminal statuses regardless of order status (for analytics)
       if (r.status === "cancelled" || r.status === "damaged") return true;
+
+      // Keep shipped/delivered for analytics - these are completed restorations
+      if (r.status === "shipped" || r.status === "delivered") return true;
 
       // POS items don't have Shopify orders - always keep them
       if (r.is_pos) return true;
 
-      // Shopify order checks - cancelled, archived, or fulfilled = filter out
+      // Shopify order checks - only filter ACTIVE items based on order status
       const orderCanceled = (r as { _orderCanceled?: boolean })._orderCanceled;
       const orderArchived = (r as { _orderArchived?: boolean })._orderArchived;
       const orderFulfillmentStatus = (r as { _orderFulfillmentStatus?: string | null })._orderFulfillmentStatus;
@@ -410,7 +413,7 @@ export async function GET(request: Request) {
       // Filter out if order was archived
       if (orderArchived) return false;
 
-      // Filter out if order was fulfilled (completed)
+      // Filter out if order was fulfilled (completed) - only for active items
       if (orderFulfillmentStatus === 'fulfilled') return false;
 
       return true;
