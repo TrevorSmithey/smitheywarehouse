@@ -99,9 +99,25 @@ export async function GET(request: Request) {
       console.log(`[NETSUITE] Full sync: fetching all line items`);
     }
 
+    // Pre-fetch all valid transaction IDs from our DB
+    // This prevents FK violations by filtering line items for non-existent transactions
+    console.log(`[NETSUITE] Loading valid transaction IDs from database...`);
+    const { data: validTxnData, error: txnError } = await supabase
+      .from("ns_wholesale_transactions")
+      .select("ns_transaction_id");
+
+    if (txnError) {
+      console.error("[NETSUITE] Failed to load transaction IDs:", txnError);
+      throw new Error(`Failed to load transaction IDs: ${txnError.message}`);
+    }
+
+    const validTxnIds = new Set(validTxnData?.map(t => t.ns_transaction_id) || []);
+    console.log(`[NETSUITE] Loaded ${validTxnIds.size} valid transaction IDs`);
+
     const limit = 200;
     let offset = 0;
     let totalFetched = 0;
+    let totalFiltered = 0; // Records skipped due to missing transaction
     let totalUpserted = 0;
     let hasMore = true;
     let batchCount = 0;
@@ -135,7 +151,21 @@ export async function GET(request: Request) {
         }
       }
 
-      const records = lineItems.map((li: NSLineItem) => ({
+      // Filter to only include line items for transactions that exist in our DB
+      const validLineItems = lineItems.filter((li: NSLineItem) => validTxnIds.has(li.transaction_id));
+      totalFiltered += lineItems.length - validLineItems.length;
+
+      if (validLineItems.length === 0) {
+        // No valid records in this batch, continue to next
+        hasMore = lineItems.length === limit;
+        if (hasMore) {
+          offset += limit;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        continue;
+      }
+
+      const records = validLineItems.map((li: NSLineItem) => ({
         ns_line_id: li.line_id,
         ns_transaction_id: li.transaction_id,
         ns_item_id: li.item_id,
@@ -157,8 +187,17 @@ export async function GET(request: Request) {
           .upsert(batch, { onConflict: "ns_transaction_id,ns_line_id" });
 
         if (error) {
+          // Log error details for debugging
+          console.log(`[NETSUITE] Upsert error: code=${error.code}, message=${error.message?.substring(0, 100)}`);
+
           // FK violation? Try upserting records individually to save what we can
-          if (error.code === "23503" || error.message?.includes("foreign key")) {
+          // Supabase wraps postgres errors, so check multiple patterns
+          const isFkError = error.code === "23503" ||
+                           error.message?.includes("foreign key") ||
+                           error.message?.includes("violates foreign key constraint") ||
+                           error.message?.includes("is not present in table");
+
+          if (isFkError) {
             console.log(`[NETSUITE] FK violation in batch, trying individual inserts...`);
             let batchSuccess = 0;
             for (const record of batch) {
@@ -200,7 +239,7 @@ export async function GET(request: Request) {
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
       status: syncStatus,
-      records_expected: stoppedEarly ? null : totalFetched, // Unknown total when stopped early
+      records_expected: stoppedEarly ? null : totalFetched,
       records_synced: totalUpserted,
       duration_ms: finalElapsed,
       details: {
@@ -208,28 +247,34 @@ export async function GET(request: Request) {
         since_transaction_id: sinceTransactionId,
         max_transaction_id: maxTransactionId,
         batches: batchCount,
+        filtered: totalFiltered,
+        valid_transactions: validTxnIds.size,
         stopped_early: stoppedEarly,
         reason: stoppedEarly ? "time_budget_exceeded" : null,
       },
     });
 
-    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(finalElapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
+    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} (${totalFiltered} filtered) in ${batchCount} batches, ${(finalElapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
 
     return NextResponse.json({
-      success: !stoppedEarly,
+      success: !stoppedEarly && totalFiltered < totalFetched, // Success if we actually saved something
       partial: stoppedEarly,
       type: "lineitems",
       mode: isFullSync ? "full" : "incremental",
       fetched: totalFetched,
+      filtered: totalFiltered,
       upserted: totalUpserted,
       batches: batchCount,
+      validTransactions: validTxnIds.size,
       sinceTransactionId,
       maxTransactionId,
       elapsed: `${(finalElapsed/1000).toFixed(1)}s`,
       stoppedEarly,
       message: stoppedEarly
-        ? `Partial sync: ${totalUpserted} records saved. Next run will continue from transaction ${maxTransactionId}.`
-        : undefined,
+        ? `Partial sync: ${totalUpserted} records saved, ${totalFiltered} filtered (missing txn). Next run continues from ${maxTransactionId}.`
+        : totalFiltered > 0
+          ? `Sync complete: ${totalUpserted} saved, ${totalFiltered} skipped (transactions not in DB - run transactions sync first)`
+          : undefined,
     });
   } catch (error) {
     console.error("[NETSUITE] Line items sync failed:", error);
