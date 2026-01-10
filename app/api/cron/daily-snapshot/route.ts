@@ -18,6 +18,10 @@ export const maxDuration = 300; // 5 minutes
  * - component_inventory_history (component stock levels)
  * - lead_time_history (lead time trends by warehouse)
  *
+ * Also triggers sub-tasks:
+ * - sync-abandoned-checkouts (Shopify abandoned cart sync)
+ * - check-lead-conversions (B2B lead conversion tracking)
+ *
  * Schedule: Once daily at 11 PM EST (after business day)
  */
 export async function GET(request: Request) {
@@ -36,6 +40,17 @@ export async function GET(request: Request) {
       { status: 409 }
     );
   }
+
+  // Setup for sub-route calls
+  const url = new URL(request.url);
+  const baseUrl = `${url.protocol}//${url.host}`;
+  const cronSecret = process.env.CRON_SECRET;
+  const headers: HeadersInit = cronSecret
+    ? { Authorization: `Bearer ${cronSecret}` }
+    : {};
+
+  // Track sub-task results
+  const subTaskResults: Record<string, { success: boolean; duration: number; error?: string; converted?: number }> = {};
 
   try {
     const today = new Date().toISOString().split("T")[0];
@@ -347,7 +362,60 @@ export async function GET(request: Request) {
     }
 
     // ============================================
-    // 10. Log sync result
+    // 10. Sync Abandoned Checkouts (sub-task)
+    // ============================================
+    console.log("[DAILY SNAPSHOT] Starting abandoned checkouts sync...");
+    const abandonedStart = Date.now();
+    try {
+      const res = await fetch(`${baseUrl}/api/cron/sync-abandoned-checkouts`, {
+        method: "GET",
+        headers,
+      });
+      const data = await res.json();
+      subTaskResults.abandonedCheckouts = {
+        success: res.ok,
+        duration: Date.now() - abandonedStart,
+        error: data.error,
+      };
+      console.log(`[DAILY SNAPSHOT] Abandoned checkouts: ${res.ok ? "success" : "failed"} - ${data.synced || 0} synced`);
+    } catch (error) {
+      subTaskResults.abandonedCheckouts = {
+        success: false,
+        duration: Date.now() - abandonedStart,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+      console.error("[DAILY SNAPSHOT] Abandoned checkouts error:", error);
+    }
+
+    // ============================================
+    // 11. Check Lead Conversions (sub-task)
+    // ============================================
+    console.log("[DAILY SNAPSHOT] Starting lead conversion check...");
+    const leadsStart = Date.now();
+    try {
+      const res = await fetch(`${baseUrl}/api/cron/check-lead-conversions`, {
+        method: "GET",
+        headers,
+      });
+      const data = await res.json();
+      subTaskResults.leadConversions = {
+        success: res.ok,
+        duration: Date.now() - leadsStart,
+        converted: data.converted,
+        error: data.error,
+      };
+      console.log(`[DAILY SNAPSHOT] Lead conversions: ${res.ok ? "success" : "failed"} - ${data.converted || 0} converted`);
+    } catch (error) {
+      subTaskResults.leadConversions = {
+        success: false,
+        duration: Date.now() - leadsStart,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+      console.error("[DAILY SNAPSHOT] Lead conversions error:", error);
+    }
+
+    // ============================================
+    // 12. Log sync result
     // ============================================
     const elapsed = Date.now() - startTime;
 
@@ -366,12 +434,14 @@ export async function GET(request: Request) {
         assembly_completed: assemblyCompleted,
         inventory_total: inventoryTotal,
         component_skus_tracked: componentSkus.length,
+        subTasks: subTaskResults,
       },
       duration_ms: elapsed,
     });
 
     const elapsedSec = (elapsed / 1000).toFixed(1);
-    console.log(`[DAILY SNAPSHOT] Complete in ${elapsedSec}s`);
+    const allSubTasksSuccess = Object.values(subTaskResults).every((r) => r.success);
+    console.log(`[DAILY SNAPSHOT] Complete in ${elapsedSec}s. Sub-tasks all success: ${allSubTasksSuccess}`);
 
     return NextResponse.json({
       success: true,
@@ -388,6 +458,7 @@ export async function GET(request: Request) {
         stuck_shipments: stuckShipments || 0,
         component_skus_tracked: componentSkus.length,
       },
+      subTasks: subTaskResults,
     });
   } catch (error) {
     console.error("[DAILY SNAPSHOT] Failed:", error);
