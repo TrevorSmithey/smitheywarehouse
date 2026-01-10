@@ -840,7 +840,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
                 Your Cycle Time Trend
               </h2>
               <p className="text-xs text-text-muted mt-1">
-                Received → Shipped (what you control) • 21-day SLA target shown
+                By intake month (cohort) • Bars show exceeded 21-day SLA
               </p>
             </div>
             <div className="text-right">

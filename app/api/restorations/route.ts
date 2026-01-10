@@ -645,11 +645,11 @@ export async function GET(request: Request) {
         if (monthStart < periodStartDate) continue;
       }
 
-      // For median: items SHIPPED in this month (output metric)
-      // Use internal start (delivered_to_warehouse OR received) for cycle calculation
+      // For median: items that STARTED in this month (cohort tracking)
+      // Shows "what happened to items that came in during month X?"
       const monthCompletions = allCompleted.filter(r => {
         const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
-        return r.shipped_at?.startsWith(monthStr) && internalStart;
+        return internalStart?.startsWith(monthStr);
       });
 
       const monthInternalTimes = monthCompletions.map(r => {
