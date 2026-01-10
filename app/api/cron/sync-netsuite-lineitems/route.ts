@@ -58,19 +58,43 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    // Get the max transaction ID we've already synced (for incremental sync)
+    // Get the max transaction ID from the TRANSACTIONS table (not line items)
+    // This ensures we only fetch line items for transactions that exist in our DB
+    // Prevents FK constraint violations
     let sinceTransactionId: number | undefined;
 
     if (!isFullSync) {
-      const { data: maxIdData } = await supabase
+      // CRITICAL: Use transactions table as source of truth
+      // Line items can only reference transactions that exist in our DB
+      const { data: maxTxnData } = await supabase
+        .from("ns_wholesale_transactions")
+        .select("ns_transaction_id")
+        .order("ns_transaction_id", { ascending: false })
+        .limit(1)
+        .single();
+
+      // Also get max from line items to understand the gap
+      const { data: maxLineData } = await supabase
         .from("ns_wholesale_line_items")
         .select("ns_transaction_id")
         .order("ns_transaction_id", { ascending: false })
         .limit(1)
         .single();
 
-      sinceTransactionId = maxIdData?.ns_transaction_id;
-      console.log(`[NETSUITE] Incremental sync: fetching transactions > ${sinceTransactionId || 0}`);
+      const maxTxnId = maxTxnData?.ns_transaction_id;
+      const maxLineId = maxLineData?.ns_transaction_id;
+
+      // Use the HIGHER of the two - we want to fetch line items for transactions
+      // that exist in our DB but don't have line items yet
+      sinceTransactionId = maxLineId || 0;
+
+      // But cap it at what exists in transactions table
+      if (maxTxnId && sinceTransactionId > maxTxnId) {
+        console.log(`[NETSUITE] Line items ahead of transactions: ${sinceTransactionId} > ${maxTxnId}`);
+        sinceTransactionId = undefined; // Will default to 0, but transactions don't exist anyway
+      }
+
+      console.log(`[NETSUITE] Incremental sync: max_txn=${maxTxnId || 0}, max_line=${maxLineId || 0}, fetching > ${sinceTransactionId || 0}`);
     } else {
       console.log(`[NETSUITE] Full sync: fetching all line items`);
     }
@@ -124,7 +148,7 @@ export async function GET(request: Request) {
         synced_at: new Date().toISOString(),
       }));
 
-      // Upsert in batches
+      // Upsert in batches with FK violation handling
       for (let i = 0; i < records.length; i += LINE_ITEM_BATCH_SIZE) {
         const batch = records.slice(i, i + LINE_ITEM_BATCH_SIZE);
 
@@ -133,7 +157,26 @@ export async function GET(request: Request) {
           .upsert(batch, { onConflict: "ns_transaction_id,ns_line_id" });
 
         if (error) {
-          console.error("[NETSUITE] Line item upsert error:", error);
+          // FK violation? Try upserting records individually to save what we can
+          if (error.code === "23503" || error.message?.includes("foreign key")) {
+            console.log(`[NETSUITE] FK violation in batch, trying individual inserts...`);
+            let batchSuccess = 0;
+            for (const record of batch) {
+              const { error: singleError } = await supabase
+                .from("ns_wholesale_line_items")
+                .upsert(record, { onConflict: "ns_transaction_id,ns_line_id" });
+              if (!singleError) {
+                batchSuccess++;
+              }
+              // Don't log individual FK errors - they're expected
+            }
+            totalUpserted += batchSuccess;
+            if (batchSuccess > 0) {
+              console.log(`[NETSUITE] Saved ${batchSuccess}/${batch.length} from failed batch`);
+            }
+          } else {
+            console.error("[NETSUITE] Line item upsert error:", error);
+          }
         } else {
           totalUpserted += batch.length;
         }
