@@ -22,6 +22,9 @@ const LOCK_NAME = "sync-netsuite-customers";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// Time budget: stop gracefully before Vercel kills us
+const MAX_RUNTIME_MS = 280_000;
+
 // Transform raw NetSuite customer to database record
 function transformCustomer(c: NSCustomer) {
   return {
@@ -109,7 +112,17 @@ export async function GET(request: Request) {
     let hasMore = true;
     let batchCount = 0;
 
+    let stoppedEarly = false;
+
     while (hasMore) {
+      // Time budget check: stop gracefully before Vercel timeout
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_RUNTIME_MS) {
+        console.log(`[NETSUITE] Time budget exceeded (${(elapsed/1000).toFixed(1)}s), stopping gracefully`);
+        stoppedEarly = true;
+        break;
+      }
+
       batchCount++;
       console.log(`[NETSUITE] Batch ${batchCount}: offset ${offset}`);
 
@@ -131,26 +144,38 @@ export async function GET(request: Request) {
     // This ensures metrics are computed AFTER transactions are updated (6:05 AM)
     // Previously this ran here at 6:00 AM, causing 1-day stale data
 
-    const elapsed = Date.now() - startTime;
-    console.log(`[NETSUITE] Sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
+    const finalElapsed = Date.now() - startTime;
+    const syncStatus = stoppedEarly ? "partial" : "success";
+
+    console.log(`[NETSUITE] Sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(finalElapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
 
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_customers",
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
-      status: "success",
-      records_expected: totalFetched,
+      status: syncStatus,
+      records_expected: stoppedEarly ? null : totalFetched,
       records_synced: totalUpserted,
-      duration_ms: elapsed,
+      duration_ms: finalElapsed,
+      details: stoppedEarly ? {
+        stopped_early: true,
+        reason: "time_budget_exceeded",
+        last_offset: offset,
+      } : null,
     });
 
     return NextResponse.json({
-      success: true,
+      success: !stoppedEarly,
+      partial: stoppedEarly,
       type: "customers",
       fetched: totalFetched,
       upserted: totalUpserted,
       batches: batchCount,
-      elapsed: `${(elapsed/1000).toFixed(1)}s`,
+      elapsed: `${(finalElapsed/1000).toFixed(1)}s`,
+      stoppedEarly,
+      message: stoppedEarly
+        ? `Partial sync: ${totalUpserted} customers saved. Full sync typically completes in subsequent run.`
+        : undefined,
     });
   } catch (error) {
     console.error("[NETSUITE] Sync failed:", error);

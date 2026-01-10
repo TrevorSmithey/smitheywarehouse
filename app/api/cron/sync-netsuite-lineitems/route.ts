@@ -27,6 +27,10 @@ export const maxDuration = 300;
 // Batch size for upserts
 const LINE_ITEM_BATCH_SIZE = 200;
 
+// Time budget: stop gracefully before Vercel kills us
+// Leave 20s buffer for final logging and response
+const MAX_RUNTIME_MS = 280_000;
+
 export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return unauthorizedResponse();
@@ -79,7 +83,17 @@ export async function GET(request: Request) {
     let batchCount = 0;
     let maxTransactionId = sinceTransactionId || 0;
 
+    let stoppedEarly = false;
+
     while (hasMore) {
+      // Time budget check: stop gracefully before Vercel timeout
+      const elapsed = Date.now() - startTime;
+      if (elapsed > MAX_RUNTIME_MS) {
+        console.log(`[NETSUITE] Time budget exceeded (${(elapsed/1000).toFixed(1)}s), stopping gracefully`);
+        stoppedEarly = true;
+        break;
+      }
+
       batchCount++;
 
       const lineItems = await fetchWholesaleLineItems(offset, limit, sinceTransactionId);
@@ -134,29 +148,33 @@ export async function GET(request: Request) {
       }
     }
 
-    const elapsed = Date.now() - startTime;
+    const finalElapsed = Date.now() - startTime;
+    const syncStatus = stoppedEarly ? "partial" : "success";
 
-    // Log sync
+    // Log sync with proper status
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_lineitems",
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
-      status: "success",
-      records_expected: totalFetched,
+      status: syncStatus,
+      records_expected: stoppedEarly ? null : totalFetched, // Unknown total when stopped early
       records_synced: totalUpserted,
-      duration_ms: elapsed,
+      duration_ms: finalElapsed,
       details: {
         mode: isFullSync ? "full" : "incremental",
         since_transaction_id: sinceTransactionId,
         max_transaction_id: maxTransactionId,
         batches: batchCount,
+        stopped_early: stoppedEarly,
+        reason: stoppedEarly ? "time_budget_exceeded" : null,
       },
     });
 
-    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
+    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(finalElapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
 
     return NextResponse.json({
-      success: true,
+      success: !stoppedEarly,
+      partial: stoppedEarly,
       type: "lineitems",
       mode: isFullSync ? "full" : "incremental",
       fetched: totalFetched,
@@ -164,7 +182,11 @@ export async function GET(request: Request) {
       batches: batchCount,
       sinceTransactionId,
       maxTransactionId,
-      elapsed: `${(elapsed/1000).toFixed(1)}s`,
+      elapsed: `${(finalElapsed/1000).toFixed(1)}s`,
+      stoppedEarly,
+      message: stoppedEarly
+        ? `Partial sync: ${totalUpserted} records saved. Next run will continue from transaction ${maxTransactionId}.`
+        : undefined,
     });
   } catch (error) {
     console.error("[NETSUITE] Line items sync failed:", error);
