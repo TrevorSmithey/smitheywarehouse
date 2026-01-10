@@ -447,10 +447,11 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
     URL.revokeObjectURL(url);
   }, [restorations]);
 
-  // State for expandable lists
-  const [overdueExpanded, setOverdueExpanded] = useState(false);
-  const [customerSideExpanded, setCustomerSideExpanded] = useState(false);
-  const [atSmitheyExpanded, setAtSmitheyExpanded] = useState(false);
+  // Single toggle for all lists - expanding any one shows all
+  const [listsExpanded, setListsExpanded] = useState(false);
+  const overdueExpanded = listsExpanded;
+  const customerSideExpanded = listsExpanded;
+  const atSmitheyExpanded = listsExpanded;
 
   // Helper: get internal start date (when Smithey's SLA clock starts)
   // POS orders: clock starts at ORDER creation (immediate possession)
@@ -605,7 +606,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
             {/* Customer Side - Expandable */}
             <div className="bg-bg-secondary rounded-lg border border-amber-500/20 overflow-hidden">
               <button
-                onClick={() => customerSideItems.length > 0 && setCustomerSideExpanded(!customerSideExpanded)}
+                onClick={() => customerSideItems.length > 0 && setListsExpanded(!listsExpanded)}
                 className={`w-full p-3 text-left ${customerSideItems.length > 0 ? "cursor-pointer hover:bg-amber-500/5" : ""} transition-colors`}
                 disabled={customerSideItems.length === 0}
               >
@@ -667,7 +668,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
             {/* At Smithey - Expandable */}
             <div className="bg-bg-secondary rounded-lg border border-emerald-500/20 overflow-hidden">
               <button
-                onClick={() => atSmitheyItems.length > 0 && setAtSmitheyExpanded(!atSmitheyExpanded)}
+                onClick={() => atSmitheyItems.length > 0 && setListsExpanded(!listsExpanded)}
                 className={`w-full p-3 text-left ${atSmitheyItems.length > 0 ? "cursor-pointer hover:bg-emerald-500/5" : ""} transition-colors`}
                 disabled={atSmitheyItems.length === 0}
               >
@@ -738,7 +739,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
               aria-label={`${current.overdueCount} items overdue, past 21-day SLA target.`}
             >
               <button
-                onClick={() => current.overdueCount > 0 && setOverdueExpanded(!overdueExpanded)}
+                onClick={() => current.overdueCount > 0 && setListsExpanded(!listsExpanded)}
                 className={`w-full p-3 text-left ${current.overdueCount > 0 ? "cursor-pointer hover:bg-red-500/5" : ""} transition-colors`}
                 disabled={current.overdueCount === 0}
               >
