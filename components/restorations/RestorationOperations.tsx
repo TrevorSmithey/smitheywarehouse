@@ -144,6 +144,11 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
                   {orderName}
                 </span>
                 {/* Status badges */}
+                {isInbound && (
+                  <span className="shrink-0 text-xs font-medium px-2 py-0.5 bg-slate-600/80 text-slate-300 rounded">
+                    In Transit
+                  </span>
+                )}
                 {item.is_pos && (
                   <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
                     POS
@@ -227,8 +232,14 @@ interface ColumnProps {
 function Column({ stage, items, onCardClick }: ColumnProps) {
   const config = STAGE_CONFIG[stage];
 
-  // Sort: late items first, then by days descending
+  // Sort: in-transit at bottom, then late items first, then by days descending
   const sortedItems = [...items].sort((a, b) => {
+    // In-transit items always go to the bottom
+    const aInTransit = a.status === "in_transit_inbound";
+    const bInTransit = b.status === "in_transit_inbound";
+    if (aInTransit && !bInTransit) return 1;
+    if (!aInTransit && bInTransit) return -1;
+
     const aDays = typeof a.days_in_status === "number" ? a.days_in_status : 0;
     const bDays = typeof b.days_in_status === "number" ? b.days_in_status : 0;
     const aLate = aDays > config.thresholds.amber;
