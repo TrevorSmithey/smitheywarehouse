@@ -16,6 +16,8 @@ interface SyncStatus {
   hoursSinceSuccess: number | null;
   error: string | null;
   isStale: boolean;
+  neverRan: boolean;
+  staleThreshold: number;
 }
 
 interface SyncHealthResponse {
@@ -59,19 +61,18 @@ export function SyncHealthBanner() {
     }
   }, []);
 
-  // Delay 30 seconds before first fetch to let main content load first
-  // Then fetch every 5 minutes
+  // Fetch immediately on mount, then poll regularly
+  // Critical syncs have 1-hour stale thresholds, so we need faster polling
   useEffect(() => {
     // Only fetch if admin
     if (!isAdmin) return;
 
-    const initialDelay = setTimeout(() => {
-      fetchHealth();
-    }, 30 * 1000);
+    // Fetch immediately - sync health is critical information
+    fetchHealth();
 
-    const interval = setInterval(fetchHealth, 5 * 60 * 1000);
+    // Poll every 2 minutes (high-frequency syncs go stale after 1 hour)
+    const interval = setInterval(fetchHealth, 2 * 60 * 1000);
     return () => {
-      clearTimeout(initialDelay);
       clearInterval(interval);
     };
   }, [fetchHealth, isAdmin]);
@@ -121,7 +122,8 @@ export function SyncHealthBanner() {
 
   // Problems detected - show prominent banner
   const failedSyncs = health.syncs.filter((s) => s.status === "failed");
-  const staleSyncs = health.syncs.filter((s) => s.isStale);
+  const staleSyncs = health.syncs.filter((s) => s.isStale && !s.neverRan);
+  const neverRanSyncs = health.syncs.filter((s) => s.neverRan);
   const partialSyncs = health.syncs.filter((s) => s.status === "partial");
 
   const isCritical = health.status === "critical";
@@ -132,11 +134,14 @@ export function SyncHealthBanner() {
 
   // Build summary message
   const issues: string[] = [];
+  if (neverRanSyncs.length > 0) {
+    issues.push(`${neverRanSyncs.length} sync${neverRanSyncs.length > 1 ? "s" : ""} never ran`);
+  }
   if (failedSyncs.length > 0) {
     issues.push(`${failedSyncs.length} sync${failedSyncs.length > 1 ? "s" : ""} failed`);
   }
   if (staleSyncs.length > 0) {
-    issues.push(`${staleSyncs.length} sync${staleSyncs.length > 1 ? "s" : ""} stale (>24h)`);
+    issues.push(`${staleSyncs.length} sync${staleSyncs.length > 1 ? "s" : ""} stale`);
   }
   if (partialSyncs.length > 0) {
     issues.push(`${partialSyncs.length} partial sync${partialSyncs.length > 1 ? "s" : ""}`);
@@ -172,14 +177,15 @@ export function SyncHealthBanner() {
         <div className="px-4 pb-4 border-t border-border/30">
           <div className="mt-3 space-y-2">
             {health.syncs.map((sync) => {
-              const statusIcon =
-                sync.status === "success" ? (
-                  <CheckCircle className="w-4 h-4 text-status-good" />
-                ) : sync.status === "failed" ? (
-                  <XCircle className="w-4 h-4 text-status-bad" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4 text-status-warning" />
-                );
+              const statusIcon = sync.neverRan ? (
+                <Clock className="w-4 h-4 text-status-bad" />
+              ) : sync.status === "success" && !sync.isStale ? (
+                <CheckCircle className="w-4 h-4 text-status-good" />
+              ) : sync.status === "failed" ? (
+                <XCircle className="w-4 h-4 text-status-bad" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-status-warning" />
+              );
 
               return (
                 <div
@@ -191,6 +197,11 @@ export function SyncHealthBanner() {
                     <span className="font-medium text-text-primary">
                       {SYNC_DISPLAY_NAMES[sync.type] || sync.type}
                     </span>
+                    {sync.neverRan && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-status-bad/20 text-status-bad">
+                        Never ran
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-sm">
                     {sync.recordsSynced !== null && sync.recordsExpected !== null && (
@@ -198,10 +209,15 @@ export function SyncHealthBanner() {
                         {sync.recordsSynced.toLocaleString()} / {sync.recordsExpected.toLocaleString()} records
                       </span>
                     )}
-                    {sync.lastRun && (
+                    {sync.lastRun ? (
                       <span className={sync.isStale ? "text-status-warning" : "text-text-muted"}>
                         {formatDistanceToNow(new Date(sync.lastRun), { addSuffix: true })}
+                        {sync.isStale && sync.staleThreshold && (
+                          <span className="text-text-muted"> (stale after {sync.staleThreshold}h)</span>
+                        )}
                       </span>
+                    ) : (
+                      <span className="text-text-muted">No runs recorded</span>
                     )}
                     {sync.error && (
                       <span className="text-status-bad text-xs max-w-[200px] truncate" title={sync.error}>

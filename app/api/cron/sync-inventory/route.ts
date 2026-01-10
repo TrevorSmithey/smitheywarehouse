@@ -7,7 +7,6 @@ import {
   categorizeProduct,
   getCanonicalSku,
 } from "@/lib/shiphero";
-import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { WAREHOUSE_IDS, BATCH_SIZES } from "@/lib/constants";
@@ -214,17 +213,6 @@ export async function GET(request: Request) {
 
     // Return appropriate status based on sync result
     if (syncStatus === "failed" || syncStatus === "partial") {
-      // Send email alert for failed OR partial syncs
-      await sendSyncFailureAlert({
-        syncType: "Inventory",
-        error: syncStatus === "partial"
-          ? `Partial sync: ${upserted}/${recordsExpected} records. Errors: ${batchErrors.join("; ")}`
-          : batchErrors.join("; "),
-        recordsExpected: recordsExpected,
-        recordsSynced: upserted,
-        timestamp: new Date().toISOString(),
-      });
-
       if (syncStatus === "failed") {
         return NextResponse.json({
           success: false,
@@ -256,13 +244,6 @@ export async function GET(request: Request) {
     console.error("Inventory sync failed:", error);
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-
-    // Send email alert
-    await sendSyncFailureAlert({
-      syncType: "Inventory",
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    });
 
     // Log failure to sync_logs (wrapped in try-catch to not fail if logging fails)
     const elapsed = Date.now() - startTime;

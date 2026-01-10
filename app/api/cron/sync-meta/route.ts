@@ -22,7 +22,6 @@ import {
   type ParsedCampaignInsight,
   type ParsedAdInsight,
 } from "@/lib/meta";
-import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 
@@ -253,11 +252,6 @@ export async function GET(request: Request) {
     const approachedTimeout = duration > TIMEOUT_WARNING_THRESHOLD;
     if (approachedTimeout) {
       console.warn(`[META SYNC] WARNING: Sync took ${(duration / 1000).toFixed(1)}s - approaching timeout limit`);
-      await sendSyncFailureAlert({
-        syncType: "Meta Ads",
-        error: `WARNING: Sync completed but took ${(duration / 1000).toFixed(1)}s. Consider splitting into smaller jobs.`,
-        timestamp: new Date().toISOString(),
-      });
     }
 
     // Update sync log
@@ -286,13 +280,6 @@ export async function GET(request: Request) {
 
     const errorMessage = error instanceof Error ? error.message : "Sync failed";
     const elapsed = Date.now() - startTime;
-
-    // Send email alert
-    await sendSyncFailureAlert({
-      syncType: "Meta Ads",
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    });
 
     // Update sync log
     await supabase

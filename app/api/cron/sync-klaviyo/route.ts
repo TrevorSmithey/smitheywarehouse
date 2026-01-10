@@ -20,7 +20,6 @@ import {
   predictCampaignRevenue,
   type KlaviyoCampaign,
 } from "@/lib/klaviyo";
-import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 
@@ -598,12 +597,6 @@ export async function GET(request: Request) {
     const approachedTimeout = duration > TIMEOUT_WARNING_THRESHOLD;
     if (approachedTimeout) {
       console.warn(`[KLAVIYO SYNC] WARNING: Sync took ${(duration / 1000).toFixed(1)}s - approaching timeout limit of ${maxDuration}s`);
-      // Send alert about potential timeout risk
-      await sendSyncFailureAlert({
-        syncType: "Klaviyo Email Campaigns",
-        error: `WARNING: Sync completed but took ${(duration / 1000).toFixed(1)}s (${((duration / (maxDuration * 1000)) * 100).toFixed(0)}% of max). Consider splitting into smaller jobs.`,
-        timestamp: new Date().toISOString(),
-      });
     }
 
     // Log success to sync_logs
@@ -632,13 +625,6 @@ export async function GET(request: Request) {
 
     const errorMessage = error instanceof Error ? error.message : "Sync failed";
     const elapsed = Date.now() - startTime;
-
-    // Send email alert
-    await sendSyncFailureAlert({
-      syncType: "Klaviyo Email Campaigns",
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    });
 
     // Log to sync_logs
     try {

@@ -16,7 +16,6 @@
 
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { SHOPIFY_API_VERSION, withRetry } from "@/lib/shopify";
@@ -395,13 +394,6 @@ export async function GET(request: Request) {
 
     const errorMessage = error instanceof Error ? error.message : "Sync failed";
     const elapsed = Date.now() - startTime;
-
-    // Send alert
-    await sendSyncFailureAlert({
-      syncType: "Shopify Customers",
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    });
 
     // Log failure
     try {

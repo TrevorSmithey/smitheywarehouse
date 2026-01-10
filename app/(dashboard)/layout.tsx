@@ -22,7 +22,6 @@ import {
   FileText,
   Wrench,
 } from "lucide-react";
-import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -435,9 +434,6 @@ export default function DashboardLayout({
 
         {/* Page Content */}
         {children}
-
-        {/* Sync Health Banner - data freshness indicator (admin only via component) */}
-        <SyncHealthBanner />
       </div>
       </AnnouncementProvider>
     </DashboardContext.Provider>

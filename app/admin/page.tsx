@@ -555,12 +555,13 @@ export default function AdminPage() {
     }
   }, [activeTab, activities.length, activitiesLoading, loadActivities]);
 
-  // Load sync health when health tab is selected
+  // Load sync health on mount (for header card) and when health tab is selected
   useEffect(() => {
-    if (activeTab === "health" && !syncHealth && !syncHealthLoading) {
+    // Load on initial mount for the header card status
+    if (!syncHealth && !syncHealthLoading) {
       loadSyncHealth();
     }
-  }, [activeTab, syncHealth, syncHealthLoading, loadSyncHealth]);
+  }, [syncHealth, syncHealthLoading, loadSyncHealth]);
 
   // Load announcements when announcements tab is selected
   useEffect(() => {
@@ -918,7 +919,10 @@ export default function AdminPage() {
             activeThisWeek={stats.activeThisWeek}
             activeToday={stats.activeToday}
             mostViewedTab={stats.mostViewedTab}
-            syncHealthy={true}
+            syncHealthy={syncHealth?.status === "healthy"}
+            syncIssues={syncHealth ? (
+              syncHealth.syncs.filter(s => s.status === "failed" || s.isStale || s.status === "partial").length
+            ) : 0}
             onStatClick={(stat) => {
               if (stat === "users") setActiveTab("users");
               if (stat === "tabs") setActiveTab("tabs");

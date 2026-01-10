@@ -9,7 +9,6 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ReamazeClient, cleanMessageBody } from "@/lib/reamaze";
 import { classifyTicket } from "@/lib/ticket-classifier";
-import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
@@ -195,13 +194,6 @@ export async function GET(request: Request) {
 
     const errorMessage = error instanceof Error ? error.message : "Sync failed";
     const elapsed = Date.now() - startTime;
-
-    // Send email alert
-    await sendSyncFailureAlert({
-      syncType: "Re:amaze Support Tickets",
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    });
 
     // Log to sync_logs
     const supabase = createServiceClient();

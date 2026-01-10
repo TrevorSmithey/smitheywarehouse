@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendSyncFailureAlert } from "@/lib/notifications";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
 import { BATCH_SIZES, SYNC_WINDOWS, RATE_LIMIT_DELAYS } from "@/lib/constants";
@@ -270,13 +269,6 @@ export async function GET(request: Request) {
     console.error("B2B sync failed:", error);
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-
-    // Send email alert
-    await sendSyncFailureAlert({
-      syncType: "B2B Orders",
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-    });
 
     // Log failure (wrapped in try-catch to not fail if logging fails)
     const elapsed = Date.now() - startTime;
