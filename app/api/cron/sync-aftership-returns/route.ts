@@ -320,26 +320,26 @@ function mapTimestamps(
     received_at: null,
   };
 
+  const primaryShipment = raw.shipments?.[0];
+
   // Label sent when return is approved (and has tracking)
   if (parsed.return_tracking_number && raw.approved_at) {
     timestamps.label_sent_at = raw.approved_at;
   }
 
-  // Customer shipped when tracking shows movement (InTransit, OutForDelivery, Delivered, etc.)
-  // InfoReceived means carrier has info but package not yet picked up
+  // Customer shipped - use shipment created_at if available, else fall back to approved_at
   const inMotionStatuses = ["InTransit", "OutForDelivery", "Delivered", "AvailableForPickup", "AttemptFail", "Exception"];
   if (parsed.return_tracking_status && inMotionStatuses.includes(parsed.return_tracking_status)) {
-    // Use best available timestamp - prefer created_at, fall back to approved_at, then current time
-    timestamps.customer_shipped_at = parsed.created_at || raw.approved_at || new Date().toISOString();
+    timestamps.customer_shipped_at = primaryShipment?.created_at || raw.approved_at || new Date().toISOString();
   }
 
-  // Delivered to warehouse
-  if (parsed.return_tracking_status === "Delivered" || parsed.is_received_in_aftership) {
-    // Aftership doesn't give us exact delivery timestamp, use received_at if available
-    timestamps.delivered_to_warehouse_at = parsed.received_at || null;
+  // Delivered to warehouse - use tracking_status_updated_at (actual carrier delivery timestamp)
+  if (parsed.return_tracking_status === "Delivered") {
+    // Priority: tracking_status_updated_at (carrier delivery) > received_at (manual) > null
+    timestamps.delivered_to_warehouse_at = primaryShipment?.tracking_status_updated_at || parsed.received_at || null;
   }
 
-  // Received in Aftership (marks as received in their system)
+  // Received in Aftership (marks as received in their system - manual check-in)
   if (parsed.is_received_in_aftership) {
     timestamps.received_at = parsed.received_at;
   }

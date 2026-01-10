@@ -18,7 +18,7 @@
 import crypto from "crypto";
 
 const AFTERSHIP_API_BASE = "https://api.aftership.com/returns";
-const AFTERSHIP_API_VERSION = "2024-10";
+const AFTERSHIP_API_VERSION = "2025-07";
 
 // ============================================================
 // Types
@@ -69,6 +69,7 @@ export interface AftershipShipment {
   id: string;
   tracking_number: string;
   tracking_status: string | null;
+  tracking_status_updated_at: string | null; // ISO timestamp when carrier status changed (e.g., delivery date)
   slug: string; // carrier slug (fedex, ups, etc.)
   label: {
     url: string;
@@ -80,6 +81,7 @@ export interface AftershipShipment {
     };
   } | null;
   source: string;
+  created_at?: string; // When shipment was created in AfterShip
 }
 
 export interface AftershipReceiving {

@@ -303,9 +303,11 @@ async function handleShipmentUpdated(
 
     // Set timestamp based on new status
     if (newStatus === "in_transit_inbound" && !existing.customer_shipped_at) {
-      update.customer_shipped_at = new Date().toISOString();
+      // Use shipment created_at if available, else current time
+      update.customer_shipped_at = primaryShipment.created_at || new Date().toISOString();
     } else if (newStatus === "delivered_warehouse" && !existing.delivered_to_warehouse_at) {
-      update.delivered_to_warehouse_at = new Date().toISOString();
+      // Use tracking_status_updated_at for actual carrier delivery timestamp
+      update.delivered_to_warehouse_at = primaryShipment.tracking_status_updated_at || new Date().toISOString();
     }
   }
 
@@ -372,7 +374,14 @@ async function handleReturnReceived(
   // Our "received" status = warehouse staff checked in (manual action)
   // So we set delivered_warehouse status, NOT received status
   if (["pending_label", "label_sent", "in_transit_inbound", "delivered_warehouse"].includes(existing.status)) {
-    const deliveredAt = data.receivings?.[0]?.received_at || new Date().toISOString();
+    // Priority for delivery timestamp:
+    // 1. tracking_status_updated_at - actual carrier delivery timestamp
+    // 2. receivings[].received_at - AfterShip manual mark (fallback)
+    // 3. current time (last resort)
+    const primaryShipment = data.shipments?.[0];
+    const deliveredAt = primaryShipment?.tracking_status_updated_at
+      || data.receivings?.[0]?.received_at
+      || new Date().toISOString();
 
     const { error } = await supabase
       .from("restorations")
