@@ -264,16 +264,45 @@ async function upsertRestoration(
   };
 
   if (existing) {
-    // Update existing record
+    // Status lifecycle order - only allow forward movement
+    const STATUS_ORDER = [
+      "pending_label",
+      "label_sent",
+      "in_transit_inbound",
+      "delivered_warehouse",
+      "received",
+      "at_restoration",
+      "ready_to_ship",
+      "shipped",
+      "delivered",
+    ];
+
+    const existingIndex = STATUS_ORDER.indexOf(existing.status);
+    const newIndex = STATUS_ORDER.indexOf(status);
+
+    // Only update status if moving forward in lifecycle (or status unknown)
+    // This prevents AfterShip sync from regressing shipped/delivered items
+    const shouldUpdateStatus = existingIndex === -1 || newIndex === -1 || newIndex > existingIndex;
+
+    // Build update record - exclude status if we shouldn't update it
+    const updateRecord = shouldUpdateStatus
+      ? record
+      : { ...record, status: undefined };
+
+    // Remove undefined values
+    const cleanRecord = Object.fromEntries(
+      Object.entries(updateRecord).filter(([, v]) => v !== undefined)
+    );
+
     const { error } = await supabase
       .from("restorations")
-      .update(record)
+      .update(cleanRecord)
       .eq("id", existing.id);
 
     if (error) throw error;
 
     // Log event if status changed
-    if (existing.status !== status || existing.return_tracking_status !== parsed.return_tracking_status) {
+    if (shouldUpdateStatus && existing.status !== status) {
       await logEvent(supabase, existing.id, "tracking_update", {
         previous_status: existing.status,
         new_status: status,
