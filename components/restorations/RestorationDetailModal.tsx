@@ -1121,42 +1121,56 @@ export function RestorationDetailModal({
                 />
               </div>
 
-              {/* Timeline - Compact Horizontal Layout */}
-              <div className="pt-3 border-t border-border/50">
-                <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">
-                  Timeline
-                </h3>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="px-2.5 py-1.5 bg-bg-secondary rounded-lg text-text-secondary">
-                    Created {formatDate(restoration.order_created_at)}
-                  </span>
-                  {restoration.delivered_to_warehouse_at && (
-                    <span className="px-2.5 py-1.5 bg-orange-500/20 text-orange-300 rounded-lg">
-                      Delivered {formatDate(restoration.delivered_to_warehouse_at)}
-                    </span>
-                  )}
-                  {restoration.received_at && (
-                    <span className="px-2.5 py-1.5 bg-emerald-500/20 text-emerald-300 rounded-lg">
-                      Checked In {formatDate(restoration.received_at)}
-                    </span>
-                  )}
-                  {restoration.sent_to_restoration_at && (
-                    <span className="px-2.5 py-1.5 bg-purple-500/20 text-purple-300 rounded-lg">
-                      At Resto {formatDate(restoration.sent_to_restoration_at)}
-                    </span>
-                  )}
-                  {restoration.back_from_restoration_at && (
-                    <span className="px-2.5 py-1.5 bg-blue-500/20 text-blue-300 rounded-lg">
-                      Ready {formatDate(restoration.back_from_restoration_at)}
-                    </span>
-                  )}
-                  {restoration.shipped_at && (
-                    <span className="px-2.5 py-1.5 bg-cyan-500/20 text-cyan-300 rounded-lg">
-                      Shipped {formatDate(restoration.shipped_at)}
-                    </span>
-                  )}
-                </div>
-              </div>
+              {/* Timeline - Compact Horizontal Stepper */}
+              {(() => {
+                // Build timeline entries dynamically based on available dates
+                const entries: { label: string; date: string; color: string; dotColor: string }[] = [];
+
+                if (restoration.order_created_at) {
+                  entries.push({ label: "Created", date: formatDate(restoration.order_created_at), color: "text-text-muted", dotColor: "bg-slate-500" });
+                }
+                if (restoration.delivered_to_warehouse_at) {
+                  entries.push({ label: "Delivered", date: formatDate(restoration.delivered_to_warehouse_at), color: "text-orange-400", dotColor: "bg-orange-500" });
+                }
+                if (restoration.received_at) {
+                  entries.push({ label: "Checked In", date: formatDate(restoration.received_at), color: "text-emerald-400", dotColor: "bg-emerald-500" });
+                }
+                if (restoration.sent_to_restoration_at) {
+                  entries.push({ label: "At Resto", date: formatDate(restoration.sent_to_restoration_at), color: "text-purple-400", dotColor: "bg-purple-500" });
+                }
+                if (restoration.back_from_restoration_at) {
+                  entries.push({ label: "Ready", date: formatDate(restoration.back_from_restoration_at), color: "text-blue-400", dotColor: "bg-blue-500" });
+                }
+                if (restoration.shipped_at) {
+                  entries.push({ label: "Shipped", date: formatDate(restoration.shipped_at), color: "text-cyan-400", dotColor: "bg-cyan-500" });
+                }
+
+                if (entries.length === 0) return null;
+
+                return (
+                  <div className="pt-3 border-t border-border/50">
+                    <h3 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">
+                      Timeline
+                    </h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {entries.map((entry, idx) => (
+                        <div key={entry.label} className="flex items-center">
+                          {/* Entry */}
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-bg-secondary/50 rounded">
+                            <div className={`w-1.5 h-1.5 rounded-full ${entry.dotColor}`} />
+                            <span className={`text-[11px] font-medium ${entry.color}`}>{entry.label}</span>
+                            <span className="text-[11px] text-text-tertiary">{entry.date}</span>
+                          </div>
+                          {/* Arrow connector (except last) */}
+                          {idx < entries.length - 1 && (
+                            <ChevronRight className="w-3 h-3 text-text-muted/50 mx-0.5 shrink-0" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Return Tracking - Inline */}
               {restoration.return_tracking_number && (

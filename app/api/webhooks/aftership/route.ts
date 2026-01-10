@@ -303,8 +303,8 @@ async function handleShipmentUpdated(
 
     // Set timestamp based on new status
     if (newStatus === "in_transit_inbound" && !existing.customer_shipped_at) {
-      // Use shipment created_at if available, else current time
-      update.customer_shipped_at = primaryShipment.created_at || new Date().toISOString();
+      // Use tracking_status_updated_at (actual carrier scan) > created_at (label) > current time
+      update.customer_shipped_at = primaryShipment.tracking_status_updated_at || primaryShipment.created_at || new Date().toISOString();
     } else if (newStatus === "delivered_warehouse" && !existing.delivered_to_warehouse_at) {
       // Use tracking_status_updated_at for actual carrier delivery timestamp
       update.delivered_to_warehouse_at = primaryShipment.tracking_status_updated_at || new Date().toISOString();

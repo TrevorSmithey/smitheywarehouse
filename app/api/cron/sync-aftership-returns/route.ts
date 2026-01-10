@@ -327,10 +327,12 @@ function mapTimestamps(
     timestamps.label_sent_at = raw.approved_at;
   }
 
-  // Customer shipped - use shipment created_at if available, else fall back to approved_at
+  // Customer shipped - use tracking_status_updated_at (actual first courier scan)
+  // NOT shipment.created_at (that's when the label was created in AfterShip)
   const inMotionStatuses = ["InTransit", "OutForDelivery", "Delivered", "AvailableForPickup", "AttemptFail", "Exception"];
   if (parsed.return_tracking_status && inMotionStatuses.includes(parsed.return_tracking_status)) {
-    timestamps.customer_shipped_at = primaryShipment?.created_at || raw.approved_at || new Date().toISOString();
+    // Priority: tracking_status_updated_at (carrier scan) > created_at (label) > approved_at
+    timestamps.customer_shipped_at = primaryShipment?.tracking_status_updated_at || primaryShipment?.created_at || raw.approved_at || new Date().toISOString();
   }
 
   // Delivered to warehouse - use tracking_status_updated_at (actual carrier delivery timestamp)
