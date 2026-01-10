@@ -24,9 +24,16 @@ export async function GET(request: Request) {
   const startTime = Date.now();
   const results: Record<string, { success: boolean; duration: number; error?: string }> = {};
 
-  // Get the base URL from the request
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // Use production URL for internal calls (Vercel cron may pass internal hostnames in request.url)
+  const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : (() => {
+          const url = new URL(request.url);
+          return `${url.protocol}//${url.host}`;
+        })();
+  console.log(`[WEEKLY] Using baseUrl: ${baseUrl}`);
 
   // Get cron secret for internal calls
   const cronSecret = process.env.CRON_SECRET;

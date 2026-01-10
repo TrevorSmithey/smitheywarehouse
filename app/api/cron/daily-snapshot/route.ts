@@ -42,8 +42,16 @@ export async function GET(request: Request) {
   }
 
   // Setup for sub-route calls
-  const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // Use production URL for internal calls (Vercel cron may pass internal hostnames in request.url)
+  const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : (() => {
+          const url = new URL(request.url);
+          return `${url.protocol}//${url.host}`;
+        })();
+  console.log(`[DAILY SNAPSHOT] Using baseUrl: ${baseUrl}`);
   const cronSecret = process.env.CRON_SECRET;
   const headers: HeadersInit = cronSecret
     ? { Authorization: `Bearer ${cronSecret}` }
