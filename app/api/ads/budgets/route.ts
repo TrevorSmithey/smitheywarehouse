@@ -5,15 +5,20 @@
  * GET /api/ads/budgets - Get all budgets for the current year
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Get all budgets for the current year
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const supabase = createServiceClient();
 
   // Get budgets for current year
@@ -42,7 +47,11 @@ export async function GET() {
 /**
  * Create or update a monthly budget
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const supabase = createServiceClient();
 
   try {

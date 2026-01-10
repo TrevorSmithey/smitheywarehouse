@@ -4,8 +4,9 @@
  * Compares YTD data between years for Fathom validation.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,11 @@ interface YearSummary {
   wholesaleRevenue: number;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const supabase = createServiceClient();
 
   // Get current month for YTD comparison (same period both years)

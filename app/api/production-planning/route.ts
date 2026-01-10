@@ -18,8 +18,9 @@
  * - ShipHero API: Real-time component inventory
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/lib/auth/server";
 import { fetchAllProducts, normalizeToShipHeroSku, SKU_DISPLAY_NAMES } from "@/lib/shiphero";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -420,7 +421,11 @@ function addMonths(year: number, month: number, add: number): { year: number; mo
 // Main Handler
 // ============================================
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`production-planning:${ip}`, RATE_LIMITS.API);
   if (!rateLimitResult.success) {

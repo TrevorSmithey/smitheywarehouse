@@ -10,8 +10,9 @@
  * - Year: Calendar year view (legacy behavior)
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import { getTTMBoundaries, getLastNMonthsBoundaries, getNowEST } from "@/lib/date-utils";
 
 export const dynamic = "force-dynamic";
@@ -131,7 +132,11 @@ function yoyPercent(current: number, prior: number): number {
 
 const VALID_MODES = ["ttm", "year"] as const;
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const url = new URL(request.url);
 
   // Validate mode parameter

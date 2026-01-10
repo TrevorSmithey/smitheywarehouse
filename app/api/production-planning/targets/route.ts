@@ -7,8 +7,9 @@
  * All changes are logged to budget_changelog for historical tracking.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,11 @@ interface RequestBody {
   reason?: string; // Optional reason for the change
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   try {
     const body: RequestBody = await request.json();
     const { year, updates, reason } = body;

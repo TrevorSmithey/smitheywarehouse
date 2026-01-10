@@ -4,8 +4,9 @@
  * PATCH: Updates customer status flags (is_manually_churned, is_corporate_gifting)
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import type {
   CustomerDetailResponse,
   CustomerOrderingPattern,
@@ -32,9 +33,13 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
 }
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const { id } = await params;
 
   // Rate limiting
@@ -306,9 +311,13 @@ export async function GET(
 }
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const { id } = await params;
 
   // Rate limiting

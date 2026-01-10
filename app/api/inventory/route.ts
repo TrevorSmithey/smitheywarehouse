@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import type {
   ProductInventory,
   InventoryCategory,
@@ -14,7 +15,11 @@ import { checkRateLimit, rateLimitedResponse, addRateLimitHeaders, RATE_LIMITS }
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`inventory:${ip}`, RATE_LIMITS.API);

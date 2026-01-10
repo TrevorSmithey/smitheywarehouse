@@ -8,8 +8,9 @@
  * for pre-computed metrics instead of calculating in JS on every request.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import type {
   LeadsResponse,
   LeadFunnelMetrics,
@@ -73,7 +74,11 @@ type LeadRow = {
   updated_at: string;
 };
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   try {
     const supabase = createServiceClient();
     const url = new URL(request.url);

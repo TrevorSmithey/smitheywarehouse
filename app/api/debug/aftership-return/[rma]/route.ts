@@ -7,11 +7,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAftershipClient } from "@/lib/aftership";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ rma: string }> }
 ) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   try {
     const { rma } = await params;
 

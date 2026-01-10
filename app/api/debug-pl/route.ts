@@ -1,12 +1,17 @@
 /**
  * Debug P&L - Check account-level totals by channel
  */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/server";
 import { executeSuiteQL } from "@/lib/netsuite";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   try {
     // Query income accounts by class (channel) for June 2025
     // This is how Fathom gets its data

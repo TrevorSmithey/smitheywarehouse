@@ -819,8 +819,8 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
             </span>
           </div>
 
-          {/* Compact Performance Metrics - Single Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          {/* Compact Performance Metrics */}
+          <div className="grid grid-cols-3 gap-3">
             {/* Internal Cycle Time (what you control) */}
             <div
               className="bg-bg-secondary rounded-lg p-3 border border-amber-500/20"
@@ -864,64 +864,6 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
               </div>
               <div className="mt-1 text-[10px] text-text-muted">
                 {period.meetingSLA}/{period.completed} on time
-              </div>
-            </div>
-
-            {/* D2C Cycle */}
-            <div className="bg-bg-secondary rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="p-1.5 bg-sky-500/10 rounded">
-                  <Clock className="w-3.5 h-3.5 text-sky-400" />
-                </div>
-                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">D2C</span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-2xl font-bold ${
-                  (period.d2cInternalMedian || 0) <= 21 ? "text-sky-400" : "text-amber-400"
-                }`}>{period.d2cInternalMedian || "—"}</span>
-                <span className="text-xs text-text-tertiary">days</span>
-              </div>
-              <div className="mt-1 text-[10px] text-text-muted">
-                Online orders
-              </div>
-            </div>
-
-            {/* POS Cycle */}
-            <div className="bg-bg-secondary rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="p-1.5 bg-purple-500/10 rounded">
-                  <Clock className="w-3.5 h-3.5 text-purple-400" />
-                </div>
-                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">POS</span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-2xl font-bold ${
-                  (period.posInternalMedian || 0) <= 21 ? "text-purple-400" : "text-amber-400"
-                }`}>{period.posInternalMedian || "—"}</span>
-                <span className="text-xs text-text-tertiary">days</span>
-              </div>
-              <div className="mt-1 text-[10px] text-text-muted">
-                In-store orders
-              </div>
-            </div>
-
-            {/* Avg Internal */}
-            <div className="bg-bg-secondary rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="p-1.5 bg-amber-500/10 rounded">
-                  <Timer className="w-3.5 h-3.5 text-amber-400" />
-                </div>
-                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Avg</span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-2xl font-bold ${
-                  period.internalAvg <= 14 ? "text-emerald-400" :
-                  period.internalAvg <= 21 ? "text-amber-400" : "text-red-400"
-                }`}>{period.internalAvg}</span>
-                <span className="text-xs text-text-tertiary">days</span>
-              </div>
-              <div className="mt-1 text-[10px] text-text-muted">
-                Average cycle
               </div>
             </div>
 

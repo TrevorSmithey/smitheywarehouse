@@ -3,8 +3,9 @@
  * Returns wholesale customer and transaction data from NetSuite for Sales tab dashboard
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import type {
   WholesaleResponse,
   WholesaleMonthlyStats,
@@ -75,7 +76,11 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
 // - ytd_revenue and prior_year_revenue (for trend analysis)
 // This eliminates API-side workarounds and ensures single source of truth.
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`wholesale:${ip}`, RATE_LIMITS.API);

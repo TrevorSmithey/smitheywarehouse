@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,11 @@ const EXCLUDED_SYNC_TYPES = new Set<string>([
   "netsuite_lineitems_cursor", // Internal cursor tracking, not a real sync
 ]);
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   try {
     const supabase = createServiceClient();
 

@@ -6,8 +6,9 @@
  * The insights are based on each customer's individual ordering behavior, not arbitrary thresholds.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import type { CustomerSegment } from "@/lib/types";
 import {
   analyzeCustomerPattern,
@@ -74,7 +75,11 @@ export interface PatternInsightsResponse {
   lastAnalyzed: string;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`wholesale-insights:${ip}`, RATE_LIMITS.API);

@@ -14,8 +14,9 @@
  * Handles leap years correctly and calculates quarters from actual dates.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 import {
   getCurrentDayOfYearEST,
@@ -512,7 +513,11 @@ async function handleCalendarYear(
   };
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`revenue-tracker:${ip}`, RATE_LIMITS.API);

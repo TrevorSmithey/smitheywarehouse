@@ -3,8 +3,9 @@
  * Mimics sync-netsuite-customers but with detailed timing and early exit
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/server";
 import {
   hasNetSuiteCredentials,
   testConnection,
@@ -16,7 +17,11 @@ import { BATCH_SIZES } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // 1 minute timeout for debug endpoint
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   const url = new URL(request.url);
   const step = url.searchParams.get("step") || "all";
 

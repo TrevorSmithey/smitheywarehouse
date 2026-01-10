@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/lib/auth/server";
 import { checkRateLimit, rateLimitedResponse, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -131,7 +132,11 @@ export interface AssemblyResponse {
   lastSynced: string | null;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAdmin(request);
+  if (authError) return authError;
+
   // Rate limiting
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
   const rateLimitResult = checkRateLimit(`assembly:${ip}`, RATE_LIMITS.API);
