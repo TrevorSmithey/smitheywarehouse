@@ -18,7 +18,7 @@
 import crypto from "crypto";
 
 const AFTERSHIP_API_BASE = "https://api.aftership.com/returns";
-const AFTERSHIP_API_VERSION = "2025-07";
+const AFTERSHIP_API_VERSION = "2024-10";
 
 // ============================================================
 // Types
