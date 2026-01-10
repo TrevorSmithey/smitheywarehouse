@@ -2,13 +2,10 @@
  * Debug endpoint to inspect AfterShip API response for a specific RMA
  *
  * Usage: GET /api/debug/aftership-return/PW0Y4GRR
- *
- * Compares list API response vs single-return API response
- * to diagnose why tracking_status_updated_at might be missing
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAftershipClient, type AftershipReturn } from "@/lib/aftership";
+import { createAftershipClient } from "@/lib/aftership";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export async function GET(
@@ -25,51 +22,41 @@ export async function GET(
     const client = createAftershipClient();
     const supabase = createServiceClient();
 
-    // 1. Fetch via SINGLE return endpoint (what debug uses)
-    const singleReturn = await client.getReturnByRma(rma);
+    // Fetch from AfterShip API
+    const aftershipReturn = await client.getReturnByRma(rma);
 
-    // 2. Fetch via LIST endpoint (what sync uses) - look for this RMA
-    const { returns: listReturns } = await client.getReturns({ limit: 50 });
-    const fromList = listReturns.find((r: AftershipReturn) => r.rma_number === rma);
+    if (!aftershipReturn) {
+      return NextResponse.json({ error: "Return not found in AfterShip" }, { status: 404 });
+    }
 
-    // 3. Get database record
+    // Get database record
     const { data: dbRecord } = await supabase
       .from("restorations")
       .select("id, rma_number, delivered_to_warehouse_at, return_tracking_status, updated_at")
       .eq("rma_number", rma)
       .maybeSingle();
 
-    // Extract shipment keys to compare what fields each endpoint returns
-    const singleShipment = singleReturn?.shipments?.[0];
-    const listShipment = fromList?.shipments?.[0];
+    const primaryShipment = aftershipReturn.shipments?.[0];
 
     return NextResponse.json({
       rma,
-      comparison: {
-        single_return_api: {
-          tracking_status_updated_at: singleShipment?.tracking_status_updated_at || null,
-          shipment_keys: singleShipment ? Object.keys(singleShipment) : [],
-        },
-        list_returns_api: {
-          found_in_list: !!fromList,
-          tracking_status_updated_at: listShipment?.tracking_status_updated_at || null,
-          shipment_keys: listShipment ? Object.keys(listShipment) : [],
-        },
-        database: {
-          delivered_to_warehouse_at: dbRecord?.delivered_to_warehouse_at || null,
-        },
-      },
-      single_return_raw: singleReturn ? {
-        id: singleReturn.id,
-        shipments: singleReturn.shipments,
-        receivings: singleReturn.receivings?.map(r => ({
+      aftership: {
+        id: aftershipReturn.id,
+        order_number: aftershipReturn.order?.order_number,
+        tracking_number: primaryShipment?.tracking_number,
+        tracking_status: primaryShipment?.tracking_status,
+        tracking_status_updated_at: primaryShipment?.tracking_status_updated_at,
+        shipment_created_at: primaryShipment?.created_at,
+        receivings: aftershipReturn.receivings?.map(r => ({
           received_at: r.received_at,
           id: r.id,
         })),
-      } : null,
-      list_return_raw: fromList ? {
-        id: fromList.id,
-        shipments: fromList.shipments,
+      },
+      database: dbRecord ? {
+        id: dbRecord.id,
+        delivered_to_warehouse_at: dbRecord.delivered_to_warehouse_at,
+        return_tracking_status: dbRecord.return_tracking_status,
+        updated_at: dbRecord.updated_at,
       } : null,
     });
   } catch (error) {
