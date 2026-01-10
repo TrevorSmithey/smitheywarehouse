@@ -109,7 +109,7 @@ export async function GET(request: Request) {
     let hasMore = true;
     let batchCount = 0;
 
-    while (hasMore && batchCount < 20) { // Safety limit: max 4000 customers
+    while (hasMore) {
       batchCount++;
       console.log(`[NETSUITE] Batch ${batchCount}: offset ${offset}`);
 

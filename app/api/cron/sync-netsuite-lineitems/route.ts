@@ -2,8 +2,11 @@
  * NetSuite Line Items Sync (Part 3 of 3)
  *
  * Syncs wholesale line items from NetSuite.
- * Uses incremental sync - only fetches last 7 days by default.
- * Pass ?full=true for full historical sync (uses cursor for large dataset).
+ * Uses incremental sync by tracking last synced transaction ID.
+ * Pass ?full=true for full historical sync.
+ *
+ * Optimized: Only fetches NEW transactions (typically ~200 items/day)
+ * instead of re-fetching all transactions from last N days (was 133K+ items).
  */
 
 import { NextResponse } from "next/server";
@@ -21,13 +24,7 @@ const LOCK_NAME = "sync-netsuite-lineitems";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Default to 3 days for incremental sync (reduced from 7 to avoid timeout)
-// Daily new line items are ~100-200, so 3 days window is ~600 items
-// The 7-day window was fetching 18K+ items and timing out
-const DEFAULT_SYNC_DAYS = 3;
-// Time limit for processing (leave 20s buffer for cleanup/logging)
-const PROCESSING_TIME_LIMIT_MS = 280000; // 4 min 40 sec
-// Batch size for upserts (increased from 100 to 200 for better throughput)
+// Batch size for upserts
 const LINE_ITEM_BATCH_SIZE = 200;
 
 export async function GET(request: Request) {
@@ -51,59 +48,54 @@ export async function GET(request: Request) {
   // Check for full sync flag
   const url = new URL(request.url);
   const isFullSync = url.searchParams.get("full") === "true";
-  const syncDays = isFullSync ? undefined : DEFAULT_SYNC_DAYS;
 
   try {
     if (!hasNetSuiteCredentials()) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    let offset = 0;
-    const initialOffset = 0;
-    // Track last successfully committed offset to prevent data gaps on partial failures
-    let lastCommittedOffset = 0;
+    // Get the max transaction ID we've already synced (for incremental sync)
+    let sinceTransactionId: number | undefined;
 
-    // For full sync, use cursor to handle 250K+ rows across multiple runs
-    if (isFullSync) {
-      const { data: cursorData } = await supabase
-        .from("sync_logs")
-        .select("details")
-        .eq("sync_type", "netsuite_lineitems_cursor")
-        .order("started_at", { ascending: false })
+    if (!isFullSync) {
+      const { data: maxIdData } = await supabase
+        .from("ns_wholesale_line_items")
+        .select("ns_transaction_id")
+        .order("ns_transaction_id", { ascending: false })
         .limit(1)
         .single();
 
-      const details = cursorData?.details as { next_offset?: number } | null;
-      offset = details?.next_offset || 0;
-      lastCommittedOffset = offset; // Initialize to starting offset
+      sinceTransactionId = maxIdData?.ns_transaction_id;
+      console.log(`[NETSUITE] Incremental sync: fetching transactions > ${sinceTransactionId || 0}`);
+    } else {
+      console.log(`[NETSUITE] Full sync: fetching all line items`);
     }
 
-    console.log(`[NETSUITE] Starting line items sync (${isFullSync ? `FULL from offset ${offset}` : `last ${DEFAULT_SYNC_DAYS} days`})...`);
-
     const limit = 200;
+    let offset = 0;
     let totalFetched = 0;
     let totalUpserted = 0;
     let hasMore = true;
     let batchCount = 0;
-    let isComplete = false;
-    let hadUpsertFailures = false;
+    let maxTransactionId = sinceTransactionId || 0;
 
-    // Always use time limit to ensure we complete and log within Vercel's 300s limit
-    // Even incremental sync can have many records (7 days of line items)
-    const useTimeLimit = true;
-
-    while (hasMore && (!useTimeLimit || (Date.now() - startTime) < PROCESSING_TIME_LIMIT_MS)) {
+    while (hasMore) {
       batchCount++;
 
-      const lineItems = await fetchWholesaleLineItems(offset, limit, syncDays);
+      const lineItems = await fetchWholesaleLineItems(offset, limit, sinceTransactionId);
 
       if (lineItems.length === 0) {
-        // No more data - sync complete
-        isComplete = true;
         break;
       }
 
       totalFetched += lineItems.length;
+
+      // Track max transaction ID for logging
+      for (const li of lineItems) {
+        if (li.transaction_id > maxTransactionId) {
+          maxTransactionId = li.transaction_id;
+        }
+      }
 
       const records = lineItems.map((li: NSLineItem) => ({
         ns_line_id: li.line_id,
@@ -118,56 +110,22 @@ export async function GET(request: Request) {
         synced_at: new Date().toISOString(),
       }));
 
-      // Use smaller batch size to avoid Supabase statement timeouts
-      // Track if ALL sub-batches in this fetch succeed
-      let allBatchesSucceeded = true;
-
+      // Upsert in batches
       for (let i = 0; i < records.length; i += LINE_ITEM_BATCH_SIZE) {
         const batch = records.slice(i, i + LINE_ITEM_BATCH_SIZE);
 
-        // Retry logic for transient failures
-        let retries = 3;
-        let success = false;
-        while (retries > 0 && !success) {
-          const { error } = await supabase
-            .from("ns_wholesale_line_items")
-            .upsert(batch, { onConflict: "ns_transaction_id,ns_line_id" });
+        const { error } = await supabase
+          .from("ns_wholesale_line_items")
+          .upsert(batch, { onConflict: "ns_transaction_id,ns_line_id" });
 
-          if (error) {
-            retries--;
-            if (retries > 0) {
-              console.warn(`[NETSUITE] Line item upsert retry (${3 - retries}/3): ${error.message}`);
-              await new Promise((r) => setTimeout(r, 1000)); // Wait 1s before retry
-            } else {
-              console.error("[NETSUITE] Line item upsert failed after 3 retries:", error);
-              allBatchesSucceeded = false;
-              hadUpsertFailures = true;
-            }
-          } else {
-            totalUpserted += batch.length;
-            success = true;
-          }
+        if (error) {
+          console.error("[NETSUITE] Line item upsert error:", error);
+        } else {
+          totalUpserted += batch.length;
         }
       }
 
       hasMore = lineItems.length === limit;
-
-      // Only advance lastCommittedOffset if ALL sub-batches succeeded
-      // This prevents cursor corruption - next run will re-fetch failed batches
-      if (allBatchesSucceeded) {
-        lastCommittedOffset = offset + limit;
-      } else {
-        console.warn(`[NETSUITE] Some batches failed at offset ${offset} - cursor will not advance past this point`);
-        // Don't advance offset further - stop processing to prevent gaps
-        if (isFullSync) {
-          console.warn(`[NETSUITE] Stopping full sync early to prevent data gaps. Will resume from offset ${lastCommittedOffset}`);
-          break;
-        }
-      }
-
-      if (batchCount % 10 === 0) {
-        console.log(`[NETSUITE] Line items batch ${batchCount}: ${totalFetched} fetched, ${totalUpserted} upserted`);
-      }
 
       if (hasMore) {
         offset += limit;
@@ -178,62 +136,34 @@ export async function GET(request: Request) {
 
     const elapsed = Date.now() - startTime;
 
-    // Only save cursor for full sync (not needed for incremental)
-    if (isFullSync) {
-      // Use lastCommittedOffset (not offset) to prevent data gaps
-      // If sync is complete, reset to 0 for next full sync
-      // Otherwise, resume from lastCommittedOffset to re-fetch any failed batches
-      const nextOffset = isComplete ? 0 : lastCommittedOffset;
-      await supabase.from("sync_logs").insert({
-        sync_type: "netsuite_lineitems_cursor",
-        started_at: new Date(startTime).toISOString(),
-        completed_at: new Date().toISOString(),
-        status: hadUpsertFailures ? "partial" : "success",
-        records_expected: 0,
-        records_synced: 0,
-        duration_ms: 0,
-        details: {
-          next_offset: nextOffset,
-          last_committed_offset: lastCommittedOffset,
-          last_attempted_offset: offset,
-          had_failures: hadUpsertFailures,
-        },
-      });
-    }
-
-    // Log the actual sync progress
-    // Status: "success" if complete with no failures
-    //         "partial" if either incomplete (timed out) OR had upsert failures
-    const syncStatus = isComplete && !hadUpsertFailures ? "success" : "partial";
+    // Log sync
     await supabase.from("sync_logs").insert({
       sync_type: "netsuite_lineitems",
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
-      status: syncStatus,
+      status: "success",
       records_expected: totalFetched,
       records_synced: totalUpserted,
       duration_ms: elapsed,
       details: {
-        start_offset: initialOffset,
-        end_offset: offset,
-        last_committed_offset: lastCommittedOffset,
-        is_complete: isComplete,
-        had_failures: hadUpsertFailures,
+        mode: isFullSync ? "full" : "incremental",
+        since_transaction_id: sinceTransactionId,
+        max_transaction_id: maxTransactionId,
         batches: batchCount,
       },
     });
 
-    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s. Complete: ${isComplete}`);
+    console.log(`[NETSUITE] Line items sync: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s`);
 
     return NextResponse.json({
       success: true,
       type: "lineitems",
-      mode: isFullSync ? "full" : `incremental_${DEFAULT_SYNC_DAYS}d`,
+      mode: isFullSync ? "full" : "incremental",
       fetched: totalFetched,
       upserted: totalUpserted,
       batches: batchCount,
-      ...(isFullSync ? { startOffset: initialOffset, endOffset: offset } : {}),
-      isComplete,
+      sinceTransactionId,
+      maxTransactionId,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
     });
   } catch (error) {

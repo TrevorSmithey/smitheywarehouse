@@ -324,15 +324,15 @@ export async function fetchWholesaleTransactions(
 
 /**
  * Fetch wholesale line items
- * @param sinceDays - If provided, only fetch line items from transactions in the last N days (for incremental sync)
+ * @param sinceTransactionId - If provided, only fetch line items from transactions with ID > this value
  */
 export async function fetchWholesaleLineItems(
   offset = 0,
   limit = 1000,
-  sinceDays?: number
+  sinceTransactionId?: number
 ): Promise<NSLineItem[]> {
-  const dateFilter = sinceDays
-    ? `AND t.trandate >= SYSDATE - ${sinceDays}`
+  const transactionFilter = sinceTransactionId
+    ? `AND t.id > ${sinceTransactionId}`
     : '';
 
   const query = `
@@ -354,7 +354,7 @@ export async function fetchWholesaleLineItems(
     AND t.type IN ('CashSale', 'CustInvc')
     AND tl.mainline = 'F'
     AND tl.item IS NOT NULL
-    ${dateFilter}
+    ${transactionFilter}
     ORDER BY t.id, tl.linesequencenumber
     OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
   `;
