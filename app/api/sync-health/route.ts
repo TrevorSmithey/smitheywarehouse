@@ -25,6 +25,7 @@ interface SyncHealthRow {
   duration_ms: number | null;
   hours_since_success: number | null;
   display_name: string | null;
+  schedule: string | null;
   stale_threshold_hours: number | null;
   is_stale: boolean;
   never_ran: boolean;
@@ -106,6 +107,7 @@ export async function GET(request: NextRequest) {
       error: h.error_message,
       isStale: h.is_stale,
       staleThreshold: h.stale_threshold_hours || 24,
+      schedule: h.schedule,
       neverRan: h.never_ran,
     }));
 

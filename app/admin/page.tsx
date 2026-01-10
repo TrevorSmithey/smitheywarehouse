@@ -133,6 +133,30 @@ interface SyncInfo {
   error: string | null;
   isStale: boolean;
   staleThreshold: number;
+  schedule: string | null;
+}
+
+// Format cron expression to human-readable schedule
+function formatCronSchedule(cron: string | null): string {
+  if (!cron) return "—";
+  if (cron === "webhook") return "Webhook";
+
+  // Common patterns
+  if (cron === "*/15 * * * *") return "Every 15 min";
+  if (cron === "*/30 * * * *") return "Every 30 min";
+  if (cron === "0 * * * *") return "Hourly";
+  if (cron.match(/^0 \*\/(\d+) \* \* \*$/)) {
+    const hours = cron.match(/^0 \*\/(\d+) \* \* \*$/)?.[1];
+    return `Every ${hours}h`;
+  }
+  if (cron.match(/^\d+ \d+ \* \* \*$/)) return "Daily";
+  if (cron.match(/^\d+ \d+ \* \* 0$/)) return "Weekly";
+  if (cron.match(/^\d+ \d+(,\d+)+ \* \* \*$/)) {
+    const times = cron.split(" ")[1].split(",").length;
+    return `${times}x daily`;
+  }
+
+  return cron; // Fallback to raw cron if unrecognized
 }
 
 interface SyncHealthResponse {
@@ -1579,6 +1603,7 @@ export default function AdminPage() {
                       <tr className="border-b border-border bg-bg-tertiary/30">
                         <th className="text-left py-3.5 px-5 text-[11px] uppercase tracking-wider text-text-tertiary font-medium">Data Source</th>
                         <th className="text-center py-3.5 px-4 text-[11px] uppercase tracking-wider text-text-tertiary font-medium">Status</th>
+                        <th className="text-center py-3.5 px-4 text-[11px] uppercase tracking-wider text-text-tertiary font-medium">Schedule</th>
                         <th className="text-right py-3.5 px-4 text-[11px] uppercase tracking-wider text-text-tertiary font-medium">Records</th>
                         <th className="text-right py-3.5 px-4 text-[11px] uppercase tracking-wider text-text-tertiary font-medium">Duration</th>
                         <th className="text-right py-3.5 px-5 text-[11px] uppercase tracking-wider text-text-tertiary font-medium">Last Sync</th>
@@ -1637,6 +1662,13 @@ export default function AdminPage() {
                                     "bg-status-good"
                                   }`} />
                                   {isCritical ? "Failed" : isWarning ? (sync.isStale ? "Stale" : "Partial") : "Healthy"}
+                                </span>
+                              </td>
+
+                              {/* Schedule */}
+                              <td className="py-4 px-4 text-center">
+                                <span className="text-xs text-text-secondary" title={sync.schedule || undefined}>
+                                  {formatCronSchedule(sync.schedule)}
                                 </span>
                               </td>
 
