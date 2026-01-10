@@ -32,9 +32,7 @@ interface SyncStats {
   ordersScanned: number;
   posOrdersFound: number;
   webOrdersFound: number;
-  alreadyFulfilled: number;
-  skippedCanceled: number;
-  skippedRefunded: number;
+  skippedDone: number; // archived, fulfilled, or canceled
   alreadyExists: number;
   created: number;
   errors: number;
@@ -61,9 +59,7 @@ export async function POST(request: NextRequest) {
     ordersScanned: 0,
     posOrdersFound: 0,
     webOrdersFound: 0,
-    alreadyFulfilled: 0,
-    skippedCanceled: 0,
-    skippedRefunded: 0,
+    skippedDone: 0,
     alreadyExists: 0,
     created: 0,
     errors: 0,
@@ -157,28 +153,19 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Skip canceled orders entirely - no restoration needed
-      if (order.canceled) {
-        stats.skippedCanceled++;
+      // Simple rule: order is DONE if archived, fulfilled, or canceled
+      const isDone = order.archived || order.canceled || order.fulfillment_status === "fulfilled";
+      if (isDone) {
+        stats.skippedDone++;
         continue;
       }
 
-      // Skip fully refunded orders - customer got money back, restoration didn't happen
-      if (order.financial_status === "refunded") {
-        stats.skippedRefunded++;
-        continue;
-      }
-
+      // Only create restorations for active orders
       const isPOS = order.source_name === "pos";
-      const isAlreadyFulfilled = order.fulfillment_status === "fulfilled";
-
       if (isPOS) {
         stats.posOrdersFound++;
       } else {
         stats.webOrdersFound++;
-      }
-      if (isAlreadyFulfilled) {
-        stats.alreadyFulfilled++;
       }
 
       try {
@@ -236,9 +223,9 @@ interface OrderWithLineItems {
 /**
  * Create a restoration record from a Shopify order
  *
- * Already fulfilled orders: Start at "delivered" (historical/completed)
- * POS orders (unfulfilled): Start at "received" (Smithey has immediate possession)
- * Web orders (unfulfilled): Start at "pending_label" (waiting for AfterShip return)
+ * Only called for ACTIVE orders (not archived, not fulfilled, not canceled)
+ * POS orders: Start at "received" (Smithey has immediate possession)
+ * Web orders: Start at "pending_label" (waiting for AfterShip return)
  */
 async function createRestorationFromOrder(
   supabase: ReturnType<typeof createServiceClient>,
@@ -247,17 +234,9 @@ async function createRestorationFromOrder(
 ): Promise<void> {
   const now = new Date().toISOString();
   const orderCreatedAt = order.created_at;
-  const isAlreadyFulfilled = order.fulfillment_status === "fulfilled";
 
-  // Determine initial status based on fulfillment state
-  let initialStatus: string;
-  if (isAlreadyFulfilled) {
-    initialStatus = "delivered";
-  } else if (isPOS) {
-    initialStatus = "received";
-  } else {
-    initialStatus = "pending_label";
-  }
+  // POS = received immediately, Web = waiting for return label
+  const initialStatus = isPOS ? "received" : "pending_label";
 
   const record: Record<string, unknown> = {
     order_id: order.id,
@@ -267,14 +246,8 @@ async function createRestorationFromOrder(
     updated_at: now,
   };
 
-  // Already fulfilled: set shipped_at to Shopify's fulfilled_at
-  if (isAlreadyFulfilled && order.fulfilled_at) {
-    record.shipped_at = order.fulfilled_at;
-    record.received_at = orderCreatedAt;
-    record.delivered_to_warehouse_at = orderCreatedAt;
-  }
-  // POS orders (not yet fulfilled): received immediately at order creation
-  else if (isPOS) {
+  // POS orders: received immediately at order creation
+  if (isPOS) {
     record.received_at = orderCreatedAt;
     record.delivered_to_warehouse_at = orderCreatedAt;
   }
@@ -297,15 +270,13 @@ async function createRestorationFromOrder(
       source_name: order.source_name,
       is_pos: isPOS,
       initial_status: initialStatus,
-      already_fulfilled: isAlreadyFulfilled,
-      fulfilled_at: order.fulfilled_at,
     },
     source: "shopify_sync",
     created_by: "system",
   });
 
   console.log(
-    `[SHOPIFY RESTO SYNC] Created restoration for ${order.order_name} (${isPOS ? "POS" : "web"}${isAlreadyFulfilled ? ", fulfilled" : ""}) -> ${initialStatus}`
+    `[SHOPIFY RESTO SYNC] Created restoration for ${order.order_name} (${isPOS ? "POS" : "web"}) -> ${initialStatus}`
   );
 }
 
