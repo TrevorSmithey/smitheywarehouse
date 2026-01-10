@@ -14,6 +14,7 @@ import {
   Cell,
 } from "recharts";
 import SKUHeroCard from "@/components/SKUHeroCard";
+import { getAuthHeaders } from "@/lib/auth";
 
 // ============================================================================
 // SKU DETAIL PAGE
@@ -44,7 +45,10 @@ export default function SKUDetailPage() {
     async function fetchInventory() {
       setInventoryError(false);
       try {
-        const res = await fetch('/api/inventory', { signal: abortController.signal });
+        const res = await fetch('/api/inventory', {
+          signal: abortController.signal,
+          headers: getAuthHeaders(),
+        });
         if (res.ok) {
           const invData = await res.json();
           // API returns { inventory: [...], totals: {...} }

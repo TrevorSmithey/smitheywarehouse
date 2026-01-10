@@ -2,6 +2,7 @@
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { InventoryResponse } from "@/lib/types";
 
 // ============================================================================
@@ -62,7 +63,9 @@ export default function InventoryLayout({
       setLoading(true);
       setIsRefreshing(true);
       setError(null);
-      const res = await fetch("/api/inventory");
+      const res = await fetch("/api/inventory", {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to fetch inventory");
       const result: InventoryResponse = await res.json();
       setData(result);

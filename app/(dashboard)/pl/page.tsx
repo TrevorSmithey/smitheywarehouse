@@ -25,6 +25,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 
 // ============================================================================
 // TYPES
@@ -635,7 +636,10 @@ export default function PLPage() {
       if (viewMode === "year") {
         params.set("year", String(year));
       }
-      const res = await fetch(`/api/pl?${params}`, { signal: controller.signal });
+      const res = await fetch(`/api/pl?${params}`, {
+        signal: controller.signal,
+        headers: getAuthHeaders(),
+      });
       const json = await res.json();
 
       // Only update state if this request wasn't aborted

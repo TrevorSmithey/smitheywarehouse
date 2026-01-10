@@ -26,6 +26,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { getAuthHeaders } from "@/lib/auth";
 import type {
   CustomerDetailResponse,
   CustomerSegment,
@@ -502,7 +503,9 @@ export default function CustomerDetailPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/wholesale/customer/${customerId}`);
+      const res = await fetch(`/api/wholesale/customer/${customerId}`, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) {
         throw new Error(res.status === 404 ? "Customer not found" : "Failed to load customer");
       }
@@ -527,7 +530,10 @@ export default function CustomerDetailPage() {
       setUpdating(true);
       const res = await fetch(`/api/wholesale/customer/${customerId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ [field]: value }),
       });
       if (!res.ok) throw new Error("Failed to update");

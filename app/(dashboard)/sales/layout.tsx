@@ -4,6 +4,7 @@ import { ReactNode, createContext, useContext, useState, useCallback, useEffect 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDashboard } from "../layout";
+import { getAuthHeaders } from "@/lib/auth";
 import type { WholesaleResponse, WholesalePeriod, LeadsResponse } from "@/lib/types";
 
 // ============================================================================
@@ -67,7 +68,9 @@ export default function SalesLayout({
       setWholesaleLoading(true);
       setWholesaleError(null);
       setIsRefreshing(true);
-      const res = await fetch(`/api/wholesale?period=${period}`);
+      const res = await fetch(`/api/wholesale?period=${period}`, {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to fetch wholesale data (${res.status})`);
@@ -91,7 +94,9 @@ export default function SalesLayout({
       setLeadsLoading(true);
       setLeadsError(null);
       setIsRefreshing(true);
-      const res = await fetch("/api/leads");
+      const res = await fetch("/api/leads", {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || `Failed to fetch leads data (${res.status})`);

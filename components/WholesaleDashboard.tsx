@@ -28,6 +28,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { SmitheyPageLoader } from "@/components/SmitheyLoader";
+import { getAuthHeaders } from "@/lib/auth";
 import {
   AreaChart,
   Area,
@@ -1998,7 +1999,9 @@ export function WholesaleDashboard({
     const fetchInsights = async () => {
       setAiLoading(true);
       try {
-        const res = await fetch("/api/wholesale/insights");
+        const res = await fetch("/api/wholesale/insights", {
+          headers: getAuthHeaders(),
+        });
         if (res.ok) {
           const insights = await res.json();
           setAiInsights(insights);
