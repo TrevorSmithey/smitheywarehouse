@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { getAuthHeaders } from "@/lib/auth";
 import { formatDistanceToNow } from "date-fns";
 import {
   RefreshCw,
@@ -1399,7 +1400,7 @@ export function PaidMediaDashboard({
 
     const response = await fetch("/api/ads/budgets", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         month,
         channel: editingChannel,
