@@ -77,12 +77,13 @@ interface CardProps {
   onClick: () => void;
 }
 
+// Late threshold: 21 days from warehouse arrival until shipped
+const LATE_THRESHOLD_DAYS = 21;
+
 // Memoized card component - prevents re-renders when parent re-renders but props unchanged
 const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const config = STAGE_CONFIG[stage];
   const days = typeof item.days_in_status === "number" ? item.days_in_status : 0;
-  const isPastThreshold = days > config.thresholds.amber;
-  const isWarning = days > config.thresholds.green && !isPastThreshold;
 
   const orderName = item.order_name || item.rma_number || `#${item.id}`;
   // Use tag_numbers array (new) or fall back to magnet_number (legacy)
@@ -93,8 +94,21 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const isInbound = item.status === "in_transit_inbound";
   const isArrived = item.status === "delivered_warehouse";
 
-  // "Late" only applies to items AT the warehouse - we can't control transit time
-  const isLate = isArrived && isPastThreshold;
+  // "Late" = 21+ days since warehouse arrival, until shipped
+  // Clock starts at delivered_to_warehouse_at, stops at shipped status
+  const terminalStatuses = ["shipped", "delivered", "cancelled", "damaged"];
+  const isTerminal = terminalStatuses.includes(item.status);
+
+  let daysSinceArrival = 0;
+  if (item.delivered_to_warehouse_at && !isTerminal) {
+    const arrivalDate = new Date(item.delivered_to_warehouse_at);
+    daysSinceArrival = Math.floor((Date.now() - arrivalDate.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  const isLate = daysSinceArrival >= LATE_THRESHOLD_DAYS;
+
+  // Warning: per-stage threshold for visual feedback (amber border)
+  const isPastThreshold = days > config.thresholds.amber;
+  const isWarning = days > config.thresholds.green && !isPastThreshold;
 
   // Card styling based on priority
   const getCardClasses = () => {
