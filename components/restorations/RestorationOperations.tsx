@@ -251,6 +251,8 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
   });
 
   const lateCount = items.filter(i => {
+    // Late flag only applies after delivery to warehouse, not while in transit
+    if (i.status === "in_transit_inbound") return false;
     const days = typeof i.days_in_status === "number" ? i.days_in_status : 0;
     return days > config.thresholds.amber;
   }).length;
@@ -352,6 +354,8 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
   // Counts
   const totalActive = pipelineItems.length;
   const totalLate = pipelineItems.filter((r) => {
+    // Late flag only applies after delivery to warehouse, not while in transit
+    if (r.status === "in_transit_inbound") return false;
     const stage = getStageForStatus(r.status);
     const config = stage ? STAGE_CONFIG[stage] : null;
     return config && r.days_in_status > config.thresholds.amber;
