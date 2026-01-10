@@ -137,11 +137,6 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
                     Late
                   </span>
                 )}
-                {isInbound && (
-                  <span className="shrink-0 text-xs px-2 py-0.5 bg-slate-600/50 text-slate-300 rounded">
-                    Inbound
-                  </span>
-                )}
               </div>
               {/* Tags as secondary */}
               {hasTags && (
