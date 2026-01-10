@@ -201,20 +201,33 @@ function computeCycleTime(orderCreatedAt: string, shippedAt: string | null): num
 
 /**
  * Get the start date for internal cycle (when Smithey becomes responsible)
- * Priority: delivered_to_warehouse_at > received_at
- * Courier delivery is the real clock start, manual check-in is fallback
+ * - POS orders: Clock starts at order creation (immediate possession)
+ * - Regular orders: Clock starts at courier delivery (delivered_to_warehouse_at)
+ *   Fallback to received_at (manual check-in) if no courier data
  */
-function getInternalStartDate(deliveredAt: string | null, receivedAt: string | null): string | null {
+function getInternalStartDate(
+  deliveredAt: string | null,
+  receivedAt: string | null,
+  isPOS?: boolean,
+  createdAt?: string | null
+): string | null {
+  // POS orders start the clock at order creation (Smithey has immediate possession)
+  if (isPOS && createdAt) {
+    return createdAt;
+  }
+  // Regular orders: courier delivery > manual check-in
   return deliveredAt || receivedAt;
 }
 
-/** Internal cycle: (delivered_to_warehouse_at OR received_at) → shipped_at (what Smithey controls) */
+/** Internal cycle: internal_start → shipped_at (what Smithey controls) */
 function computeInternalCycleTime(
   deliveredAt: string | null,
   receivedAt: string | null,
-  shippedAt: string | null
+  shippedAt: string | null,
+  isPOS?: boolean,
+  createdAt?: string | null
 ): number | null {
-  const startDate = getInternalStartDate(deliveredAt, receivedAt);
+  const startDate = getInternalStartDate(deliveredAt, receivedAt, isPOS, createdAt);
   if (!startDate || !shippedAt) return null;
   const days = Math.floor(
     (new Date(shippedAt).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
@@ -430,9 +443,9 @@ export async function GET(request: Request) {
       PRE_WAREHOUSE_STATUSES.includes(r.status)
     );
     // Overdue = items where Smithey is responsible AND internal time > 21 days
-    // Use delivered_to_warehouse_at first (courier delivery), fall back to received_at
+    // POS: from order creation. Regular: from courier delivery (or manual check-in)
     const overdueRestorations = activeRestorations.filter(r => {
-      const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
+      const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at, r.is_pos, r.created_at);
       if (!internalStart) return false; // Not our responsibility yet
       const internalDays = Math.floor(
         (now.getTime() - new Date(internalStart).getTime()) / (1000 * 60 * 60 * 24)
@@ -472,19 +485,20 @@ export async function GET(request: Request) {
       .map(r => computeCycleTime(r.order_created_at, r.shipped_at))
       .filter((d): d is number => d !== null);
 
-    // INTERNAL cycle times (delivered_at OR received_at → shipped) - what Smithey controls
+    // INTERNAL cycle times - what Smithey controls
+    // POS: from order creation. Regular: from courier delivery (or manual check-in)
     const periodInternalCycleTimes = periodCompleted
-      .map(r => computeInternalCycleTime(r.delivered_to_warehouse_at, r.received_at, r.shipped_at))
+      .map(r => computeInternalCycleTime(r.delivered_to_warehouse_at, r.received_at, r.shipped_at, r.is_pos, r.created_at))
       .filter((d): d is number => d !== null);
 
     const d2cInternalCycleTimes = periodCompleted
       .filter(r => !r.is_pos)
-      .map(r => computeInternalCycleTime(r.delivered_to_warehouse_at, r.received_at, r.shipped_at))
+      .map(r => computeInternalCycleTime(r.delivered_to_warehouse_at, r.received_at, r.shipped_at, r.is_pos, r.created_at))
       .filter((d): d is number => d !== null);
 
     const posInternalCycleTimes = periodCompleted
       .filter(r => r.is_pos)
-      .map(r => computeInternalCycleTime(r.delivered_to_warehouse_at, r.received_at, r.shipped_at))
+      .map(r => computeInternalCycleTime(r.delivered_to_warehouse_at, r.received_at, r.shipped_at, r.is_pos, r.created_at))
       .filter((d): d is number => d !== null);
 
     // SLA is based on INTERNAL cycle (what we control) - 21 days from received to shipped
@@ -499,7 +513,7 @@ export async function GET(request: Request) {
     };
 
     for (const r of periodCompleted) {
-      const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
+      const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at, r.is_pos, r.created_at);
 
       // receivedToRestoration: from internal start to sent out
       if (internalStart && r.sent_to_restoration_at) {
@@ -648,12 +662,12 @@ export async function GET(request: Request) {
       // For median: items that STARTED in this month (cohort tracking)
       // Shows "what happened to items that came in during month X?"
       const monthCompletions = allCompleted.filter(r => {
-        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
+        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at, r.is_pos, r.created_at);
         return internalStart?.startsWith(monthStr);
       });
 
       const monthInternalTimes = monthCompletions.map(r => {
-        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
+        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at, r.is_pos, r.created_at);
         const days = Math.floor(
           (new Date(r.shipped_at!).getTime() - new Date(internalStart!).getTime()) / (1000 * 60 * 60 * 24)
         );
@@ -661,14 +675,14 @@ export async function GET(request: Request) {
       }).filter((d): d is number => d !== null);
 
       // For exceeded SLA: items where Smithey became responsible in this month (cohort tracking)
-      // Anchor on internal start date (delivered_to_warehouse OR received)
+      // Anchor on internal start date (POS: order creation, Regular: courier delivery)
       const monthReceipts = transformedRestorations.filter(r => {
-        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
+        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at, r.is_pos, r.created_at);
         return internalStart?.startsWith(monthStr);
       });
 
       const exceededSLA = monthReceipts.filter(r => {
-        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at);
+        const internalStart = getInternalStartDate(r.delivered_to_warehouse_at, r.received_at, r.is_pos, r.created_at);
         if (!internalStart) return false;
 
         if (r.shipped_at) {

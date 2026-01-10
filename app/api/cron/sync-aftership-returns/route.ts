@@ -28,7 +28,7 @@ import {
 } from "@/lib/aftership";
 import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
-import { lookupOrdersByNumber } from "@/lib/database-helpers";
+import { lookupOrdersByNumber, lookupOrderSourceByIds } from "@/lib/database-helpers";
 
 const LOCK_NAME = "sync-aftership-returns";
 
@@ -153,22 +153,28 @@ export async function POST(request: NextRequest) {
     const orderMap = await lookupOrdersByNumber(supabase, orderNumbers);
     console.log(`[AFTERSHIP SYNC] Found ${orderMap.size} matching orders in database`);
 
+    // Lookup which orders are POS (for is_pos flag)
+    const matchedOrderIds = [...orderMap.values()];
+    const orderSourceMap = await lookupOrderSourceByIds(supabase, matchedOrderIds);
+
     // Parse returns and match to orders
     const parsedReturns: Array<{
       parsed: ParsedAftershipReturn;
       orderId: number | null;
+      isPOS: boolean;
       raw: AftershipReturn;
     }> = [];
 
     for (const raw of restorationReturns) {
       const parsed = aftership.parseReturn(raw);
       const orderId = orderMap.get(raw.order.order_number) || null;
+      const isPOS = orderId ? (orderSourceMap.get(orderId) ?? false) : false;
 
       if (orderId) {
         stats.matchedToOrders++;
       }
 
-      parsedReturns.push({ parsed, orderId, raw });
+      parsedReturns.push({ parsed, orderId, isPOS, raw });
     }
 
     console.log(`[AFTERSHIP SYNC] Matched ${stats.matchedToOrders} returns to orders`);
@@ -177,9 +183,9 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < parsedReturns.length; i += UPSERT_BATCH_SIZE) {
       const batch = parsedReturns.slice(i, i + UPSERT_BATCH_SIZE);
 
-      for (const { parsed, orderId, raw } of batch) {
+      for (const { parsed, orderId, isPOS, raw } of batch) {
         try {
-          const result = await upsertRestoration(supabase, parsed, orderId, raw);
+          const result = await upsertRestoration(supabase, parsed, orderId, isPOS, raw);
           if (result.created) {
             stats.created++;
           } else if (result.updated) {
@@ -231,6 +237,7 @@ async function upsertRestoration(
   supabase: ReturnType<typeof createServiceClient>,
   parsed: ParsedAftershipReturn,
   orderId: number | null,
+  isPOS: boolean,
   raw: AftershipReturn
 ): Promise<{ created: boolean; updated: boolean }> {
   // Check if restoration already exists (by aftership_return_id or order_id)
@@ -255,6 +262,7 @@ async function upsertRestoration(
     aftership_return_id: parsed.aftership_return_id,
     rma_number: parsed.rma_number,
     order_id: orderId,
+    is_pos: isPOS,
     status,
     return_tracking_number: parsed.return_tracking_number,
     return_carrier: parsed.return_carrier,

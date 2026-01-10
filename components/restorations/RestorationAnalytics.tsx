@@ -447,30 +447,70 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
     URL.revokeObjectURL(url);
   }, [restorations]);
 
-  // State for expandable overdue list
+  // State for expandable lists
   const [overdueExpanded, setOverdueExpanded] = useState(false);
+  const [customerSideExpanded, setCustomerSideExpanded] = useState(false);
+  const [atSmitheyExpanded, setAtSmitheyExpanded] = useState(false);
 
-  // Helper: get internal start date (delivered_to_warehouse_at OR received_at)
+  // Helper: get internal start date (when Smithey's SLA clock starts)
+  // POS orders: clock starts at ORDER creation (immediate possession)
+  // Web orders: clock starts at delivery (or received_at fallback)
   const getInternalStart = (r: RestorationRecord): string | null => {
+    if (r.is_pos) {
+      // POS: use order_created_at (Shopify order date) - when customer dropped it off
+      return r.order_created_at || r.delivered_to_warehouse_at || r.received_at;
+    }
     return r.delivered_to_warehouse_at || r.received_at;
   };
 
-  // Compute overdue items (active items past 21 days internal time)
+  // Compute overdue items (items at Smithey past 21 days)
+  // Clock starts when delivered_to_warehouse_at (or received_at fallback)
   const overdueItems = useMemo(() => {
-    const ACTIVE_STATUSES = ["pending_label", "label_sent", "in_transit_inbound", "delivered_warehouse", "received", "at_restoration", "ready_to_ship"];
+    const AT_SMITHEY_STATUSES = ["delivered_warehouse", "received", "at_restoration", "ready_to_ship"];
     return restorations
-      .filter(r => ACTIVE_STATUSES.includes(r.status))
+      .filter(r => AT_SMITHEY_STATUSES.includes(r.status))
       .filter(r => {
-        // Calculate internal time from delivered_to_warehouse_at OR received_at
         const internalStart = getInternalStart(r);
-        if (internalStart) {
-          const internalDays = Math.floor((Date.now() - new Date(internalStart).getTime()) / (1000 * 60 * 60 * 24));
-          return internalDays > 21;
-        }
-        // Fallback to total_days for items not yet received
-        return r.total_days > 21;
+        if (!internalStart) return false; // Not at Smithey yet
+        const internalDays = Math.floor((Date.now() - new Date(internalStart).getTime()) / (1000 * 60 * 60 * 24));
+        return internalDays > 21;
       })
-      .sort((a, b) => b.total_days - a.total_days); // Oldest first
+      .map(r => {
+        const internalStart = getInternalStart(r);
+        const internalDays = internalStart
+          ? Math.floor((Date.now() - new Date(internalStart).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        return { ...r, _internalDays: internalDays };
+      })
+      .sort((a, b) => b._internalDays - a._internalDays); // Oldest first
+  }, [restorations]);
+
+  // Compute customer side items (label_sent or in_transit_inbound)
+  const customerSideItems = useMemo(() => {
+    return restorations
+      .filter(r => r.status === "label_sent" || r.status === "in_transit_inbound")
+      .map(r => {
+        const daysSinceLabelSent = r.label_sent_at
+          ? Math.floor((Date.now() - new Date(r.label_sent_at).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        return { ...r, _daysSinceLabelSent: daysSinceLabelSent };
+      })
+      .sort((a, b) => b._daysSinceLabelSent - a._daysSinceLabelSent); // Oldest first
+  }, [restorations]);
+
+  // Compute at Smithey items (delivered_warehouse through ready_to_ship)
+  const atSmitheyItems = useMemo(() => {
+    const AT_SMITHEY_STATUSES = ["delivered_warehouse", "received", "at_restoration", "ready_to_ship"];
+    return restorations
+      .filter(r => AT_SMITHEY_STATUSES.includes(r.status))
+      .map(r => {
+        const internalStart = getInternalStart(r);
+        const daysSinceDelivered = internalStart
+          ? Math.floor((Date.now() - new Date(internalStart).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        return { ...r, _daysSinceDelivered: daysSinceDelivered };
+      })
+      .sort((a, b) => b._daysSinceDelivered - a._daysSinceDelivered); // Oldest first
   }, [restorations]);
 
   // Get date range label for context
@@ -561,50 +601,135 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
           </div>
 
           {/* Compact Metrics Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* Active Queue */}
-            <div
-              className="bg-bg-secondary rounded-lg p-3 border border-sky-500/20"
-              aria-label={`Active queue: ${current.activeQueue} items.`}
-            >
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="p-1.5 bg-sky-500/10 rounded">
-                  <Activity className="w-3.5 h-3.5 text-sky-400" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Customer Side - Expandable */}
+            <div className="bg-bg-secondary rounded-lg border border-amber-500/20 overflow-hidden">
+              <button
+                onClick={() => customerSideItems.length > 0 && setCustomerSideExpanded(!customerSideExpanded)}
+                className={`w-full p-3 text-left ${customerSideItems.length > 0 ? "cursor-pointer hover:bg-amber-500/5" : ""} transition-colors`}
+                disabled={customerSideItems.length === 0}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-500/10 rounded">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    </div>
+                    <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Customer Side</span>
+                  </div>
+                  {customerSideItems.length > 0 && (
+                    customerSideExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-amber-400/60" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-amber-400/60" />
+                    )
+                  )}
                 </div>
-                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Active Queue</span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-text-primary">{current.activeQueue}</span>
-                <span className="text-xs text-text-tertiary">items</span>
-              </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold text-amber-400">{current.preWarehouse}</span>
+                  <span className="text-xs text-text-tertiary">pending</span>
+                </div>
+              </button>
+
+              {/* Expanded list */}
+              {customerSideExpanded && customerSideItems.length > 0 && (
+                <div className="border-t border-amber-500/20 bg-amber-500/5 max-h-60 overflow-y-auto scrollbar-thin">
+                  <div className="p-2 space-y-1.5">
+                    {customerSideItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onItemClick?.(item);
+                        }}
+                        className="w-full flex items-center justify-between py-1.5 px-2 bg-bg-secondary/80 rounded hover:bg-bg-secondary transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-primary font-medium">
+                            {item.order_name || `#${item.id}`}
+                          </span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded ${
+                            item.status === "in_transit_inbound" ? "bg-blue-500/20 text-blue-400" :
+                            "bg-amber-500/20 text-amber-400"
+                          }`}>
+                            {data?.statusConfig[item.status]?.label || item.status}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-amber-400 font-medium tabular-nums">
+                          {item._daysSinceLabelSent}d
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Customer Side */}
-            <div className="bg-bg-secondary rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="p-1.5 bg-amber-500/10 rounded">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+            {/* At Smithey - Expandable */}
+            <div className="bg-bg-secondary rounded-lg border border-emerald-500/20 overflow-hidden">
+              <button
+                onClick={() => atSmitheyItems.length > 0 && setAtSmitheyExpanded(!atSmitheyExpanded)}
+                className={`w-full p-3 text-left ${atSmitheyItems.length > 0 ? "cursor-pointer hover:bg-emerald-500/5" : ""} transition-colors`}
+                disabled={atSmitheyItems.length === 0}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-emerald-500/10 rounded">
+                      <Target className="w-3.5 h-3.5 text-emerald-400" />
+                    </div>
+                    <span className="text-[10px] text-text-tertiary uppercase tracking-wider">At Smithey</span>
+                  </div>
+                  {atSmitheyItems.length > 0 && (
+                    atSmitheyExpanded ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-emerald-400/60" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-emerald-400/60" />
+                    )
+                  )}
                 </div>
-                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">Customer Side</span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-amber-400">{current.preWarehouse}</span>
-                <span className="text-xs text-text-tertiary">pending</span>
-              </div>
-            </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold text-emerald-400">{current.inHouse}</span>
+                  <span className="text-xs text-text-tertiary">in-house</span>
+                </div>
+              </button>
 
-            {/* At Smithey */}
-            <div className="bg-bg-secondary rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="p-1.5 bg-emerald-500/10 rounded">
-                  <Target className="w-3.5 h-3.5 text-emerald-400" />
+              {/* Expanded list */}
+              {atSmitheyExpanded && atSmitheyItems.length > 0 && (
+                <div className="border-t border-emerald-500/20 bg-emerald-500/5 max-h-60 overflow-y-auto scrollbar-thin">
+                  <div className="p-2 space-y-1.5">
+                    {atSmitheyItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onItemClick?.(item);
+                        }}
+                        className="w-full flex items-center justify-between py-1.5 px-2 bg-bg-secondary/80 rounded hover:bg-bg-secondary transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-primary font-medium">
+                            {item.order_name || `#${item.id}`}
+                          </span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded ${
+                            item.status === "at_restoration" ? "bg-purple-500/20 text-purple-400" :
+                            item.status === "received" ? "bg-cyan-500/20 text-cyan-400" :
+                            item.status === "ready_to_ship" ? "bg-blue-500/20 text-blue-400" :
+                            "bg-emerald-500/20 text-emerald-400"
+                          }`}>
+                            {data?.statusConfig[item.status]?.label || item.status}
+                          </span>
+                        </div>
+                        <span className={`text-[10px] font-medium tabular-nums ${
+                          item._daysSinceDelivered > 21 ? "text-red-400" :
+                          item._daysSinceDelivered > 14 ? "text-amber-400" :
+                          "text-emerald-400"
+                        }`}>
+                          {item._daysSinceDelivered}d
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <span className="text-[10px] text-text-tertiary uppercase tracking-wider">At Smithey</span>
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-emerald-400">{current.inHouse}</span>
-                <span className="text-xs text-text-tertiary">in-house</span>
-              </div>
+              )}
             </div>
 
             {/* Overdue Count - Clickable to expand */}
@@ -644,43 +769,33 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
               {overdueExpanded && overdueItems.length > 0 && (
                 <div className="border-t border-red-500/20 bg-red-500/5 max-h-60 overflow-y-auto scrollbar-thin">
                   <div className="p-2 space-y-1.5">
-                    {overdueItems.map((item) => {
-                      const internalStart = getInternalStart(item);
-                      const internalDays = internalStart
-                        ? Math.floor((Date.now() - new Date(internalStart).getTime()) / (1000 * 60 * 60 * 24))
-                        : null;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onItemClick?.(item);
-                          }}
-                          className="w-full flex items-center justify-between py-1.5 px-2 bg-bg-secondary/80 rounded hover:bg-bg-secondary transition-colors text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-text-primary font-medium">
-                              {item.order_name || `#${item.id}`}
-                            </span>
-                            <span className={`text-[9px] px-1 py-0.5 rounded ${
-                              item.status === "at_restoration" ? "bg-purple-500/20 text-purple-400" :
-                              item.status === "received" ? "bg-emerald-500/20 text-emerald-400" :
-                              item.status === "ready_to_ship" ? "bg-blue-500/20 text-blue-400" :
-                              "bg-bg-tertiary text-text-secondary"
-                            }`}>
-                              {data?.statusConfig[item.status]?.label || item.status}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[10px]">
-                            {internalDays !== null && (
-                              <span className="text-red-400 font-medium tabular-nums">
-                                {internalDays}d
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {overdueItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onItemClick?.(item);
+                        }}
+                        className="w-full flex items-center justify-between py-1.5 px-2 bg-bg-secondary/80 rounded hover:bg-bg-secondary transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-primary font-medium">
+                            {item.order_name || `#${item.id}`}
+                          </span>
+                          <span className={`text-[9px] px-1 py-0.5 rounded ${
+                            item.status === "at_restoration" ? "bg-purple-500/20 text-purple-400" :
+                            item.status === "received" ? "bg-cyan-500/20 text-cyan-400" :
+                            item.status === "ready_to_ship" ? "bg-blue-500/20 text-blue-400" :
+                            "bg-emerald-500/20 text-emerald-400"
+                          }`}>
+                            {data?.statusConfig[item.status]?.label || item.status}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-red-400 font-medium tabular-nums">
+                          {item._internalDays}d
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

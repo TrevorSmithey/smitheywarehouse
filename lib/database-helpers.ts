@@ -39,7 +39,7 @@ export async function lookupOrderByNumber(
 
 /**
  * Batch lookup orders by order numbers
- * Returns Map of order_number -> order_id
+ * Returns Map of order_number -> { id, isPOS }
  *
  * Used by AfterShip sync cron for efficient bulk matching.
  * Batches queries to avoid hitting Supabase query size limits.
@@ -70,6 +70,40 @@ export async function lookupOrdersByNumber(
   }
 
   return orderMap;
+}
+
+/**
+ * Batch lookup order source by order IDs
+ * Returns Map of order_id -> isPOS
+ *
+ * Used to determine if orders are POS (in-store drop-off) or web (shipped).
+ */
+export async function lookupOrderSourceByIds(
+  supabase: SupabaseClient,
+  orderIds: number[]
+): Promise<Map<number, boolean>> {
+  const sourceMap = new Map<number, boolean>();
+  const BATCH_SIZE = 500;
+
+  for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+    const batch = orderIds.slice(i, i + BATCH_SIZE);
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, source_name")
+      .in("id", batch);
+
+    if (error) {
+      console.error("[DB HELPERS] Error looking up order sources:", error);
+      continue;
+    }
+
+    for (const order of data || []) {
+      sourceMap.set(order.id, order.source_name === "pos");
+    }
+  }
+
+  return sourceMap;
 }
 
 /**
