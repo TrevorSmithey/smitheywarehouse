@@ -81,8 +81,8 @@ interface CardProps {
 const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const config = STAGE_CONFIG[stage];
   const days = typeof item.days_in_status === "number" ? item.days_in_status : 0;
-  const isLate = days > config.thresholds.amber;
-  const isWarning = days > config.thresholds.green && !isLate;
+  const isPastThreshold = days > config.thresholds.amber;
+  const isWarning = days > config.thresholds.green && !isPastThreshold;
 
   const orderName = item.order_name || item.rma_number || `#${item.id}`;
   // Use tag_numbers array (new) or fall back to magnet_number (legacy)
@@ -92,6 +92,9 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   // Sub-status for HERE column
   const isInbound = item.status === "in_transit_inbound";
   const isArrived = item.status === "delivered_warehouse";
+
+  // "Late" only applies to items AT the warehouse - we can't control transit time
+  const isLate = isArrived && isPastThreshold;
 
   // Card styling based on priority
   const getCardClasses = () => {
@@ -105,7 +108,7 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
       return `${base} bg-amber-500/15 border-amber-500/60`;
     }
     if (isInbound) {
-      // Still in transit - muted
+      // Still in transit - muted (we can't control carrier speed)
       return `${base} bg-slate-800/30 border-slate-600/30 opacity-50`;
     }
     return `${base} ${config.bgColor} ${config.borderColor}`;
