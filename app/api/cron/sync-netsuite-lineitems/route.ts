@@ -89,8 +89,10 @@ export async function GET(request: Request) {
       sinceTransactionId = maxLineId || 0;
 
       // But cap it at what exists in transactions table
-      if (maxTxnId && sinceTransactionId > maxTxnId) {
-        console.log(`[NETSUITE] Line items ahead of transactions: ${sinceTransactionId} > ${maxTxnId}`);
+      // Note: sinceTransactionId is always a number here (assigned above), but TypeScript needs help
+      const currentSinceId = sinceTransactionId ?? 0;
+      if (maxTxnId && currentSinceId > maxTxnId) {
+        console.log(`[NETSUITE] Line items ahead of transactions: ${currentSinceId} > ${maxTxnId}`);
         sinceTransactionId = undefined; // Will default to 0, but transactions don't exist anyway
       }
 
