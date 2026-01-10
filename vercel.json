@@ -38,6 +38,9 @@
     },
     "app/api/cron/sync-archived-orders/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/high-frequency-sync/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -46,16 +49,12 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/cron/sync-inventory",
+      "path": "/api/cron/high-frequency-sync",
       "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/sync-b2b",
       "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-reamaze",
-      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/sync-klaviyo",
@@ -116,10 +115,6 @@
     {
       "path": "/api/cron/compute-ad-metrics",
       "schedule": "30 7 * * *"
-    },
-    {
-      "path": "/api/cron/backfill-warehouse",
-      "schedule": "*/15 * * * *"
     }
   ]
 }
