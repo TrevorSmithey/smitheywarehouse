@@ -678,6 +678,29 @@ This mistake cost production data and user trust. **Never make assumptions about
 
 ---
 
+## Restoration SLA Rules (January 2026)
+
+### Clock Start (When Smithey Becomes Responsible)
+- **Regular orders**: Clock starts at `delivered_to_warehouse_at` - when courier (AfterShip) confirms delivery
+- **POS orders**: Clock starts at order creation - Smithey has immediate possession
+- Fallback: `received_at` (manual check-in) if no courier delivery timestamp
+
+### SLA Target
+- **21 days** from clock start to ship out
+- Items past 21 days are "overdue"
+
+### Data Sources
+- `delivered_to_warehouse_at`: From AfterShip Returns API when tracking shows "Delivered"
+- `received_at`: Manual check-in timestamp (fallback)
+- `shipped_at`: When restoration ships back to customer
+
+### Analytics
+- **Internal cycle time**: `delivered_to_warehouse_at` → `shipped_at` (what Smithey controls)
+- **Chart cohorts**: Grouped by intake month (when delivered to warehouse)
+- **Overdue**: Only items physically at Smithey (status: delivered_warehouse, received, at_restoration, ready_to_ship) AND >21 days
+
+---
+
 ## Restoration UI - Remaining Work (January 2026)
 
 ### Completed

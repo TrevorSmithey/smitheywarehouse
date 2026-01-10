@@ -32,6 +32,9 @@ interface SyncStats {
   ordersScanned: number;
   posOrdersFound: number;
   webOrdersFound: number;
+  alreadyFulfilled: number;
+  skippedCanceled: number;
+  skippedRefunded: number;
   alreadyExists: number;
   created: number;
   errors: number;
@@ -58,6 +61,9 @@ export async function POST(request: NextRequest) {
     ordersScanned: 0,
     posOrdersFound: 0,
     webOrdersFound: 0,
+    alreadyFulfilled: 0,
+    skippedCanceled: 0,
+    skippedRefunded: 0,
     alreadyExists: 0,
     created: 0,
     errors: 0,
@@ -98,6 +104,11 @@ export async function POST(request: NextRequest) {
         order_name,
         source_name,
         created_at,
+        fulfillment_status,
+        fulfilled_at,
+        financial_status,
+        canceled,
+        archived,
         line_items!inner (
           sku,
           title,
@@ -146,11 +157,28 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // Skip canceled orders entirely - no restoration needed
+      if (order.canceled) {
+        stats.skippedCanceled++;
+        continue;
+      }
+
+      // Skip fully refunded orders - customer got money back, restoration didn't happen
+      if (order.financial_status === "refunded") {
+        stats.skippedRefunded++;
+        continue;
+      }
+
       const isPOS = order.source_name === "pos";
+      const isAlreadyFulfilled = order.fulfillment_status === "fulfilled";
+
       if (isPOS) {
         stats.posOrdersFound++;
       } else {
         stats.webOrdersFound++;
+      }
+      if (isAlreadyFulfilled) {
+        stats.alreadyFulfilled++;
       }
 
       try {
@@ -193,6 +221,11 @@ interface OrderWithLineItems {
   order_name: string;
   source_name: string;
   created_at: string;
+  fulfillment_status: string | null;
+  fulfilled_at: string | null;
+  financial_status: string | null;
+  canceled: boolean;
+  archived: boolean;
   line_items: Array<{
     sku: string;
     title: string;
@@ -203,8 +236,9 @@ interface OrderWithLineItems {
 /**
  * Create a restoration record from a Shopify order
  *
- * POS orders: Start at "received" (Smithey has immediate possession)
- * Web orders: Start at "pending_label" (waiting for AfterShip return)
+ * Already fulfilled orders: Start at "delivered" (historical/completed)
+ * POS orders (unfulfilled): Start at "received" (Smithey has immediate possession)
+ * Web orders (unfulfilled): Start at "pending_label" (waiting for AfterShip return)
  */
 async function createRestorationFromOrder(
   supabase: ReturnType<typeof createServiceClient>,
@@ -213,23 +247,37 @@ async function createRestorationFromOrder(
 ): Promise<void> {
   const now = new Date().toISOString();
   const orderCreatedAt = order.created_at;
+  const isAlreadyFulfilled = order.fulfillment_status === "fulfilled";
 
-  // For POS orders, clock starts at order creation (immediate possession)
-  // For web orders, clock starts when delivered to warehouse (AfterShip updates this)
-  const initialStatus = isPOS ? "received" : "pending_label";
+  // Determine initial status based on fulfillment state
+  let initialStatus: string;
+  if (isAlreadyFulfilled) {
+    initialStatus = "delivered";
+  } else if (isPOS) {
+    initialStatus = "received";
+  } else {
+    initialStatus = "pending_label";
+  }
 
-  const record = {
+  const record: Record<string, unknown> = {
     order_id: order.id,
     status: initialStatus,
     is_pos: isPOS,
     created_at: now,
     updated_at: now,
-    // POS orders: received immediately at order creation
-    ...(isPOS && {
-      received_at: orderCreatedAt,
-      delivered_to_warehouse_at: orderCreatedAt, // For SLA calculation
-    }),
   };
+
+  // Already fulfilled: set shipped_at to Shopify's fulfilled_at
+  if (isAlreadyFulfilled && order.fulfilled_at) {
+    record.shipped_at = order.fulfilled_at;
+    record.received_at = orderCreatedAt;
+    record.delivered_to_warehouse_at = orderCreatedAt;
+  }
+  // POS orders (not yet fulfilled): received immediately at order creation
+  else if (isPOS) {
+    record.received_at = orderCreatedAt;
+    record.delivered_to_warehouse_at = orderCreatedAt;
+  }
 
   const { data: newRestoration, error } = await supabase
     .from("restorations")
@@ -249,13 +297,15 @@ async function createRestorationFromOrder(
       source_name: order.source_name,
       is_pos: isPOS,
       initial_status: initialStatus,
+      already_fulfilled: isAlreadyFulfilled,
+      fulfilled_at: order.fulfilled_at,
     },
     source: "shopify_sync",
     created_by: "system",
   });
 
   console.log(
-    `[SHOPIFY RESTO SYNC] Created restoration for ${order.order_name} (${isPOS ? "POS" : "web"}) -> ${initialStatus}`
+    `[SHOPIFY RESTO SYNC] Created restoration for ${order.order_name} (${isPOS ? "POS" : "web"}${isAlreadyFulfilled ? ", fulfilled" : ""}) -> ${initialStatus}`
   );
 }
 
