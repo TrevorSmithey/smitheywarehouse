@@ -400,7 +400,9 @@ export default function AdminPage() {
   const loadSyncHealth = useCallback(async () => {
     setSyncHealthLoading(true);
     try {
-      const res = await fetch("/api/sync-health");
+      const res = await fetch("/api/sync-health", {
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         setSyncHealth(data);
