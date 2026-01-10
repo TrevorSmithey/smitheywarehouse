@@ -234,7 +234,7 @@ export async function GET(request: Request) {
     const periodStartDate = periodStart ? new Date(periodStart) : null;
 
     // =========================================================================
-    // FETCH ALL RESTORATIONS (no date filter - needed for current state + Operations)
+    // FETCH ACTIVE RESTORATIONS (excludes archived items from ops board)
     // =========================================================================
     const { data: restorations, error: restorationsError } = await supabase
       .from("restorations")
@@ -274,6 +274,7 @@ export async function GET(request: Request) {
           shopify_customer_id
         )
       `)
+      .is("archived_at", null)
       .order("created_at", { ascending: false });
 
     if (restorationsError) {
