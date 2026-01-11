@@ -59,9 +59,25 @@ export async function GET(request: Request) {
 
     console.log(`[NETSUITE] Starting transactions sync (${isFullSync ? 'FULL' : `last ${DEFAULT_SYNC_DAYS} days`})...`);
 
+    // Pre-fetch all valid customer IDs from our DB
+    // This prevents FK violations - transactions can only reference existing customers
+    console.log(`[NETSUITE] Loading valid customer IDs from database...`);
+    const { data: validCustomerData, error: customerError } = await supabase
+      .from("ns_wholesale_customers")
+      .select("ns_customer_id");
+
+    if (customerError) {
+      console.error("[NETSUITE] Failed to load customer IDs:", customerError);
+      throw new Error(`Failed to load customer IDs: ${customerError.message}`);
+    }
+
+    const validCustomerIds = new Set(validCustomerData?.map(c => c.ns_customer_id) || []);
+    console.log(`[NETSUITE] Loaded ${validCustomerIds.size} valid customer IDs`);
+
     const limit = 200;
     let offset = 0;
     let totalFetched = 0;
+    let totalFiltered = 0; // Records skipped due to missing customer
     let totalUpserted = 0;
     let hasMore = true;
     let batchCount = 0;
@@ -85,11 +101,17 @@ export async function GET(request: Request) {
       totalFetched += transactions.length;
 
       // CRITICAL: NetSuite returns numbers as strings in JSON - must convert!
+      // Also filter out transactions for customers that don't exist in our DB (FK constraint)
+      const beforeFilterCount = transactions.length;
       const records = transactions
         .filter((t: NSTransaction) => {
           const txnId = Number(t.transaction_id);
+          const custId = Number(t.customer_id);
+          // Skip duplicates within this run
           if (seenIds.has(txnId)) return false;
           seenIds.add(txnId);
+          // Skip transactions for customers not in our DB
+          if (!validCustomerIds.has(custId)) return false;
           return true;
         })
         .map((t: NSTransaction) => ({
@@ -102,6 +124,8 @@ export async function GET(request: Request) {
           ns_customer_id: Number(t.customer_id),
           synced_at: new Date().toISOString(),
         }));
+
+      totalFiltered += beforeFilterCount - records.length;
 
       if (records.length === 0) {
         if (transactions.length < limit) break;
@@ -123,7 +147,7 @@ export async function GET(request: Request) {
       }
 
       hasMore = transactions.length === limit;
-      console.log(`[NETSUITE] Transactions batch ${batchCount} done: ${transactions.length} fetched, ${records.length} upserted`);
+      console.log(`[NETSUITE] Transactions batch ${batchCount} done: ${transactions.length} fetched, ${records.length} upserted, ${beforeFilterCount - records.length} filtered`);
 
       if (hasMore) {
         offset += limit;
@@ -133,7 +157,7 @@ export async function GET(request: Request) {
     }
 
     const elapsed = Date.now() - startTime;
-    console.log(`[NETSUITE] Transactions sync complete: ${totalUpserted}/${totalFetched} in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
+    console.log(`[NETSUITE] Transactions sync complete: ${totalUpserted}/${totalFetched} (${totalFiltered} filtered) in ${batchCount} batches, ${(elapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
 
     // Post-sync: Compute derived customer metrics using SQL
     // This runs AFTER transactions are updated (6:05 AM) to ensure fresh data
@@ -193,12 +217,15 @@ export async function GET(request: Request) {
       type: "transactions",
       mode: isFullSync ? "full" : `incremental_${DEFAULT_SYNC_DAYS}d`,
       fetched: totalFetched,
+      filtered: totalFiltered,
       upserted: totalUpserted,
       batches: batchCount,
+      validCustomers: validCustomerIds.size,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
       stoppedEarly,
       ...(computeError && { metricsError: computeError.message }),
       ...(stoppedEarly && { message: `Partial sync: ${totalUpserted} transactions saved. Run again to continue.` }),
+      ...(totalFiltered > 0 && !stoppedEarly && { note: `${totalFiltered} transactions skipped (customers not in DB)` }),
     });
   } catch (error) {
     console.error("[NETSUITE] Transactions sync failed:", error);
