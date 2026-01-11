@@ -1525,7 +1525,7 @@ function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomer
 
       {/* Main Content Grid */}
       <div className="p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
           {/* Column 1: Segment Breakdown */}
           <div className="space-y-4">
@@ -1807,7 +1807,7 @@ function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomer
                 </div>
 
                 {/* Content Grid */}
-                <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                   {/* Column 1: Narrative */}
                   <div className="lg:col-span-2 space-y-4">
                     <div>
@@ -2410,7 +2410,7 @@ export function WholesaleDashboard({
           TOP CUSTOMERS + CORPORATE CUSTOMERS (Side by Side)
           Relationship & Revenue Focus
           ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* TOP CUSTOMERS TABLE (Left Half) */}
         <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
           <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
@@ -2541,7 +2541,7 @@ export function WholesaleDashboard({
       {/* ================================================================
           NEVER ORDERED + CHURNED CUSTOMERS (Side by Side)
           ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES (Left Half) */}
         {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 ? (
           <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
@@ -2584,7 +2584,7 @@ export function WholesaleDashboard({
           NEW CUSTOMERS + RECENT TRANSACTIONS (Side by Side)
           Corporate Audit Workflow - scan both for misclassified accounts
           ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* NEW CUSTOMERS (Left Half) */}
         {data.newCustomers && data.newCustomers.length > 0 ? (
           <NewCustomersSection
