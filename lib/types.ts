@@ -1,3 +1,5 @@
+import type { DashboardRole, DashboardTab } from "@/lib/auth/permissions";
+
 // Inventory types (ShipHero → Supabase)
 export interface ProductInventory {
   sku: string;
@@ -1596,20 +1598,24 @@ export type LifespanBucket = "<1yr" | "1-2yr" | "2-3yr" | "3+yr";
  * Core metrics for the Door Health dashboard
  */
 export interface DoorHealthMetrics {
-  totalB2BCustomers: number;
-  activeCustomers: number;
-  inactiveCustomers: number;
-  churnedCustomers: number;
-  churnRateYtd: number;
-  churnRatePriorYear: number;
-  churnRateChange: number;
-  avgLifespanMonths: number;
+  totalB2BCustomers: number;      // All non-corporate wholesale customers
+  activeCustomers: number;        // < 180 days since last order
+  inactiveCustomers: number;      // >= 180 days (at_risk + churning + churned)
+  churnedCustomers: number;       // >= 365 days
+  churnRateYtd: number;           // % of customers that churned this calendar year
+  churnRatePriorYear: number;     // % of customers that churned last year
+  churnRateChange: number;        // YoY change in percentage points
+  avgLifespanMonths: number;      // Average months from first to last order (churned only)
   avgLifespanMonthsPriorYear: number;
-  lostRevenue: number;
+  lostRevenue: number;            // Total lifetime revenue of churned customers
 }
 
 /**
- * Retention funnel counts
+ * Retention funnel counts matching health_status thresholds:
+ * - active: < 180 days (thriving + stable)
+ * - atRisk: 180-269 days
+ * - churning: 270-364 days
+ * - churned: >= 365 days
  */
 export interface DoorHealthFunnel {
   active: number;
@@ -1673,4 +1679,92 @@ export interface DoorHealthResponse {
   churnedByLifespan: ChurnedByLifespan[];
   customers: DoorHealthCustomer[];
   lastSynced: string | null;
+}
+
+// ============================================================================
+// ADMIN DASHBOARD TYPES
+// ============================================================================
+
+export interface DashboardUser {
+  id: string;
+  name: string;
+  email: string | null;
+  role: DashboardRole;
+  pin: string;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+  last_active_at: string | null;
+  notes: string | null;
+  default_page_override: string | null;
+  additional_tabs: string[] | null;
+}
+
+export interface UserActivitySummary {
+  userId: string;
+  daysActive: number;
+  dailyActivity: boolean[];
+  lastActiveAt: string | null;
+  isActiveNow: boolean;
+}
+
+export interface AdminStats {
+  totalUsers: number;
+  activeThisWeek: number;
+  activeToday: number;
+  mostViewedTab: { tab: string; views: number } | null;
+  failedLoginsToday: number;
+  activitySummaries: Record<string, UserActivitySummary>;
+}
+
+export interface DashboardConfig {
+  tab_order: DashboardTab[];
+  hidden_tabs: DashboardTab[];
+  role_permissions: Record<DashboardRole, string[]>;
+  role_defaults: Record<DashboardRole, DashboardTab>;
+  role_tab_orders: Record<DashboardRole, DashboardTab[]>;
+}
+
+export interface ActivityEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: string | null;
+  action: string;
+  tab: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface SyncInfo {
+  type: string;
+  status: string;
+  lastRun: string | null;
+  recordsExpected: number | null;
+  recordsSynced: number | null;
+  successRate: number;
+  durationMs: number | null;
+  hoursSinceSuccess: number | null;
+  error: string | null;
+  isStale: boolean;
+  staleThreshold: number;
+  schedule: string | null;
+}
+
+export interface SyncHealthResponse {
+  status: "healthy" | "warning" | "critical";
+  syncs: SyncInfo[];
+  checkedAt: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string | null;
+  severity: "info" | "warning" | "critical";
+  starts_at: string;
+  expires_at: string | null;
+  created_by: string;
+  created_at: string;
+  is_archived: boolean;
 }
