@@ -383,22 +383,20 @@ export default function DashboardLayout({
 
           {/* Inventory Sub-tabs */}
           {isInventoryRoute && visibleInventorySubTabs.length > 1 && (
-            <nav className="flex gap-1 mt-1 pl-4 overflow-x-auto touch-pan-x">
+            <nav className="flex gap-4 mt-2 pl-4 border-b border-border/30 pb-2 overflow-x-auto touch-pan-x">
               {visibleInventorySubTabs.map((tab) => {
-                const Icon = TAB_ICONS[tab];
                 const isActive = getActiveInventorySubTab() === `/${tab}`;
 
                 return (
                   <Link
                     key={tab}
                     href={`/${tab}`}
-                    className={`px-3 py-1.5 text-[10px] font-semibold tracking-wider transition-all rounded whitespace-nowrap ${
+                    className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] whitespace-nowrap ${
                       isActive
-                        ? "bg-accent-blue/20 text-accent-blue"
-                        : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
+                        ? "text-text-primary border-accent-blue"
+                        : "text-text-muted hover:text-text-secondary border-transparent"
                     }`}
                   >
-                    <Icon className="w-3 h-3 inline-block mr-1 -mt-0.5" />
                     {TAB_LABELS[tab]}
                   </Link>
                 );
@@ -408,22 +406,20 @@ export default function DashboardLayout({
 
           {/* Production Sub-tabs - only show when user has access to production-planning */}
           {isProductionRoute && showPlanningSubTabs && visibleProductionSubTabs.length > 0 && (
-            <nav className="flex gap-1 mt-1 pl-4 overflow-x-auto touch-pan-x">
+            <nav className="flex gap-4 mt-2 pl-4 border-b border-border/30 pb-2 overflow-x-auto touch-pan-x">
               {visibleProductionSubTabs.map((tab) => {
-                const Icon = TAB_ICONS[tab];
                 const isActive = getActiveProductionSubTab() === `/${tab}`;
 
                 return (
                   <Link
                     key={tab}
                     href={`/${tab}`}
-                    className={`px-3 py-1.5 text-[10px] font-semibold tracking-wider transition-all rounded whitespace-nowrap ${
+                    className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] whitespace-nowrap ${
                       isActive
-                        ? "bg-accent-blue/20 text-accent-blue"
-                        : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
+                        ? "text-text-primary border-accent-blue"
+                        : "text-text-muted hover:text-text-secondary border-transparent"
                     }`}
                   >
-                    <Icon className="w-3 h-3 inline-block mr-1 -mt-0.5" />
                     {TAB_LABELS[tab]}
                   </Link>
                 );

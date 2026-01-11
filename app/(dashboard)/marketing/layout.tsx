@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useDashboard } from "../layout";
 import { getAuthHeaders } from "@/lib/auth";
-import { Mail, TrendingUp } from "lucide-react";
 import type { KlaviyoResponse } from "@/lib/types";
 
 type KlaviyoPeriod = "mtd" | "last_month" | "qtd" | "ytd" | "30d" | "90d";
@@ -40,12 +39,12 @@ function MarketingTabs() {
   const pathname = usePathname();
 
   const tabs = [
-    { name: "Email", href: "/marketing", icon: Mail },
-    { name: "Paid", href: "/marketing/paid", icon: TrendingUp },
+    { name: "Email", href: "/marketing" },
+    { name: "Paid", href: "/marketing/paid" },
   ];
 
   return (
-    <div className="flex items-center gap-1 mb-6 bg-bg-secondary/50 rounded-lg p-1 w-fit">
+    <div className="flex gap-4 mb-6 border-b border-border/30 pb-2">
       {tabs.map((tab) => {
         const isActive = tab.href === "/marketing"
           ? pathname === "/marketing"
@@ -55,13 +54,12 @@ function MarketingTabs() {
           <Link
             key={tab.name}
             href={tab.href}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
               isActive
-                ? "bg-bg-secondary text-text-primary shadow-sm"
-                : "text-text-muted hover:text-text-secondary"
+                ? "text-text-primary border-accent-blue"
+                : "text-text-muted hover:text-text-secondary border-transparent"
             }`}
           >
-            <tab.icon className="w-4 h-4" />
             {tab.name}
           </Link>
         );

@@ -231,7 +231,7 @@ export default function SalesLayout({
           <div className="flex gap-4 border-b border-border/30 pb-2">
             <Link
               href="/sales"
-              className={`text-sm font-medium transition-all pb-2 border-b-2 ${
+              className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
                 isWholesale
                   ? "text-text-primary border-accent-blue"
                   : "text-text-muted hover:text-text-secondary border-transparent"
@@ -241,7 +241,7 @@ export default function SalesLayout({
             </Link>
             <Link
               href="/sales/leads"
-              className={`text-sm font-medium transition-all pb-2 border-b-2 ${
+              className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
                 isLeads
                   ? "text-text-primary border-accent-blue"
                   : "text-text-muted hover:text-text-secondary border-transparent"
@@ -251,7 +251,7 @@ export default function SalesLayout({
             </Link>
             <Link
               href="/sales/door-health"
-              className={`text-sm font-medium transition-all pb-2 border-b-2 ${
+              className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
                 isDoorHealth
                   ? "text-text-primary border-accent-blue"
                   : "text-text-muted hover:text-text-secondary border-transparent"
