@@ -34,6 +34,7 @@ import type {
   DoorHealthCustomer,
   CustomerSegment,
   LifespanBucket,
+  WholesaleResponse,
 } from "@/lib/types";
 
 // ============================================================================
@@ -45,6 +46,7 @@ interface DoorHealthDashboardProps {
   loading: boolean;
   error?: string | null;
   onRefresh: () => void;
+  wholesaleData?: WholesaleResponse | null;
 }
 
 type GroupByMode = "year" | "segment" | "lifespan";
@@ -313,82 +315,69 @@ function RetentionFunnel({
 }
 
 // ============================================================================
-// CUSTOMER GROWTH CHART - Cumulative customers & revenue over time
+// B2B GROWTH CHART - Cumulative revenue from wholesaleData.monthly
 // ============================================================================
 
-function CustomerGrowthChart({
-  customers,
+function B2BGrowthChart({
+  monthly,
 }: {
-  customers: DoorHealthCustomer[];
+  monthly: WholesaleResponse["monthly"] | undefined;
 }) {
-  // Build monthly cohort data from customer first_sale_date
-  const monthlyData = useMemo(() => {
-    const byMonth = new Map<string, { newCustomers: number; revenue: number }>();
+  // Build cumulative data from wholesaleData.monthly (regular_revenue = B2B excluding corporate)
+  const chartData = useMemo(() => {
+    if (!monthly || monthly.length === 0) return [];
 
-    // Sort customers by first sale date
-    const sorted = [...customers]
-      .filter(c => c.first_sale_date)
-      .sort((a, b) => (a.first_sale_date || "").localeCompare(b.first_sale_date || ""));
+    // Sort by date and take last 24 months
+    const sorted = [...monthly]
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-24);
 
-    for (const c of sorted) {
-      if (!c.first_sale_date) continue;
-      const date = new Date(c.first_sale_date);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const existing = byMonth.get(key) || { newCustomers: 0, revenue: 0 };
-      existing.newCustomers++;
-      existing.revenue += c.total_revenue;
-      byMonth.set(key, existing);
-    }
-
-    // Convert to array and compute cumulative
-    const entries = Array.from(byMonth.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-24); // Last 24 months
-
-    let cumulativeCustomers = 0;
     let cumulativeRevenue = 0;
+    let cumulativeCustomers = 0;
 
-    return entries.map(([key, val]) => {
-      cumulativeCustomers += val.newCustomers;
-      cumulativeRevenue += val.revenue;
-      const [year, month] = key.split('-');
+    return sorted.map((row) => {
+      cumulativeRevenue += row.regular_revenue || 0;
+      cumulativeCustomers += row.unique_customers || 0;
+      const date = new Date(row.month);
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return {
-        month: `${monthNames[parseInt(month) - 1]} '${year.slice(2)}`,
-        newCustomers: val.newCustomers,
-        cumulativeCustomers,
-        revenue: val.revenue,
+        month: `${monthNames[date.getMonth()]} '${String(date.getFullYear()).slice(2)}`,
+        revenue: row.regular_revenue || 0,
+        customers: row.unique_customers || 0,
         cumulativeRevenue,
+        cumulativeCustomers,
       };
     });
-  }, [customers]);
+  }, [monthly]);
 
-  if (monthlyData.length < 3) return null;
+  if (chartData.length < 3) {
+    return (
+      <div className="rounded-xl border border-border bg-bg-secondary p-5 flex items-center justify-center h-[232px]">
+        <span className="text-sm text-text-muted">Loading wholesale data...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-border bg-bg-secondary p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-          B2B Customer Growth · Last 24 Months
+          Cumulative B2B Revenue · Last 24 Months
         </h3>
         <div className="flex items-center gap-4 text-[10px] text-text-muted">
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#0EA5E9' }} />
-            Customers
-          </span>
-          <span className="flex items-center gap-1.5">
             <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#10B981' }} />
-            Revenue
+            Revenue (excl. Corp)
           </span>
         </div>
       </div>
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
             <defs>
-              <linearGradient id="customerArea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} />
-                <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} />
+              <linearGradient id="revenueArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10B981" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
@@ -399,19 +388,10 @@ function CustomerGrowthChart({
               interval={2}
             />
             <YAxis
-              yAxisId="left"
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#64748B', fontSize: 10 }}
-              width={35}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 10 }}
-              width={45}
+              width={50}
               tickFormatter={(v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
             />
             <Tooltip
@@ -424,26 +404,17 @@ function CustomerGrowthChart({
               }}
               labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
               formatter={(value: number, name: string) => {
-                if (name === 'cumulativeCustomers') return [fmt.num(value), 'Total Customers'];
-                if (name === 'cumulativeRevenue') return [formatCurrency(value), 'Total Revenue'];
+                if (name === 'cumulativeRevenue') return [formatCurrency(value), 'Cumulative Revenue'];
+                if (name === 'revenue') return [formatCurrency(value), 'Monthly Revenue'];
                 return [value, name];
               }}
             />
             <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="cumulativeCustomers"
-              fill="url(#customerArea)"
-              stroke="#0EA5E9"
-              strokeWidth={2}
-            />
-            <Line
-              yAxisId="right"
               type="monotone"
               dataKey="cumulativeRevenue"
+              fill="url(#revenueArea)"
               stroke="#10B981"
               strokeWidth={2}
-              dot={false}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -726,6 +697,7 @@ export function DoorHealthDashboard({
   loading,
   error,
   onRefresh,
+  wholesaleData,
 }: DoorHealthDashboardProps) {
   const [groupByMode, setGroupByMode] = useState<GroupByMode>("year");
 
@@ -899,7 +871,7 @@ export function DoorHealthDashboard({
       {/* === CHARTS ROW === */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} totalCustomers={metrics.totalB2BCustomers} />
-        <CustomerGrowthChart customers={data.customers} />
+        <B2BGrowthChart monthly={wholesaleData?.monthly} />
       </div>
 
       {/* === FUNNEL + DRILL-DOWN === */}
