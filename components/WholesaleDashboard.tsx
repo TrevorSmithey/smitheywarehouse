@@ -2407,11 +2407,84 @@ export function WholesaleDashboard({
       })()}
 
       {/* ================================================================
-          TOP CUSTOMERS + CORPORATE CUSTOMERS (Side by Side)
-          Relationship & Revenue Focus
+          ROW 1: NEW CUSTOMERS + CHURNED CUSTOMERS (Side by Side)
           ================================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* TOP CUSTOMERS TABLE (Left Half) */}
+        {/* NEW CUSTOMERS (Left) */}
+        {data.newCustomers && data.newCustomers.length > 0 ? (
+          <NewCustomersSection
+            customers={data.newCustomers}
+            acquisition={data.newCustomerAcquisition}
+          />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-[500px]">
+            <div className="text-center text-text-muted">
+              <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No new wholesale customers acquired in the last 12 months</p>
+              <p className="text-xs mt-1 opacity-60">First-time B2B buyers appear here</p>
+            </div>
+          </div>
+        )}
+
+        {/* CHURNED CUSTOMERS (Right) */}
+        {data.churnedCustomers && data.churnedCustomers.length > 0 ? (
+          <ChurnedCustomersSection customers={data.churnedCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-[500px]">
+            <div className="text-center text-text-muted">
+              <UserMinus className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No churned customers</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ================================================================
+          ROW 2: RECENT TRANSACTIONS + CORPORATE GIFTING (Side by Side)
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* RECENT TRANSACTIONS (Left) */}
+        {data.recentTransactions && data.recentTransactions.length > 0 ? (
+          <RecentTransactionsSection transactions={data.recentTransactions} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-[500px]">
+            <div className="text-center text-text-muted">
+              <Activity className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No recent transactions</p>
+            </div>
+          </div>
+        )}
+
+        {/* CORPORATE GIFTING (Right) */}
+        {data.corporateCustomers && data.corporateCustomers.length > 0 ? (
+          <CorporateCustomersSection customers={data.corporateCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-[500px]">
+            <div className="text-center text-text-muted">
+              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No corporate gifting accounts</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ================================================================
+          ROW 3: NEVER ORDERED + TOP CUSTOMERS (Side by Side)
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* NEVER ORDERED (Left) */}
+        {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 ? (
+          <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-[500px]">
+            <div className="text-center text-text-muted">
+              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No never-ordered customers found</p>
+            </div>
+          </div>
+        )}
+
+        {/* TOP CUSTOMERS (Right) */}
         <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-[500px] flex flex-col">
           <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -2498,7 +2571,7 @@ export function WholesaleDashboard({
               </div>
 
               {sortedCustomers.length > 10 && (
-                <div className="px-4 py-3 border-t border-border/20 bg-bg-tertiary/20">
+                <div className="px-4 py-3 border-t border-border/20 bg-bg-tertiary/20 shrink-0">
                   <button
                     onClick={() => setShowAllCustomers(!showAllCustomers)}
                     className="w-full py-2 text-sm text-accent-blue hover:text-accent-blue/80 flex items-center justify-center gap-1.5 transition-colors font-medium"
@@ -2517,58 +2590,17 @@ export function WholesaleDashboard({
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center h-56 text-text-muted">
+            <div className="flex flex-col items-center justify-center flex-1 text-text-muted">
               <Building2 className="w-10 h-10 mb-3 opacity-40" />
               <span className="text-sm font-medium">No customer data</span>
               <span className="text-xs mt-1">Try a different time period</span>
             </div>
           )}
         </div>
-
-        {/* CORPORATE GIFTING CUSTOMERS (Right Half) */}
-        {data.corporateCustomers && data.corporateCustomers.length > 0 ? (
-          <CorporateCustomersSection customers={data.corporateCustomers} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No corporate gifting accounts</p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ================================================================
-          NEVER ORDERED + CHURNED CUSTOMERS (Side by Side)
-          ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NEVER ORDERED CUSTOMERS - SALES OPPORTUNITIES (Left Half) */}
-        {data.neverOrderedCustomers && data.neverOrderedCustomers.length > 0 ? (
-          <NeverOrderedCustomersCard customers={data.neverOrderedCustomers} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No never-ordered customers found</p>
-            </div>
-          </div>
-        )}
-
-        {/* CHURNED CUSTOMERS (Right Half) */}
-        {data.churnedCustomers && data.churnedCustomers.length > 0 ? (
-          <ChurnedCustomersSection customers={data.churnedCustomers} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <UserMinus className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No churned customers</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ================================================================
-          SEGMENT INTELLIGENCE (Full Width - Actionable Insights)
+          SEGMENT INTELLIGENCE (Full Width - Above Definitions)
           ================================================================ */}
       {stats.segment_distribution && (
         <SegmentIntelligenceCard
@@ -2579,40 +2611,6 @@ export function WholesaleDashboard({
           aiLoading={aiLoading}
         />
       )}
-
-      {/* ================================================================
-          NEW CUSTOMERS + RECENT TRANSACTIONS (Side by Side)
-          Corporate Audit Workflow - scan both for misclassified accounts
-          ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* NEW CUSTOMERS (Left Half) */}
-        {data.newCustomers && data.newCustomers.length > 0 ? (
-          <NewCustomersSection
-            customers={data.newCustomers}
-            acquisition={data.newCustomerAcquisition}
-          />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No new wholesale customers acquired in the last 12 months</p>
-              <p className="text-xs mt-1 opacity-60">First-time B2B buyers appear here</p>
-            </div>
-          </div>
-        )}
-
-        {/* RECENT TRANSACTIONS (Right Half) */}
-        {data.recentTransactions && data.recentTransactions.length > 0 ? (
-          <RecentTransactionsSection transactions={data.recentTransactions} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <Activity className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No recent transactions</p>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ================================================================
           DEFINITIONS & METHODOLOGY
