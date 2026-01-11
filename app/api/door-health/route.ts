@@ -121,8 +121,8 @@ export async function GET(request: NextRequest) {
         company_name,
         first_sale_date,
         last_sale_date,
-        total_revenue,
-        order_count,
+        lifetime_revenue,
+        lifetime_orders,
         is_corporate
       `)
       .neq("is_inactive", true)
@@ -163,12 +163,12 @@ export async function GET(request: NextRequest) {
       return {
         ns_customer_id: c.ns_customer_id,
         company_name: c.company_name || "Unknown",
-        segment: getSegment(c.total_revenue || 0),
+        segment: getSegment(c.lifetime_revenue || 0),
         first_sale_date: c.first_sale_date,
         last_sale_date: c.last_sale_date,
         days_since_last_order: daysSinceLastOrder,
-        total_revenue: c.total_revenue || 0,
-        order_count: c.order_count || 0,
+        total_revenue: c.lifetime_revenue || 0,
+        order_count: c.lifetime_orders || 0,
         lifespan_months: lifespanMonths,
         churn_year: getChurnYear(c.last_sale_date),
       };
