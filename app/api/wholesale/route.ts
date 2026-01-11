@@ -784,7 +784,7 @@ export async function GET(request: NextRequest) {
     const stats: WholesaleStats = {
       total_revenue: currentPeriodRevenue,
       total_orders: currentPeriodOrders,
-      total_customers: allB2BAccounts.length, // All approved B2B accounts (excludes corporate)
+      total_customers: b2bCustomers.length, // B2B customers who have ordered (excludes never-ordered prospects)
       active_customers: currentPeriodCustomers,
       // AOV uses B2B-only data (excludes corporate) for accurate comparison
       avg_order_value: currentB2BAOV,
