@@ -370,6 +370,40 @@ All colors are defined as CSS variables in `globals.css`. **Never use hardcoded 
 </button>
 ```
 
+#### Sub-Tabs (Secondary Navigation)
+
+Sub-tabs appear below main navigation to switch between views within a section (e.g., Sales → Wholesale/Leads/Door Health). **Always use underline style** - never pills, segments, or other patterns.
+
+```jsx
+// Container with bottom border
+<div className="flex gap-4 border-b border-border/30 pb-2">
+  {tabs.map((tab) => (
+    <Link
+      key={tab.name}
+      href={tab.href}
+      className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
+        isActive
+          ? "text-text-primary border-accent-blue"
+          : "text-text-muted hover:text-text-secondary border-transparent"
+      }`}
+    >
+      {tab.name}
+    </Link>
+  ))}
+</div>
+```
+
+**Key details:**
+- `border-b-2 -mb-[10px]` - The negative margin overlays the tab underline onto the container's border, creating a seamless "tab" effect
+- No icons in sub-tabs (main nav has icons, sub-tabs are text-only)
+- Sentence case labels ("Door Health" not "DOOR HEALTH")
+- `gap-4` between tabs for breathing room
+
+**Why underline, not pills:**
+1. Main nav uses underlines → same visual language = clear hierarchy
+2. Space efficient (no background containers)
+3. Scales from 2 tabs to 5+ without crowding
+
 #### Table Pattern
 ```jsx
 <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
