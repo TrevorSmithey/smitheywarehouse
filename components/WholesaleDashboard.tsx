@@ -701,8 +701,8 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
   if (!customers || customers.length === 0) return null;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-amber-500/30 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-amber-500/5">
+    <div className="bg-bg-secondary rounded-xl border border-amber-500/30 overflow-hidden h-full flex flex-col">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-amber-500/5 shrink-0">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-amber-400" />
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-amber-400 font-semibold">
@@ -714,7 +714,7 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
         </span>
       </div>
 
-      <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         {customers.map((customer) => (
           <Link
             key={customer.ns_customer_id}
@@ -889,7 +889,7 @@ function NewCustomersSection({
         </div>
       )}
 
-      <div className="max-h-[350px] overflow-y-auto scrollbar-thin flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         {customers.map((customer, idx) => {
           // Flag new customers with low YTD revenue for proactive sales outreach
           // All customers in this section are already first-time buyers this year by definition
@@ -960,8 +960,8 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
   const churnedThisYearCount = nonCorporateCustomers.filter(isChurnedThisYear).length;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-text-muted/5">
+    <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden h-full flex flex-col">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-text-muted/5 shrink-0">
         <div className="flex items-center gap-2">
           <UserMinus className="w-4 h-4 text-text-muted" />
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
@@ -980,11 +980,11 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
         </div>
       </div>
 
-      <p className="px-5 py-3 text-xs text-text-tertiary border-b border-border/10">
+      <p className="px-5 py-3 text-xs text-text-tertiary border-b border-border/10 shrink-0">
         Former customers who haven&apos;t ordered in over a year. Excludes corporate accounts.
       </p>
 
-      <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         {nonCorporateCustomers.map((customer) => {
           const churnedRecently = isChurnedThisYear(customer);
           return (
@@ -1276,8 +1276,8 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
   const hasMore = transactions && transactions.length > displayLimit;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-full flex flex-col">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Receipt className="w-4 h-4 text-text-tertiary" />
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
@@ -1290,11 +1290,11 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
       </div>
 
       {isEmpty ? (
-        <div className="px-5 py-8 text-center text-text-muted text-sm">
+        <div className="px-5 py-8 text-center text-text-muted text-sm flex-1">
           No transactions in this period
         </div>
       ) : (
-      <div className="max-h-[350px] overflow-y-auto scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         {transactions.slice(0, displayLimit).map((txn) => (
           <div
             key={txn.ns_transaction_id}
@@ -1334,8 +1334,8 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
   const totalOrders = customers.reduce((sum, c) => sum + c.order_count, 0);
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-accent-blue/5">
+    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden h-full flex flex-col">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-accent-blue/5 shrink-0">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-accent-blue" />
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-accent-blue font-semibold">
@@ -1348,7 +1348,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
       </div>
 
       {/* Summary Stats */}
-      <div className="px-5 py-3 border-b border-border/10 bg-bg-tertiary/30 grid grid-cols-2 gap-4">
+      <div className="px-5 py-3 border-b border-border/10 bg-bg-tertiary/30 grid grid-cols-2 gap-4 shrink-0">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-text-muted">Lifetime Revenue</div>
           <div className="text-sm font-semibold text-text-primary tabular-nums">
@@ -1364,7 +1364,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
       </div>
 
       {/* Customer List - No slicing, show all */}
-      <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
         {customers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-text-muted">
             <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -2412,8 +2412,8 @@ export function WholesaleDashboard({
           ================================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* TOP CUSTOMERS TABLE (Left Half) */}
-        <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-          <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between">
+        <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-full flex flex-col">
+          <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-text-tertiary" />
               <h3 className="text-[10px] uppercase tracking-[0.2em] text-text-muted font-semibold">
@@ -2427,7 +2427,7 @@ export function WholesaleDashboard({
 
           {displayedCustomers.length > 0 ? (
             <>
-              <div className="overflow-x-auto max-h-[450px] overflow-y-auto scrollbar-thin">
+              <div className="overflow-x-auto flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                 <table className="w-full min-w-[500px]">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b border-border/20 bg-bg-tertiary/95 backdrop-blur-sm">
