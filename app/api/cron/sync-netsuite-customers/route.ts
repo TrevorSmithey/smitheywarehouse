@@ -2,8 +2,8 @@
  * NetSuite Customers Sync (Part 1 of 3)
  *
  * Syncs wholesale customers from NetSuite.
- * Uses chunked approach - fetches ~1500 customers in 200-row batches.
- * SIMPLIFIED: Removed loop structure that was causing mysterious timeouts.
+ * Uses cursor-based pagination (WHERE id > lastId) since SuiteQL ignores OFFSET.
+ * Expect ~1027 wholesale customers total.
  */
 
 import { NextResponse } from "next/server";
@@ -56,13 +56,22 @@ function transformCustomer(c: NSCustomer) {
   };
 }
 
-// Fetch and upsert a single batch
-async function syncBatch(supabase: ReturnType<typeof createServiceClient>, offset: number, limit: number) {
-  const customers = await fetchWholesaleCustomers(offset, limit);
-  if (customers.length === 0) return { fetched: 0, upserted: 0, hasMore: false };
+// Fetch and upsert a single batch using cursor-based pagination
+async function syncBatch(
+  supabase: ReturnType<typeof createServiceClient>,
+  afterId: number,
+  limit: number
+): Promise<{ fetched: number; upserted: number; hasMore: boolean; maxId: number }> {
+  const customers = await fetchWholesaleCustomers(afterId, limit);
+  if (customers.length === 0) {
+    return { fetched: 0, upserted: 0, hasMore: false, maxId: afterId };
+  }
 
   const records = customers.map(transformCustomer);
   let upserted = 0;
+
+  // Find max ID for cursor pagination
+  const maxId = Math.max(...records.map(r => r.ns_customer_id));
 
   for (let i = 0; i < records.length; i += BATCH_SIZES.DEFAULT) {
     const batch = records.slice(i, i + BATCH_SIZES.DEFAULT);
@@ -71,18 +80,18 @@ async function syncBatch(supabase: ReturnType<typeof createServiceClient>, offse
       .upsert(batch, { onConflict: "ns_customer_id" });
 
     if (error) {
-      console.error(`[NETSUITE] Upsert error at offset ${offset}:`, error.message);
+      console.error(`[NETSUITE] Upsert error (after id ${afterId}):`, error.message);
     } else {
       upserted += batch.length;
     }
   }
 
-  return { fetched: customers.length, upserted, hasMore: customers.length === limit };
+  return { fetched: customers.length, upserted, hasMore: customers.length === limit, maxId };
 }
 
 export async function GET(request: Request) {
   const startTime = Date.now();
-  console.log("[NETSUITE] Starting customers sync");
+  console.log("[NETSUITE] Starting customers sync (cursor-based pagination)");
 
   if (!verifyCronSecret(request)) {
     return unauthorizedResponse();
@@ -105,14 +114,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    // Fetch all batches sequentially (expect ~8 batches of 200 = ~1600 customers)
+    // Fetch all batches sequentially using cursor-based pagination
+    // Expect ~1027 wholesale customers, so ~6 batches of 200
     const limit = 200;
-    let offset = 0;
+    let lastId = 0; // Start from the beginning (id > 0)
     let totalFetched = 0;
     let totalUpserted = 0;
     let hasMore = true;
     let batchCount = 0;
-
     let stoppedEarly = false;
 
     while (hasMore) {
@@ -125,17 +134,17 @@ export async function GET(request: Request) {
       }
 
       batchCount++;
-      console.log(`[NETSUITE] Batch ${batchCount}: offset ${offset}`);
+      console.log(`[NETSUITE] Batch ${batchCount}: id > ${lastId}`);
 
-      const result = await syncBatch(supabase, offset, limit);
+      const result = await syncBatch(supabase, lastId, limit);
       totalFetched += result.fetched;
       totalUpserted += result.upserted;
       hasMore = result.hasMore;
+      lastId = result.maxId; // Update cursor for next batch
 
-      console.log(`[NETSUITE] Batch ${batchCount} done: ${result.fetched} fetched, ${result.upserted} upserted`);
+      console.log(`[NETSUITE] Batch ${batchCount} done: ${result.fetched} fetched, ${result.upserted} upserted, next cursor: id > ${lastId}`);
 
       if (hasMore) {
-        offset += limit;
         // Small delay between batches to avoid overwhelming APIs
         await new Promise(r => setTimeout(r, 100));
       }
@@ -161,7 +170,7 @@ export async function GET(request: Request) {
       details: stoppedEarly ? {
         stopped_early: true,
         reason: "time_budget_exceeded",
-        last_offset: offset,
+        last_cursor: lastId,
       } : null,
     });
 
@@ -174,8 +183,9 @@ export async function GET(request: Request) {
       batches: batchCount,
       elapsed: `${(finalElapsed/1000).toFixed(1)}s`,
       stoppedEarly,
+      lastCursor: lastId,
       message: stoppedEarly
-        ? `Partial sync: ${totalUpserted} customers saved. Full sync typically completes in subsequent run.`
+        ? `Partial sync: ${totalUpserted} customers saved. Run again to continue from id > ${lastId}.`
         : undefined,
     });
   } catch (error) {

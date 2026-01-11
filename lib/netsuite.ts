@@ -289,15 +289,22 @@ export interface NSCustomer {
 
 /**
  * Fetch wholesale transactions (CashSale + CustInvc for business customers)
+ * Uses cursor-based pagination (WHERE id > afterId) since SuiteQL ignores OFFSET
+ * @param afterId - Fetch transactions with id > this value (cursor). Use 0 or null for first batch.
+ * @param limit - Max records to fetch per batch
  * @param sinceDays - If provided, only fetch transactions from the last N days (for incremental sync)
  */
 export async function fetchWholesaleTransactions(
-  offset = 0,
+  afterId: number | null = null,
   limit = 1000,
   sinceDays?: number
 ): Promise<NSTransaction[]> {
   const dateFilter = sinceDays
     ? `AND t.trandate >= SYSDATE - ${sinceDays}`
+    : '';
+
+  const cursorFilter = afterId !== null && afterId > 0
+    ? `AND t.id > ${afterId}`
     : '';
 
   const query = `
@@ -315,8 +322,9 @@ export async function fetchWholesaleTransactions(
     AND c.id NOT IN (493, 2501)
     AND t.type IN ('CashSale', 'CustInvc')
     ${dateFilter}
+    ${cursorFilter}
     ORDER BY t.id
-    OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+    FETCH FIRST ${limit} ROWS ONLY
   `;
 
   return executeSuiteQL<NSTransaction>(query);
@@ -324,15 +332,17 @@ export async function fetchWholesaleTransactions(
 
 /**
  * Fetch wholesale line items
- * @param sinceTransactionId - If provided, only fetch line items from transactions with ID > this value
+ * Uses cursor-based pagination since SuiteQL ignores OFFSET
+ * @param afterTransactionId - Fetch line items from transactions with id > this value (cursor)
+ * @param afterLineId - Within a transaction, fetch lines with id > this value
+ * @param limit - Max records per batch
  */
 export async function fetchWholesaleLineItems(
-  offset = 0,
-  limit = 1000,
-  sinceTransactionId?: number
+  afterTransactionId: number | null = null,
+  limit = 1000
 ): Promise<NSLineItem[]> {
-  const transactionFilter = sinceTransactionId
-    ? `AND t.id > ${sinceTransactionId}`
+  const cursorFilter = afterTransactionId !== null && afterTransactionId > 0
+    ? `AND t.id > ${afterTransactionId}`
     : '';
 
   const query = `
@@ -354,9 +364,9 @@ export async function fetchWholesaleLineItems(
     AND t.type IN ('CashSale', 'CustInvc')
     AND tl.mainline = 'F'
     AND tl.item IS NOT NULL
-    ${transactionFilter}
+    ${cursorFilter}
     ORDER BY t.id, tl.linesequencenumber
-    OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+    FETCH FIRST ${limit} ROWS ONLY
   `;
 
   return executeSuiteQL<NSLineItem>(query);
@@ -364,16 +374,25 @@ export async function fetchWholesaleLineItems(
 
 /**
  * Fetch wholesale customers (business entities)
+ * Uses cursor-based pagination (WHERE id > afterId) since SuiteQL ignores OFFSET
+ *
  * Optimized for Vercel serverless - removed problematic fields:
  * - BUILTIN.DF calls (cause timeouts)
  * - Calculated balance fields (balance, overduebalance, consolbalance, unbilledorders, depositbalance)
  * - Address fields (billaddress, shipaddress, defaultbillingaddress, defaultshippingaddress)
  *   These fields cause 30+ second query times from Vercel serverless
+ *
+ * @param afterId - Fetch customers with id > this value (cursor). Use 0 or null for first batch.
+ * @param limit - Max records per batch
  */
 export async function fetchWholesaleCustomers(
-  offset = 0,
+  afterId: number | null = null,
   limit = 200
 ): Promise<NSCustomer[]> {
+  const cursorFilter = afterId !== null && afterId > 0
+    ? `AND c.id > ${afterId}`
+    : '';
+
   // Core customer fields only - no address or balance fields
   const query = `
     SELECT
@@ -402,8 +421,9 @@ export async function fetchWholesaleCustomers(
     FROM customer c
     WHERE c.isperson = 'F'
     AND c.id NOT IN (493, 2501)
+    ${cursorFilter}
     ORDER BY c.id
-    OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+    FETCH FIRST ${limit} ROWS ONLY
   `;
 
   return executeSuiteQL<NSCustomer>(query);

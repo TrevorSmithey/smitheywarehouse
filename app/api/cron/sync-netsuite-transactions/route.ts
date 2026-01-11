@@ -2,6 +2,7 @@
  * NetSuite Transactions Sync (Part 2 of 3)
  *
  * Syncs wholesale transactions from NetSuite.
+ * Uses cursor-based pagination (WHERE id > lastId) since SuiteQL ignores OFFSET.
  * Uses incremental sync - only fetches last 7 days by default.
  * Pass ?full=true for full historical sync.
  */
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
 
-    console.log(`[NETSUITE] Starting transactions sync (${isFullSync ? 'FULL' : `last ${DEFAULT_SYNC_DAYS} days`})...`);
+    console.log(`[NETSUITE] Starting transactions sync (${isFullSync ? 'FULL' : `last ${DEFAULT_SYNC_DAYS} days`}, cursor-based pagination)...`);
 
     // Pre-fetch all valid customer IDs from our DB
     // This prevents FK violations - transactions can only reference existing customers
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
     console.log(`[NETSUITE] Loaded ${validCustomerIds.size} valid customer IDs`);
 
     const limit = 200;
-    let offset = 0;
+    let lastTransactionId = 0; // Start from the beginning (id > 0)
     let totalFetched = 0;
     let totalFiltered = 0; // Records skipped due to missing customer
     let totalUpserted = 0;
@@ -94,11 +95,14 @@ export async function GET(request: Request) {
       }
 
       batchCount++;
-      console.log(`[NETSUITE] Transactions batch ${batchCount}: offset ${offset}`);
+      console.log(`[NETSUITE] Transactions batch ${batchCount}: id > ${lastTransactionId}`);
 
-      const transactions = await fetchWholesaleTransactions(offset, limit, syncDays);
+      const transactions = await fetchWholesaleTransactions(lastTransactionId, limit, syncDays);
       if (transactions.length === 0) break;
       totalFetched += transactions.length;
+
+      // Find max transaction ID for cursor pagination
+      const maxTxnId = Math.max(...transactions.map(t => Number(t.transaction_id)));
 
       // CRITICAL: NetSuite returns numbers as strings in JSON - must convert!
       // Also filter out transactions for customers that don't exist in our DB (FK constraint)
@@ -127,30 +131,27 @@ export async function GET(request: Request) {
 
       totalFiltered += beforeFilterCount - records.length;
 
-      if (records.length === 0) {
-        if (transactions.length < limit) break;
-        offset += limit;
-        continue;
-      }
+      if (records.length > 0) {
+        for (let i = 0; i < records.length; i += BATCH_SIZES.DEFAULT) {
+          const batch = records.slice(i, i + BATCH_SIZES.DEFAULT);
+          const { error } = await supabase
+            .from("ns_wholesale_transactions")
+            .upsert(batch, { onConflict: "ns_transaction_id" });
 
-      for (let i = 0; i < records.length; i += BATCH_SIZES.DEFAULT) {
-        const batch = records.slice(i, i + BATCH_SIZES.DEFAULT);
-        const { error } = await supabase
-          .from("ns_wholesale_transactions")
-          .upsert(batch, { onConflict: "ns_transaction_id" });
-
-        if (error) {
-          console.error("[NETSUITE] Transaction upsert error:", error);
-        } else {
-          totalUpserted += batch.length;
+          if (error) {
+            console.error("[NETSUITE] Transaction upsert error:", error);
+          } else {
+            totalUpserted += batch.length;
+          }
         }
       }
 
       hasMore = transactions.length === limit;
-      console.log(`[NETSUITE] Transactions batch ${batchCount} done: ${transactions.length} fetched, ${records.length} upserted, ${beforeFilterCount - records.length} filtered`);
+      lastTransactionId = maxTxnId; // Update cursor for next batch
+
+      console.log(`[NETSUITE] Transactions batch ${batchCount} done: ${transactions.length} fetched, ${records.length} upserted, ${beforeFilterCount - records.length} filtered, next cursor: id > ${lastTransactionId}`);
 
       if (hasMore) {
-        offset += limit;
         // Small delay between batches to avoid overwhelming APIs
         await new Promise((r) => setTimeout(r, 100));
       }
@@ -205,7 +206,7 @@ export async function GET(request: Request) {
       details: stoppedEarly ? {
         stopped_early: true,
         reason: "time_budget_exceeded",
-        last_offset: offset,
+        last_cursor: lastTransactionId,
       } : null,
     });
 
@@ -222,8 +223,9 @@ export async function GET(request: Request) {
       validCustomers: validCustomerIds.size,
       elapsed: `${(elapsed/1000).toFixed(1)}s`,
       stoppedEarly,
+      lastCursor: lastTransactionId,
       ...(computeError && { metricsError: computeError.message }),
-      ...(stoppedEarly && { message: `Partial sync: ${totalUpserted} transactions saved. Run again to continue.` }),
+      ...(stoppedEarly && { message: `Partial sync: ${totalUpserted} transactions saved. Run again to continue from id > ${lastTransactionId}.` }),
       ...(totalFiltered > 0 && !stoppedEarly && { note: `${totalFiltered} transactions skipped (customers not in DB)` }),
     });
   } catch (error) {

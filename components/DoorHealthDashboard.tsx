@@ -10,7 +10,9 @@ import {
   YAxis,
   Tooltip,
   Cell,
-  LabelList,
+  ComposedChart,
+  Line,
+  Area,
 } from "recharts";
 import {
   TrendingUp,
@@ -30,9 +32,6 @@ import { formatCurrency } from "@/lib/formatters";
 import type {
   DoorHealthResponse,
   DoorHealthCustomer,
-  ChurnedByYear,
-  ChurnedBySegment,
-  ChurnedByLifespan,
   CustomerSegment,
   LifespanBucket,
 } from "@/lib/types";
@@ -51,6 +50,20 @@ interface DoorHealthDashboardProps {
 type GroupByMode = "year" | "segment" | "lifespan";
 
 // ============================================================================
+// FORGE PALETTE - Industrial heat colors (from AssemblyDashboard)
+// ============================================================================
+
+const FORGE = {
+  molten: "#FCD34D",    // Glowing yellow - peak heat
+  heat: "#F59E0B",      // Amber - hot
+  ember: "#EA580C",     // Orange-red - cooling
+  copper: "#D97706",    // Deep copper
+  iron: "#78716C",      // Cool iron
+  slag: "#44403C",      // Dark residue
+  steel: "#A1A1AA",     // Polished steel
+};
+
+// ============================================================================
 // CONSTANTS
 // ============================================================================
 
@@ -63,7 +76,6 @@ const SEGMENT_LABELS: Record<CustomerSegment, string> = {
   minimal: "Minimal",
 };
 
-// Using design system colors: accent-blue, accent-cyan, and text hierarchy
 const SEGMENT_COLORS: Record<CustomerSegment, string> = {
   major: "text-accent-blue",
   large: "text-accent-cyan",
@@ -81,42 +93,36 @@ const LIFESPAN_LABELS: Record<LifespanBucket, string> = {
 };
 
 // ============================================================================
-// TOOLTIP COMPONENT
+// HELPERS
 // ============================================================================
 
-function InfoTooltip({
-  children,
-  content,
-  position = "bottom",
-}: {
-  children: React.ReactNode;
-  content: string;
-  position?: "top" | "bottom";
-}) {
-  const isTop = position === "top";
+const fmt = {
+  num: (n: number) => n.toLocaleString(),
+  delta: (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`,
+  compact: (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n),
+};
 
+function getLifespanBucket(months: number | null): LifespanBucket {
+  if (months === null || months < 12) return "<1yr";
+  if (months < 24) return "1-2yr";
+  if (months < 36) return "2-3yr";
+  return "3+yr";
+}
+
+// ============================================================================
+// TREND INDICATOR
+// ============================================================================
+
+function Trend({ value, inverted = false, size = "sm" }: { value: number; inverted?: boolean; size?: "sm" | "lg" }) {
+  // For churn metrics, higher is bad (inverted)
+  const isPositive = inverted ? value < 0 : value >= 0;
+  const Icon = value >= 0 ? TrendingUp : TrendingDown;
+  const sizeClasses = size === "lg" ? "text-base" : "text-xs";
   return (
-    <div className="relative group/tooltip inline-flex justify-center">
-      {children}
-      <div
-        className={`
-          absolute z-[100] pointer-events-none
-          opacity-0 group-hover/tooltip:opacity-100
-          transition-all duration-150 ease-out delay-75
-          scale-95 group-hover/tooltip:scale-100
-          left-1/2 -translate-x-1/2
-          ${isTop ? "bottom-full mb-2" : "top-full mt-2"}
-        `}
-      >
-        <div className="relative">
-          <div className="px-3.5 py-1.5 rounded-full bg-bg-tertiary border border-border/10 shadow-xl">
-            <span className="text-[11px] font-medium text-text-primary whitespace-nowrap">
-              {content}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <span className={`inline-flex items-center gap-1 tabular-nums ${sizeClasses} ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
+      <Icon className={size === "lg" ? "w-4 h-4" : "w-3 h-3"} />
+      {Math.abs(value).toFixed(1)}
+    </span>
   );
 }
 
@@ -125,83 +131,129 @@ function InfoTooltip({
 // ============================================================================
 
 function SegmentBadge({ segment }: { segment: CustomerSegment }) {
-  const colorClass = SEGMENT_COLORS[segment];
   return (
-    <span className={`text-xs font-medium ${colorClass}`}>
+    <span className={`text-xs font-medium ${SEGMENT_COLORS[segment]}`}>
       {SEGMENT_LABELS[segment]}
     </span>
   );
 }
 
 // ============================================================================
-// METRIC CARD
+// CHURN TREND CHART - Compact bar chart matching design system
 // ============================================================================
 
-function MetricCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  trend,
-  trendLabel,
-  tooltip,
+function ChurnTrendChart({
+  data,
+  currentYear,
+  totalCustomers,
 }: {
-  title: string;
-  value: string | number;
-  subtitle?: string;
-  icon: React.ElementType;
-  trend?: number;
-  trendLabel?: string;
-  tooltip?: string;
+  data: DoorHealthResponse["churnedByYear"];
+  currentYear: number;
+  totalCustomers: number;
 }) {
-  const TrendIcon = trend && trend > 0 ? TrendingUp : TrendingDown;
-  const trendColor = trend
-    ? trend > 0
-      ? "text-status-bad" // Higher churn = bad
-      : "text-status-good" // Lower churn = good
-    : "";
+  const chartData = useMemo(() => {
+    return [...data]
+      .sort((a, b) => a.year - b.year)
+      .map((row) => ({
+        year: String(row.year),
+        count: row.count,
+        rate: totalCustomers > 0 ? (row.count / totalCustomers) * 100 : 0,
+        revenue: row.revenue,
+        isCurrentYear: row.year === currentYear,
+      }));
+  }, [data, currentYear, totalCustomers]);
+
+  if (chartData.length === 0) return null;
+
+  const maxRate = Math.max(...chartData.map(d => d.rate), 1);
+  const yAxisMax = Math.ceil(maxRate / 5) * 5; // Round up to nearest 5%
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-text-muted" />
-          {tooltip ? (
-            <InfoTooltip content={tooltip}>
-              <span className="text-xs uppercase tracking-wider text-text-muted cursor-help">
-                {title}
-              </span>
-            </InfoTooltip>
-          ) : (
-            <span className="text-xs uppercase tracking-wider text-text-muted">
-              {title}
-            </span>
-          )}
+    <div className="rounded-xl border border-border bg-bg-secondary p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+          Churn Rate by Year
+        </h3>
+        <div className="flex items-center gap-4 text-[10px] text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'linear-gradient(180deg, #EF4444, #B91C1C)' }} />
+            Historical
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'linear-gradient(180deg, #FBBF24, #D97706)' }} />
+            YTD
+          </span>
         </div>
-        {trend !== undefined && (
-          <div className={`flex items-center gap-1 ${trendColor}`}>
-            <TrendIcon className="w-3 h-3" />
-            <span className="text-xs font-medium">
-              {Math.abs(trend).toFixed(1)}pp
-            </span>
-          </div>
-        )}
       </div>
-      <div className="text-metric font-bold text-text-primary tabular-nums">
-        {value}
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="churnHistorical" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#EF4444" stopOpacity={0.9} />
+                <stop offset="100%" stopColor="#B91C1C" stopOpacity={0.7} />
+              </linearGradient>
+              <linearGradient id="churnYtd" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={FORGE.molten} stopOpacity={0.9} />
+                <stop offset="100%" stopColor={FORGE.copper} stopOpacity={0.8} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="year"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              width={40}
+              domain={[0, yAxisMax]}
+              tickFormatter={(value) => `${value}%`}
+            />
+            <Tooltip
+              cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+              contentStyle={{
+                backgroundColor: '#12151F',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '6px',
+                fontSize: '11px',
+              }}
+              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
+              formatter={(value: number, _name: string, props: { payload?: { count?: number; revenue?: number; isCurrentYear?: boolean } }) => {
+                const count = props.payload?.count || 0;
+                const revenue = props.payload?.revenue || 0;
+                const isYtd = props.payload?.isCurrentYear;
+                return [
+                  <span key="val" className="text-text-primary">
+                    {value.toFixed(1)}% churn rate{isYtd ? " (YTD)" : ""}
+                    <br />
+                    <span style={{ color: '#94A3B8' }}>{count} customers</span>
+                    <br />
+                    <span style={{ color: '#EF4444' }}>{formatCurrency(revenue)} lost</span>
+                  </span>,
+                  "",
+                ];
+              }}
+            />
+            <Bar dataKey="rate" radius={[3, 3, 0, 0]} maxBarSize={45}>
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.isCurrentYear ? "url(#churnYtd)" : "url(#churnHistorical)"}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
-      {subtitle && (
-        <div className="text-xs text-text-muted mt-1">{subtitle}</div>
-      )}
-      {trendLabel && (
-        <div className="text-xs text-text-tertiary mt-1">{trendLabel}</div>
-      )}
     </div>
   );
 }
 
 // ============================================================================
-// FUNNEL VISUALIZATION
+// RETENTION FUNNEL - Horizontal bar visualization
 // ============================================================================
 
 function RetentionFunnel({
@@ -211,20 +263,18 @@ function RetentionFunnel({
   funnel: DoorHealthResponse["funnel"];
   total: number;
 }) {
-  // Funnel uses a visual progression from healthy (green) to churned (red)
-  // status-warning is #F59E0B (same as amber-500), orange-500 is intermediate
   const stages = [
-    { key: "active", label: "Active", count: funnel.active, color: "bg-status-good" },
-    { key: "atRisk", label: "At Risk", count: funnel.atRisk, color: "bg-status-warning" },
-    { key: "churning", label: "Churning", count: funnel.churning, color: "bg-status-warning/70" },
-    { key: "churned", label: "Churned", count: funnel.churned, color: "bg-status-bad" },
+    { key: "active", label: "Healthy", count: funnel.active, gradient: "from-emerald-500 to-emerald-600", description: "< 180 days" },
+    { key: "atRisk", label: "At Risk", count: funnel.atRisk, gradient: "from-amber-400 to-amber-500", description: "180-269 days" },
+    { key: "churning", label: "Churning", count: funnel.churning, gradient: "from-orange-400 to-orange-500", description: "270-364 days" },
+    { key: "churned", label: "Churned", count: funnel.churned, gradient: "from-red-500 to-red-600", description: ">= 365 days" },
   ];
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+    <div className="rounded-xl border border-border bg-bg-secondary p-5">
       <div className="flex items-center gap-2 mb-4">
         <Activity className="w-4 h-4 text-text-muted" />
-        <span className="text-xs uppercase tracking-wider text-text-muted">
+        <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
           Retention Funnel
         </span>
       </div>
@@ -235,9 +285,12 @@ function RetentionFunnel({
           return (
             <div key={stage.key}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-text-secondary">{stage.label}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-text-primary tabular-nums">
+                  <span className="text-sm text-text-secondary">{stage.label}</span>
+                  <span className="text-[10px] text-text-muted">{stage.description}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-text-primary tabular-nums">
                     {stage.count}
                   </span>
                   <span className="text-xs text-text-muted tabular-nums w-12 text-right">
@@ -247,7 +300,7 @@ function RetentionFunnel({
               </div>
               <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${stage.color} rounded-full transition-all duration-500`}
+                  className={`h-full bg-gradient-to-r ${stage.gradient} rounded-full transition-all duration-500`}
                   style={{ width: `${Math.max(pct, 1)}%` }}
                 />
               </div>
@@ -255,120 +308,144 @@ function RetentionFunnel({
           );
         })}
       </div>
-
-      <div className="mt-4 pt-4 border-t border-border/20">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-text-muted">Thresholds</span>
-          <div className="flex gap-3">
-            <span className="text-text-tertiary">At Risk: 180d</span>
-            <span className="text-text-tertiary">Churning: 270d</span>
-            <span className="text-text-tertiary">Churned: 365d</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
 
 // ============================================================================
-// CHURN TREND CHART
+// CUSTOMER GROWTH CHART - Cumulative customers & revenue over time
 // ============================================================================
 
-function ChurnTrendChart({
-  data,
-  currentYear,
+function CustomerGrowthChart({
+  customers,
 }: {
-  data: DoorHealthResponse["churnedByYear"];
-  currentYear: number;
+  customers: DoorHealthCustomer[];
 }) {
-  // Sort by year ascending for the chart
-  const chartData = useMemo(() => {
-    return [...data]
-      .sort((a, b) => a.year - b.year)
-      .map((row) => ({
-        year: row.year,
-        count: row.count,
-        revenue: row.revenue,
-        isCurrentYear: row.year === currentYear,
-        label: row.year === currentYear ? `${row.count} YTD` : String(row.count),
-      }));
-  }, [data, currentYear]);
+  // Build monthly cohort data from customer first_sale_date
+  const monthlyData = useMemo(() => {
+    const byMonth = new Map<string, { newCustomers: number; revenue: number }>();
 
-  if (chartData.length === 0) {
-    return null;
-  }
+    // Sort customers by first sale date
+    const sorted = [...customers]
+      .filter(c => c.first_sale_date)
+      .sort((a, b) => (a.first_sale_date || "").localeCompare(b.first_sale_date || ""));
+
+    for (const c of sorted) {
+      if (!c.first_sale_date) continue;
+      const date = new Date(c.first_sale_date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const existing = byMonth.get(key) || { newCustomers: 0, revenue: 0 };
+      existing.newCustomers++;
+      existing.revenue += c.total_revenue;
+      byMonth.set(key, existing);
+    }
+
+    // Convert to array and compute cumulative
+    const entries = Array.from(byMonth.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-24); // Last 24 months
+
+    let cumulativeCustomers = 0;
+    let cumulativeRevenue = 0;
+
+    return entries.map(([key, val]) => {
+      cumulativeCustomers += val.newCustomers;
+      cumulativeRevenue += val.revenue;
+      const [year, month] = key.split('-');
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return {
+        month: `${monthNames[parseInt(month) - 1]} '${year.slice(2)}`,
+        newCustomers: val.newCustomers,
+        cumulativeCustomers,
+        revenue: val.revenue,
+        cumulativeRevenue,
+      };
+    });
+  }, [customers]);
+
+  if (monthlyData.length < 3) return null;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+    <div className="rounded-xl border border-border bg-bg-secondary p-5">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-text-muted" />
-          <span className="text-xs uppercase tracking-wider text-text-muted">
-            Churn Trend by Year
+        <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+          B2B Customer Growth · Last 24 Months
+        </h3>
+        <div className="flex items-center gap-4 text-[10px] text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#0EA5E9' }} />
+            Customers
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#10B981' }} />
+            Revenue
           </span>
         </div>
-        <span className="text-xs text-text-tertiary">
-          Customers crossing 365-day threshold
-        </span>
       </div>
-
-      <div className="h-52">
+      <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 25, right: 10, left: -15, bottom: 5 }}>
+          <ComposedChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="customerArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <XAxis
-              dataKey="year"
+              dataKey="month"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: "#64748B", fontSize: 11 }}
+              tick={{ fill: '#64748B', fontSize: 9 }}
+              interval={2}
             />
             <YAxis
+              yAxisId="left"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: "#64748B", fontSize: 10 }}
-              width={40}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              width={35}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              width={45}
+              tickFormatter={(v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
             />
             <Tooltip
-              cursor={{ fill: "rgba(255,255,255,0.02)" }}
+              cursor={{ fill: 'rgba(255,255,255,0.02)' }}
               contentStyle={{
-                backgroundColor: "#12151F",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "8px",
-                fontSize: "12px",
+                backgroundColor: '#12151F',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '6px',
+                fontSize: '11px',
               }}
-              labelStyle={{ color: "#94A3B8", marginBottom: "4px" }}
-              itemStyle={{ color: "#FFFFFF" }}
-              formatter={(value, _name, props) => {
-                const revenue = (props.payload as { revenue: number })?.revenue || 0;
-                return [
-                  <span key="value">
-                    {value} customers
-                    <br />
-                    <span style={{ color: "#DC2626", fontSize: "11px" }}>
-                      {formatCurrency(revenue)} lost
-                    </span>
-                  </span>,
-                  "",
-                ];
+              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
+              formatter={(value: number, name: string) => {
+                if (name === 'cumulativeCustomers') return [fmt.num(value), 'Total Customers'];
+                if (name === 'cumulativeRevenue') return [formatCurrency(value), 'Total Revenue'];
+                return [value, name];
               }}
-              labelFormatter={(year) => `${year}${Number(year) === currentYear ? " (YTD)" : ""}`}
             />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={60}>
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={entry.isCurrentYear ? "#F59E0B" : "#DC2626"}
-                  fillOpacity={entry.isCurrentYear ? 0.8 : 0.9}
-                />
-              ))}
-              <LabelList
-                dataKey="label"
-                position="top"
-                fill="#94A3B8"
-                fontSize={11}
-                fontWeight={500}
-              />
-            </Bar>
-          </BarChart>
+            <Area
+              yAxisId="left"
+              type="monotone"
+              dataKey="cumulativeCustomers"
+              fill="url(#customerArea)"
+              stroke="#0EA5E9"
+              strokeWidth={2}
+            />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="cumulativeRevenue"
+              stroke="#10B981"
+              strokeWidth={2}
+              dot={false}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -392,7 +469,6 @@ function DrillDownTable({
 }) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
-  // Get grouped data based on mode
   const groupedData = useMemo(() => {
     switch (mode) {
       case "year":
@@ -422,7 +498,6 @@ function DrillDownTable({
     }
   }, [data, mode]);
 
-  // Filter customers for expanded group
   const expandedCustomers = useMemo(() => {
     if (!expandedGroup) return [];
     return customers.filter((c) => {
@@ -438,20 +513,12 @@ function DrillDownTable({
     });
   }, [customers, expandedGroup, mode]);
 
-  // Memoize sorted/sliced customers to avoid sorting on every render
   const sortedExpandedCustomers = useMemo(() => {
     if (!expandedCustomers.length) return [];
     return [...expandedCustomers]
       .sort((a, b) => b.total_revenue - a.total_revenue)
       .slice(0, 20);
   }, [expandedCustomers]);
-
-  function getLifespanBucket(months: number | null): LifespanBucket {
-    if (months === null || months < 12) return "<1yr";
-    if (months < 24) return "1-2yr";
-    if (months < 36) return "2-3yr";
-    return "3+yr";
-  }
 
   const modeIcons = {
     year: Calendar,
@@ -460,16 +527,16 @@ function DrillDownTable({
   };
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
+    <div className="rounded-xl border border-border bg-bg-secondary overflow-hidden">
       {/* Header with mode toggle */}
-      <div className="flex items-center justify-between p-4 border-b border-border/20">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-text-muted" />
-          <span className="text-xs uppercase tracking-wider text-text-muted">
+          <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
             Churned Customers
           </span>
-          <span className="text-xs text-text-tertiary">
-            ({data.funnel.churned} total)
+          <span className="text-xs text-text-muted ml-1">
+            ({data.funnel.churned})
           </span>
         </div>
 
@@ -500,30 +567,30 @@ function DrillDownTable({
       </div>
 
       {/* Table */}
-      <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
+      <div className="max-h-[350px] overflow-y-auto scrollbar-thin">
         <table className="w-full">
           <thead className="sticky top-0 bg-bg-tertiary/95 backdrop-blur-sm z-10">
             <tr className="border-b border-border/20">
-              <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted w-8" />
-              <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+              <th className="py-2.5 px-4 text-left text-[9px] font-semibold uppercase tracking-wider text-text-muted w-8" />
+              <th className="py-2.5 px-4 text-left text-[9px] font-semibold uppercase tracking-wider text-text-muted">
                 {mode === "year" ? "Year" : mode === "segment" ? "Segment" : "Lifespan"}
               </th>
-              <th className="py-2 px-4 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+              <th className="py-2.5 px-4 text-right text-[9px] font-semibold uppercase tracking-wider text-text-muted">
                 Count
               </th>
-              <th className="py-2 px-4 text-right text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+              <th className="py-2.5 px-4 text-right text-[9px] font-semibold uppercase tracking-wider text-text-muted">
                 Lost Revenue
               </th>
             </tr>
           </thead>
           <tbody>
-            {groupedData.map((row) => {
+            {groupedData.map((row, idx) => {
               const isExpanded = expandedGroup === row.key;
               return (
                 <Fragment key={row.key}>
                   <tr
                     onClick={() => setExpandedGroup(isExpanded ? null : row.key)}
-                    className="border-b border-border-subtle hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    className={`border-b border-border/30 hover:bg-white/[0.02] transition-colors cursor-pointer ${idx % 2 === 0 ? 'bg-bg-tertiary/20' : ''}`}
                   >
                     <td className="py-2.5 px-4">
                       {isExpanded ? (
@@ -538,17 +605,17 @@ function DrillDownTable({
                           {row.label}
                         </span>
                         {row.sublabel && (
-                          <span className="text-xs text-text-muted">{row.sublabel}</span>
+                          <span className="text-[10px] text-text-muted">{row.sublabel}</span>
                         )}
                       </div>
                     </td>
                     <td className="py-2.5 px-4 text-right">
-                      <span className="text-sm font-medium text-text-primary tabular-nums">
+                      <span className="text-sm font-semibold text-text-primary tabular-nums">
                         {row.count}
                       </span>
                     </td>
                     <td className="py-2.5 px-4 text-right">
-                      <span className="text-sm text-status-bad tabular-nums">
+                      <span className="text-sm text-red-400 tabular-nums font-medium">
                         {formatCurrency(row.revenue)}
                       </span>
                     </td>
@@ -561,62 +628,62 @@ function DrillDownTable({
                         <div className="bg-bg-primary/50 border-y border-border/10">
                           <table className="w-full">
                             <thead>
-                              <tr>
-                                <th className="py-2 px-6 text-left text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                              <tr className="border-b border-border/20">
+                                <th className="py-2 px-6 text-left text-[9px] font-medium uppercase tracking-wider text-text-muted">
                                   Company
                                 </th>
-                                <th className="py-2 px-4 text-left text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                                <th className="py-2 px-4 text-left text-[9px] font-medium uppercase tracking-wider text-text-muted">
                                   Segment
                                 </th>
-                                <th className="py-2 px-4 text-right text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                                <th className="py-2 px-4 text-right text-[9px] font-medium uppercase tracking-wider text-text-muted">
                                   Last Order
                                 </th>
-                                <th className="py-2 px-4 text-right text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                                <th className="py-2 px-4 text-right text-[9px] font-medium uppercase tracking-wider text-text-muted">
                                   Lifespan
                                 </th>
-                                <th className="py-2 px-4 text-right text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                                <th className="py-2 px-4 text-right text-[9px] font-medium uppercase tracking-wider text-text-muted">
                                   Revenue
                                 </th>
                               </tr>
                             </thead>
                             <tbody>
                               {sortedExpandedCustomers.map((customer) => (
-                                  <tr
-                                    key={customer.ns_customer_id}
-                                    className="hover:bg-white/[0.02] transition-colors"
-                                  >
-                                    <td className="py-2 px-6">
-                                      <Link
-                                        href={`/sales/customer/${customer.ns_customer_id}`}
-                                        className="text-sm text-accent-blue hover:underline"
-                                      >
-                                        {customer.company_name}
-                                      </Link>
-                                    </td>
-                                    <td className="py-2 px-4">
-                                      <SegmentBadge segment={customer.segment} />
-                                    </td>
-                                    <td className="py-2 px-4 text-right">
-                                      <span className="text-xs text-text-muted tabular-nums">
-                                        {customer.last_sale_date
-                                          ? new Date(customer.last_sale_date).toLocaleDateString()
-                                          : "—"}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-4 text-right">
-                                      <span className="text-xs text-text-muted tabular-nums">
-                                        {customer.lifespan_months !== null
-                                          ? `${customer.lifespan_months} mo`
-                                          : "—"}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-4 text-right">
-                                      <span className="text-sm text-text-primary tabular-nums">
-                                        {formatCurrency(customer.total_revenue)}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
+                                <tr
+                                  key={customer.ns_customer_id}
+                                  className="hover:bg-white/[0.02] transition-colors border-b border-border/10"
+                                >
+                                  <td className="py-2 px-6">
+                                    <Link
+                                      href={`/sales/customer/${customer.ns_customer_id}`}
+                                      className="text-sm text-accent-blue hover:underline"
+                                    >
+                                      {customer.company_name}
+                                    </Link>
+                                  </td>
+                                  <td className="py-2 px-4">
+                                    <SegmentBadge segment={customer.segment} />
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    <span className="text-xs text-text-muted tabular-nums">
+                                      {customer.last_sale_date
+                                        ? new Date(customer.last_sale_date).toLocaleDateString()
+                                        : "—"}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    <span className="text-xs text-text-muted tabular-nums">
+                                      {customer.lifespan_months !== null
+                                        ? `${customer.lifespan_months} mo`
+                                        : "—"}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    <span className="text-sm text-text-primary tabular-nums">
+                                      {formatCurrency(customer.total_revenue)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
                               {expandedCustomers.length > 20 && (
                                 <tr>
                                   <td
@@ -665,8 +732,20 @@ export function DoorHealthDashboard({
   // Loading state
   if (loading && !data) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <SmitheyPageLoader message="Analyzing door health..." />
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-2 border-border" />
+            <div
+              className="absolute inset-0 w-16 h-16 rounded-full border-2 border-transparent animate-spin"
+              style={{ borderTopColor: '#0EA5E9', animationDuration: '1.2s' }}
+            />
+            <Users className="absolute inset-0 m-auto w-6 h-6 animate-pulse text-text-muted" />
+          </div>
+          <div className="text-xs uppercase tracking-widest text-text-tertiary">
+            Analyzing door health
+          </div>
+        </div>
       </div>
     );
   }
@@ -674,10 +753,10 @@ export function DoorHealthDashboard({
   // Error state
   if (error) {
     return (
-      <div className="bg-bg-secondary rounded-xl border border-status-bad/30 p-8 text-center">
-        <AlertTriangle className="w-8 h-8 text-status-bad mx-auto mb-3" />
+      <div className="bg-bg-secondary rounded-xl border border-red-500/30 p-8 text-center">
+        <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
         <h3 className="text-lg font-semibold text-text-primary mb-2">
-          Failed to load door health data
+          Failed to load data
         </h3>
         <p className="text-sm text-text-muted mb-4">{error}</p>
         <button
@@ -703,43 +782,127 @@ export function DoorHealthDashboard({
   const { metrics, funnel } = data;
   const currentYear = new Date().getFullYear();
 
-  // Calculate YTD churned count from churnedByYear data
+  // YTD stats
   const churnedYtd = data.churnedByYear.find((y) => y.year === currentYear)?.count || 0;
   const churnedPriorYear = data.churnedByYear.find((y) => y.year === currentYear - 1)?.count || 0;
-  const churnedYtdChange = churnedYtd - churnedPriorYear;
+  const churnedYtdDelta = churnedPriorYear > 0 ? ((churnedYtd - churnedPriorYear) / churnedPriorYear) * 100 : 0;
+
+  // Revenue at risk (at_risk + churning customers)
+  const atRiskRevenue = data.customers
+    .filter(c => c.days_since_last_order !== null && c.days_since_last_order >= 180 && c.days_since_last_order < 365)
+    .reduce((sum, c) => sum + c.total_revenue, 0);
+
+  // Gradient based on YTD performance
+  const heroGradient = churnedYtdDelta <= 0
+    ? "from-emerald-950/30 via-bg-secondary to-bg-secondary"
+    : "from-red-950/30 via-bg-secondary to-bg-secondary";
 
   return (
     <div className="space-y-6">
-      {/* 1. TREND CHART - The headline: "Is churn getting better or worse?" */}
-      <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} />
+      {/* === HERO ROW === */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Primary: YTD Churn */}
+        <div className={`relative overflow-hidden rounded-xl border border-border bg-gradient-to-br ${heroGradient} p-5`}>
+          <div className="flex items-center gap-2 mb-3">
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: churnedYtdDelta <= 0 ? '#10B981' : '#EF4444' }}
+            />
+            <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
+              {currentYear} Churn
+            </span>
+          </div>
+          <div className="flex items-baseline gap-3 mb-2">
+            <span className="text-4xl font-semibold tabular-nums text-text-primary">
+              {churnedYtd}
+            </span>
+            <span className="text-sm text-text-tertiary">customers lost</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <Trend value={churnedYtdDelta} inverted size="lg" />
+            <span className="text-text-muted">
+              vs {churnedPriorYear} in {currentYear - 1}
+            </span>
+          </div>
+        </div>
 
-      {/* 2. KEY METRICS - Simplified to 3 actionable cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <MetricCard
-          title="Churned YTD"
-          value={churnedYtd}
-          icon={TrendingDown}
-          trend={churnedYtdChange}
-          trendLabel={`${churnedPriorYear} same time last year`}
-          tooltip="Customers who crossed 365-day threshold this year"
-        />
-        <MetricCard
-          title="At Risk"
-          value={funnel.atRisk + funnel.churning}
-          icon={AlertTriangle}
-          subtitle={`${funnel.atRisk} at risk (180-270d) + ${funnel.churning} churning (270-365d)`}
-          tooltip="Customers you can still save before they churn"
-        />
-        <MetricCard
-          title="Avg Lifespan"
-          value={`${metrics.avgLifespanMonths} mo`}
-          icon={Clock}
-          subtitle={`${metrics.avgLifespanMonthsPriorYear} mo prior year`}
-          tooltip="Average tenure from first to last order"
-        />
+        {/* Secondary: Revenue At Risk */}
+        <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-amber-950/20 via-bg-secondary to-bg-secondary p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
+              Revenue at Risk
+            </span>
+          </div>
+          <div className="flex items-baseline gap-3 mb-2">
+            <span className="text-4xl font-semibold tabular-nums text-amber-400">
+              {formatCurrency(atRiskRevenue)}
+            </span>
+          </div>
+          <div className="text-sm text-text-muted">
+            {funnel.atRisk + funnel.churning} customers between 180-365 days silent
+          </div>
+        </div>
       </div>
 
-      {/* 3. FUNNEL + DRILL-DOWN */}
+      {/* === SECONDARY STATS === */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
+            Healthy Doors
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-semibold tabular-nums text-emerald-400">
+              {fmt.num(funnel.active)}
+            </span>
+            <span className="text-xs text-text-muted">&lt; 180d</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
+            At Risk
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-semibold tabular-nums text-amber-400">
+              {funnel.atRisk}
+            </span>
+            <span className="text-xs text-text-muted">180-270d</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
+            Churning
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-semibold tabular-nums text-orange-400">
+              {funnel.churning}
+            </span>
+            <span className="text-xs text-text-muted">270-365d</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
+            Avg Lifespan
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-semibold tabular-nums text-text-primary">
+              {metrics.avgLifespanMonths}
+            </span>
+            <span className="text-xs text-text-muted">months</span>
+          </div>
+        </div>
+      </div>
+
+      {/* === CHARTS ROW === */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} totalCustomers={metrics.totalB2BCustomers} />
+        <CustomerGrowthChart customers={data.customers} />
+      </div>
+
+      {/* === FUNNEL + DRILL-DOWN === */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <RetentionFunnel funnel={funnel} total={metrics.totalB2BCustomers} />
@@ -754,9 +917,11 @@ export function DoorHealthDashboard({
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="text-xs text-text-muted text-center pt-4">
-        Excludes corporate/gifting customers • Thresholds: At Risk 180d, Churning 270d, Churned 365d
+      {/* === FOOTER === */}
+      <div className="flex items-center justify-center text-[10px] text-text-muted pt-2">
+        <span>
+          Excludes corporate customers • Thresholds: At Risk 180d, Churning 270d, Churned 365d
+        </span>
       </div>
     </div>
   );
