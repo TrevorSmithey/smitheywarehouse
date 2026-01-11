@@ -165,9 +165,13 @@ export async function GET(request: NextRequest) {
       // Monthly aggregated stats (last 24 months for YoY)
       supabase.rpc("get_wholesale_monthly_stats"),
       // All customers with their transaction stats (excluding D2C aggregates)
+      // CRITICAL: Must match door-health API filters for consistent customer counts
+      // - is_inactive: excludes deactivated accounts
+      // - EXCLUDED_CUSTOMER_IDS: hardcoded IDs + is_excluded=true from DB
       supabase
         .from("ns_wholesale_customers")
         .select("*")
+        .neq("is_inactive", true)
         .not("ns_customer_id", "in", `(${EXCLUDED_CUSTOMER_IDS.join(",")})`)
         .order("lifetime_revenue", { ascending: false })
         .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS),

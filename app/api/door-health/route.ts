@@ -177,9 +177,11 @@ export async function GET(request: NextRequest) {
 
     // Filter out corporate customers AND excluded IDs - matches wholesale API exactly
     // Uses is_corporate (computed from category='Corporate' OR category='4')
+    // CRITICAL: Also filter out customers with no actual orders (lifetime_orders = 0)
+    // These may have last_sale_date set from stale sync data but no transactions
     const excludedIdSet = new Set(excludedIds);
     const b2bCustomers = (rawCustomers || []).filter(
-      (c) => !c.is_corporate && !excludedIdSet.has(c.ns_customer_id)
+      (c) => !c.is_corporate && !excludedIdSet.has(c.ns_customer_id) && (c.lifetime_orders || 0) > 0
     );
 
     // Enrich each customer with computed fields
@@ -239,7 +241,9 @@ export async function GET(request: NextRequest) {
     );
 
     // Total B2B customers with order history (denominator for churn calculations)
-    const totalB2BWithOrders = enrichedCustomers.filter((c) => c.days_since_last_order !== null).length;
+    // Uses order_count > 0 to match wholesale API definition - excludes customers with
+    // stale last_sale_date but no actual transactions
+    const totalB2BWithOrders = enrichedCustomers.filter((c) => c.order_count > 0).length;
 
     // Group churned by year with pool-shrinking methodology
     // Pool shrinks each year as customers churn out
