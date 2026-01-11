@@ -26,9 +26,10 @@ export const maxDuration = 300;
 const MAX_RUNTIME_MS = 280_000;
 
 // Transform raw NetSuite customer to database record
+// CRITICAL: NetSuite returns numbers as strings in JSON - must convert!
 function transformCustomer(c: NSCustomer) {
   return {
-    ns_customer_id: c.id,
+    ns_customer_id: Number(c.id),
     entity_id: c.entityid,
     company_name: c.companyname || "Unknown",
     email: c.email,
@@ -43,7 +44,7 @@ function transformCustomer(c: NSCustomer) {
     date_created: c.datecreated ? new Date(c.datecreated).toISOString().split("T")[0] : null,
     last_modified: c.lastmodifieddate,
     is_inactive: c.isinactive === "T",
-    parent_id: c.parent,
+    parent_id: c.parent ? Number(c.parent) : null,
     terms: c.terms,
     category: c.category,
     entity_status: c.entitystatus,

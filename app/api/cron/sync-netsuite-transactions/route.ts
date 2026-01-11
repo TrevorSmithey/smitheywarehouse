@@ -84,20 +84,22 @@ export async function GET(request: Request) {
       if (transactions.length === 0) break;
       totalFetched += transactions.length;
 
+      // CRITICAL: NetSuite returns numbers as strings in JSON - must convert!
       const records = transactions
         .filter((t: NSTransaction) => {
-          if (seenIds.has(t.transaction_id)) return false;
-          seenIds.add(t.transaction_id);
+          const txnId = Number(t.transaction_id);
+          if (seenIds.has(txnId)) return false;
+          seenIds.add(txnId);
           return true;
         })
         .map((t: NSTransaction) => ({
-          ns_transaction_id: t.transaction_id,
+          ns_transaction_id: Number(t.transaction_id),
           tran_id: t.tranid,
           transaction_type: t.transaction_type,
           tran_date: t.trandate,
           foreign_total: t.transaction_total ? parseFloat(t.transaction_total) : null,
           status: t.status,
-          ns_customer_id: t.customer_id,
+          ns_customer_id: Number(t.customer_id),
           synced_at: new Date().toISOString(),
         }));
 
