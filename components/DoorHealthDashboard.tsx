@@ -208,11 +208,11 @@ function CohortRetentionTable({
                   <span className="text-[9px] text-red-400/60 mr-1">churned</span>
                   {trendingPct > 0 && (
                     <>
-                      <span className="text-[10px] text-text-muted">·</span>
-                      <span className="text-sm font-bold tabular-nums text-amber-400 ml-1">
+                      <span className="text-[10px] text-text-muted ml-1">·</span>
+                      <span className="text-[11px] font-medium tabular-nums text-amber-400/70 ml-1">
                         {trendingPct}%
                       </span>
-                      <span className="text-[9px] text-amber-400/60">at risk</span>
+                      <span className="text-[9px] text-amber-400/50">at risk</span>
                     </>
                   )}
                 </div>
