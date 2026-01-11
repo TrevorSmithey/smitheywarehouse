@@ -3,6 +3,16 @@
 import { useState, useMemo, Fragment } from "react";
 import Link from "next/link";
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Cell,
+  LabelList,
+} from "recharts";
+import {
   TrendingUp,
   TrendingDown,
   ChevronDown,
@@ -11,7 +21,6 @@ import {
   AlertTriangle,
   Activity,
   Clock,
-  DollarSign,
   Calendar,
   Layers,
   BarChart3,
@@ -256,6 +265,111 @@ function RetentionFunnel({
             <span className="text-text-tertiary">Churned: 365d</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CHURN TREND CHART
+// ============================================================================
+
+function ChurnTrendChart({
+  data,
+  currentYear,
+}: {
+  data: DoorHealthResponse["churnedByYear"];
+  currentYear: number;
+}) {
+  // Sort by year ascending for the chart
+  const chartData = useMemo(() => {
+    return [...data]
+      .sort((a, b) => a.year - b.year)
+      .map((row) => ({
+        year: row.year,
+        count: row.count,
+        revenue: row.revenue,
+        isCurrentYear: row.year === currentYear,
+        label: row.year === currentYear ? `${row.count} YTD` : String(row.count),
+      }));
+  }, [data, currentYear]);
+
+  if (chartData.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-text-muted" />
+          <span className="text-xs uppercase tracking-wider text-text-muted">
+            Churn Trend by Year
+          </span>
+        </div>
+        <span className="text-xs text-text-tertiary">
+          Customers crossing 365-day threshold
+        </span>
+      </div>
+
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 25, right: 10, left: -15, bottom: 5 }}>
+            <XAxis
+              dataKey="year"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "#64748B", fontSize: 11 }}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "#64748B", fontSize: 10 }}
+              width={40}
+            />
+            <Tooltip
+              cursor={{ fill: "rgba(255,255,255,0.02)" }}
+              contentStyle={{
+                backgroundColor: "#12151F",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                fontSize: "12px",
+              }}
+              labelStyle={{ color: "#94A3B8", marginBottom: "4px" }}
+              itemStyle={{ color: "#FFFFFF" }}
+              formatter={(value, _name, props) => {
+                const revenue = (props.payload as { revenue: number })?.revenue || 0;
+                return [
+                  <span key="value">
+                    {value} customers
+                    <br />
+                    <span style={{ color: "#DC2626", fontSize: "11px" }}>
+                      {formatCurrency(revenue)} lost
+                    </span>
+                  </span>,
+                  "",
+                ];
+              }}
+              labelFormatter={(year) => `${year}${Number(year) === currentYear ? " (YTD)" : ""}`}
+            />
+            <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={60}>
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.isCurrentYear ? "#F59E0B" : "#DC2626"}
+                  fillOpacity={entry.isCurrentYear ? 0.8 : 0.9}
+                />
+              ))}
+              <LabelList
+                dataKey="label"
+                position="top"
+                fill="#94A3B8"
+                fontSize={11}
+                fontWeight={500}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -587,43 +701,45 @@ export function DoorHealthDashboard({
   }
 
   const { metrics, funnel } = data;
+  const currentYear = new Date().getFullYear();
+
+  // Calculate YTD churned count from churnedByYear data
+  const churnedYtd = data.churnedByYear.find((y) => y.year === currentYear)?.count || 0;
+  const churnedPriorYear = data.churnedByYear.find((y) => y.year === currentYear - 1)?.count || 0;
+  const churnedYtdChange = churnedYtd - churnedPriorYear;
 
   return (
     <div className="space-y-6">
-      {/* Hero Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 1. TREND CHART - The headline: "Is churn getting better or worse?" */}
+      <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} />
+
+      {/* 2. KEY METRICS - Simplified to 3 actionable cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <MetricCard
-          title="Churn Rate YTD"
-          value={`${metrics.churnRateYtd}%`}
+          title="Churned YTD"
+          value={churnedYtd}
           icon={TrendingDown}
-          trend={metrics.churnRateChange}
-          trendLabel={`vs ${metrics.churnRatePriorYear}% prior year`}
-          tooltip="Customers crossing 365d threshold this year"
+          trend={churnedYtdChange}
+          trendLabel={`${churnedPriorYear} same time last year`}
+          tooltip="Customers who crossed 365-day threshold this year"
+        />
+        <MetricCard
+          title="At Risk"
+          value={funnel.atRisk + funnel.churning}
+          icon={AlertTriangle}
+          subtitle={`${funnel.atRisk} at risk (180-270d) + ${funnel.churning} churning (270-365d)`}
+          tooltip="Customers you can still save before they churn"
         />
         <MetricCard
           title="Avg Lifespan"
           value={`${metrics.avgLifespanMonths} mo`}
           icon={Clock}
-          subtitle="First to last order (churned)"
-          tooltip="Average tenure of churned customers"
-        />
-        <MetricCard
-          title="Inactive"
-          value={metrics.inactiveCustomers}
-          icon={AlertTriangle}
-          subtitle={`${funnel.atRisk} at risk + ${funnel.churning} churning + ${funnel.churned} churned`}
-          tooltip="Customers with 180+ days since last order"
-        />
-        <MetricCard
-          title="Lost Revenue"
-          value={formatCurrency(metrics.lostRevenue)}
-          icon={DollarSign}
-          subtitle={`From ${metrics.churnedCustomers} churned customers`}
-          tooltip="Total lifetime revenue of churned customers"
+          subtitle={`${metrics.avgLifespanMonthsPriorYear} mo prior year`}
+          tooltip="Average tenure from first to last order"
         />
       </div>
 
-      {/* Funnel + Drill-down */}
+      {/* 3. FUNNEL + DRILL-DOWN */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <RetentionFunnel funnel={funnel} total={metrics.totalB2BCustomers} />
