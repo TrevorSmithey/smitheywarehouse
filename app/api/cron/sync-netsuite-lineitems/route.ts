@@ -147,14 +147,17 @@ export async function GET(request: Request) {
       totalFetched += lineItems.length;
 
       // Track max transaction ID for logging
+      // Note: NetSuite returns numbers as strings in JSON - must convert!
       for (const li of lineItems) {
-        if (li.transaction_id > maxTransactionId) {
-          maxTransactionId = li.transaction_id;
+        const txnId = Number(li.transaction_id);
+        if (txnId > maxTransactionId) {
+          maxTransactionId = txnId;
         }
       }
 
       // Filter to only include line items for transactions that exist in our DB
-      const validLineItems = lineItems.filter((li: NSLineItem) => validTxnIds.has(li.transaction_id));
+      // CRITICAL: Convert transaction_id to number since NetSuite returns strings
+      const validLineItems = lineItems.filter((li: NSLineItem) => validTxnIds.has(Number(li.transaction_id)));
       totalFiltered += lineItems.length - validLineItems.length;
 
       if (validLineItems.length === 0) {
@@ -167,10 +170,11 @@ export async function GET(request: Request) {
         continue;
       }
 
+      // Convert all numeric fields - NetSuite returns strings in JSON
       const records = validLineItems.map((li: NSLineItem) => ({
-        ns_line_id: li.line_id,
-        ns_transaction_id: li.transaction_id,
-        ns_item_id: li.item_id,
+        ns_line_id: Number(li.line_id),
+        ns_transaction_id: Number(li.transaction_id),
+        ns_item_id: li.item_id ? Number(li.item_id) : null,
         sku: li.sku || "UNKNOWN",
         quantity: li.quantity ? parseInt(li.quantity) : 0,
         rate: li.rate ? parseFloat(li.rate) : null,
