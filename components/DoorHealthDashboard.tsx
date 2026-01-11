@@ -293,54 +293,26 @@ function CustomerHealthBar({
         </span>
       </div>
 
-      {/* Stacked bar with floating labels for narrow segments */}
-      <div className="relative">
-        {/* Floating labels for narrow segments (positioned above bar) */}
-        <div className="h-4 relative mb-1">
-          {(() => {
-            let cumulative = 0;
-            return segmentsWithPct.map((seg) => {
-              const left = cumulative;
-              cumulative += seg.pct;
-              // Only show floating label for narrow segments (< 12%)
-              if (seg.pct === 0 || seg.pct >= 12) return null;
-              return (
-                <span
-                  key={`float-${seg.key}`}
-                  className="absolute text-[10px] font-medium text-text-secondary tabular-nums"
-                  style={{
-                    left: `${left + seg.pct / 2}%`,
-                    transform: 'translateX(-50%)',
-                  }}
-                >
+      {/* Stacked bar */}
+      <div className="h-8 flex rounded-lg overflow-hidden bg-bg-tertiary">
+        {segmentsWithPct.map((seg) => {
+          if (seg.pct === 0) return null;
+          return (
+            <div
+              key={seg.key}
+              className={`${seg.color} relative`}
+              style={{ width: `${seg.pct}%` }}
+              title={`${seg.label}: ${seg.count} (${seg.pct.toFixed(1)}%)`}
+            >
+              {/* Show % inside all segments */}
+              {seg.pct >= 3 && (
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white/90 tabular-nums">
                   {seg.pct.toFixed(0)}%
                 </span>
-              );
-            });
-          })()}
-        </div>
-
-        {/* The bar itself */}
-        <div className="h-8 flex rounded-lg overflow-hidden bg-bg-tertiary">
-          {segmentsWithPct.map((seg) => {
-            if (seg.pct === 0) return null;
-            return (
-              <div
-                key={seg.key}
-                className={`${seg.color} relative`}
-                style={{ width: `${seg.pct}%` }}
-                title={`${seg.label}: ${seg.count} (${seg.pct.toFixed(1)}%)`}
-              >
-                {/* Show % inside for wide segments only */}
-                {seg.pct >= 12 && (
-                  <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-white/90 tabular-nums">
-                    {seg.pct.toFixed(0)}%
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Legend - inline with percentages */}
