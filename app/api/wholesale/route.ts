@@ -412,8 +412,9 @@ export async function GET(request: NextRequest) {
       .slice(0, 25);
 
     // At-risk customers (includes churned - UI can filter them) - B2B ONLY
+    // Also includes is_manually_churned customers regardless of computed health_status
     const atRiskCustomers: WholesaleAtRiskCustomer[] = b2bCustomers
-      .filter((c) => c.health_status === "at_risk" || c.health_status === "churning" || c.health_status === "churned")
+      .filter((c) => c.health_status === "at_risk" || c.health_status === "churning" || c.health_status === "churned" || c.is_manually_churned === true)
       .sort((a, b) => b.total_revenue - a.total_revenue)
       .slice(0, 30)
       .map((c) => ({
@@ -669,27 +670,33 @@ export async function GET(request: NextRequest) {
 
     // Health distribution - B2B ONLY (excludes corporate gifting)
     // Corporate gifting customers inflate "new" and "one_time" categories incorrectly
+    // IMPORTANT: is_manually_churned overrides computed health_status - these customers
+    // should appear in "churned" regardless of their computed status
+    const isEffectivelyChurned = (c: WholesaleCustomer) =>
+      c.health_status === "churned" || c.is_manually_churned === true;
+    const notManuallyChurned = (c: WholesaleCustomer) => c.is_manually_churned !== true;
+
     const healthDistribution = {
-      thriving: b2bCustomers.filter((c) => c.health_status === "thriving").length,
-      stable: b2bCustomers.filter((c) => c.health_status === "stable").length,
-      declining: b2bCustomers.filter((c) => c.health_status === "declining").length,
-      at_risk: b2bCustomers.filter((c) => c.health_status === "at_risk").length,
-      churning: b2bCustomers.filter((c) => c.health_status === "churning").length,
-      churned: b2bCustomers.filter((c) => c.health_status === "churned").length,
-      new: b2bCustomers.filter((c) => c.health_status === "new").length,
-      one_time: b2bCustomers.filter((c) => c.health_status === "one_time").length,
+      thriving: b2bCustomers.filter((c) => c.health_status === "thriving" && notManuallyChurned(c)).length,
+      stable: b2bCustomers.filter((c) => c.health_status === "stable" && notManuallyChurned(c)).length,
+      declining: b2bCustomers.filter((c) => c.health_status === "declining" && notManuallyChurned(c)).length,
+      at_risk: b2bCustomers.filter((c) => c.health_status === "at_risk" && notManuallyChurned(c)).length,
+      churning: b2bCustomers.filter((c) => c.health_status === "churning" && notManuallyChurned(c)).length,
+      churned: b2bCustomers.filter(isEffectivelyChurned).length,
+      new: b2bCustomers.filter((c) => c.health_status === "new" && notManuallyChurned(c)).length,
+      one_time: b2bCustomers.filter((c) => c.health_status === "one_time" && notManuallyChurned(c)).length,
     };
 
     // Customers grouped by health status for drill-down views (sorted by revenue) - B2B ONLY
     const customersByHealth = {
-      thriving: b2bCustomers.filter((c) => c.health_status === "thriving").sort((a, b) => b.total_revenue - a.total_revenue),
-      stable: b2bCustomers.filter((c) => c.health_status === "stable").sort((a, b) => b.total_revenue - a.total_revenue),
-      declining: b2bCustomers.filter((c) => c.health_status === "declining").sort((a, b) => b.total_revenue - a.total_revenue),
-      at_risk: b2bCustomers.filter((c) => c.health_status === "at_risk").sort((a, b) => b.total_revenue - a.total_revenue),
-      churning: b2bCustomers.filter((c) => c.health_status === "churning").sort((a, b) => b.total_revenue - a.total_revenue),
-      churned: b2bCustomers.filter((c) => c.health_status === "churned").sort((a, b) => b.total_revenue - a.total_revenue),
-      new: b2bCustomers.filter((c) => c.health_status === "new").sort((a, b) => b.total_revenue - a.total_revenue),
-      one_time: b2bCustomers.filter((c) => c.health_status === "one_time").sort((a, b) => b.total_revenue - a.total_revenue),
+      thriving: b2bCustomers.filter((c) => c.health_status === "thriving" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
+      stable: b2bCustomers.filter((c) => c.health_status === "stable" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
+      declining: b2bCustomers.filter((c) => c.health_status === "declining" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
+      at_risk: b2bCustomers.filter((c) => c.health_status === "at_risk" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
+      churning: b2bCustomers.filter((c) => c.health_status === "churning" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
+      churned: b2bCustomers.filter(isEffectivelyChurned).sort((a, b) => b.total_revenue - a.total_revenue),
+      new: b2bCustomers.filter((c) => c.health_status === "new" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
+      one_time: b2bCustomers.filter((c) => c.health_status === "one_time" && notManuallyChurned(c)).sort((a, b) => b.total_revenue - a.total_revenue),
     };
 
     // Segment distribution - B2B ONLY
@@ -814,11 +821,11 @@ export async function GET(request: NextRequest) {
       .filter((c) => c.is_corporate_gifting) // Uses DB computed column
       .sort((a, b) => b.ytd_revenue - a.ytd_revenue);
 
-    // Churned customers - 365+ days since last order - B2B ONLY
+    // Churned customers - 365+ days since last order OR manually marked churned - B2B ONLY
     // Returns ALL churned customers (no limit) - UI handles scrolling
     const churnedCustomers: WholesaleCustomer[] = b2bCustomers
       .filter((c) =>
-        c.health_status === "churned" &&
+        (c.health_status === "churned" || c.is_manually_churned === true) &&
         c.segment !== "major" && // Exclude major accounts like Crate & Barrel
         c.order_count > 0 // Must have ordered at some point
       )

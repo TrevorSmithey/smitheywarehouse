@@ -123,7 +123,8 @@ export async function GET(request: NextRequest) {
         last_sale_date,
         lifetime_revenue,
         lifetime_orders,
-        is_corporate
+        is_corporate,
+        is_manually_churned
       `)
       .neq("is_inactive", true)
       .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS);
@@ -261,13 +262,14 @@ export async function GET(request: NextRequest) {
     }));
 
     // Calculate YTD and prior year churn rates
-    // Churn rate = customers who crossed 365-day threshold in that year / total B2B customers at start
+    // Churn rate = customers who crossed 365-day threshold in that year / total B2B customers WITH orders
+    // IMPORTANT: Exclude never-ordered customers from denominator (they can't churn if they never ordered)
     const churnedYtd = churnedCustomers.filter((c) => c.churn_year === currentYear).length;
     const churnedPriorYear = churnedCustomers.filter((c) => c.churn_year === priorYear).length;
-    const totalB2B = enrichedCustomers.length;
+    const totalB2BWithOrders = enrichedCustomers.filter((c) => c.days_since_last_order !== null).length;
 
-    const churnRateYtd = totalB2B > 0 ? (churnedYtd / totalB2B) * 100 : 0;
-    const churnRatePriorYear = totalB2B > 0 ? (churnedPriorYear / totalB2B) * 100 : 0;
+    const churnRateYtd = totalB2BWithOrders > 0 ? (churnedYtd / totalB2BWithOrders) * 100 : 0;
+    const churnRatePriorYear = totalB2BWithOrders > 0 ? (churnedPriorYear / totalB2BWithOrders) * 100 : 0;
     const churnRateChange = churnRateYtd - churnRatePriorYear;
 
     // Calculate average lifespan (churned customers only)
@@ -290,7 +292,7 @@ export async function GET(request: NextRequest) {
 
     // Build metrics summary
     const metrics: DoorHealthMetrics = {
-      totalB2BCustomers: totalB2B,
+      totalB2BCustomers: totalB2BWithOrders,
       activeCustomers: funnel.active,
       inactiveCustomers: funnel.atRisk + funnel.churning + funnel.churned,
       churnedCustomers: funnel.churned,
