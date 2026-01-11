@@ -645,11 +645,23 @@ export async function GET(request: NextRequest) {
       0
     );
 
+    // Active customers = unique customers with transactions in period, EXCLUDING corporate
+    // Must match total_customers which also excludes corporate for consistent "X of Y" display
     const currentPeriodCustomers = new Set(
-      (transactionsResult.data || []).map((t) => t.ns_customer_id)
+      (transactionsResult.data || [])
+        .filter((t) => {
+          const category = customerCategoryMapForMonthly.get(t.ns_customer_id);
+          return category !== "Corporate" && category !== "4";
+        })
+        .map((t) => t.ns_customer_id)
     ).size;
     const prevPeriodCustomers = new Set(
-      (prevTransactionsResult.data || []).map((t) => t.ns_customer_id)
+      (prevTransactionsResult.data || [])
+        .filter((t) => {
+          const category = customerCategoryMapForMonthly.get(t.ns_customer_id);
+          return category !== "Corporate" && category !== "4";
+        })
+        .map((t) => t.ns_customer_id)
     ).size;
 
     const currentPeriodOrders = (transactionsResult.data || []).length;
