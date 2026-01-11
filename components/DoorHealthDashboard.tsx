@@ -4,12 +4,9 @@ import { useState, useMemo, Fragment } from "react";
 import Link from "next/link";
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
-  Cell,
   ComposedChart,
   Line,
   Area,
@@ -28,6 +25,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { SmitheyPageLoader } from "@/components/SmitheyLoader";
+import { MetricLabel } from "@/components/MetricLabel";
 import { formatCurrency } from "@/lib/formatters";
 import type {
   DoorHealthResponse,
@@ -148,9 +146,11 @@ function SegmentBadge({ segment }: { segment: CustomerSegment }) {
 function ChurnDudTrendChart({
   churnData,
   dudData,
+  compact = false,
 }: {
   churnData: DoorHealthResponse["churnedByYear"];
   dudData: DudRateByCohort[];
+  compact?: boolean;
 }) {
   // Merge churn and dud data by year
   const chartData = useMemo(() => {
@@ -213,23 +213,25 @@ function ChurnDudTrendChart({
   const dudAxisMax = Math.ceil(maxDud / 10) * 10;
 
   return (
-    <div className="rounded-xl border border-border bg-bg-secondary p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-          Churn & Dud Rate Trend
-        </h3>
-        <div className="flex items-center gap-4 text-[10px] text-text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#EF4444' }} />
-            Churn Rate
+    <div className={`rounded-xl border border-border bg-bg-secondary ${compact ? 'p-4' : 'p-5'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <MetricLabel
+          label="CHURN & DUD TREND"
+          tooltip="Annual churn rate (red) vs dud rate (amber). Churn = lost customers / pool. Dud = one-time buyers who never reorder."
+          className="text-[10px] uppercase tracking-widest text-text-tertiary"
+        />
+        <div className="flex items-center gap-3 text-[10px] text-text-muted">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-0.5 rounded" style={{ backgroundColor: '#EF4444' }} />
+            Churn
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#F59E0B' }} />
-            Dud Rate
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-0.5 rounded" style={{ backgroundColor: '#F59E0B' }} />
+            Dud
           </span>
         </div>
       </div>
-      <div className="h-52">
+      <div className={compact ? "h-36" : "h-52"}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
             <XAxis
@@ -313,66 +315,89 @@ function ChurnDudTrendChart({
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-3 pt-3 border-t border-border/30 text-[10px] text-text-muted">
-        <span className="text-red-400">Churn</span> = customers lost (365+ days) ÷ pool at year start •
-        <span className="text-amber-400 ml-1">Dud</span> = one-time buyers with 133+ days to reorder
-      </div>
+      {!compact && (
+        <div className="mt-3 pt-3 border-t border-border/30 text-[10px] text-text-muted">
+          <span className="text-red-400">Churn</span> = customers lost (365+ days) ÷ pool at year start •
+          <span className="text-amber-400 ml-1">Dud</span> = one-time buyers with 133+ days to reorder
+        </div>
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// RETENTION FUNNEL - Horizontal bar visualization
+// CUSTOMER HEALTH BAR - Single stacked bar showing health distribution
 // ============================================================================
 
-function RetentionFunnel({
+function CustomerHealthBar({
   funnel,
   total,
 }: {
   funnel: DoorHealthResponse["funnel"];
   total: number;
 }) {
-  const stages = [
-    { key: "active", label: "Healthy", count: funnel.active, gradient: "from-emerald-500 to-emerald-600", description: "< 180 days" },
-    { key: "atRisk", label: "At Risk", count: funnel.atRisk, gradient: "from-amber-400 to-amber-500", description: "180-269 days" },
-    { key: "churning", label: "Churning", count: funnel.churning, gradient: "from-orange-400 to-orange-500", description: "270-364 days" },
-    { key: "churned", label: "Churned", count: funnel.churned, gradient: "from-red-500 to-red-600", description: ">= 365 days" },
+  const segments = [
+    { key: "active", label: "Healthy", count: funnel.active, color: "bg-emerald-500", textColor: "text-emerald-400", tooltip: "Ordered within 180 days. Active, engaged buyers." },
+    { key: "atRisk", label: "At Risk", count: funnel.atRisk, color: "bg-amber-400", textColor: "text-amber-400", tooltip: "180-269 days since last order. Slipping—outreach recommended." },
+    { key: "churning", label: "Churning", count: funnel.churning, color: "bg-orange-500", textColor: "text-orange-400", tooltip: "270-364 days since last order. High churn probability." },
+    { key: "churned", label: "Churned", count: funnel.churned, color: "bg-red-500", textColor: "text-red-400", tooltip: "365+ days since last order. Considered lost." },
   ];
 
   return (
     <div className="rounded-xl border border-border bg-bg-secondary p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <Activity className="w-4 h-4 text-text-muted" />
-        <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
-          Retention Funnel
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-text-muted" />
+          <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
+            CUSTOMER HEALTH
+          </span>
+        </div>
+        <span className="text-sm font-medium text-text-secondary tabular-nums">
+          {total.toLocaleString()} total
         </span>
       </div>
 
-      <div className="space-y-3">
-        {stages.map((stage) => {
-          const pct = total > 0 ? (stage.count / total) * 100 : 0;
+      {/* Single stacked bar */}
+      <div className="h-8 flex rounded-lg overflow-hidden bg-bg-tertiary">
+        {segments.map((seg) => {
+          const pct = total > 0 ? (seg.count / total) * 100 : 0;
+          if (pct === 0) return null;
           return (
-            <div key={stage.key}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-text-secondary">{stage.label}</span>
-                  <span className="text-[10px] text-text-muted">{stage.description}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-text-primary tabular-nums">
-                    {stage.count}
-                  </span>
-                  <span className="text-xs text-text-muted tabular-nums w-12 text-right">
-                    {pct.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-              <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
-                <div
-                  className={`h-full bg-gradient-to-r ${stage.gradient} rounded-full transition-all duration-500`}
-                  style={{ width: `${Math.max(pct, 1)}%` }}
-                />
-              </div>
+            <div
+              key={seg.key}
+              className={`${seg.color} relative group transition-all hover:brightness-110`}
+              style={{ width: `${pct}%` }}
+              title={`${seg.label}: ${seg.count} (${pct.toFixed(1)}%)`}
+            >
+              {/* Show label inside if segment is wide enough */}
+              {pct > 12 && (
+                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-white/90">
+                  {pct.toFixed(0)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend below - each label has its own tooltip */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3">
+        {segments.map((seg) => {
+          const pct = total > 0 ? (seg.count / total) * 100 : 0;
+          return (
+            <div key={seg.key} className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-sm ${seg.color}`} />
+              <MetricLabel
+                label={seg.label}
+                tooltip={seg.tooltip}
+                className="text-xs text-text-secondary"
+              />
+              <span className={`text-xs font-semibold tabular-nums ${seg.textColor}`}>
+                {seg.count}
+              </span>
+              <span className="text-[10px] text-text-muted tabular-nums">
+                ({pct.toFixed(1)}%)
+              </span>
             </div>
           );
         })}
@@ -382,23 +407,18 @@ function RetentionFunnel({
 }
 
 // ============================================================================
-// B2B GROWTH CHART - Cumulative customers & revenue
+// B2B GROWTH - Line chart showing QoQ % growth rate
 // ============================================================================
 
 function B2BGrowthChart({
-  monthly,
   customersByHealth,
+  totalFromDoorHealth,
 }: {
-  monthly: WholesaleResponse["monthly"] | undefined;
   customersByHealth: WholesaleResponse["customersByHealth"] | undefined;
+  totalFromDoorHealth?: number;
 }) {
-  // Build cumulative data:
-  // - Revenue from monthly.regular_revenue (B2B excluding corporate)
-  // - Customers from customersByHealth arrays combined (true acquisition count)
-  const chartData = useMemo(() => {
-    if (!monthly || monthly.length === 0) return [];
-
-    // Combine all customer health segments to get ALL B2B customers
+  const quarterlyData = useMemo(() => {
+    // Combine ALL customer health segments including churned
     const allCustomers = customersByHealth
       ? [
           ...(customersByHealth.thriving || []),
@@ -406,142 +426,163 @@ function B2BGrowthChart({
           ...(customersByHealth.declining || []),
           ...(customersByHealth.at_risk || []),
           ...(customersByHealth.churning || []),
+          ...(customersByHealth.churned || []),
         ]
       : [];
 
-    // Build customer acquisition by month from first_sale_date
-    const customersByMonth = new Map<string, number>();
-    for (const c of allCustomers) {
-      if (!c.first_sale_date || c.is_corporate_gifting) continue;
+    if (allCustomers.length === 0) return [];
+
+    // Filter out corporate, count the rest
+    const b2bCustomers = allCustomers.filter(c => !c.is_corporate_gifting);
+
+    // Group customers by acquisition quarter (starting Q1 2024)
+    const byQuarter = new Map<string, number>();
+    let preHistory = 0; // Customers acquired before Q1 2024 or without dates
+
+    for (const c of b2bCustomers) {
+      if (!c.first_sale_date) {
+        preHistory++;
+        continue;
+      }
       const date = new Date(c.first_sale_date);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      customersByMonth.set(key, (customersByMonth.get(key) || 0) + 1);
+      // Pre-2024 customers go into preHistory
+      if (date < new Date('2024-01-01')) {
+        preHistory++;
+        continue;
+      }
+      const year = date.getFullYear();
+      const quarter = Math.floor(date.getMonth() / 3) + 1;
+      const key = `${year}-Q${quarter}`;
+      byQuarter.set(key, (byQuarter.get(key) || 0) + 1);
     }
 
-    // Sort monthly data and take last 24 months
-    const sorted = [...monthly]
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-24);
+    // The wholesaleData may not include all customers that door-health counts
+    // Adjust preHistory to account for any "missing" customers
+    const computedTotal = preHistory + Array.from(byQuarter.values()).reduce((a, b) => a + b, 0);
+    const actualTotal = totalFromDoorHealth || computedTotal;
+    const missingCustomers = actualTotal - computedTotal;
+    if (missingCustomers > 0) {
+      preHistory += missingCustomers; // These are older customers not in wholesaleData
+    }
 
-    let cumulativeRevenue = 0;
-    let cumulativeCustomers = 0;
+    // Build quarterly data with % change (starting Q1 2024)
+    const quarters: { quarter: string; label: string; newCustomers: number; cumulative: number; growthPct: number }[] = [];
+    let cumulative = preHistory;
+    let prevCumulative = preHistory;
 
-    // Calculate starting cumulative customers (all customers acquired BEFORE our window)
-    if (allCustomers.length > 0 && sorted.length > 0) {
-      const firstMonth = sorted[0].month.slice(0, 7); // YYYY-MM
-      for (const c of allCustomers) {
-        if (!c.first_sale_date || c.is_corporate_gifting) continue;
-        const acqMonth = c.first_sale_date.slice(0, 7);
-        if (acqMonth < firstMonth) {
-          cumulativeCustomers++;
-        }
+    const currentYear = new Date().getFullYear();
+    const currentQuarter = Math.floor(new Date().getMonth() / 3) + 1;
+
+    for (let year = 2024; year <= currentYear; year++) {
+      const maxQ = year === currentYear ? currentQuarter : 4;
+      for (let q = 1; q <= maxQ; q++) {
+        const key = `${year}-Q${q}`;
+        const newCustomers = byQuarter.get(key) || 0;
+        prevCumulative = cumulative;
+        cumulative += newCustomers;
+        const growthPct = prevCumulative > 0 ? ((cumulative - prevCumulative) / prevCumulative) * 100 : 0;
+        quarters.push({
+          quarter: key,
+          label: `Q${q} '${String(year).slice(-2)}`,
+          newCustomers,
+          cumulative,
+          growthPct: Math.round(growthPct * 10) / 10,
+        });
       }
     }
 
-    return sorted.map((row) => {
-      const monthKey = row.month.slice(0, 7); // YYYY-MM
-      const newCustomers = customersByMonth.get(monthKey) || 0;
-      cumulativeRevenue += row.regular_revenue || 0;
-      cumulativeCustomers += newCustomers;
-      const date = new Date(row.month);
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return {
-        month: `${monthNames[date.getMonth()]} '${String(date.getFullYear()).slice(2)}`,
-        newCustomers,
-        cumulativeCustomers,
-        revenue: row.regular_revenue || 0,
-        cumulativeRevenue,
-      };
-    });
-  }, [monthly, customersByHealth]);
+    return quarters;
+  }, [customersByHealth, totalFromDoorHealth]);
 
-  if (chartData.length < 3) {
+  if (quarterlyData.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-bg-secondary p-5 flex items-center justify-center h-[232px]">
-        <span className="text-sm text-text-muted">Loading wholesale data...</span>
+      <div className="rounded-xl border border-border bg-bg-secondary p-4 flex items-center justify-center h-[180px]">
+        <span className="text-sm text-text-muted">Loading customer data...</span>
       </div>
     );
   }
 
+  // Get final cumulative from the chart data (now properly adjusted)
+  const latestCount = quarterlyData[quarterlyData.length - 1]?.cumulative || 0;
+  const startCount = quarterlyData[0]?.cumulative || 0;
+  const totalGrowth = startCount > 0 ? ((latestCount - startCount) / startCount * 100).toFixed(0) : '—';
+
   return (
-    <div className="rounded-xl border border-border bg-bg-secondary p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-          B2B Growth · Last 24 Months
-        </h3>
-        <div className="flex items-center gap-4 text-[10px] text-text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#0EA5E9' }} />
-            Customers
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#10B981' }} />
-            Revenue
-          </span>
-        </div>
+    <div className="rounded-xl border border-border bg-bg-secondary p-4">
+      <div className="flex items-center justify-between mb-3">
+        <MetricLabel
+          label="B2B GROWTH RATE"
+          tooltip="Quarter-over-quarter growth in total B2B customers. Shows new customer acquisition momentum."
+          className="text-[10px] uppercase tracking-widest text-text-tertiary"
+        />
+        <span className="text-xs text-text-muted">
+          {latestCount} total · <span className="text-emerald-400">+{totalGrowth}%</span> since Q1 '24
+        </span>
       </div>
-      <div className="h-48">
+      <div className="h-36">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+          <ComposedChart data={quarterlyData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
             <defs>
-              <linearGradient id="customerAreaGrowth" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.15} />
-                <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} />
+              <linearGradient id="growthGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="#10B981" stopOpacity={0.02} />
               </linearGradient>
             </defs>
             <XAxis
-              dataKey="month"
+              dataKey="label"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 9 }}
-              interval={2}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              interval={0}
             />
             <YAxis
-              yAxisId="left"
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#64748B', fontSize: 10 }}
               width={35}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 10 }}
-              width={50}
-              tickFormatter={(v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`}
+              tickFormatter={(v) => `${v}%`}
             />
             <Tooltip
-              cursor={{ fill: 'rgba(255,255,255,0.02)' }}
-              contentStyle={{
-                backgroundColor: '#12151F',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px',
-                fontSize: '11px',
-              }}
-              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
-              formatter={(value: number, name: string) => {
-                if (name === 'cumulativeCustomers') return [fmt.num(value), 'Total B2B Customers'];
-                if (name === 'cumulativeRevenue') return [formatCurrency(value), 'Cumulative Revenue'];
-                return [value, name];
+              cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.[0]) return null;
+                const data = payload[0].payload;
+                return (
+                  <div className="bg-[#12151F] border border-white/10 rounded-md p-3 text-[11px]">
+                    <div className="text-text-secondary font-medium mb-2">{label}</div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">Growth</span>
+                        <span className={data.growthPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                          {data.growthPct >= 0 ? '+' : ''}{data.growthPct}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">New customers</span>
+                        <span className="text-text-primary">+{data.newCustomers}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">Total</span>
+                        <span className="text-accent-blue">{data.cumulative}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
               }}
             />
             <Area
-              yAxisId="left"
               type="monotone"
-              dataKey="cumulativeCustomers"
-              fill="url(#customerAreaGrowth)"
-              stroke="#0EA5E9"
-              strokeWidth={2}
+              dataKey="growthPct"
+              fill="url(#growthGradient)"
+              stroke="transparent"
             />
             <Line
-              yAxisId="right"
               type="monotone"
-              dataKey="cumulativeRevenue"
+              dataKey="growthPct"
               stroke="#10B981"
               strokeWidth={2}
-              dot={false}
+              dot={{ fill: '#10B981', strokeWidth: 0, r: 3 }}
+              activeDot={{ r: 5, fill: '#10B981' }}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -550,133 +591,6 @@ function B2BGrowthChart({
   );
 }
 
-// ============================================================================
-// DUD RATE CHART - Leading indicator of customer quality by acquisition cohort
-// ============================================================================
-
-function DudRateChart({
-  data,
-}: {
-  data: DudRateByCohort[];
-}) {
-  const chartData = useMemo(() => {
-    // Filter to cohorts with enough data and sort chronologically
-    return data
-      .filter((row) => row.matureCustomers >= 10) // Need meaningful sample size
-      .map((row) => ({
-        cohort: row.cohort,
-        rate: row.dudRate ?? 0,
-        matureOneTime: row.matureOneTime,
-        matureCustomers: row.matureCustomers,
-        totalAcquired: row.totalAcquired,
-        isMature: row.isMature,
-        isPartial: !row.isMature && row.matureCustomers > 0,
-      }));
-  }, [data]);
-
-  if (chartData.length === 0) {
-    return (
-      <div className="rounded-xl border border-border bg-bg-secondary p-5 flex items-center justify-center h-48">
-        <span className="text-sm text-text-muted">Not enough cohort data yet</span>
-      </div>
-    );
-  }
-
-  const maxRate = Math.max(...chartData.map(d => d.rate), 20);
-  const yAxisMax = Math.ceil(maxRate / 10) * 10; // Round up to nearest 10%
-
-  return (
-    <div className="rounded-xl border border-border bg-bg-secondary p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-            Dud Rate by Cohort
-          </h3>
-          <span
-            className="text-[9px] text-text-muted cursor-help"
-            title="Dud = one-time buyer with ≥133 days to reorder (2× median reorder interval). Leading indicator of customer quality."
-          >
-            (?)
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-[10px] text-text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'linear-gradient(180deg, #F59E0B, #B45309)' }} />
-            Mature
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm opacity-50" style={{ background: 'linear-gradient(180deg, #F59E0B, #B45309)' }} />
-            Partial
-          </span>
-        </div>
-      </div>
-      <div className="h-48">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
-            <defs>
-              <linearGradient id="dudMature" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={FORGE.heat} stopOpacity={0.9} />
-                <stop offset="100%" stopColor="#B45309" stopOpacity={0.7} />
-              </linearGradient>
-              <linearGradient id="dudPartial" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={FORGE.heat} stopOpacity={0.5} />
-                <stop offset="100%" stopColor="#B45309" stopOpacity={0.35} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="cohort"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 10 }}
-            />
-            <YAxis
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 10 }}
-              width={40}
-              domain={[0, yAxisMax]}
-              tickFormatter={(value) => `${value}%`}
-            />
-            <Tooltip
-              cursor={{ fill: 'rgba(255,255,255,0.02)' }}
-              contentStyle={{
-                backgroundColor: '#12151F',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px',
-                fontSize: '11px',
-              }}
-              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
-              formatter={(value: number, _name: string, props: { payload?: { matureOneTime?: number; matureCustomers?: number; totalAcquired?: number; isMature?: boolean; isPartial?: boolean } }) => {
-                const matureOneTime = props.payload?.matureOneTime || 0;
-                const matureCustomers = props.payload?.matureCustomers || 0;
-                const totalAcquired = props.payload?.totalAcquired || 0;
-                const isPartial = props.payload?.isPartial;
-                return [
-                  <span key="val" className="text-text-primary">
-                    {value.toFixed(1)}% dud rate{isPartial ? " (partial)" : ""}
-                    <br />
-                    <span style={{ color: '#94A3B8' }}>{matureOneTime} of {matureCustomers} mature = duds</span>
-                    <br />
-                    <span style={{ color: '#64748B' }}>{totalAcquired} total acquired</span>
-                  </span>,
-                  "",
-                ];
-              }}
-            />
-            <Bar dataKey="rate" radius={[3, 3, 0, 0]} maxBarSize={45}>
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={entry.isMature ? "url(#dudMature)" : "url(#dudPartial)"}
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
 
 // ============================================================================
 // DRILL-DOWN TABLE
@@ -1007,145 +921,154 @@ export function DoorHealthDashboard({
   }
 
   const { metrics, funnel } = data;
-  const currentYear = new Date().getFullYear();
-
-  // YTD stats
-  const churnedYtd = data.churnedByYear.find((y) => y.year === currentYear)?.count || 0;
-  const churnedPriorYear = data.churnedByYear.find((y) => y.year === currentYear - 1)?.count || 0;
-  const churnedYtdDelta = churnedPriorYear > 0 ? ((churnedYtd - churnedPriorYear) / churnedPriorYear) * 100 : 0;
-
-  // Revenue at risk (at_risk + churning customers)
-  const atRiskRevenue = data.customers
-    .filter(c => c.days_since_last_order !== null && c.days_since_last_order >= 180 && c.days_since_last_order < 365)
-    .reduce((sum, c) => sum + c.total_revenue, 0);
-
-  // Gradient based on YTD performance
-  const heroGradient = churnedYtdDelta <= 0
-    ? "from-emerald-950/30 via-bg-secondary to-bg-secondary"
-    : "from-red-950/30 via-bg-secondary to-bg-secondary";
 
   return (
     <div className="space-y-6">
-      {/* === HERO ROW === */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Primary: YTD Churn */}
-        <div className={`relative overflow-hidden rounded-xl border border-border bg-gradient-to-br ${heroGradient} p-5`}>
-          <div className="flex items-center gap-2 mb-3">
-            <div
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: churnedYtdDelta <= 0 ? '#10B981' : '#EF4444' }}
-            />
-            <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
-              {currentYear} Churn
-            </span>
-          </div>
-          <div className="flex items-baseline gap-3 mb-2">
-            <span className="text-4xl font-semibold tabular-nums text-text-primary">
-              {churnedYtd}
-            </span>
-            <span className="text-sm text-text-tertiary">customers lost</span>
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            <Trend value={churnedYtdDelta} inverted size="lg" />
-            <span className="text-text-muted">
-              vs {churnedPriorYear} in {currentYear - 1}
-            </span>
-          </div>
-        </div>
+      {/* === HERO: CUSTOMER HEALTH BAR === */}
+      <CustomerHealthBar funnel={funnel} total={metrics.totalB2BCustomers} />
 
-        {/* Secondary: Revenue At Risk */}
-        <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-amber-950/20 via-bg-secondary to-bg-secondary p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
-              Revenue at Risk
-            </span>
-          </div>
-          <div className="flex items-baseline gap-3 mb-2">
-            <span className="text-4xl font-semibold tabular-nums text-amber-400">
-              {formatCurrency(atRiskRevenue)}
-            </span>
-          </div>
-          <div className="text-sm text-text-muted">
-            {funnel.atRisk + funnel.churning} customers between 180-365 days silent
-          </div>
-        </div>
-      </div>
-
-      {/* === SECONDARY STATS === */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* === STAT CARDS WITH TOOLTIPS === */}
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        {/* Healthy Doors */}
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
-          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
-            Healthy Doors
-          </div>
-          <div className="flex items-baseline gap-2">
+          <MetricLabel
+            label="HEALTHY"
+            tooltip="Customers with an order in the last 180 days. These are active, engaged buyers."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-emerald-400">
               {fmt.num(funnel.active)}
             </span>
-            <span className="text-xs text-text-muted">&lt; 180d</span>
+            <span className="text-[10px] text-text-muted">&lt;180d</span>
           </div>
         </div>
 
+        {/* At Risk */}
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
-          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
-            At Risk
-          </div>
-          <div className="flex items-baseline gap-2">
+          <MetricLabel
+            label="AT RISK"
+            tooltip="180-269 days since last order. Slipping away—outreach recommended."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-amber-400">
               {funnel.atRisk}
             </span>
-            <span className="text-xs text-text-muted">180-270d</span>
+            <span className="text-[10px] text-text-muted">180-269d</span>
           </div>
         </div>
 
+        {/* Churning */}
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
-          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
-            Churning
-          </div>
-          <div className="flex items-baseline gap-2">
+          <MetricLabel
+            label="CHURNING"
+            tooltip="270-364 days since last order. High probability of permanent loss without intervention."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-orange-400">
               {funnel.churning}
             </span>
-            <span className="text-xs text-text-muted">270-365d</span>
+            <span className="text-[10px] text-text-muted">270-364d</span>
           </div>
         </div>
 
+        {/* Churned */}
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
-          <div className="text-[10px] uppercase tracking-widest text-text-tertiary mb-2">
-            Avg Lifespan
+          <MetricLabel
+            label="CHURNED"
+            tooltip="365+ days since last order. Considered lost—requires win-back campaign."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-semibold tabular-nums text-red-400">
+              {funnel.churned}
+            </span>
+            <span className="text-[10px] text-text-muted">365+d</span>
           </div>
-          <div className="flex items-baseline gap-2">
+        </div>
+
+        {/* Revenue at Risk */}
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <MetricLabel
+            label="REV AT RISK"
+            tooltip="Total lifetime revenue from At Risk + Churning customers (180-364 days). This is money that could walk."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-semibold tabular-nums text-amber-400">
+              {formatCurrency(metrics.revenueAtRisk).replace('.00', '')}
+            </span>
+          </div>
+        </div>
+
+        {/* Avg Lifespan */}
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <MetricLabel
+            label="AVG LIFESPAN"
+            tooltip="Average months between a customer's first and last order. Higher is better—indicates stickier relationships."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-text-primary">
               {metrics.avgLifespanMonths}
             </span>
-            <span className="text-xs text-text-muted">months</span>
+            <span className="text-[10px] text-text-muted">mo</span>
           </div>
         </div>
       </div>
 
-      {/* === CHARTS ROW === */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} />
-        <DudRateChart data={data.dudRateByCohort || []} />
-      </div>
-
-      {/* === GROWTH CHART === */}
-      <B2BGrowthChart monthly={wholesaleData?.monthly} customersByHealth={wholesaleData?.customersByHealth} />
-
-      {/* === FUNNEL + DRILL-DOWN === */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
-          <RetentionFunnel funnel={funnel} total={metrics.totalB2BCustomers} />
+      {/* === ANNUAL CHURN + TREND CHART === */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Annual Churn Table - compact */}
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar className="w-3.5 h-3.5 text-text-muted" />
+            <MetricLabel
+              label="ANNUAL CHURN"
+              tooltip="Customers lost per year. Rate = churned ÷ pool at year start (pool shrinks as customers churn)."
+              className="text-[10px] uppercase tracking-widest text-text-tertiary"
+            />
+          </div>
+          <div className="space-y-1.5">
+            {data.churnedByYear
+              .filter(row => row.year > 0)
+              .slice(0, 5)
+              .map((row) => (
+                <div key={row.year} className="flex items-center justify-between py-1 border-b border-border/10 last:border-0">
+                  <span className="text-xs font-medium text-text-secondary tabular-nums">{row.year}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-text-primary tabular-nums">{row.count}</span>
+                    <span className="text-[10px] text-red-400/70 tabular-nums w-12 text-right">{row.churnRate}%</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+          <div className="mt-2 pt-2 border-t border-border/20 text-[10px] text-text-muted">
+            {formatCurrency(metrics.lostRevenue)} lifetime revenue lost
+          </div>
         </div>
+
+        {/* Churn/Dud Trend - takes 2 columns */}
         <div className="lg:col-span-2">
-          <DrillDownTable
-            data={data}
-            customers={data.customers}
-            mode={groupByMode}
-            onModeChange={setGroupByMode}
-          />
+          <ChurnDudTrendChart churnData={data.churnedByYear} dudData={data.dudRateByCohort || []} compact />
         </div>
       </div>
+
+      {/* === B2B GROWTH (Line Chart) === */}
+      <B2BGrowthChart
+        customersByHealth={wholesaleData?.customersByHealth}
+        totalFromDoorHealth={metrics.totalB2BCustomers}
+      />
+
+      {/* === DRILL-DOWN TABLE === */}
+      <DrillDownTable
+        data={data}
+        customers={data.customers}
+        mode={groupByMode}
+        onModeChange={setGroupByMode}
+      />
 
       {/* === DEFINITIONS === */}
       <div className="rounded-xl border border-border bg-bg-secondary p-5">

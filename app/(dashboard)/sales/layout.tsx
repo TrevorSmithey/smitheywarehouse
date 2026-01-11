@@ -173,8 +173,14 @@ export default function SalesLayout({
   useEffect(() => {
     if (isLeads && !leadsData && !leadsLoading) {
       fetchLeads();
-    } else if (isDoorHealth && !doorHealthData && !doorHealthLoading) {
-      fetchDoorHealth();
+    } else if (isDoorHealth) {
+      // Door Health needs its own data AND wholesale data for growth chart
+      if (!doorHealthData && !doorHealthLoading) {
+        fetchDoorHealth();
+      }
+      if (!wholesaleData && !wholesaleLoading) {
+        fetchWholesale();
+      }
     } else if (isWholesale && !wholesaleData && !wholesaleLoading) {
       fetchWholesale();
     }

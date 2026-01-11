@@ -1608,6 +1608,7 @@ export interface DoorHealthMetrics {
   avgLifespanMonths: number;      // Average months from first to last order (churned only)
   avgLifespanMonthsPriorYear: number;
   lostRevenue: number;            // Total lifetime revenue of churned customers
+  revenueAtRisk: number;          // Lifetime revenue of at-risk + churning customers (180-365d)
 }
 
 /**

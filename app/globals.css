@@ -252,7 +252,10 @@ tr.ss-violation:hover {
   color: rgba(255, 255, 255, 0.9);
   font-weight: 400;
   line-height: 1.4;
-  white-space: nowrap;
+  white-space: normal;  /* Allow text wrapping */
+  max-width: 280px;     /* Constrain width */
+  width: max-content;   /* Shrink to fit content up to max-width */
+  text-align: left;
   pointer-events: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -272,13 +275,13 @@ tr.ss-violation:hover {
 /* Position variants */
 .info-tip-top {
   bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%) scale(0.95);
+  left: 0;
+  transform: scale(0.95);
   margin-bottom: 0.5rem;
 }
 
 .info-tip:hover .info-tip-top {
-  transform: translateX(-50%) scale(1);
+  transform: scale(1);
 }
 
 .info-tip-bottom {
@@ -296,8 +299,7 @@ tr.ss-violation:hover {
 /* Arrow for top-positioned tooltip (points down) */
 .info-tip-top .info-tip-arrow {
   top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0.75rem;
   border-top-color: #1a1a1a;
   margin-top: -1px;
 }

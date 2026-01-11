@@ -404,6 +404,14 @@ export async function GET(request: NextRequest) {
     // Total lost revenue (all churned customers)
     const lostRevenue = churnedCustomers.reduce((sum, c) => sum + c.total_revenue, 0);
 
+    // Revenue at risk (at_risk + churning customers, 180-365 days)
+    const atRiskCustomers = enrichedCustomers.filter(
+      (c) => c.days_since_last_order !== null &&
+             c.days_since_last_order >= THRESHOLDS.AT_RISK &&
+             c.days_since_last_order < THRESHOLDS.CHURNED
+    );
+    const revenueAtRisk = atRiskCustomers.reduce((sum, c) => sum + c.total_revenue, 0);
+
     // Build metrics summary
     const metrics: DoorHealthMetrics = {
       totalB2BCustomers: totalB2BWithOrders,
@@ -416,6 +424,7 @@ export async function GET(request: NextRequest) {
       avgLifespanMonths: Math.round(avgLifespanMonths * 10) / 10,
       avgLifespanMonthsPriorYear: Math.round(avgLifespanMonthsPriorYear * 10) / 10,
       lostRevenue,
+      revenueAtRisk,
     };
 
     // Get last sync time
