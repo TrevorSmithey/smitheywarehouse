@@ -789,6 +789,89 @@ git commit -m "WIP: partial door-health column fix"
 
 ---
 
+## Silent Dependency Failures (January 2026)
+
+### What Happened
+The Door Health tab showed 121 churned customers. The Wholesale Dashboard showed 65 churned customers. Same data source, same time period, completely different numbers.
+
+**Root cause**: The `compute_customer_metrics()` function was wrapped in a conditional:
+```typescript
+// In sync-netsuite-transactions/route.ts
+if (!stoppedEarly) {
+  await supabase.rpc("compute_customer_metrics");
+}
+```
+
+The transaction sync has a 280-second time budget. When exceeded, `stoppedEarly = true`. Sync logs showed most runs were `status: "partial"` due to hitting the time budget. This meant `compute_customer_metrics()` **rarely ever ran** - the database `health_status` column was perpetually stale.
+
+### Why This Is Deadly
+- **No errors**: The function simply didn't execute. No logs, no warnings.
+- **No visibility**: You only discover the problem when downstream data looks wrong.
+- **False confidence**: The sync "succeeded" (records were saved), but derived metrics were stale.
+- **Cascading incorrectness**: Multiple dashboard views consumed the stale `health_status` value.
+
+### The Pattern to Hunt
+
+**Conditional execution of critical operations:**
+```typescript
+// DANGEROUS PATTERN - hunt and kill these
+if (someCondition) {
+  await criticalOperation();  // ← What happens when this doesn't run?
+}
+```
+
+**Questions to ask:**
+1. What happens when the condition is false?
+2. How often is the condition false in production?
+3. Will anyone notice if this doesn't run?
+4. Is there any logging when it's skipped?
+
+### The Fix Applied
+
+**Before (silent skip):**
+```typescript
+if (!stoppedEarly) {
+  console.log("[NETSUITE] Computing customer metrics...");
+  const { error } = await supabase.rpc("compute_customer_metrics");
+}
+```
+
+**After (always run, log success/failure):**
+```typescript
+// Always compute metrics - partial sync still has useful transaction data
+console.log("[NETSUITE] Computing customer metrics...");
+const { error: metricsError } = await supabase.rpc("compute_customer_metrics");
+if (metricsError) {
+  console.error("[NETSUITE] Failed to compute metrics:", metricsError.message);
+} else {
+  console.log("[NETSUITE] Metrics computed successfully");
+}
+```
+
+### The Rule
+
+**Critical post-sync operations must ALWAYS run.**
+
+Even if a sync is partial:
+- Transactions were still inserted
+- Customer data was still updated
+- Derived metrics should reflect the new data
+
+The `compute_customer_metrics()` function is idempotent (can run multiple times safely). There's no reason to skip it.
+
+### Audit Checklist for Cron Jobs
+
+For every cron job, verify:
+- [ ] Are there conditional blocks wrapping critical operations?
+- [ ] What happens when each condition is false?
+- [ ] Are skipped operations logged?
+- [ ] Check `sync_logs` - how often is status != "success"?
+- [ ] If partial runs are common, do downstream consumers handle stale data?
+
+**Silent failures are the worst failures. Make them loud or make them impossible.**
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development

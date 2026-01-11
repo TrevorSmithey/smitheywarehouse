@@ -162,27 +162,26 @@ export async function GET(request: Request) {
     // Post-sync: Compute derived customer metrics using SQL
     // This runs AFTER transactions are updated (6:05 AM) to ensure fresh data
     // Previously ran in customer sync (6:00 AM), causing metrics to be 1 day stale
-    // Skip metrics computation if stopped early (incomplete data)
+    //
+    // CRITICAL FIX (2026-01-10): ALWAYS run metrics computation, even on partial sync
+    // The function computes from ALL existing DB data, not just new records
+    // Skipping when partial caused metrics to go stale for days/weeks
+    // See: CLAUDE.md "Silent Dependency Failures"
     let metricsComputed = false;
     let computeError: Error | null = null;
 
-    if (!stoppedEarly) {
-      console.log("[NETSUITE] Computing customer metrics...");
+    console.log("[NETSUITE] Computing customer metrics...");
+    const { error } = await supabase.rpc("compute_customer_metrics");
+    computeError = error;
+    metricsComputed = !computeError;
 
-      const { error } = await supabase.rpc("compute_customer_metrics");
-      computeError = error;
-      metricsComputed = !computeError;
-
-      if (computeError) {
-        // CRITICAL: RPC failure means customer metrics are STALE
-        // Dashboard will show wrong health_status, days_since_last_order, etc.
-        console.error("[NETSUITE] CRITICAL: Failed to compute metrics:", computeError.message);
-        console.error("[NETSUITE] Customer metrics are now STALE - dashboard data may be incorrect");
-      } else {
-        console.log("[NETSUITE] Customer metrics computed successfully");
-      }
+    if (computeError) {
+      // CRITICAL: RPC failure means customer metrics are STALE
+      // Dashboard will show wrong health_status, days_since_last_order, etc.
+      console.error("[NETSUITE] CRITICAL: Failed to compute metrics:", computeError.message);
+      console.error("[NETSUITE] Customer metrics are now STALE - dashboard data may be incorrect");
     } else {
-      console.log("[NETSUITE] Skipping metrics computation (stopped early, incomplete data)");
+      console.log("[NETSUITE] Customer metrics computed successfully");
     }
 
     // Sync status reflects whether ALL operations succeeded
