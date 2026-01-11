@@ -1,11 +1,11 @@
 "use client";
 
-import { ReactNode, createContext, useContext, useState, useCallback, useEffect } from "react";
+import { ReactNode, createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDashboard } from "../layout";
 import { getAuthHeaders } from "@/lib/auth";
-import type { WholesaleResponse, WholesalePeriod, LeadsResponse } from "@/lib/types";
+import type { WholesaleResponse, WholesalePeriod, LeadsResponse, DoorHealthResponse } from "@/lib/types";
 
 // ============================================================================
 // CONTEXT FOR SHARED STATE
@@ -20,12 +20,17 @@ interface SalesContextType {
   leadsData: LeadsResponse | null;
   leadsLoading: boolean;
   leadsError: string | null;
+  // Door Health data
+  doorHealthData: DoorHealthResponse | null;
+  doorHealthLoading: boolean;
+  doorHealthError: string | null;
   // Period selector (shared for wholesale)
   period: WholesalePeriod;
   setPeriod: (period: WholesalePeriod) => void;
   // Actions
   refreshWholesale: () => void;
   refreshLeads: () => void;
+  refreshDoorHealth: () => void;
 }
 
 const SalesContext = createContext<SalesContextType | null>(null);
@@ -49,6 +54,8 @@ export default function SalesLayout({
 }) {
   const pathname = usePathname();
   const isLeads = pathname === "/sales/leads";
+  const isDoorHealth = pathname === "/sales/door-health";
+  const isWholesale = !isLeads && !isDoorHealth;
   const { setLastRefresh, setIsRefreshing, setTriggerRefresh } = useDashboard();
 
   // Wholesale state
@@ -61,6 +68,11 @@ export default function SalesLayout({
   const [leadsData, setLeadsData] = useState<LeadsResponse | null>(null);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [leadsError, setLeadsError] = useState<string | null>(null);
+
+  // Door Health state
+  const [doorHealthData, setDoorHealthData] = useState<DoorHealthResponse | null>(null);
+  const [doorHealthLoading, setDoorHealthLoading] = useState(false);
+  const [doorHealthError, setDoorHealthError] = useState<string | null>(null);
 
   // Fetch wholesale data
   const fetchWholesale = useCallback(async () => {
@@ -114,14 +126,42 @@ export default function SalesLayout({
     }
   }, [setLastRefresh, setIsRefreshing]);
 
+  // Fetch door health data
+  const fetchDoorHealth = useCallback(async () => {
+    try {
+      setDoorHealthLoading(true);
+      setDoorHealthError(null);
+      setIsRefreshing(true);
+      const res = await fetch("/api/door-health", {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch door health data (${res.status})`);
+      }
+      const result: DoorHealthResponse = await res.json();
+      setDoorHealthData(result);
+      setLastRefresh(new Date());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error loading door health data";
+      console.error("Door health fetch error:", message);
+      setDoorHealthError(message);
+    } finally {
+      setDoorHealthLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [setLastRefresh, setIsRefreshing]);
+
   // Combined refresh for the current tab
   const refresh = useCallback(() => {
     if (isLeads) {
       fetchLeads();
+    } else if (isDoorHealth) {
+      fetchDoorHealth();
     } else {
       fetchWholesale();
     }
-  }, [isLeads, fetchLeads, fetchWholesale]);
+  }, [isLeads, isDoorHealth, fetchLeads, fetchDoorHealth, fetchWholesale]);
 
   // Register refresh handler with parent layout
   useEffect(() => {
@@ -133,32 +173,49 @@ export default function SalesLayout({
   useEffect(() => {
     if (isLeads && !leadsData && !leadsLoading) {
       fetchLeads();
-    } else if (!isLeads && !wholesaleData && !wholesaleLoading) {
+    } else if (isDoorHealth && !doorHealthData && !doorHealthLoading) {
+      fetchDoorHealth();
+    } else if (isWholesale && !wholesaleData && !wholesaleLoading) {
       fetchWholesale();
     }
-  }, [isLeads, leadsData, leadsLoading, wholesaleData, wholesaleLoading, fetchLeads, fetchWholesale]);
+  }, [
+    isLeads, isWholesale, isDoorHealth,
+    leadsData, leadsLoading,
+    wholesaleData, wholesaleLoading,
+    doorHealthData, doorHealthLoading,
+    fetchLeads, fetchWholesale, fetchDoorHealth,
+  ]);
 
   // Refetch wholesale when period changes
   useEffect(() => {
-    if (!isLeads && wholesaleData) {
+    if (isWholesale && wholesaleData) {
       fetchWholesale();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
-  // Context value
-  const contextValue: SalesContextType = {
+  // Context value - memoized to prevent unnecessary re-renders of consumers
+  const contextValue = useMemo<SalesContextType>(() => ({
     wholesaleData,
     wholesaleLoading,
     wholesaleError,
     leadsData,
     leadsLoading,
     leadsError,
+    doorHealthData,
+    doorHealthLoading,
+    doorHealthError,
     period,
     setPeriod,
     refreshWholesale: fetchWholesale,
     refreshLeads: fetchLeads,
-  };
+    refreshDoorHealth: fetchDoorHealth,
+  }), [
+    wholesaleData, wholesaleLoading, wholesaleError,
+    leadsData, leadsLoading, leadsError,
+    doorHealthData, doorHealthLoading, doorHealthError,
+    period, fetchWholesale, fetchLeads, fetchDoorHealth,
+  ]);
 
   return (
     <SalesContext.Provider value={contextValue}>
@@ -169,7 +226,7 @@ export default function SalesLayout({
             <Link
               href="/sales"
               className={`text-sm font-medium transition-all pb-2 border-b-2 ${
-                !isLeads
+                isWholesale
                   ? "text-text-primary border-accent-blue"
                   : "text-text-muted hover:text-text-secondary border-transparent"
               }`}
@@ -185,6 +242,16 @@ export default function SalesLayout({
               }`}
             >
               Leads
+            </Link>
+            <Link
+              href="/sales/door-health"
+              className={`text-sm font-medium transition-all pb-2 border-b-2 ${
+                isDoorHealth
+                  ? "text-text-primary border-accent-blue"
+                  : "text-text-muted hover:text-text-secondary border-transparent"
+              }`}
+            >
+              Door Health
             </Link>
           </div>
         </div>
