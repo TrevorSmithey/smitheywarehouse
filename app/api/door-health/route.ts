@@ -228,11 +228,13 @@ export async function GET(request: NextRequest) {
       healthyDeclining: 0, // Active customers with YoY revenue drop >20%
     };
 
-    // Only count customers WITH order history in the health funnel
+    // Only count customers WITH order history AND revenue in the health funnel
     // Customers with no last_sale_date are excluded (never ordered = not a "door")
+    // Customers with $0 revenue are excluded (cancelled/draft order = never a real customer)
     enrichedCustomers.forEach((c) => {
       const days = c.days_since_last_order;
       if (days === null) return; // Skip customers with no order history
+      if (c.total_revenue <= 0) return; // Skip $0 revenue - not a real customer
       if (days < THRESHOLDS.AT_RISK) {
         funnel.active++;
         // Track declining customers within the healthy/active segment
@@ -249,8 +251,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Filter to churned customers only (>= 365 days)
+    // Must have revenue > 0 to count as churned - $0 revenue means they were never a real customer
+    // (cancelled order, draft order, 100% discount, etc.)
     const churnedCustomers = enrichedCustomers.filter(
-      (c) => c.days_since_last_order !== null && c.days_since_last_order >= THRESHOLDS.CHURNED
+      (c) => c.days_since_last_order !== null &&
+             c.days_since_last_order >= THRESHOLDS.CHURNED &&
+             c.total_revenue > 0
     );
 
     // Total B2B customers with order history (denominator for churn calculations)
