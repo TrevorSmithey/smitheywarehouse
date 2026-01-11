@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Supabase temp files
 supabase/.temp/
+
+# One-off analysis/debug scripts
+scripts/
