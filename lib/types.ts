@@ -1582,3 +1582,95 @@ export interface B2BDraftOrderSku {
   orderCount: number;      // Number of draft orders containing this SKU
   avgPrice: number | null; // Average unit price across orders
 }
+
+// ============================================================
+// Door Health / Churn Analytics Types
+// ============================================================
+
+/**
+ * Lifespan bucket for grouping churned customers by tenure
+ */
+export type LifespanBucket = "<1yr" | "1-2yr" | "2-3yr" | "3+yr";
+
+/**
+ * Core metrics for the Door Health dashboard
+ */
+export interface DoorHealthMetrics {
+  totalB2BCustomers: number;
+  activeCustomers: number;
+  inactiveCustomers: number;
+  churnedCustomers: number;
+  churnRateYtd: number;
+  churnRatePriorYear: number;
+  churnRateChange: number;
+  avgLifespanMonths: number;
+  avgLifespanMonthsPriorYear: number;
+  lostRevenue: number;
+}
+
+/**
+ * Retention funnel counts
+ */
+export interface DoorHealthFunnel {
+  active: number;
+  atRisk: number;
+  churning: number;
+  churned: number;
+}
+
+/**
+ * Churn breakdown by year
+ */
+export interface ChurnedByYear {
+  year: number;
+  count: number;
+  revenue: number;
+}
+
+/**
+ * Churn breakdown by customer segment
+ */
+export interface ChurnedBySegment {
+  segment: CustomerSegment;
+  count: number;
+  revenue: number;
+  avgLifespanMonths: number;
+}
+
+/**
+ * Churn breakdown by customer lifespan
+ */
+export interface ChurnedByLifespan {
+  bucket: LifespanBucket;
+  count: number;
+  revenue: number;
+}
+
+/**
+ * Individual churned customer for drill-down tables
+ */
+export interface DoorHealthCustomer {
+  ns_customer_id: number;
+  company_name: string;
+  segment: CustomerSegment;
+  first_sale_date: string | null;
+  last_sale_date: string | null;
+  days_since_last_order: number | null;
+  total_revenue: number;
+  order_count: number;
+  lifespan_months: number | null;
+  churn_year: number | null;
+}
+
+/**
+ * Full API response for Door Health dashboard
+ */
+export interface DoorHealthResponse {
+  metrics: DoorHealthMetrics;
+  funnel: DoorHealthFunnel;
+  churnedByYear: ChurnedByYear[];
+  churnedBySegment: ChurnedBySegment[];
+  churnedByLifespan: ChurnedByLifespan[];
+  customers: DoorHealthCustomer[];
+  lastSynced: string | null;
+}
