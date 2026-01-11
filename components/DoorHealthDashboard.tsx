@@ -418,7 +418,7 @@ function B2BGrowthChart({
   totalFromDoorHealth?: number;
 }) {
   const quarterlyData = useMemo(() => {
-    // Combine ALL customer health segments including churned
+    // Combine ALL customer health segments - must include ALL 8 buckets from wholesale API
     const allCustomers = customersByHealth
       ? [
           ...(customersByHealth.thriving || []),
@@ -427,6 +427,8 @@ function B2BGrowthChart({
           ...(customersByHealth.at_risk || []),
           ...(customersByHealth.churning || []),
           ...(customersByHealth.churned || []),
+          ...(customersByHealth.new || []),       // Was missing!
+          ...(customersByHealth.one_time || []),  // Was missing!
         ]
       : [];
 
@@ -456,15 +458,6 @@ function B2BGrowthChart({
       byQuarter.set(key, (byQuarter.get(key) || 0) + 1);
     }
 
-    // The wholesaleData may not include all customers that door-health counts
-    // Adjust preHistory to account for any "missing" customers
-    const computedTotal = preHistory + Array.from(byQuarter.values()).reduce((a, b) => a + b, 0);
-    const actualTotal = totalFromDoorHealth || computedTotal;
-    const missingCustomers = actualTotal - computedTotal;
-    if (missingCustomers > 0) {
-      preHistory += missingCustomers; // These are older customers not in wholesaleData
-    }
-
     // Build quarterly data with % change (starting Q1 2024)
     const quarters: { quarter: string; label: string; newCustomers: number; cumulative: number; growthPct: number }[] = [];
     let cumulative = preHistory;
@@ -492,7 +485,7 @@ function B2BGrowthChart({
     }
 
     return quarters;
-  }, [customersByHealth, totalFromDoorHealth]);
+  }, [customersByHealth]);
 
   if (quarterlyData.length === 0) {
     return (
