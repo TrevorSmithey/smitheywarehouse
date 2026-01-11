@@ -701,7 +701,7 @@ function NeverOrderedCustomersCard({ customers }: { customers: WholesaleNeverOrd
   if (!customers || customers.length === 0) return null;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-amber-500/30 overflow-hidden h-full flex flex-col">
+    <div className="bg-bg-secondary rounded-xl border border-amber-500/30 overflow-hidden h-[500px] flex flex-col">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-amber-500/5 shrink-0">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-amber-400" />
@@ -773,7 +773,7 @@ function NewCustomersSection({
   const showAdjusted = hasOutliers && acquisition;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-status-good/30 overflow-hidden h-full flex flex-col">
+    <div className="bg-bg-secondary rounded-xl border border-status-good/30 overflow-hidden h-[500px] flex flex-col">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-status-good/5">
         <div className="flex items-center gap-2">
           <UserPlus className="w-4 h-4 text-status-good" />
@@ -960,7 +960,7 @@ function ChurnedCustomersSection({ customers }: { customers: WholesaleCustomer[]
   const churnedThisYearCount = nonCorporateCustomers.filter(isChurnedThisYear).length;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden h-full flex flex-col">
+    <div className="bg-bg-secondary rounded-xl border border-text-muted/30 overflow-hidden h-[500px] flex flex-col">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-text-muted/5 shrink-0">
         <div className="flex items-center gap-2">
           <UserMinus className="w-4 h-4 text-text-muted" />
@@ -1276,7 +1276,7 @@ function RecentTransactionsSection({ transactions }: { transactions: WholesaleTr
   const hasMore = transactions && transactions.length > displayLimit;
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-full flex flex-col">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-[500px] flex flex-col">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Receipt className="w-4 h-4 text-text-tertiary" />
@@ -1334,7 +1334,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
   const totalOrders = customers.reduce((sum, c) => sum + c.order_count, 0);
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden h-full flex flex-col">
+    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden h-[500px] flex flex-col">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-accent-blue/5 shrink-0">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-accent-blue" />
@@ -2412,7 +2412,7 @@ export function WholesaleDashboard({
           ================================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* TOP CUSTOMERS TABLE (Left Half) */}
-        <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-full flex flex-col">
+        <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden h-[500px] flex flex-col">
           <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-text-tertiary" />
