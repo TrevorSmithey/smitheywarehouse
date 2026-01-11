@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
         order_count,
         is_corporate
       `)
-      .eq("is_active", true)
+      .neq("is_inactive", true)
       .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS);
 
     if (fetchError) {
