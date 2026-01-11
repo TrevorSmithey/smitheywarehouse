@@ -182,9 +182,12 @@ export async function GET(request: NextRequest) {
       churned: 0,
     };
 
+    // Only count customers WITH order history in the health funnel
+    // Customers with no last_sale_date are excluded (never ordered = not a "door")
     enrichedCustomers.forEach((c) => {
       const days = c.days_since_last_order;
-      if (days === null || days < THRESHOLDS.AT_RISK) {
+      if (days === null) return; // Skip customers with no order history
+      if (days < THRESHOLDS.AT_RISK) {
         funnel.active++;
       } else if (days < THRESHOLDS.CHURNING) {
         funnel.atRisk++;
