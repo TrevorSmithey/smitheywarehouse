@@ -267,13 +267,12 @@ function CustomerHealthBar({
   total: number;
 }) {
   const segments = [
-    { key: "active", label: "Healthy", count: funnel.active, color: "bg-emerald-500", gradientFrom: "from-emerald-400", gradientTo: "to-emerald-600", textColor: "text-emerald-400", tooltip: "Ordered within 180 days. Active, engaged buyers." },
-    { key: "atRisk", label: "At Risk", count: funnel.atRisk, color: "bg-amber-400", gradientFrom: "from-amber-300", gradientTo: "to-amber-500", textColor: "text-amber-400", tooltip: "180-269 days since last order. Slipping—outreach recommended." },
-    { key: "churning", label: "Churning", count: funnel.churning, color: "bg-orange-500", gradientFrom: "from-orange-400", gradientTo: "to-orange-600", textColor: "text-orange-400", tooltip: "270-364 days since last order. High churn probability." },
-    { key: "churned", label: "Churned", count: funnel.churned, color: "bg-red-500", gradientFrom: "from-red-400", gradientTo: "to-red-600", textColor: "text-red-400", tooltip: "365+ days since last order. Considered lost." },
+    { key: "active", label: "Healthy", count: funnel.active, color: "bg-emerald-500", textColor: "text-emerald-400", tooltip: "Ordered within 180 days. Active, engaged buyers." },
+    { key: "atRisk", label: "At Risk", count: funnel.atRisk, color: "bg-amber-500", textColor: "text-amber-400", tooltip: "180-269 days since last order. Slipping—outreach recommended." },
+    { key: "churning", label: "Churning", count: funnel.churning, color: "bg-orange-500", textColor: "text-orange-400", tooltip: "270-364 days since last order. High churn probability." },
+    { key: "churned", label: "Churned", count: funnel.churned, color: "bg-red-500", textColor: "text-red-400", tooltip: "365+ days since last order. Considered lost." },
   ];
 
-  // Calculate percentages for all segments
   const segmentsWithPct = segments.map(seg => ({
     ...seg,
     pct: total > 0 ? (seg.count / total) * 100 : 0,
@@ -282,89 +281,56 @@ function CustomerHealthBar({
   return (
     <div className="rounded-xl border border-border/30 bg-bg-secondary p-5">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-emerald-500/70" />
-          <span className="text-[10px] uppercase tracking-[0.2em] font-medium text-text-tertiary">
+          <Activity className="w-4 h-4 text-text-muted" />
+          <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
             CUSTOMER HEALTH
           </span>
         </div>
-        <span className="text-sm font-semibold text-text-primary tabular-nums">
-          {total.toLocaleString()} <span className="font-normal text-text-muted">total</span>
+        <span className="text-sm text-text-secondary tabular-nums">
+          {total.toLocaleString()} total
         </span>
       </div>
 
-      {/* Stacked bar with percentages above for narrow segments */}
-      <div className="relative">
-        {/* Floating labels for narrow segments */}
-        <div className="absolute -top-5 left-0 right-0 flex" style={{ height: '16px' }}>
-          {segmentsWithPct.map((seg, idx) => {
-            if (seg.pct === 0) return null;
-            // Calculate left position (sum of previous segments)
-            const leftPct = segmentsWithPct.slice(0, idx).reduce((sum, s) => sum + s.pct, 0);
-            // Only show floating label for segments too narrow for inside text (5-10%)
-            if (seg.pct >= 10 || seg.pct < 3) return null;
-            return (
-              <div
-                key={`label-${seg.key}`}
-                className="absolute text-[9px] font-semibold text-text-secondary tabular-nums"
-                style={{
-                  left: `${leftPct + seg.pct / 2}%`,
-                  transform: 'translateX(-50%)',
-                }}
-              >
-                {seg.pct.toFixed(0)}%
-              </div>
-            );
-          })}
-        </div>
-
-        {/* The bar itself */}
-        <div className="h-10 flex rounded-xl overflow-hidden bg-bg-tertiary/50 shadow-inner">
-          {segmentsWithPct.map((seg) => {
-            if (seg.pct === 0) return null;
-            return (
-              <div
-                key={seg.key}
-                className={`bg-gradient-to-b ${seg.gradientFrom} ${seg.gradientTo} relative group transition-all duration-200 hover:brightness-110 hover:scale-y-105`}
-                style={{ width: `${seg.pct}%` }}
-                title={`${seg.label}: ${seg.count} (${seg.pct.toFixed(1)}%)`}
-              >
-                {/* Inner highlight for depth */}
-                <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/20 to-transparent rounded-t-xl" />
-
-                {/* Show label inside if segment is wide enough */}
-                {seg.pct >= 10 && (
-                  <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white drop-shadow-sm tabular-nums">
-                    {seg.pct.toFixed(0)}%
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {/* Stacked bar - clean and flat */}
+      <div className="h-8 flex rounded-lg overflow-hidden bg-bg-tertiary">
+        {segmentsWithPct.map((seg) => {
+          if (seg.pct === 0) return null;
+          return (
+            <div
+              key={seg.key}
+              className={`${seg.color} relative transition-opacity hover:opacity-90`}
+              style={{ width: `${seg.pct}%` }}
+              title={`${seg.label}: ${seg.count} (${seg.pct.toFixed(1)}%)`}
+            >
+              {/* Show % inside for segments wide enough */}
+              {seg.pct >= 8 && (
+                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-white/90 tabular-nums">
+                  {seg.pct.toFixed(0)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Legend - cleaner grid layout */}
-      <div className="grid grid-cols-4 gap-3 mt-4 pt-3 border-t border-border/20">
+      {/* Legend - inline with percentages */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 mt-3">
         {segmentsWithPct.map((seg) => (
-          <div key={seg.key} className="flex flex-col">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <span className={`w-2 h-2 rounded-full ${seg.color}`} />
-              <MetricLabel
-                label={seg.label}
-                tooltip={seg.tooltip}
-                className="text-[10px] uppercase tracking-wider text-text-muted"
-              />
-            </div>
-            <div className="flex items-baseline gap-1.5 pl-3.5">
-              <span className={`text-lg font-bold tabular-nums ${seg.textColor}`}>
-                {seg.count}
-              </span>
-              <span className="text-[10px] text-text-tertiary tabular-nums">
-                {seg.pct.toFixed(1)}%
-              </span>
-            </div>
+          <div key={seg.key} className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-sm ${seg.color}`} />
+            <MetricLabel
+              label={seg.label}
+              tooltip={seg.tooltip}
+              className="text-xs text-text-secondary"
+            />
+            <span className={`text-xs font-semibold tabular-nums ${seg.textColor}`}>
+              {seg.count}
+            </span>
+            <span className="text-[10px] text-text-muted tabular-nums">
+              ({seg.pct.toFixed(1)}%)
+            </span>
           </div>
         ))}
       </div>
