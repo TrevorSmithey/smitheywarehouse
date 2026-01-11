@@ -185,9 +185,24 @@ export async function GET(request: Request) {
     }
 
     const finalElapsed = Date.now() - startTime;
-    const syncStatus = stoppedEarly ? "partial" : "success";
 
-    console.log(`[NETSUITE] Line items sync complete: ${totalUpserted}/${totalFetched} (${totalFiltered} filtered) in ${batchCount} batches, ${(finalElapsed/1000).toFixed(1)}s${stoppedEarly ? " (stopped early)" : ""}`);
+    // Check data completeness: how many transactions have line items?
+    // This determines success regardless of whether we timed out
+    const { data: coverageData } = await supabase
+      .rpc("count_transactions_with_line_items");
+    const txnsWithLineItems = coverageData ?? 0;
+
+    const coveragePercent = validTxnIds.size > 0
+      ? ((txnsWithLineItems || 0) / validTxnIds.size) * 100
+      : 100;
+
+    // Success if we have good coverage (>80%) - some transactions legitimately have no line items
+    // (credits, adjustments, etc.)
+    const isDataComplete = coveragePercent >= 80;
+    const syncStatus = isDataComplete ? "success" : "partial";
+
+    console.log(`[NETSUITE] Line items sync complete: ${totalUpserted}/${totalFetched} (${totalFiltered} filtered) in ${batchCount} batches, ${(finalElapsed/1000).toFixed(1)}s`);
+    console.log(`[NETSUITE] Coverage: ${txnsWithLineItems}/${validTxnIds.size} transactions have line items (${coveragePercent.toFixed(1)}%) - status: ${syncStatus}`);
 
     // Log sync with proper status
     await supabase.from("sync_logs").insert({
@@ -195,19 +210,20 @@ export async function GET(request: Request) {
       started_at: new Date(startTime).toISOString(),
       completed_at: new Date().toISOString(),
       status: syncStatus,
-      records_expected: stoppedEarly ? null : totalFetched,
+      records_expected: validTxnIds.size,
       records_synced: totalUpserted,
       duration_ms: finalElapsed,
-      details: stoppedEarly ? {
-        stopped_early: true,
-        reason: "time_budget_exceeded",
-        last_cursor: lastTransactionId,
-      } : null,
+      details: {
+        coverage_percent: Math.round(coveragePercent),
+        txns_with_line_items: txnsWithLineItems,
+        total_transactions: validTxnIds.size,
+        ...(stoppedEarly && { stopped_early: true, last_cursor: lastTransactionId }),
+      },
     });
 
     return NextResponse.json({
-      success: !stoppedEarly,
-      partial: stoppedEarly,
+      success: isDataComplete,
+      partial: !isDataComplete,
       type: "lineitems",
       mode: isFullSync ? "full" : "incremental",
       fetched: totalFetched,
@@ -215,11 +231,12 @@ export async function GET(request: Request) {
       upserted: totalUpserted,
       batches: batchCount,
       validTransactions: validTxnIds.size,
+      txnsWithLineItems: txnsWithLineItems || 0,
+      coveragePercent: Math.round(coveragePercent),
       elapsed: `${(finalElapsed/1000).toFixed(1)}s`,
       stoppedEarly,
       lastCursor: lastTransactionId,
-      ...(stoppedEarly && { message: `Partial sync: ${totalUpserted} line items saved. Run again to continue from t.id > ${lastTransactionId}.` }),
-      ...(totalFiltered > 0 && !stoppedEarly && { note: `${totalFiltered} line items skipped (transactions not in DB)` }),
+      ...(!isDataComplete && { message: `Coverage at ${coveragePercent.toFixed(1)}% - needs more syncs to reach 80% threshold.` }),
     });
   } catch (error) {
     console.error("[NETSUITE] Line items sync failed:", error);

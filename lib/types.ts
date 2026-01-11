@@ -1625,12 +1625,28 @@ export interface DoorHealthFunnel {
 }
 
 /**
- * Churn breakdown by year
+ * Churn breakdown by year with pool-adjusted rate
+ * Pool shrinks each year as customers churn out
  */
 export interface ChurnedByYear {
   year: number;
   count: number;
   revenue: number;
+  poolSize: number;       // Customers at START of this year (excludes prior churned)
+  churnRate: number;      // count / poolSize * 100
+}
+
+/**
+ * Dud rate by acquisition cohort
+ * Dud = one-time buyer who hasn't reordered within maturity window (133 days)
+ */
+export interface DudRateByCohort {
+  cohort: string;           // "2023", "2024", "2025 H1", "2025 H2"
+  totalAcquired: number;    // Customers acquired in this cohort
+  matureCustomers: number;  // Customers with 133+ days since first order
+  matureOneTime: number;    // One-time buyers among mature customers
+  dudRate: number | null;   // null if not enough mature customers
+  isMature: boolean;        // Whether cohort has had enough time to assess
 }
 
 /**
@@ -1677,6 +1693,7 @@ export interface DoorHealthResponse {
   churnedByYear: ChurnedByYear[];
   churnedBySegment: ChurnedBySegment[];
   churnedByLifespan: ChurnedByLifespan[];
+  dudRateByCohort: DudRateByCohort[];
   customers: DoorHealthCustomer[];
   lastSynced: string | null;
 }

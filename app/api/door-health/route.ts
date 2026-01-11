@@ -9,6 +9,7 @@
  * - churned: >= 365 days
  *
  * CRITICAL: Corporate customers (is_corporate=true) are EXCLUDED from all calculations
+ * CRITICAL: Uses same exclusion logic as wholesale API for consistent counts
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,9 +25,36 @@ import type {
   ChurnedByYear,
   ChurnedBySegment,
   ChurnedByLifespan,
+  DudRateByCohort,
   CustomerSegment,
   LifespanBucket,
 } from "@/lib/types";
+
+// Dud rate maturity window (2× median reorder interval of 67 days)
+const DUD_MATURITY_DAYS = 133;
+
+// Hardcoded customer IDs to exclude - MUST MATCH wholesale API
+// These are D2C/retail aggregates that pollute B2B data
+const HARDCODED_EXCLUDED_IDS = [
+  2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
+];
+
+// Helper to build exclusion list combining hardcoded IDs and DB-flagged test accounts
+async function getExcludedCustomerIds(
+  supabase: ReturnType<typeof createServiceClient>
+): Promise<number[]> {
+  const { data: excludedFromDB, error } = await supabase
+    .from("ns_wholesale_customers")
+    .select("ns_customer_id")
+    .eq("is_excluded", true);
+
+  if (error) {
+    console.warn("[DOOR-HEALTH] Failed to fetch excluded customers from DB:", error.message);
+  }
+
+  const dbExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
+  return [...new Set([...HARDCODED_EXCLUDED_IDS, ...dbExcludedIds])];
+}
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -111,6 +139,9 @@ export async function GET(request: NextRequest) {
     const currentYear = now.getFullYear();
     const priorYear = currentYear - 1;
 
+    // Get excluded customer IDs (hardcoded + DB-flagged) - MUST MATCH wholesale API
+    const excludedIds = await getExcludedCustomerIds(supabase);
+
     // Fetch all B2B customers (exclude corporate)
     // Using last_sale_date (current/transactional) NOT last_order_date (stale/sync)
     // CRITICAL: Only use `is_corporate` - is_corporate_gifting does NOT exist in DB schema
@@ -144,9 +175,12 @@ export async function GET(request: NextRequest) {
       "door_health_customers"
     );
 
-    // Filter out corporate customers - they have different buying patterns
+    // Filter out corporate customers AND excluded IDs - matches wholesale API exactly
     // Uses is_corporate (computed from category='Corporate' OR category='4')
-    const b2bCustomers = (rawCustomers || []).filter((c) => !c.is_corporate);
+    const excludedIdSet = new Set(excludedIds);
+    const b2bCustomers = (rawCustomers || []).filter(
+      (c) => !c.is_corporate && !excludedIdSet.has(c.ns_customer_id)
+    );
 
     // Enrich each customer with computed fields
     const enrichedCustomers: DoorHealthCustomer[] = b2bCustomers.map((c) => {
@@ -204,7 +238,11 @@ export async function GET(request: NextRequest) {
       (c) => c.days_since_last_order !== null && c.days_since_last_order >= THRESHOLDS.CHURNED
     );
 
-    // Group churned by year
+    // Total B2B customers with order history (denominator for churn calculations)
+    const totalB2BWithOrders = enrichedCustomers.filter((c) => c.days_since_last_order !== null).length;
+
+    // Group churned by year with pool-shrinking methodology
+    // Pool shrinks each year as customers churn out
     const byYearMap = new Map<number, { count: number; revenue: number }>();
     churnedCustomers.forEach((c) => {
       const year = c.churn_year || 0;
@@ -213,8 +251,31 @@ export async function GET(request: NextRequest) {
       existing.revenue += c.total_revenue;
       byYearMap.set(year, existing);
     });
+
+    // Calculate pool-adjusted churn rates
+    // Pool at start of year = total customers - cumulative churned in prior years
+    const years = Array.from(byYearMap.keys()).filter((y) => y > 0).sort((a, b) => a - b);
+    let cumulativeChurned = 0;
+    const poolByYear = new Map<number, number>();
+
+    // First pass: compute pool size for each year (cumulative from earliest)
+    for (const year of years) {
+      poolByYear.set(year, totalB2BWithOrders - cumulativeChurned);
+      cumulativeChurned += byYearMap.get(year)?.count || 0;
+    }
+
     const churnedByYear: ChurnedByYear[] = Array.from(byYearMap.entries())
-      .map(([year, data]) => ({ year, ...data }))
+      .map(([year, data]) => {
+        const poolSize = poolByYear.get(year) || totalB2BWithOrders;
+        const churnRate = poolSize > 0 ? (data.count / poolSize) * 100 : 0;
+        return {
+          year,
+          count: data.count,
+          revenue: data.revenue,
+          poolSize,
+          churnRate: Math.round(churnRate * 10) / 10,
+        };
+      })
       .filter((row) => row.year > 0)
       .sort((a, b) => b.year - a.year);
 
@@ -261,12 +322,65 @@ export async function GET(request: NextRequest) {
       revenue: byLifespanMap.get(bucket)?.revenue || 0,
     }));
 
+    // ==========================================================
+    // DUD RATE CALCULATION BY COHORT
+    // Dud = one-time buyer who hasn't reordered within maturity window (133 days)
+    // ==========================================================
+    const dudRateByCohort: DudRateByCohort[] = [];
+
+    // Group customers by acquisition cohort
+    const cohortMap = new Map<string, typeof enrichedCustomers>();
+    enrichedCustomers.forEach((c) => {
+      if (!c.first_sale_date) return;
+      const firstDate = new Date(c.first_sale_date);
+      const year = firstDate.getFullYear();
+      const month = firstDate.getMonth() + 1;
+      // Split current year into H1/H2
+      const cohortKey = year === currentYear
+        ? `${year} ${month <= 6 ? "H1" : "H2"}`
+        : `${year}`;
+      const existing = cohortMap.get(cohortKey) || [];
+      existing.push(c);
+      cohortMap.set(cohortKey, existing);
+    });
+
+    // Calculate dud rate for each cohort
+    const cohortKeys = Array.from(cohortMap.keys()).sort();
+    for (const cohort of cohortKeys) {
+      const members = cohortMap.get(cohort) || [];
+      const totalAcquired = members.length;
+
+      // Mature = has had DUD_MATURITY_DAYS since first order
+      const matureCustomers = members.filter((c) => {
+        if (!c.first_sale_date) return false;
+        const firstOrder = new Date(c.first_sale_date);
+        const daysSinceFirst = Math.floor((now.getTime() - firstOrder.getTime()) / (1000 * 60 * 60 * 24));
+        return daysSinceFirst >= DUD_MATURITY_DAYS;
+      });
+
+      // One-time = exactly 1 order
+      const matureOneTime = matureCustomers.filter((c) => c.order_count === 1);
+
+      const isMature = matureCustomers.length === totalAcquired;
+      const dudRate = matureCustomers.length > 0
+        ? (matureOneTime.length / matureCustomers.length) * 100
+        : null;
+
+      dudRateByCohort.push({
+        cohort,
+        totalAcquired,
+        matureCustomers: matureCustomers.length,
+        matureOneTime: matureOneTime.length,
+        dudRate: dudRate !== null ? Math.round(dudRate * 10) / 10 : null,
+        isMature,
+      });
+    }
+
     // Calculate YTD and prior year churn rates
     // Churn rate = customers who crossed 365-day threshold in that year / total B2B customers WITH orders
     // IMPORTANT: Exclude never-ordered customers from denominator (they can't churn if they never ordered)
     const churnedYtd = churnedCustomers.filter((c) => c.churn_year === currentYear).length;
     const churnedPriorYear = churnedCustomers.filter((c) => c.churn_year === priorYear).length;
-    const totalB2BWithOrders = enrichedCustomers.filter((c) => c.days_since_last_order !== null).length;
 
     const churnRateYtd = totalB2BWithOrders > 0 ? (churnedYtd / totalB2BWithOrders) * 100 : 0;
     const churnRatePriorYear = totalB2BWithOrders > 0 ? (churnedPriorYear / totalB2BWithOrders) * 100 : 0;
@@ -320,6 +434,7 @@ export async function GET(request: NextRequest) {
       churnedByYear,
       churnedBySegment,
       churnedByLifespan,
+      dudRateByCohort,
       customers: churnedCustomers.sort((a, b) => b.total_revenue - a.total_revenue),
       lastSynced: syncLog?.finished_at || null,
     };

@@ -32,6 +32,7 @@ import { formatCurrency } from "@/lib/formatters";
 import type {
   DoorHealthResponse,
   DoorHealthCustomer,
+  DudRateByCohort,
   CustomerSegment,
   LifespanBucket,
   WholesaleResponse,
@@ -141,81 +142,123 @@ function SegmentBadge({ segment }: { segment: CustomerSegment }) {
 }
 
 // ============================================================================
-// CHURN TREND CHART - Compact bar chart matching design system
+// CHURN & DUD RATE TREND - Dual Y-axis line chart
 // ============================================================================
 
-function ChurnTrendChart({
-  data,
-  currentYear,
-  totalCustomers,
+function ChurnDudTrendChart({
+  churnData,
+  dudData,
 }: {
-  data: DoorHealthResponse["churnedByYear"];
-  currentYear: number;
-  totalCustomers: number;
+  churnData: DoorHealthResponse["churnedByYear"];
+  dudData: DudRateByCohort[];
 }) {
+  // Merge churn and dud data by year
   const chartData = useMemo(() => {
-    return [...data]
-      .sort((a, b) => a.year - b.year)
-      .map((row) => ({
-        year: String(row.year),
-        count: row.count,
-        rate: totalCustomers > 0 ? (row.count / totalCustomers) * 100 : 0,
-        revenue: row.revenue,
-        isCurrentYear: row.year === currentYear,
-      }));
-  }, [data, currentYear, totalCustomers]);
+    // Build a map of years with both metrics
+    const yearMap = new Map<string, { year: string; churnRate: number | null; dudRate: number | null; churnCount: number; poolSize: number; dudMature: number; dudTotal: number }>();
+
+    // Add churn data
+    for (const row of churnData) {
+      const year = String(row.year);
+      yearMap.set(year, {
+        year,
+        churnRate: row.churnRate,
+        dudRate: null,
+        churnCount: row.count,
+        poolSize: row.poolSize,
+        dudMature: 0,
+        dudTotal: 0,
+      });
+    }
+
+    // Add dud data (cohort like "2024" or "2025 H1")
+    for (const row of dudData) {
+      // Extract year from cohort (e.g., "2025 H1" -> "2025")
+      const year = row.cohort.split(" ")[0];
+      const existing = yearMap.get(year);
+      if (existing) {
+        // Average dud rates if multiple cohorts per year (H1/H2)
+        if (existing.dudRate !== null) {
+          existing.dudRate = (existing.dudRate + (row.dudRate || 0)) / 2;
+          existing.dudMature += row.matureOneTime;
+          existing.dudTotal += row.matureCustomers;
+        } else {
+          existing.dudRate = row.dudRate;
+          existing.dudMature = row.matureOneTime;
+          existing.dudTotal = row.matureCustomers;
+        }
+      } else {
+        yearMap.set(year, {
+          year,
+          churnRate: null,
+          dudRate: row.dudRate,
+          churnCount: 0,
+          poolSize: 0,
+          dudMature: row.matureOneTime,
+          dudTotal: row.matureCustomers,
+        });
+      }
+    }
+
+    return Array.from(yearMap.values())
+      .filter((d) => d.churnRate !== null || d.dudRate !== null)
+      .sort((a, b) => a.year.localeCompare(b.year));
+  }, [churnData, dudData]);
 
   if (chartData.length === 0) return null;
 
-  const maxRate = Math.max(...chartData.map(d => d.rate), 1);
-  const yAxisMax = Math.ceil(maxRate / 5) * 5; // Round up to nearest 5%
+  const maxChurn = Math.max(...chartData.map(d => d.churnRate || 0), 1);
+  const maxDud = Math.max(...chartData.map(d => d.dudRate || 0), 1);
+  const churnAxisMax = Math.ceil(maxChurn / 5) * 5;
+  const dudAxisMax = Math.ceil(maxDud / 10) * 10;
 
   return (
     <div className="rounded-xl border border-border bg-bg-secondary p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-          Churn Rate by Year
+          Churn & Dud Rate Trend
         </h3>
         <div className="flex items-center gap-4 text-[10px] text-text-muted">
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'linear-gradient(180deg, #EF4444, #B91C1C)' }} />
-            Historical
+            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#EF4444' }} />
+            Churn Rate
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'linear-gradient(180deg, #FBBF24, #D97706)' }} />
-            YTD
+            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#F59E0B' }} />
+            Dud Rate
           </span>
         </div>
       </div>
-      <div className="h-48">
+      <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
-            <defs>
-              <linearGradient id="churnHistorical" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#EF4444" stopOpacity={0.9} />
-                <stop offset="100%" stopColor="#B91C1C" stopOpacity={0.7} />
-              </linearGradient>
-              <linearGradient id="churnYtd" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={FORGE.molten} stopOpacity={0.9} />
-                <stop offset="100%" stopColor={FORGE.copper} stopOpacity={0.8} />
-              </linearGradient>
-            </defs>
+          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
             <XAxis
               dataKey="year"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 10 }}
+              tick={{ fill: '#64748B', fontSize: 11 }}
             />
             <YAxis
+              yAxisId="churn"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 10 }}
+              tick={{ fill: '#EF4444', fontSize: 10 }}
               width={40}
-              domain={[0, yAxisMax]}
+              domain={[0, churnAxisMax]}
+              tickFormatter={(value) => `${value}%`}
+            />
+            <YAxis
+              yAxisId="dud"
+              orientation="right"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#F59E0B', fontSize: 10 }}
+              width={45}
+              domain={[0, dudAxisMax]}
               tickFormatter={(value) => `${value}%`}
             />
             <Tooltip
-              cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+              cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
               contentStyle={{
                 backgroundColor: '#12151F',
                 border: '1px solid rgba(255,255,255,0.1)',
@@ -223,32 +266,56 @@ function ChurnTrendChart({
                 fontSize: '11px',
               }}
               labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
-              formatter={(value: number, _name: string, props: { payload?: { count?: number; revenue?: number; isCurrentYear?: boolean } }) => {
-                const count = props.payload?.count || 0;
-                const revenue = props.payload?.revenue || 0;
-                const isYtd = props.payload?.isCurrentYear;
-                return [
-                  <span key="val" className="text-text-primary">
-                    {value.toFixed(1)}% churn rate{isYtd ? " (YTD)" : ""}
-                    <br />
-                    <span style={{ color: '#94A3B8' }}>{count} customers</span>
-                    <br />
-                    <span style={{ color: '#EF4444' }}>{formatCurrency(revenue)} lost</span>
-                  </span>,
-                  "",
-                ];
+              formatter={(value: number, name: string, props: { payload?: { churnCount?: number; poolSize?: number; dudMature?: number; dudTotal?: number } }) => {
+                if (name === 'churnRate') {
+                  const count = props.payload?.churnCount || 0;
+                  const pool = props.payload?.poolSize || 0;
+                  return [
+                    <span key="churn" style={{ color: '#EF4444' }}>
+                      {value?.toFixed(1)}% churn ({count}/{pool})
+                    </span>,
+                    '',
+                  ];
+                }
+                if (name === 'dudRate') {
+                  const mature = props.payload?.dudMature || 0;
+                  const total = props.payload?.dudTotal || 0;
+                  return [
+                    <span key="dud" style={{ color: '#F59E0B' }}>
+                      {value?.toFixed(1)}% dud ({mature}/{total} mature)
+                    </span>,
+                    '',
+                  ];
+                }
+                return [value, name];
               }}
             />
-            <Bar dataKey="rate" radius={[3, 3, 0, 0]} maxBarSize={45}>
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={entry.isCurrentYear ? "url(#churnYtd)" : "url(#churnHistorical)"}
-                />
-              ))}
-            </Bar>
-          </BarChart>
+            <Line
+              yAxisId="churn"
+              type="monotone"
+              dataKey="churnRate"
+              stroke="#EF4444"
+              strokeWidth={2.5}
+              dot={{ fill: '#EF4444', strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6, fill: '#EF4444' }}
+              connectNulls
+            />
+            <Line
+              yAxisId="dud"
+              type="monotone"
+              dataKey="dudRate"
+              stroke="#F59E0B"
+              strokeWidth={2.5}
+              dot={{ fill: '#F59E0B', strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6, fill: '#F59E0B' }}
+              connectNulls
+            />
+          </ComposedChart>
         </ResponsiveContainer>
+      </div>
+      <div className="mt-3 pt-3 border-t border-border/30 text-[10px] text-text-muted">
+        <span className="text-red-400">Churn</span> = customers lost (365+ days) ÷ pool at year start •
+        <span className="text-amber-400 ml-1">Dud</span> = one-time buyers with 133+ days to reorder
       </div>
     </div>
   );
@@ -477,6 +544,134 @@ function B2BGrowthChart({
               dot={false}
             />
           </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// DUD RATE CHART - Leading indicator of customer quality by acquisition cohort
+// ============================================================================
+
+function DudRateChart({
+  data,
+}: {
+  data: DudRateByCohort[];
+}) {
+  const chartData = useMemo(() => {
+    // Filter to cohorts with enough data and sort chronologically
+    return data
+      .filter((row) => row.matureCustomers >= 10) // Need meaningful sample size
+      .map((row) => ({
+        cohort: row.cohort,
+        rate: row.dudRate ?? 0,
+        matureOneTime: row.matureOneTime,
+        matureCustomers: row.matureCustomers,
+        totalAcquired: row.totalAcquired,
+        isMature: row.isMature,
+        isPartial: !row.isMature && row.matureCustomers > 0,
+      }));
+  }, [data]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-bg-secondary p-5 flex items-center justify-center h-48">
+        <span className="text-sm text-text-muted">Not enough cohort data yet</span>
+      </div>
+    );
+  }
+
+  const maxRate = Math.max(...chartData.map(d => d.rate), 20);
+  const yAxisMax = Math.ceil(maxRate / 10) * 10; // Round up to nearest 10%
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-secondary p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
+            Dud Rate by Cohort
+          </h3>
+          <span
+            className="text-[9px] text-text-muted cursor-help"
+            title="Dud = one-time buyer with ≥133 days to reorder (2× median reorder interval). Leading indicator of customer quality."
+          >
+            (?)
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-[10px] text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'linear-gradient(180deg, #F59E0B, #B45309)' }} />
+            Mature
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm opacity-50" style={{ background: 'linear-gradient(180deg, #F59E0B, #B45309)' }} />
+            Partial
+          </span>
+        </div>
+      </div>
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="dudMature" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={FORGE.heat} stopOpacity={0.9} />
+                <stop offset="100%" stopColor="#B45309" stopOpacity={0.7} />
+              </linearGradient>
+              <linearGradient id="dudPartial" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={FORGE.heat} stopOpacity={0.5} />
+                <stop offset="100%" stopColor="#B45309" stopOpacity={0.35} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="cohort"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              width={40}
+              domain={[0, yAxisMax]}
+              tickFormatter={(value) => `${value}%`}
+            />
+            <Tooltip
+              cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+              contentStyle={{
+                backgroundColor: '#12151F',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '6px',
+                fontSize: '11px',
+              }}
+              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
+              formatter={(value: number, _name: string, props: { payload?: { matureOneTime?: number; matureCustomers?: number; totalAcquired?: number; isMature?: boolean; isPartial?: boolean } }) => {
+                const matureOneTime = props.payload?.matureOneTime || 0;
+                const matureCustomers = props.payload?.matureCustomers || 0;
+                const totalAcquired = props.payload?.totalAcquired || 0;
+                const isPartial = props.payload?.isPartial;
+                return [
+                  <span key="val" className="text-text-primary">
+                    {value.toFixed(1)}% dud rate{isPartial ? " (partial)" : ""}
+                    <br />
+                    <span style={{ color: '#94A3B8' }}>{matureOneTime} of {matureCustomers} mature = duds</span>
+                    <br />
+                    <span style={{ color: '#64748B' }}>{totalAcquired} total acquired</span>
+                  </span>,
+                  "",
+                ];
+              }}
+            />
+            <Bar dataKey="rate" radius={[3, 3, 0, 0]} maxBarSize={45}>
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.isMature ? "url(#dudMature)" : "url(#dudPartial)"}
+                />
+              ))}
+            </Bar>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -930,9 +1125,12 @@ export function DoorHealthDashboard({
 
       {/* === CHARTS ROW === */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} totalCustomers={metrics.totalB2BCustomers} />
-        <B2BGrowthChart monthly={wholesaleData?.monthly} customersByHealth={wholesaleData?.customersByHealth} />
+        <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} />
+        <DudRateChart data={data.dudRateByCohort || []} />
       </div>
+
+      {/* === GROWTH CHART === */}
+      <B2BGrowthChart monthly={wholesaleData?.monthly} customersByHealth={wholesaleData?.customersByHealth} />
 
       {/* === FUNNEL + DRILL-DOWN === */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -949,11 +1147,72 @@ export function DoorHealthDashboard({
         </div>
       </div>
 
-      {/* === FOOTER === */}
-      <div className="flex items-center justify-center text-[10px] text-text-muted pt-2">
-        <span>
-          Excludes corporate customers • Thresholds: At Risk 180d, Churning 270d, Churned 365d
-        </span>
+      {/* === DEFINITIONS === */}
+      <div className="rounded-xl border border-border bg-bg-secondary p-5">
+        <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary mb-4">
+          Definitions & Methodology
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+          {/* Terms */}
+          <div className="space-y-2">
+            <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Terms</h4>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Customer</span>
+              <span className="text-text-muted">B2B account with ≥1 order (excl. corporate/test)</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Active</span>
+              <span className="text-text-muted">&lt;180 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">At Risk</span>
+              <span className="text-text-muted">180-269 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Churning</span>
+              <span className="text-text-muted">270-364 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Churned</span>
+              <span className="text-text-muted">≥365 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Lifespan</span>
+              <span className="text-text-muted">Months between first and last order</span>
+            </div>
+          </div>
+
+          {/* Advanced Metrics */}
+          <div className="space-y-2">
+            <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Advanced Metrics</h4>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Dud</span>
+              <span className="text-text-muted">One-order customer ≥133 days to reorder</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Dud Maturity</span>
+              <span className="text-text-muted">133 days (2× median reorder interval)</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Churn Year</span>
+              <span className="text-text-muted">Year customer crossed 365-day threshold</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Annual Churn Rate</span>
+              <span className="text-text-muted">Churned ÷ pool at start of year</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Pool-Shrinking</span>
+              <span className="text-text-muted">Prior year churned removed from denominator</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-4 pt-3 border-t border-border/30">
+          <p className="text-[10px] text-text-muted">
+            All metrics exclude corporate customers. Churn threshold of 365 days is industry standard (12 months).
+            Dud maturity of 133 days is 2× the median reorder interval of 67 days observed in this dataset.
+          </p>
+        </div>
       </div>
     </div>
   );
