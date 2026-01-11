@@ -735,6 +735,60 @@ The plan (`~/.claude/plans/zesty-popping-orbit.md`) calls for separating Operati
 
 ---
 
+## Context-Switch Discipline (January 2026)
+
+### What Happened
+User asked to merge a PR while I was mid-work on a different branch with uncommitted changes. User's tone was urgent ("merge the fucking pr"). I immediately jumped to the new task without:
+1. Running `git status`
+2. Noticing uncommitted work in progress
+3. Stashing or committing WIP
+
+After fixing merge conflicts and completing the PR merge, we discovered orphaned changes left behind - work that was neither committed nor stashed, just abandoned.
+
+### The Root Cause
+**Reactivity over discipline.** Urgency in the request triggered immediate action without pausing to assess current state. This is the same pattern that causes:
+- Abandoning half-written functions to chase new bugs
+- Switching files without finishing a thought
+- Starting new tasks without closing out existing work
+
+### The Rule - CONTEXT SWITCH PROTOCOL
+
+**Before ANY context switch (new branch, new task, urgent request):**
+
+1. **PAUSE** - Do not immediately execute. Urgency is not an excuse to skip discipline.
+2. **RUN `git status`** - See what's in flight. Always.
+3. **DECIDE explicitly**:
+   - Commit WIP: `git commit -m "WIP: description"`
+   - Stash: `git stash save "description of what I was doing"`
+   - Or finish the current task first
+4. **ONLY THEN** switch context
+
+**The mantra**: "What am I in the middle of?"
+
+### Why This Matters
+- Orphaned changes cause confusion and lost work
+- Context buried in uncommitted files is invisible to future sessions
+- Sloppy git hygiene compounds into larger messes
+- The user's time is wasted debugging process failures instead of building features
+
+### Git Hygiene Basics
+```bash
+# Before switching branches - ALWAYS
+git status
+
+# If you have changes and need to switch
+git stash save "WIP: what I was doing"
+# ... do other work ...
+git stash pop
+
+# Or commit WIP (squash later)
+git commit -m "WIP: partial door-health column fix"
+```
+
+**Urgency does not override discipline. Slow down to go fast.**
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development
