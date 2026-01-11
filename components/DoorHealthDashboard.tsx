@@ -444,7 +444,7 @@ function B2BGrowthChart({
       </div>
       <div className="flex-1 min-h-[144px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={quarterlyData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+          <ComposedChart data={quarterlyData} margin={{ top: 10, right: 25, left: -10, bottom: 5 }}>
             <defs>
               {/* Thermal gradient for line stroke: green (high) → yellow (mid) → orange (low) */}
               <linearGradient id="b2bGrowthLineGradient" x1="0" y1="0" x2="0" y2="1">
