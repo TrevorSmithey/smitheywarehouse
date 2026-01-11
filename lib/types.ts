@@ -1027,6 +1027,14 @@ export type CustomerSegment =
   | "starter"     // $2-5K lifetime revenue
   | "minimal";    // <$2K lifetime revenue
 
+// 4-bucket retention health - time-based classification (aligned with Door Health tab)
+// This is the PRIMARY classification for cross-tab "At Risk" / "Churned" alignment
+export type RetentionHealthBucket =
+  | "healthy"     // <180 days since last order
+  | "at_risk"     // 180-269 days since last order
+  | "churning"    // 270-364 days since last order
+  | "churned";    // 365+ days since last order
+
 export interface WholesaleCustomer {
   ns_customer_id: number;
   entity_id: string;
@@ -1039,13 +1047,15 @@ export interface WholesaleCustomer {
   ytd_revenue: number;
   order_count: number;
   // Calculated health metrics
-  health_status: CustomerHealthStatus;
+  health_status: CustomerHealthStatus; // 8-bucket detailed classification
+  retention_health?: RetentionHealthBucket; // 4-bucket time-based (matches Door Health)
   segment: CustomerSegment;
   avg_order_value: number;
   days_since_last_order: number | null;
   // Growth metrics
   revenue_trend: number; // % change vs prior period
   order_trend: number; // % change vs prior period
+  is_declining?: boolean; // YoY revenue drop >20% (for Door Health badge)
   // Corporate customer flag - replaces segment badge display when true
   is_corporate_gifting: boolean;
   // Manual churn flag - excludes from ordering anomaly alerts
@@ -1109,6 +1119,16 @@ export interface WholesaleHealthDistribution {
   one_time: number;
 }
 
+// 4-bucket retention distribution (aligned with Door Health tab)
+// Uses pure time-based thresholds for cross-tab consistency
+export interface WholesaleRetentionDistribution {
+  healthy: number;      // <180 days since last order
+  at_risk: number;      // 180-269 days since last order
+  churning: number;     // 270-364 days since last order
+  churned: number;      // 365+ days since last order
+  healthy_declining: number; // Healthy by time, but >20% YoY revenue drop
+}
+
 export interface WholesaleSegmentDistribution {
   major: number;
   large: number;
@@ -1152,10 +1172,15 @@ export interface WholesaleStats {
   avg_order_value_delta_pct: number;
   prev_avg_order_value: number;
   // Customer breakdown
-  health_distribution: WholesaleHealthDistribution;
+  health_distribution: WholesaleHealthDistribution; // 8-bucket detailed
   segment_distribution: WholesaleSegmentDistribution;
   // Revenue breakdown by business type
   revenue_by_type?: WholesaleRevenueByType;
+  // Aligned 4-bucket retention distribution (matches Door Health tab)
+  retention_distribution?: WholesaleRetentionDistribution;
+  // Dual Revenue at Risk metrics (per alignment decision)
+  revenue_at_risk_retention?: number; // Time-based (180-364d customers)
+  revenue_at_risk_growth?: number;    // Trend-based (declining YoY customers)
 }
 
 export interface WholesaleAtRiskCustomer {
@@ -1623,6 +1648,8 @@ export interface DoorHealthFunnel {
   atRisk: number;
   churning: number;
   churned: number;
+  /** Count of active customers with YoY revenue decline >20% */
+  healthyDeclining: number;
 }
 
 /**
@@ -1683,6 +1710,25 @@ export interface DoorHealthCustomer {
   order_count: number;
   lifespan_months: number | null;
   churn_year: number | null;
+  /** True if customer has YoY revenue decline >20% */
+  is_declining?: boolean;
+}
+
+/**
+ * Cohort retention analysis - the REAL churn story
+ * Shows what % of each acquisition cohort is still active vs churned
+ */
+export interface CohortRetention {
+  year: number;               // Acquisition year (2023, 2024, 2025)
+  acquired: number;           // Total customers acquired in this cohort
+  healthy: number;            // Still ordering (<180 days since last)
+  atRisk: number;             // 180-269 days since last order
+  churning: number;           // 270-364 days since last order
+  churned: number;            // 365+ days since last order
+  retained: number;           // healthy + atRisk + churning (not yet lost)
+  retentionPct: number;       // retained / acquired * 100
+  churnPct: number;           // churned / acquired * 100
+  isMaturing: boolean;        // true if cohort hasn't had full year to churn
 }
 
 /**
@@ -1695,6 +1741,7 @@ export interface DoorHealthResponse {
   churnedBySegment: ChurnedBySegment[];
   churnedByLifespan: ChurnedByLifespan[];
   dudRateByCohort: DudRateByCohort[];
+  cohortRetention: CohortRetention[];  // NEW: Honest cohort-level retention
   customers: DoorHealthCustomer[];
   lastSynced: string | null;
 }

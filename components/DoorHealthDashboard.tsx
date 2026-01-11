@@ -26,14 +26,17 @@ import {
 } from "lucide-react";
 import { SmitheyPageLoader } from "@/components/SmitheyLoader";
 import { MetricLabel } from "@/components/MetricLabel";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatCurrencyFull } from "@/lib/formatters";
 import type {
   DoorHealthResponse,
   DoorHealthCustomer,
   DudRateByCohort,
+  CohortRetention,
   CustomerSegment,
   LifespanBucket,
   WholesaleResponse,
+  WholesaleOrderingAnomaly,
+  OrderingAnomalySeverity,
 } from "@/lib/types";
 
 // ============================================================================
@@ -128,199 +131,126 @@ function Trend({ value, inverted = false, size = "sm" }: { value: number; invert
 }
 
 // ============================================================================
-// SEGMENT BADGE
+// SEGMENT BADGE - Now defined below with InfoTooltip support
 // ============================================================================
 
-function SegmentBadge({ segment }: { segment: CustomerSegment }) {
-  return (
-    <span className={`text-xs font-medium ${SEGMENT_COLORS[segment]}`}>
-      {SEGMENT_LABELS[segment]}
-    </span>
-  );
-}
-
 // ============================================================================
-// CHURN & DUD RATE TREND - Dual Y-axis line chart
+// COHORT RETENTION TABLE - The honest churn numbers
+// Shows what % of each acquisition cohort has churned vs retained
 // ============================================================================
 
-function ChurnDudTrendChart({
-  churnData,
-  dudData,
-  compact = false,
+function CohortRetentionTable({
+  cohortData,
 }: {
-  churnData: DoorHealthResponse["churnedByYear"];
-  dudData: DudRateByCohort[];
-  compact?: boolean;
+  cohortData: CohortRetention[];
 }) {
-  // Merge churn and dud data by year
-  const chartData = useMemo(() => {
-    // Build a map of years with both metrics
-    const yearMap = new Map<string, { year: string; churnRate: number | null; dudRate: number | null; churnCount: number; poolSize: number; dudMature: number; dudTotal: number }>();
+  if (!cohortData || cohortData.length === 0) return null;
 
-    // Add churn data
-    for (const row of churnData) {
-      const year = String(row.year);
-      yearMap.set(year, {
-        year,
-        churnRate: row.churnRate,
-        dudRate: null,
-        churnCount: row.count,
-        poolSize: row.poolSize,
-        dudMature: 0,
-        dudTotal: 0,
-      });
-    }
+  // All cohorts, sorted by year descending (newest first)
+  const allCohorts = [...cohortData].sort((a, b) => b.year - a.year);
 
-    // Add dud data (cohort like "2024" or "2025 H1")
-    for (const row of dudData) {
-      // Extract year from cohort (e.g., "2025 H1" -> "2025")
-      const year = row.cohort.split(" ")[0];
-      const existing = yearMap.get(year);
-      if (existing) {
-        // Average dud rates if multiple cohorts per year (H1/H2)
-        if (existing.dudRate !== null) {
-          existing.dudRate = (existing.dudRate + (row.dudRate || 0)) / 2;
-          existing.dudMature += row.matureOneTime;
-          existing.dudTotal += row.matureCustomers;
-        } else {
-          existing.dudRate = row.dudRate;
-          existing.dudMature = row.matureOneTime;
-          existing.dudTotal = row.matureCustomers;
-        }
-      } else {
-        yearMap.set(year, {
-          year,
-          churnRate: null,
-          dudRate: row.dudRate,
-          churnCount: 0,
-          poolSize: 0,
-          dudMature: row.matureOneTime,
-          dudTotal: row.matureCustomers,
-        });
-      }
-    }
-
-    return Array.from(yearMap.values())
-      .filter((d) => d.churnRate !== null || d.dudRate !== null)
-      .sort((a, b) => a.year.localeCompare(b.year));
-  }, [churnData, dudData]);
-
-  if (chartData.length === 0) return null;
-
-  const maxChurn = Math.max(...chartData.map(d => d.churnRate || 0), 1);
-  const maxDud = Math.max(...chartData.map(d => d.dudRate || 0), 1);
-  const churnAxisMax = Math.ceil(maxChurn / 5) * 5;
-  const dudAxisMax = Math.ceil(maxDud / 10) * 10;
+  // Calculate average from MATURE cohorts only (confirmed data)
+  const matureCohorts = allCohorts.filter((c) => !c.isMaturing);
+  const avgChurnPct = matureCohorts.length > 0
+    ? Math.round(matureCohorts.reduce((sum, c) => sum + c.churnPct, 0) / matureCohorts.length)
+    : 0;
 
   return (
-    <div className={`rounded-xl border border-border bg-bg-secondary ${compact ? 'p-4' : 'p-5'}`}>
-      <div className="flex items-center justify-between mb-3">
-        <MetricLabel
-          label="CHURN & DUD TREND"
-          tooltip="Annual churn rate (red) vs dud rate (amber). Churn = lost customers / pool. Dud = one-time buyers who never reorder."
-          className="text-[10px] uppercase tracking-widest text-text-tertiary"
-        />
-        <div className="flex items-center gap-3 text-[10px] text-text-muted">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-0.5 rounded" style={{ backgroundColor: '#EF4444' }} />
-            Churn
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-0.5 rounded" style={{ backgroundColor: '#F59E0B' }} />
-            Dud
-          </span>
+    <div className="rounded-xl border border-border bg-bg-secondary p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <TrendingDown className="w-3.5 h-3.5 text-red-400" />
+          <MetricLabel
+            label="COHORT CHURN"
+            tooltip="Churned = 365+ days since last order (gone). At risk = 180-364 days (at-risk + churning combined)."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+        </div>
+        <div className="text-right">
+          <span className="text-lg font-bold text-red-400 tabular-nums">{avgChurnPct}%</span>
+          <span className="text-[10px] text-text-muted ml-1">avg</span>
         </div>
       </div>
-      <div className={compact ? "h-36" : "h-52"}>
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-            <XAxis
-              dataKey="year"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#64748B', fontSize: 11 }}
-            />
-            <YAxis
-              yAxisId="churn"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#EF4444', fontSize: 10 }}
-              width={40}
-              domain={[0, churnAxisMax]}
-              tickFormatter={(value) => `${value}%`}
-            />
-            <YAxis
-              yAxisId="dud"
-              orientation="right"
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: '#F59E0B', fontSize: 10 }}
-              width={45}
-              domain={[0, dudAxisMax]}
-              tickFormatter={(value) => `${value}%`}
-            />
-            <Tooltip
-              cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
-              contentStyle={{
-                backgroundColor: '#12151F',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px',
-                fontSize: '11px',
-              }}
-              labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
-              formatter={(value: number, name: string, props: { payload?: { churnCount?: number; poolSize?: number; dudMature?: number; dudTotal?: number } }) => {
-                if (name === 'churnRate') {
-                  const count = props.payload?.churnCount || 0;
-                  const pool = props.payload?.poolSize || 0;
-                  return [
-                    <span key="churn" style={{ color: '#EF4444' }}>
-                      {value?.toFixed(1)}% churn ({count}/{pool})
-                    </span>,
-                    '',
-                  ];
-                }
-                if (name === 'dudRate') {
-                  const mature = props.payload?.dudMature || 0;
-                  const total = props.payload?.dudTotal || 0;
-                  return [
-                    <span key="dud" style={{ color: '#F59E0B' }}>
-                      {value?.toFixed(1)}% dud ({mature}/{total} mature)
-                    </span>,
-                    '',
-                  ];
-                }
-                return [value, name];
-              }}
-            />
-            <Line
-              yAxisId="churn"
-              type="monotone"
-              dataKey="churnRate"
-              stroke="#EF4444"
-              strokeWidth={2.5}
-              dot={{ fill: '#EF4444', strokeWidth: 0, r: 4 }}
-              activeDot={{ r: 6, fill: '#EF4444' }}
-              connectNulls
-            />
-            <Line
-              yAxisId="dud"
-              type="monotone"
-              dataKey="dudRate"
-              stroke="#F59E0B"
-              strokeWidth={2.5}
-              dot={{ fill: '#F59E0B', strokeWidth: 0, r: 4 }}
-              activeDot={{ r: 6, fill: '#F59E0B' }}
-              connectNulls
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+
+      {/* All cohorts - unified list */}
+      <div className="space-y-2">
+        {allCohorts.map((cohort) => {
+          // "At risk" combines: at_risk (180-269d) + churning (270-364d)
+          const trendingCount = cohort.atRisk + cohort.churning;
+
+          // Percentages (whole numbers only)
+          const churnedPct = Math.round(cohort.churnPct);
+          const trendingPct = cohort.acquired > 0
+            ? Math.round((trendingCount / cohort.acquired) * 100)
+            : 0;
+          const totalPct = churnedPct + trendingPct;
+
+          return (
+            <div key={cohort.year} className="py-2.5 border-b border-border/10 last:border-0">
+              {/* Row 1: Year + percentages with clear labels */}
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-text-primary tabular-nums">
+                    {cohort.year}
+                  </span>
+                  {cohort.isMaturing && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">
+                      still maturing
+                    </span>
+                  )}
+                </div>
+                {/* Clear format: "X% churned · Y% at risk" */}
+                <div className="flex items-baseline gap-1">
+                  <span className="text-sm font-bold tabular-nums text-red-400">
+                    {churnedPct}%
+                  </span>
+                  <span className="text-[9px] text-red-400/60 mr-1">churned</span>
+                  {trendingPct > 0 && (
+                    <>
+                      <span className="text-[10px] text-text-muted">·</span>
+                      <span className="text-sm font-bold tabular-nums text-amber-400 ml-1">
+                        {trendingPct}%
+                      </span>
+                      <span className="text-[9px] text-amber-400/60">at risk</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2: Counts breakdown */}
+              <div className="flex items-center justify-between mb-1.5 text-[10px] tabular-nums">
+                <span className="text-text-muted">{cohort.acquired} acquired</span>
+                <div className="flex items-center gap-2">
+                  {cohort.churned > 0 && (
+                    <span className="text-red-400/70">{cohort.churned} gone</span>
+                  )}
+                  {trendingCount > 0 && (
+                    <span className="text-amber-400/70">{trendingCount} trending</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Blended gradient bar - smooth red → orange transition */}
+              <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+                {totalPct > 0 && (
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${totalPct}%`,
+                      background: trendingPct > 0 && churnedPct > 0
+                        ? `linear-gradient(to right, #dc2626 0%, #ef4444 ${(churnedPct / totalPct) * 100 - 5}%, #f97316 ${(churnedPct / totalPct) * 100 + 5}%, #f59e0b 100%)`
+                        : trendingPct > 0
+                          ? 'linear-gradient(to right, #f97316, #f59e0b)'
+                          : 'linear-gradient(to right, #dc2626, #ef4444)',
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
-      {!compact && (
-        <div className="mt-3 pt-3 border-t border-border/30 text-[10px] text-text-muted">
-          <span className="text-red-400">Churn</span> = customers lost (365+ days) ÷ pool at year start •
-          <span className="text-amber-400 ml-1">Dud</span> = one-time buyers with 133+ days to reorder
-        </div>
-      )}
     </div>
   );
 }
@@ -489,36 +419,49 @@ function B2BGrowthChart({
 
   if (quarterlyData.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-bg-secondary p-4 flex items-center justify-center h-[180px]">
+      <div className="rounded-xl border border-border bg-bg-secondary p-4 flex items-center justify-center h-full min-h-[180px]">
         <span className="text-sm text-text-muted">Loading customer data...</span>
       </div>
     );
   }
 
-  // Get final cumulative from the chart data (now properly adjusted)
+  // Get final cumulative from the chart data
   const latestCount = quarterlyData[quarterlyData.length - 1]?.cumulative || 0;
   const startCount = quarterlyData[0]?.cumulative || 0;
   const totalGrowth = startCount > 0 ? ((latestCount - startCount) / startCount * 100).toFixed(0) : '—';
 
   return (
-    <div className="rounded-xl border border-border bg-bg-secondary p-4">
+    <div className="rounded-xl border border-border bg-bg-secondary p-4 h-full flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <MetricLabel
-          label="B2B GROWTH RATE"
-          tooltip="Quarter-over-quarter growth in total B2B customers. Shows new customer acquisition momentum."
+          label="B2B CUSTOMER ACQUISITION"
+          tooltip="QoQ % increase in cumulative B2B customers by first order date."
           className="text-[10px] uppercase tracking-widest text-text-tertiary"
         />
         <span className="text-xs text-text-muted">
           {latestCount} total · <span className="text-emerald-400">+{totalGrowth}%</span> since Q1 '24
         </span>
       </div>
-      <div className="h-36">
+      <div className="flex-1 min-h-[144px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={quarterlyData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
+          <ComposedChart data={quarterlyData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
             <defs>
-              <linearGradient id="growthGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#10B981" stopOpacity={0.02} />
+              {/* Thermal gradient for line stroke: green (high) → yellow (mid) → orange (low) */}
+              <linearGradient id="b2bGrowthLineGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#22C55E" />
+                <stop offset="30%" stopColor="#22C55E" />
+                <stop offset="50%" stopColor="#84CC16" />
+                <stop offset="70%" stopColor="#EAB308" />
+                <stop offset="85%" stopColor="#F59E0B" />
+                <stop offset="100%" stopColor="#F97316" />
+              </linearGradient>
+              {/* Thermal gradient for fill area with transparency */}
+              <linearGradient id="b2bGrowthFillGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#22C55E" stopOpacity={0.20} />
+                <stop offset="40%" stopColor="#22C55E" stopOpacity={0.10} />
+                <stop offset="60%" stopColor="#84CC16" stopOpacity={0.06} />
+                <stop offset="80%" stopColor="#EAB308" stopOpacity={0.04} />
+                <stop offset="100%" stopColor="#F97316" stopOpacity={0.02} />
               </linearGradient>
             </defs>
             <XAxis
@@ -532,30 +475,39 @@ function B2BGrowthChart({
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#64748B', fontSize: 10 }}
-              width={35}
+              width={42}
               tickFormatter={(v) => `${v}%`}
             />
             <Tooltip
               cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
               content={({ active, payload, label }) => {
                 if (!active || !payload?.[0]) return null;
-                const data = payload[0].payload;
+                const data = payload[0].payload as { growthPct: number; newCustomers: number; cumulative: number };
+                // Thermal color based on growth value
+                const getColor = (v: number) => {
+                  if (v >= 8) return "#22C55E";
+                  if (v >= 5) return "#84CC16";
+                  if (v >= 3) return "#EAB308";
+                  if (v >= 1) return "#F59E0B";
+                  return "#F97316";
+                };
+                const color = getColor(data.growthPct);
                 return (
                   <div className="bg-[#12151F] border border-white/10 rounded-md p-3 text-[11px]">
                     <div className="text-text-secondary font-medium mb-2">{label}</div>
                     <div className="space-y-1">
                       <div className="flex justify-between gap-4">
-                        <span className="text-text-muted">Growth</span>
-                        <span className={data.growthPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                        <span className="text-text-muted">QoQ growth</span>
+                        <span style={{ color }}>
                           {data.growthPct >= 0 ? '+' : ''}{data.growthPct}%
                         </span>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <span className="text-text-muted">New customers</span>
+                        <span className="text-text-muted">New B2B acquired</span>
                         <span className="text-text-primary">+{data.newCustomers}</span>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <span className="text-text-muted">Total</span>
+                        <span className="text-text-muted">Cumulative total</span>
                         <span className="text-accent-blue">{data.cumulative}</span>
                       </div>
                     </div>
@@ -566,16 +518,39 @@ function B2BGrowthChart({
             <Area
               type="monotone"
               dataKey="growthPct"
-              fill="url(#growthGradient)"
-              stroke="transparent"
-            />
-            <Line
-              type="monotone"
-              dataKey="growthPct"
-              stroke="#10B981"
-              strokeWidth={2}
-              dot={{ fill: '#10B981', strokeWidth: 0, r: 3 }}
-              activeDot={{ r: 5, fill: '#10B981' }}
+              fill="url(#b2bGrowthFillGradient)"
+              stroke="url(#b2bGrowthLineGradient)"
+              strokeWidth={2.5}
+              dot={(props) => {
+                const { cx, cy, payload } = props as { cx?: number; cy?: number; payload?: { growthPct: number } };
+                if (cx === undefined || cy === undefined || !payload) return null;
+                const v = payload.growthPct;
+                const getColor = (val: number) => {
+                  if (val >= 8) return "#22C55E";
+                  if (val >= 5) return "#84CC16";
+                  if (val >= 3) return "#EAB308";
+                  if (val >= 1) return "#F59E0B";
+                  return "#F97316";
+                };
+                return (
+                  <circle cx={cx} cy={cy} r={3.5} fill={getColor(v)} stroke="none" />
+                );
+              }}
+              activeDot={(props) => {
+                const { cx, cy, payload } = props as { cx?: number; cy?: number; payload?: { growthPct: number } };
+                if (cx === undefined || cy === undefined || !payload) return null;
+                const v = payload.growthPct;
+                const getColor = (val: number) => {
+                  if (val >= 8) return "#22C55E";
+                  if (val >= 5) return "#84CC16";
+                  if (val >= 3) return "#EAB308";
+                  if (val >= 1) return "#F59E0B";
+                  return "#F97316";
+                };
+                return (
+                  <circle cx={cx} cy={cy} r={5} fill={getColor(v)} stroke="none" />
+                );
+              }}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -851,6 +826,230 @@ function DrillDownTable({
 }
 
 // ============================================================================
+// ORDERING ANOMALIES (moved from Wholesale - retention signal)
+// ============================================================================
+
+function InfoTooltip({
+  children,
+  content,
+  position = "bottom"
+}: {
+  children: React.ReactNode;
+  content: string;
+  position?: "top" | "bottom";
+}) {
+  const isTop = position === "top";
+
+  return (
+    <div className="relative group/tooltip inline-flex justify-center">
+      {children}
+      <div
+        className={`
+          absolute z-[100] pointer-events-none
+          opacity-0 group-hover/tooltip:opacity-100
+          transition-all duration-150 ease-out delay-75
+          scale-95 group-hover/tooltip:scale-100
+          ${isTop ? "bottom-full mb-2" : "top-full mt-2"}
+          left-1/2 -translate-x-1/2
+        `}
+      >
+        <div className="relative bg-bg-tertiary border border-border/50 rounded-lg px-3 py-2 shadow-xl">
+          <div className={`absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-bg-tertiary border-border/50 rotate-45 ${
+            isTop ? "bottom-[-5px] border-b border-r" : "top-[-5px] border-t border-l"
+          }`} />
+          <span className="relative z-10 text-xs text-text-secondary whitespace-nowrap">
+            {content}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCorporate?: boolean }) {
+  if (isCorporate) {
+    return (
+      <InfoTooltip content="Corporate Gifting Customer">
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+          CORP
+        </span>
+      </InfoTooltip>
+    );
+  }
+
+  const config: Record<CustomerSegment, { label: string; color: string; tooltip: string }> = {
+    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Lifetime revenue $25,000+" },
+    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "$10,000 – $25,000 lifetime" },
+    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400", tooltip: "$5,000 – $10,000 lifetime" },
+    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning", tooltip: "$1,000 – $5,000 lifetime" },
+    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary", tooltip: "$500 – $1,000 lifetime" },
+    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted", tooltip: "Under $500 lifetime" },
+  };
+  const { label, color, tooltip } = config[segment];
+  return (
+    <InfoTooltip content={tooltip}>
+      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
+        {label}
+      </span>
+    </InfoTooltip>
+  );
+}
+
+function SeverityBadge({ severity }: { severity: OrderingAnomalySeverity }) {
+  const config: Record<OrderingAnomalySeverity, { label: string; color: string }> = {
+    critical: { label: "CRITICAL", color: "bg-status-bad/20 text-status-bad" },
+    warning: { label: "WARNING", color: "bg-status-warning/20 text-status-warning" },
+    watch: { label: "WATCH", color: "bg-accent-blue/20 text-accent-blue" },
+  };
+  const { label, color } = config[severity];
+  return (
+    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
+      {label}
+    </span>
+  );
+}
+
+function OrderingAnomalyCard({ anomaly }: { anomaly: WholesaleOrderingAnomaly }) {
+  const borderColor =
+    anomaly.severity === "critical" ? "border-status-bad/50 bg-status-bad/5" :
+    anomaly.severity === "warning" ? "border-status-warning/50 bg-status-warning/5" :
+    "border-accent-blue/30 bg-accent-blue/5";
+
+  return (
+    <Link
+      href={`/sales/customer/${anomaly.ns_customer_id}`}
+      className={`block rounded-lg border p-4 ${borderColor} cursor-pointer transition-all hover:scale-[1.02] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-blue/50`}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0 mr-3">
+          <div className="text-sm font-medium text-text-primary truncate">
+            {anomaly.company_name}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <SegmentBadge segment={anomaly.segment} isCorporate={anomaly.is_corporate_gifting} />
+            <SeverityBadge severity={anomaly.severity} />
+          </div>
+        </div>
+        <div className="text-right">
+          <div className={`text-lg font-bold tabular-nums ${
+            anomaly.severity === "critical" ? "text-status-bad" :
+            anomaly.severity === "warning" ? "text-status-warning" :
+            "text-accent-blue"
+          }`}>
+            {anomaly.overdue_ratio.toFixed(1)}x
+          </div>
+          <div className="text-[9px] text-text-muted">late</div>
+        </div>
+      </div>
+
+      <div className="space-y-2 text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Typical interval</span>
+          <span className="font-medium text-text-primary tabular-nums">
+            {anomaly.avg_order_interval_days}d between orders
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Days since last order</span>
+          <span className={`font-semibold tabular-nums ${
+            anomaly.severity === "critical" ? "text-status-bad" :
+            anomaly.severity === "warning" ? "text-status-warning" :
+            "text-text-primary"
+          }`}>
+            {anomaly.days_since_last_order}d
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Total orders</span>
+          <span className="font-medium text-text-primary tabular-nums">
+            {anomaly.order_count.toLocaleString()}
+          </span>
+        </div>
+        <div className="flex items-center justify-between pt-1 border-t border-border/20">
+          <span className="text-text-muted">Lifetime value</span>
+          <span className="font-semibold text-text-primary tabular-nums">
+            {formatCurrencyFull(anomaly.total_revenue)}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function OrderingAnomaliesSection({
+  anomalies,
+  hideChurned,
+  onToggleChurned,
+}: {
+  anomalies: WholesaleOrderingAnomaly[];
+  hideChurned: boolean;
+  onToggleChurned: () => void;
+}) {
+  const nonCorporateAnomalies = anomalies.filter(a => !a.is_corporate_gifting);
+
+  if (!nonCorporateAnomalies || nonCorporateAnomalies.length === 0) return null;
+
+  const filtered = hideChurned ? nonCorporateAnomalies.filter(a => !a.is_churned) : nonCorporateAnomalies;
+  const churnedCount = nonCorporateAnomalies.filter(a => a.is_churned).length;
+
+  const criticalCount = filtered.filter(a => a.severity === "critical").length;
+  const warningCount = filtered.filter(a => a.severity === "warning").length;
+  const watchCount = filtered.filter(a => a.severity === "watch").length;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-status-warning/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-status-warning/5">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-status-warning" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-status-warning font-semibold">
+            ORDERING ANOMALIES
+          </h3>
+        </div>
+        <div className="flex items-center gap-3 text-[10px]">
+          {criticalCount > 0 && (
+            <span className="text-status-bad font-semibold">{criticalCount} critical</span>
+          )}
+          {warningCount > 0 && (
+            <span className="text-status-warning font-semibold">{warningCount} warning</span>
+          )}
+          {watchCount > 0 && (
+            <span className="text-accent-blue font-semibold">{watchCount} watch</span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs text-text-muted">
+            Customers overdue based on their historical ordering pattern.
+          </p>
+          {churnedCount > 0 && (
+            <button
+              onClick={onToggleChurned}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                hideChurned
+                  ? "bg-accent-blue/20 text-accent-blue"
+                  : "bg-text-muted/10 text-text-muted hover:bg-text-muted/20"
+              }`}
+            >
+              {hideChurned ? "Show" : "Hide"} {churnedCount} churned
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-[500px] overflow-y-auto scrollbar-thin pr-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {filtered.map((anomaly) => (
+              <OrderingAnomalyCard key={anomaly.ns_customer_id} anomaly={anomaly} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN DASHBOARD
 // ============================================================================
 
@@ -862,6 +1061,7 @@ export function DoorHealthDashboard({
   wholesaleData,
 }: DoorHealthDashboardProps) {
   const [groupByMode, setGroupByMode] = useState<GroupByMode>("year");
+  const [hideChurnedAnomalies, setHideChurnedAnomalies] = useState(true); // Hide churned by default
 
   // Loading state
   if (loading && !data) {
@@ -926,14 +1126,14 @@ export function DoorHealthDashboard({
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
             label="HEALTHY"
-            tooltip="Customers with an order in the last 180 days. These are active, engaged buyers."
+            tooltip="Ordered within last 180 days"
             className="text-[10px] uppercase tracking-widest text-text-tertiary"
           />
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-emerald-400">
               {fmt.num(funnel.active)}
             </span>
-            <span className="text-[10px] text-text-muted">&lt;180d</span>
+            <span className="text-[10px] text-text-muted">Last order &lt;180d</span>
           </div>
         </div>
 
@@ -941,14 +1141,14 @@ export function DoorHealthDashboard({
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
             label="AT RISK"
-            tooltip="180-269 days since last order. Slipping away—outreach recommended."
+            tooltip="180-269 days since last order"
             className="text-[10px] uppercase tracking-widest text-text-tertiary"
           />
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-amber-400">
               {funnel.atRisk}
             </span>
-            <span className="text-[10px] text-text-muted">180-269d</span>
+            <span className="text-[10px] text-text-muted">Last order 180-269d</span>
           </div>
         </div>
 
@@ -956,14 +1156,14 @@ export function DoorHealthDashboard({
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
             label="CHURNING"
-            tooltip="270-364 days since last order. High probability of permanent loss without intervention."
+            tooltip="270-364 days since last order"
             className="text-[10px] uppercase tracking-widest text-text-tertiary"
           />
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-orange-400">
               {funnel.churning}
             </span>
-            <span className="text-[10px] text-text-muted">270-364d</span>
+            <span className="text-[10px] text-text-muted">Last order 270-364d</span>
           </div>
         </div>
 
@@ -971,14 +1171,14 @@ export function DoorHealthDashboard({
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
             label="CHURNED"
-            tooltip="365+ days since last order. Considered lost—requires win-back campaign."
+            tooltip="365+ days since last order"
             className="text-[10px] uppercase tracking-widest text-text-tertiary"
           />
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-red-400">
               {funnel.churned}
             </span>
-            <span className="text-[10px] text-text-muted">365+d</span>
+            <span className="text-[10px] text-text-muted">Last order 365+d ago</span>
           </div>
         </div>
 
@@ -986,7 +1186,7 @@ export function DoorHealthDashboard({
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
             label="REV AT RISK"
-            tooltip="Total lifetime revenue from At Risk + Churning customers (180-364 days). This is money that could walk."
+            tooltip="Lifetime revenue from At Risk + Churning customers"
             className="text-[10px] uppercase tracking-widest text-text-tertiary"
           />
           <div className="flex items-baseline gap-2 mt-2">
@@ -1000,60 +1200,28 @@ export function DoorHealthDashboard({
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
             label="AVG LIFESPAN"
-            tooltip="Average months between a customer's first and last order. Higher is better—indicates stickier relationships."
+            tooltip="Average months between first and last order"
             className="text-[10px] uppercase tracking-widest text-text-tertiary"
           />
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2xl font-semibold tabular-nums text-text-primary">
               {metrics.avgLifespanMonths}
             </span>
-            <span className="text-[10px] text-text-muted">mo</span>
+            <span className="text-[10px] text-text-muted">mo, first to last order</span>
           </div>
         </div>
       </div>
 
-      {/* === ANNUAL CHURN + TREND CHART === */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Annual Churn Table - compact */}
-        <div className="rounded-xl border border-border bg-bg-secondary p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Calendar className="w-3.5 h-3.5 text-text-muted" />
-            <MetricLabel
-              label="ANNUAL CHURN"
-              tooltip="Customers lost per year. Rate = churned ÷ pool at year start (pool shrinks as customers churn)."
-              className="text-[10px] uppercase tracking-widest text-text-tertiary"
-            />
-          </div>
-          <div className="space-y-1.5">
-            {data.churnedByYear
-              .filter(row => row.year > 0)
-              .slice(0, 5)
-              .map((row) => (
-                <div key={row.year} className="flex items-center justify-between py-1 border-b border-border/10 last:border-0">
-                  <span className="text-xs font-medium text-text-secondary tabular-nums">{row.year}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-text-primary tabular-nums">{row.count}</span>
-                    <span className="text-[10px] text-red-400/70 tabular-nums w-12 text-right">{row.churnRate}%</span>
-                  </div>
-                </div>
-              ))}
-          </div>
-          <div className="mt-2 pt-2 border-t border-border/20 text-[10px] text-text-muted">
-            {formatCurrency(metrics.lostRevenue)} lifetime revenue lost
-          </div>
-        </div>
-
-        {/* Churn/Dud Trend - takes 2 columns */}
-        <div className="lg:col-span-2">
-          <ChurnDudTrendChart churnData={data.churnedByYear} dudData={data.dudRateByCohort || []} compact />
+      {/* === COHORT CHURN + B2B ACQUISITION (side by side) === */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+        <CohortRetentionTable cohortData={data.cohortRetention || []} />
+        <div className="lg:col-span-2 h-full">
+          <B2BGrowthChart
+            customersByHealth={wholesaleData?.customersByHealth}
+            totalFromDoorHealth={metrics.totalB2BCustomers}
+          />
         </div>
       </div>
-
-      {/* === B2B GROWTH (Line Chart) === */}
-      <B2BGrowthChart
-        customersByHealth={wholesaleData?.customersByHealth}
-        totalFromDoorHealth={metrics.totalB2BCustomers}
-      />
 
       {/* === DRILL-DOWN TABLE === */}
       <DrillDownTable
@@ -1062,6 +1230,15 @@ export function DoorHealthDashboard({
         mode={groupByMode}
         onModeChange={setGroupByMode}
       />
+
+      {/* === ORDERING ANOMALIES === */}
+      {wholesaleData?.orderingAnomalies && wholesaleData.orderingAnomalies.length > 0 && (
+        <OrderingAnomaliesSection
+          anomalies={wholesaleData.orderingAnomalies}
+          hideChurned={hideChurnedAnomalies}
+          onToggleChurned={() => setHideChurnedAnomalies(!hideChurnedAnomalies)}
+        />
+      )}
 
       {/* === DEFINITIONS === */}
       <div className="rounded-xl border border-border bg-bg-secondary p-5">

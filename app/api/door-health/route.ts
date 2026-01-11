@@ -26,6 +26,7 @@ import type {
   ChurnedBySegment,
   ChurnedByLifespan,
   DudRateByCohort,
+  CohortRetention,
   CustomerSegment,
   LifespanBucket,
 } from "@/lib/types";
@@ -64,6 +65,7 @@ const THRESHOLDS = {
   AT_RISK: 180,    // >= 180 days
   CHURNING: 270,   // >= 270 days
   CHURNED: 365,    // >= 365 days
+  DECLINING_YOY_PCT: -20, // YoY revenue drop >20% = Declining
 } as const;
 
 // Segment revenue thresholds (from compute_customer_metrics SQL - 20260109 migration)
@@ -155,7 +157,8 @@ export async function GET(request: NextRequest) {
         lifetime_revenue,
         lifetime_orders,
         is_corporate,
-        is_manually_churned
+        is_manually_churned,
+        yoy_revenue_change_pct
       `)
       .neq("is_inactive", true)
       .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS);
@@ -197,6 +200,10 @@ export async function GET(request: NextRequest) {
         ? monthsBetween(firstSale, lastSale)
         : null;
 
+      // Check if customer is declining (YoY revenue drop >20%)
+      const yoyChangePct = c.yoy_revenue_change_pct ? parseFloat(c.yoy_revenue_change_pct) : null;
+      const isDeclining = yoyChangePct !== null && yoyChangePct < THRESHOLDS.DECLINING_YOY_PCT;
+
       return {
         ns_customer_id: c.ns_customer_id,
         company_name: c.company_name || "Unknown",
@@ -208,6 +215,7 @@ export async function GET(request: NextRequest) {
         order_count: c.lifetime_orders || 0,
         lifespan_months: lifespanMonths,
         churn_year: getChurnYear(c.last_sale_date),
+        is_declining: isDeclining,
       };
     });
 
@@ -217,6 +225,7 @@ export async function GET(request: NextRequest) {
       atRisk: 0,
       churning: 0,
       churned: 0,
+      healthyDeclining: 0, // Active customers with YoY revenue drop >20%
     };
 
     // Only count customers WITH order history in the health funnel
@@ -226,6 +235,10 @@ export async function GET(request: NextRequest) {
       if (days === null) return; // Skip customers with no order history
       if (days < THRESHOLDS.AT_RISK) {
         funnel.active++;
+        // Track declining customers within the healthy/active segment
+        if (c.is_declining) {
+          funnel.healthyDeclining++;
+        }
       } else if (days < THRESHOLDS.CHURNING) {
         funnel.atRisk++;
       } else if (days < THRESHOLDS.CHURNED) {
@@ -380,6 +393,71 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // ==========================================================
+    // COHORT RETENTION ANALYSIS - The honest numbers
+    // Shows what % of each acquisition cohort has churned vs retained
+    // This is the "scary number" that reveals true retention health
+    // ==========================================================
+    const cohortRetention: CohortRetention[] = [];
+
+    // Build year-only cohort map (simpler than H1/H2 split)
+    const yearCohortMap = new Map<number, typeof enrichedCustomers>();
+    enrichedCustomers.forEach((c) => {
+      if (!c.first_sale_date) return;
+      const year = new Date(c.first_sale_date).getFullYear();
+      const existing = yearCohortMap.get(year) || [];
+      existing.push(c);
+      yearCohortMap.set(year, existing);
+    });
+
+    // Calculate retention for each cohort
+    const sortedYears = Array.from(yearCohortMap.keys()).sort();
+    for (const year of sortedYears) {
+      const members = yearCohortMap.get(year) || [];
+      const acquired = members.length;
+
+      // Classify each customer by current status
+      let healthy = 0, atRisk = 0, churning = 0, churned = 0;
+      members.forEach((c) => {
+        const days = c.days_since_last_order;
+        if (days === null) {
+          // No last_sale_date = treat as healthy (data gap)
+          healthy++;
+        } else if (days >= THRESHOLDS.CHURNED) {
+          churned++;
+        } else if (days >= THRESHOLDS.CHURNING) {
+          churning++;
+        } else if (days >= THRESHOLDS.AT_RISK) {
+          atRisk++;
+        } else {
+          healthy++;
+        }
+      });
+
+      const retained = healthy + atRisk + churning;
+      const retentionPct = acquired > 0 ? (retained / acquired) * 100 : 0;
+      const churnPct = acquired > 0 ? (churned / acquired) * 100 : 0;
+
+      // A cohort is "maturing" if NOT ALL members have had 365 days to churn
+      // This means the END of the cohort year (Dec 31) must be <365 days ago
+      const cohortEndDate = new Date(year, 11, 31); // Dec 31 of cohort year
+      const daysSinceCohortEnd = Math.floor((now.getTime() - cohortEndDate.getTime()) / (1000 * 60 * 60 * 24));
+      const isMaturing = daysSinceCohortEnd < 365;
+
+      cohortRetention.push({
+        year,
+        acquired,
+        healthy,
+        atRisk,
+        churning,
+        churned,
+        retained,
+        retentionPct: Math.round(retentionPct * 10) / 10,
+        churnPct: Math.round(churnPct * 10) / 10,
+        isMaturing,
+      });
+    }
+
     // Calculate YTD and prior year churn rates
     // Churn rate = customers who crossed 365-day threshold in that year / total B2B customers WITH orders
     // IMPORTANT: Exclude never-ordered customers from denominator (they can't churn if they never ordered)
@@ -448,6 +526,7 @@ export async function GET(request: NextRequest) {
       churnedBySegment,
       churnedByLifespan,
       dudRateByCohort,
+      cohortRetention,
       customers: churnedCustomers.sort((a, b) => b.total_revenue - a.total_revenue),
       lastSynced: syncLog?.finished_at || null,
     };

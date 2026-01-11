@@ -125,38 +125,14 @@ function InfoTooltip({
           ${isTop ? "bottom-full mb-2" : "top-full mt-2"}
         `}
       >
-        {/* Tooltip body */}
-        <div className="relative">
-          {/* Main pill */}
-          <div
-            className="px-3.5 py-1.5 rounded-full"
-            style={{
-              background: '#151515',
-              border: '1px solid rgba(255,255,255,0.1)',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.4)'
-            }}
-          >
-            <span className="text-[11px] font-medium text-white/95 whitespace-nowrap">
-              {content}
-            </span>
-          </div>
-
-          {/* Arrow - SVG for crisp edges */}
-          <svg
-            className="absolute left-1/2 -translate-x-1/2"
-            width="10"
-            height="5"
-            viewBox="0 0 10 5"
-            style={isTop ? { top: '100%', marginTop: '-0.5px' } : { bottom: '100%', marginBottom: '-0.5px', transform: 'translateX(-50%) rotate(180deg)' }}
-          >
-            <path
-              d="M0 0 L5 5 L10 0"
-              fill="#151515"
-              stroke="rgba(255,255,255,0.1)"
-              strokeWidth="1"
-              strokeLinejoin="round"
-            />
-          </svg>
+        {/* Tooltip body - using design system colors */}
+        <div className="relative bg-bg-tertiary border border-border/50 rounded-lg px-3 py-2 shadow-xl">
+          <div className={`absolute left-1/2 -translate-x-1/2 w-2 h-2 bg-bg-tertiary border-border/50 rotate-45 ${
+            isTop ? "bottom-[-5px] border-b border-r" : "top-[-5px] border-t border-l"
+          }`} />
+          <span className="relative z-10 text-xs text-text-secondary whitespace-nowrap">
+            {content}
+          </span>
         </div>
       </div>
     </div>
@@ -1358,7 +1334,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
   const totalOrders = customers.reduce((sum, c) => sum + c.order_count, 0);
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden h-full flex flex-col">
+    <div className="bg-bg-secondary rounded-xl border border-accent-blue/30 overflow-hidden">
       <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-accent-blue/5">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-accent-blue" />
@@ -1388,7 +1364,7 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
       </div>
 
       {/* Customer List - No slicing, show all */}
-      <div className="max-h-[280px] overflow-y-auto scrollbar-thin flex-1">
+      <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
         {customers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-text-muted">
             <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -2183,11 +2159,11 @@ export function WholesaleDashboard({
           color="green"
         />
         <BreakdownCard
-          label="Active Customers"
-          value={stats.active_customers.toString()}
-          subValue={`of ${stats.total_customers} total`}
+          label="Total Customers"
+          value={stats.total_customers.toString()}
+          subValue={`${stats.retention_distribution?.healthy ?? stats.active_customers} healthy (<180d)`}
           delta={stats.customers_delta_pct}
-          description="Ordered in this period"
+          description="All wholesale accounts"
           icon={Users}
           color="blue"
         />
@@ -2197,70 +2173,21 @@ export function WholesaleDashboard({
           icon={ShoppingCart}
           color="purple"
         />
-{/* At Risk - Clickable to expand */}
-        <button
-          onClick={() => setShowAllAtRisk(!showAllAtRisk)}
-          className="relative overflow-hidden bg-bg-secondary rounded-xl border border-status-warning/30 p-5 text-left hover:bg-status-warning/5 transition-all group"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-text-muted mb-2">
-                At Risk
-              </div>
-              <div className="text-2xl font-semibold tracking-tight text-status-warning tabular-nums">
-                {stats.health_distribution.at_risk + stats.health_distribution.churning}
-              </div>
-              <div className="text-[10px] text-text-muted mt-1">
-                {stats.health_distribution.at_risk} at risk • {stats.health_distribution.churning} churning
-              </div>
-            </div>
-            <div className="p-2.5 rounded-lg bg-status-warning/10">
-              <AlertTriangle className="w-4 h-4 text-status-warning" />
-            </div>
-          </div>
-        </button>
+{/* New Customers - Growth metric */}
+        <BreakdownCard
+          label="New Customers"
+          value={stats.health_distribution.new.toString()}
+          subValue="First order within 90d"
+          icon={UserPlus}
+          color="purple"
+        />
       </div>
 
       {/* ================================================================
-          CUSTOMER HEALTH - Minimal inline display
+          CUSTOMER HEALTH - Simplified growth-focused display
           ================================================================ */}
       <div className="px-1">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "churning" ? null : "churning")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "churning" ? "underline" : ""}`}
-          >
-            <span className="text-status-bad font-medium">Churning ({stats.health_distribution.churning})</span>
-          </button>
-          <span className="text-text-muted/30">•</span>
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "at_risk" ? null : "at_risk")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "at_risk" ? "underline" : ""}`}
-          >
-            <span className="text-orange-400 font-medium">At Risk ({stats.health_distribution.at_risk})</span>
-          </button>
-          <span className="text-text-muted/30">•</span>
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "declining" ? null : "declining")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "declining" ? "underline" : ""}`}
-          >
-            <span className="text-status-warning font-medium">Declining ({stats.health_distribution.declining})</span>
-          </button>
-          <span className="text-text-muted/30">•</span>
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "thriving" ? null : "thriving")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "thriving" ? "underline" : ""}`}
-          >
-            <span className="text-status-good font-medium">Thriving ({stats.health_distribution.thriving})</span>
-          </button>
-          <span className="text-text-muted/30">•</span>
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "stable" ? null : "stable")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "stable" ? "underline" : ""}`}
-          >
-            <span className="text-accent-blue font-medium">Stable ({stats.health_distribution.stable})</span>
-          </button>
-          <span className="text-text-muted/30">•</span>
           <button
             onClick={() => setSelectedHealthFilter(selectedHealthFilter === "new" ? null : "new")}
             className={`hover:underline transition-colors ${selectedHealthFilter === "new" ? "underline" : ""}`}
@@ -2268,19 +2195,19 @@ export function WholesaleDashboard({
             <span className="text-purple-400 font-medium">New ({stats.health_distribution.new})</span>
           </button>
           <span className="text-text-muted/30">•</span>
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "one_time" ? null : "one_time")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "one_time" ? "underline" : ""}`}
-          >
-            <span className="text-text-tertiary font-medium">One-Time ({stats.health_distribution.one_time})</span>
-          </button>
+          <span className="text-text-secondary">
+            <span className="font-medium text-status-good">{stats.retention_distribution?.healthy ?? stats.active_customers}</span>
+            <span className="text-text-muted"> healthy of </span>
+            <span className="font-medium">{stats.total_customers}</span>
+            <span className="text-text-muted"> total</span>
+          </span>
           <span className="text-text-muted/30">•</span>
-          <button
-            onClick={() => setSelectedHealthFilter(selectedHealthFilter === "churned" ? null : "churned")}
-            className={`hover:underline transition-colors ${selectedHealthFilter === "churned" ? "underline" : ""}`}
+          <Link
+            href="/sales/door-health"
+            className="text-text-muted hover:text-accent-blue transition-colors flex items-center gap-1"
           >
-            <span className="text-text-muted font-medium">Churned ({stats.health_distribution.churned})</span>
-          </button>
+            View Retention →
+          </Link>
         </div>
 
         {/* Revenue Mix: Corporate vs Standard B2B */}
@@ -2424,28 +2351,8 @@ export function WholesaleDashboard({
       )}
 
       {/* ================================================================
-          ORDERING ANOMALIES - Always visible (intelligent at-risk detection)
-          ================================================================ */}
-      {data.orderingAnomalies && data.orderingAnomalies.length > 0 ? (
-        <OrderingAnomaliesSection
-          anomalies={data.orderingAnomalies}
-          hideChurned={hideChurned}
-          onToggleChurned={() => setHideChurned(!hideChurned)}
-        />
-      ) : (
-        <div className="bg-bg-secondary rounded-xl border border-border/30 p-8 text-center">
-          <div className="flex flex-col items-center gap-3">
-            <CheckCircle className="w-10 h-10 text-status-good/50" />
-            <div>
-              <p className="text-sm font-medium text-text-primary">No ordering anomalies detected</p>
-              <p className="text-xs text-text-muted mt-1">All customers are ordering on schedule</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================
           EXPANDED AT-RISK VIEW - Traditional fixed threshold (when clicked)
+          Note: Ordering Anomalies moved to Door Health tab (retention signal)
           ================================================================ */}
       {showAllAtRisk && data.atRiskCustomers && data.atRiskCustomers.length > 0 && (() => {
         const filteredAtRisk = hideChurned
@@ -2500,7 +2407,8 @@ export function WholesaleDashboard({
       })()}
 
       {/* ================================================================
-          TOP CUSTOMERS + NEW CUSTOMERS (Side by Side)
+          TOP CUSTOMERS + CORPORATE CUSTOMERS (Side by Side)
+          Relationship & Revenue Focus
           ================================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* TOP CUSTOMERS TABLE (Left Half) */}
@@ -2617,18 +2525,14 @@ export function WholesaleDashboard({
           )}
         </div>
 
-        {/* NEW CUSTOMERS (Right Half) */}
-        {data.newCustomers && data.newCustomers.length > 0 ? (
-          <NewCustomersSection
-            customers={data.newCustomers}
-            acquisition={data.newCustomerAcquisition}
-          />
+        {/* CORPORATE GIFTING CUSTOMERS (Right Half) */}
+        {data.corporateCustomers && data.corporateCustomers.length > 0 ? (
+          <CorporateCustomersSection customers={data.corporateCustomers} />
         ) : (
           <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
             <div className="text-center text-text-muted">
-              <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No new wholesale customers acquired in the last 12 months</p>
-              <p className="text-xs mt-1 opacity-60">First-time B2B buyers appear here</p>
+              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No corporate gifting accounts</p>
             </div>
           </div>
         )}
@@ -2677,10 +2581,27 @@ export function WholesaleDashboard({
       )}
 
       {/* ================================================================
-          RECENT TRANSACTIONS + CORPORATE CUSTOMERS (Side by Side)
+          NEW CUSTOMERS + RECENT TRANSACTIONS (Side by Side)
+          Corporate Audit Workflow - scan both for misclassified accounts
           ================================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* RECENT TRANSACTIONS (Left Half) */}
+        {/* NEW CUSTOMERS (Left Half) */}
+        {data.newCustomers && data.newCustomers.length > 0 ? (
+          <NewCustomersSection
+            customers={data.newCustomers}
+            acquisition={data.newCustomerAcquisition}
+          />
+        ) : (
+          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
+            <div className="text-center text-text-muted">
+              <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No new wholesale customers acquired in the last 12 months</p>
+              <p className="text-xs mt-1 opacity-60">First-time B2B buyers appear here</p>
+            </div>
+          </div>
+        )}
+
+        {/* RECENT TRANSACTIONS (Right Half) */}
         {data.recentTransactions && data.recentTransactions.length > 0 ? (
           <RecentTransactionsSection transactions={data.recentTransactions} />
         ) : (
@@ -2691,18 +2612,107 @@ export function WholesaleDashboard({
             </div>
           </div>
         )}
+      </div>
 
-        {/* CORPORATE GIFTING CUSTOMERS (Right Half) */}
-        {data.corporateCustomers && data.corporateCustomers.length > 0 ? (
-          <CorporateCustomersSection customers={data.corporateCustomers} />
-        ) : (
-          <div className="bg-bg-secondary rounded-xl border border-border/30 flex items-center justify-center h-full min-h-[300px]">
-            <div className="text-center text-text-muted">
-              <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No corporate gifting accounts</p>
+      {/* ================================================================
+          DEFINITIONS & METHODOLOGY
+          ================================================================ */}
+      <div className="rounded-xl border border-border bg-bg-secondary p-5">
+        <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary mb-4">
+          Definitions & Methodology
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-3">
+          {/* Health Status Buckets */}
+          <div className="space-y-2">
+            <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Health Status</h4>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Thriving</span>
+              <span className="text-text-muted">YoY growth &gt;20%, ordered &lt;90d</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Stable</span>
+              <span className="text-text-muted">&lt;180d since order, no decline</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">New</span>
+              <span className="text-text-muted">First order within 90 days</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">One-Time</span>
+              <span className="text-text-muted">Exactly 1 lifetime order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Declining</span>
+              <span className="text-text-muted">YoY revenue drop &gt;20%</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">At Risk</span>
+              <span className="text-text-muted">180-269 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Churning</span>
+              <span className="text-text-muted">270-364 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Churned</span>
+              <span className="text-text-muted">≥365 days since last order</span>
             </div>
           </div>
-        )}
+
+          {/* Segments */}
+          <div className="space-y-2">
+            <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Customer Segments</h4>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Major</span>
+              <span className="text-text-muted">≥$50,000 lifetime revenue</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Large</span>
+              <span className="text-text-muted">$20,000 – $50,000 lifetime</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Mid</span>
+              <span className="text-text-muted">$5,000 – $20,000 lifetime</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Small</span>
+              <span className="text-text-muted">$1,000 – $5,000 lifetime</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Starter</span>
+              <span className="text-text-muted">&gt;$0 – $1,000 lifetime</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Minimal</span>
+              <span className="text-text-muted">$0 lifetime (no revenue)</span>
+            </div>
+          </div>
+
+          {/* Revenue at Risk */}
+          <div className="space-y-2">
+            <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Revenue at Risk</h4>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Retention Risk</span>
+              <span className="text-text-muted">LTV of customers ≥180 days out</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Growth Risk</span>
+              <span className="text-text-muted">Includes declining customers</span>
+            </div>
+            <div className="flex justify-between text-xs mt-4">
+              <span className="text-text-secondary">Active</span>
+              <span className="text-text-muted">&lt;180 days since last order</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Portfolio Health</span>
+              <span className="text-text-muted">Thriving + Stable customers</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-text-secondary">Customer</span>
+              <span className="text-text-muted">B2B with ≥1 order (excl. corp/test)</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

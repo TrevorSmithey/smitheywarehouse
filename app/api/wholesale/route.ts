@@ -59,12 +59,13 @@ async function getExcludedCustomerIds(supabase: ReturnType<typeof createServiceC
 }
 
 // Helper to determine customer segment based on revenue
+// IMPORTANT: Must match door-health API and database compute_customer_metrics() exactly
 function getCustomerSegment(totalRevenue: number): CustomerSegment {
   if (totalRevenue >= 50000) return "major";
   if (totalRevenue >= 20000) return "large";
-  if (totalRevenue >= 10000) return "mid";
-  if (totalRevenue >= 5000) return "small";
-  if (totalRevenue >= 2000) return "starter";
+  if (totalRevenue >= 5000) return "mid";     // Aligned with door-health
+  if (totalRevenue >= 1000) return "small";   // Aligned with door-health
+  if (totalRevenue > 0) return "starter";     // DB uses > 0, not >= threshold
   return "minimal";
 }
 
@@ -75,6 +76,31 @@ function getCustomerSegment(totalRevenue: number): CustomerSegment {
 // - days_since_last_order (computed from last_sale_date)
 // - ytd_revenue and prior_year_revenue (for trend analysis)
 // This eliminates API-side workarounds and ensures single source of truth.
+
+// =============================================================================
+// RETENTION HEALTH THRESHOLDS - Must match door-health API for aligned counts
+// These define the 4-bucket time-based classification used across the Sales tab
+// =============================================================================
+const RETENTION_THRESHOLDS = {
+  AT_RISK_DAYS: 180,   // 180-269 days = At Risk
+  CHURNING_DAYS: 270,  // 270-364 days = Churning
+  CHURNED_DAYS: 365,   // 365+ days = Churned
+  DECLINING_YOY_PCT: -20, // YoY revenue drop >20% = Declining (for badge)
+} as const;
+
+// Helper to compute time-based retention health (4-bucket system matching Door Health)
+// This is the PRIMARY classification for cross-tab alignment
+// The 8-bucket system (thriving/stable/new/one_time/declining/at_risk/churning/churned)
+// remains available for deeper analysis but doesn't drive the headline numbers
+type RetentionHealthBucket = "healthy" | "at_risk" | "churning" | "churned";
+
+function getRetentionHealth(daysSinceLastOrder: number | null): RetentionHealthBucket {
+  if (daysSinceLastOrder === null) return "churned"; // No order date = effectively churned
+  if (daysSinceLastOrder >= RETENTION_THRESHOLDS.CHURNED_DAYS) return "churned";
+  if (daysSinceLastOrder >= RETENTION_THRESHOLDS.CHURNING_DAYS) return "churning";
+  if (daysSinceLastOrder >= RETENTION_THRESHOLDS.AT_RISK_DAYS) return "at_risk";
+  return "healthy";
+}
 
 export async function GET(request: NextRequest) {
   // Auth check - requires admin session
@@ -380,6 +406,13 @@ export async function GET(request: NextRequest) {
       // Use DB-computed segment or compute if not present
       const segment = (c.segment as CustomerSegment) || getCustomerSegment(totalRevenue);
 
+      // Compute time-based retention health (4-bucket system matching Door Health)
+      // This ensures At Risk / Churning / Churned counts match across tabs
+      const retentionHealth = getRetentionHealth(daysSinceLastOrder);
+
+      // Check if customer is declining (for Door Health "X Healthy (Y declining)" badge)
+      const isDeclining = (yoyChange * 100) < RETENTION_THRESHOLDS.DECLINING_YOY_PCT;
+
       return {
         ns_customer_id: parseCustomerId(c.ns_customer_id),
         entity_id: c.ns_customer_id?.toString() || "",
@@ -391,7 +424,9 @@ export async function GET(request: NextRequest) {
         total_revenue: totalRevenue,
         ytd_revenue: parseFloat(c.ytd_revenue) || 0,
         order_count: orderCount,
-        health_status: healthStatus,
+        health_status: healthStatus, // 8-bucket classification for detailed analysis
+        retention_health: retentionHealth, // 4-bucket classification for cross-tab alignment
+        is_declining: isDeclining, // YoY revenue drop >20% (for Door Health badge)
         segment: segment,
         avg_order_value: parseFloat(c.avg_order_value) || 0,
         days_since_last_order: daysSinceLastOrder, // Computed dynamically, not from stale DB column
@@ -680,6 +715,7 @@ export async function GET(request: NextRequest) {
       c.health_status === "churned" || c.is_manually_churned === true;
     const notManuallyChurned = (c: WholesaleCustomer) => c.is_manually_churned !== true;
 
+    // 8-bucket health distribution (detailed analysis - for Wholesale deep-dives)
     const healthDistribution = {
       thriving: b2bCustomers.filter((c) => c.health_status === "thriving" && notManuallyChurned(c)).length,
       stable: b2bCustomers.filter((c) => c.health_status === "stable" && notManuallyChurned(c)).length,
@@ -690,6 +726,39 @@ export async function GET(request: NextRequest) {
       new: b2bCustomers.filter((c) => c.health_status === "new" && notManuallyChurned(c)).length,
       one_time: b2bCustomers.filter((c) => c.health_status === "one_time" && notManuallyChurned(c)).length,
     };
+
+    // =========================================================================
+    // RETENTION DISTRIBUTION - 4-bucket system aligned with Door Health tab
+    // Uses pure time-based classification for cross-tab number consistency
+    // This is the PRIMARY classification for headline "At Risk" / "Churned" counts
+    // =========================================================================
+    const isRetentionHealthy = (c: WholesaleCustomer) => c.retention_health === "healthy" && notManuallyChurned(c);
+    const isRetentionAtRisk = (c: WholesaleCustomer) => c.retention_health === "at_risk" && notManuallyChurned(c);
+    const isRetentionChurning = (c: WholesaleCustomer) => c.retention_health === "churning" && notManuallyChurned(c);
+    const isRetentionChurned = (c: WholesaleCustomer) =>
+      c.retention_health === "churned" || c.is_manually_churned === true;
+
+    const retentionDistribution = {
+      healthy: b2bCustomers.filter(isRetentionHealthy).length,
+      at_risk: b2bCustomers.filter(isRetentionAtRisk).length,
+      churning: b2bCustomers.filter(isRetentionChurning).length,
+      churned: b2bCustomers.filter(isRetentionChurned).length,
+      // Additional insight: healthy customers who are declining YoY (for Door Health badge)
+      healthy_declining: b2bCustomers.filter((c) => isRetentionHealthy(c) && c.is_declining).length,
+    };
+
+    // =========================================================================
+    // DUAL REVENUE AT RISK METRICS (aligned with user decision)
+    // 1. Retention-based: Revenue from customers 180+ days (time threshold)
+    // 2. Growth-based: Revenue from declining customers (trend threshold)
+    // =========================================================================
+    const revenueAtRiskRetention = b2bCustomers
+      .filter((c) => isRetentionAtRisk(c) || isRetentionChurning(c))
+      .reduce((sum, c) => sum + c.total_revenue, 0);
+
+    const revenueAtRiskGrowth = b2bCustomers
+      .filter((c) => c.is_declining && notManuallyChurned(c))
+      .reduce((sum, c) => sum + c.total_revenue, 0);
 
     // Customers grouped by health status for drill-down views (sorted by revenue) - B2B ONLY
     const customersByHealth = {
@@ -817,6 +886,11 @@ export async function GET(request: NextRequest) {
       health_distribution: healthDistribution,
       segment_distribution: segmentDistribution,
       revenue_by_type: revenueByType,
+      // Aligned 4-bucket retention distribution (matches Door Health tab)
+      retention_distribution: retentionDistribution,
+      // Dual Revenue at Risk metrics (per user decision)
+      revenue_at_risk_retention: Math.round(revenueAtRiskRetention * 100) / 100, // Time-based (180-364d)
+      revenue_at_risk_growth: Math.round(revenueAtRiskGrowth * 100) / 100, // Declining customers
     };
 
     // Corporate customers - ALL corporate gifting accounts (including $0 revenue)
