@@ -1582,3 +1582,71 @@ export interface B2BDraftOrderSku {
   orderCount: number;      // Number of draft orders containing this SKU
   avgPrice: number | null; // Average unit price across orders
 }
+
+// ============================================================
+// Door Health / Churn Analytics Types
+// ============================================================
+
+export type LifespanBucket = "<1yr" | "1-2yr" | "2-3yr" | "3+yr";
+
+export interface DoorHealthMetrics {
+  totalB2BCustomers: number;
+  activeCustomers: number;
+  inactiveCustomers: number;
+  churnedCustomers: number;
+  churnRateYtd: number;
+  churnRatePriorYear: number;
+  churnRateChange: number;
+  avgLifespanMonths: number;
+  avgLifespanMonthsPriorYear: number;
+  lostRevenue: number;
+}
+
+export interface DoorHealthFunnel {
+  active: number;
+  atRisk: number;
+  churning: number;
+  churned: number;
+}
+
+export interface ChurnedByYear {
+  year: number;
+  count: number;
+  revenue: number;
+}
+
+export interface ChurnedBySegment {
+  segment: CustomerSegment;
+  count: number;
+  revenue: number;
+  avgLifespanMonths: number;
+}
+
+export interface ChurnedByLifespan {
+  bucket: LifespanBucket;
+  count: number;
+  revenue: number;
+}
+
+export interface DoorHealthCustomer {
+  ns_customer_id: number;
+  company_name: string;
+  segment: CustomerSegment;
+  first_sale_date: string | null;
+  last_sale_date: string | null;
+  days_since_last_order: number | null;
+  total_revenue: number;
+  order_count: number;
+  lifespan_months: number | null;
+  churn_year: number | null;
+}
+
+export interface DoorHealthResponse {
+  metrics: DoorHealthMetrics;
+  funnel: DoorHealthFunnel;
+  churnedByYear: ChurnedByYear[];
+  churnedBySegment: ChurnedBySegment[];
+  churnedByLifespan: ChurnedByLifespan[];
+  customers: DoorHealthCustomer[];
+  lastSynced: string | null;
+}
