@@ -315,19 +315,43 @@ function RetentionFunnel({
 }
 
 // ============================================================================
-// B2B GROWTH CHART - Cumulative revenue from wholesaleData.monthly
+// B2B GROWTH CHART - Cumulative customers & revenue
 // ============================================================================
 
 function B2BGrowthChart({
   monthly,
+  customersByHealth,
 }: {
   monthly: WholesaleResponse["monthly"] | undefined;
+  customersByHealth: WholesaleResponse["customersByHealth"] | undefined;
 }) {
-  // Build cumulative data from wholesaleData.monthly (regular_revenue = B2B excluding corporate)
+  // Build cumulative data:
+  // - Revenue from monthly.regular_revenue (B2B excluding corporate)
+  // - Customers from customersByHealth arrays combined (true acquisition count)
   const chartData = useMemo(() => {
     if (!monthly || monthly.length === 0) return [];
 
-    // Sort by date and take last 24 months
+    // Combine all customer health segments to get ALL B2B customers
+    const allCustomers = customersByHealth
+      ? [
+          ...(customersByHealth.thriving || []),
+          ...(customersByHealth.stable || []),
+          ...(customersByHealth.declining || []),
+          ...(customersByHealth.at_risk || []),
+          ...(customersByHealth.churning || []),
+        ]
+      : [];
+
+    // Build customer acquisition by month from first_sale_date
+    const customersByMonth = new Map<string, number>();
+    for (const c of allCustomers) {
+      if (!c.first_sale_date || c.is_corporate_gifting) continue;
+      const date = new Date(c.first_sale_date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      customersByMonth.set(key, (customersByMonth.get(key) || 0) + 1);
+    }
+
+    // Sort monthly data and take last 24 months
     const sorted = [...monthly]
       .sort((a, b) => a.month.localeCompare(b.month))
       .slice(-24);
@@ -335,20 +359,34 @@ function B2BGrowthChart({
     let cumulativeRevenue = 0;
     let cumulativeCustomers = 0;
 
+    // Calculate starting cumulative customers (all customers acquired BEFORE our window)
+    if (allCustomers.length > 0 && sorted.length > 0) {
+      const firstMonth = sorted[0].month.slice(0, 7); // YYYY-MM
+      for (const c of allCustomers) {
+        if (!c.first_sale_date || c.is_corporate_gifting) continue;
+        const acqMonth = c.first_sale_date.slice(0, 7);
+        if (acqMonth < firstMonth) {
+          cumulativeCustomers++;
+        }
+      }
+    }
+
     return sorted.map((row) => {
+      const monthKey = row.month.slice(0, 7); // YYYY-MM
+      const newCustomers = customersByMonth.get(monthKey) || 0;
       cumulativeRevenue += row.regular_revenue || 0;
-      cumulativeCustomers += row.unique_customers || 0;
+      cumulativeCustomers += newCustomers;
       const date = new Date(row.month);
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return {
         month: `${monthNames[date.getMonth()]} '${String(date.getFullYear()).slice(2)}`,
-        revenue: row.regular_revenue || 0,
-        customers: row.unique_customers || 0,
-        cumulativeRevenue,
+        newCustomers,
         cumulativeCustomers,
+        revenue: row.regular_revenue || 0,
+        cumulativeRevenue,
       };
     });
-  }, [monthly]);
+  }, [monthly, customersByHealth]);
 
   if (chartData.length < 3) {
     return (
@@ -362,12 +400,16 @@ function B2BGrowthChart({
     <div className="rounded-xl border border-border bg-bg-secondary p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[10px] uppercase tracking-widest text-text-tertiary">
-          Cumulative B2B Revenue · Last 24 Months
+          B2B Growth · Last 24 Months
         </h3>
         <div className="flex items-center gap-4 text-[10px] text-text-muted">
           <span className="flex items-center gap-1.5">
+            <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#0EA5E9' }} />
+            Customers
+          </span>
+          <span className="flex items-center gap-1.5">
             <span className="w-3 h-0.5 rounded" style={{ backgroundColor: '#10B981' }} />
-            Revenue (excl. Corp)
+            Revenue
           </span>
         </div>
       </div>
@@ -375,9 +417,9 @@ function B2BGrowthChart({
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
             <defs>
-              <linearGradient id="revenueArea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10B981" stopOpacity={0.2} />
-                <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+              <linearGradient id="customerAreaGrowth" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
@@ -388,6 +430,15 @@ function B2BGrowthChart({
               interval={2}
             />
             <YAxis
+              yAxisId="left"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              width={35}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#64748B', fontSize: 10 }}
@@ -404,17 +455,26 @@ function B2BGrowthChart({
               }}
               labelStyle={{ color: '#94A3B8', marginBottom: '4px' }}
               formatter={(value: number, name: string) => {
+                if (name === 'cumulativeCustomers') return [fmt.num(value), 'Total B2B Customers'];
                 if (name === 'cumulativeRevenue') return [formatCurrency(value), 'Cumulative Revenue'];
-                if (name === 'revenue') return [formatCurrency(value), 'Monthly Revenue'];
                 return [value, name];
               }}
             />
             <Area
+              yAxisId="left"
+              type="monotone"
+              dataKey="cumulativeCustomers"
+              fill="url(#customerAreaGrowth)"
+              stroke="#0EA5E9"
+              strokeWidth={2}
+            />
+            <Line
+              yAxisId="right"
               type="monotone"
               dataKey="cumulativeRevenue"
-              fill="url(#revenueArea)"
               stroke="#10B981"
               strokeWidth={2}
+              dot={false}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -871,7 +931,7 @@ export function DoorHealthDashboard({
       {/* === CHARTS ROW === */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChurnTrendChart data={data.churnedByYear} currentYear={currentYear} totalCustomers={metrics.totalB2BCustomers} />
-        <B2BGrowthChart monthly={wholesaleData?.monthly} />
+        <B2BGrowthChart monthly={wholesaleData?.monthly} customersByHealth={wholesaleData?.customersByHealth} />
       </div>
 
       {/* === FUNNEL + DRILL-DOWN === */}
