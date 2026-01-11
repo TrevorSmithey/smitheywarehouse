@@ -27,6 +27,7 @@ import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { NotificationBell } from "@/components/NotificationBell";
 import { AnnouncementProvider } from "@/lib/announcements";
 import { useAuth } from "@/lib/auth";
+import { getAuthHeaders } from "@/lib/auth/session";
 import type { DashboardTab } from "@/lib/auth/permissions";
 
 /**
@@ -207,8 +208,7 @@ export default function DashboardLayout({
     // Fire-and-forget activity log - don't await to avoid blocking navigation
     fetch("/api/activity/log", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include", // Include cookies for session auth
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         action: "page_view",
         tab: currentTab,
