@@ -1,15 +1,14 @@
 "use client";
 
 import { useState, useMemo, memo } from "react";
-import { RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search, X, AlertTriangle } from "lucide-react";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
-import { RestorationDetailModal } from "./RestorationDetailModal";
-import { useDashboard } from "@/app/(dashboard)/layout";
 
 interface RestorationOperationsProps {
   data: RestorationResponse | null;
   loading: boolean;
   onRefresh: () => void;
+  onCardClick: (item: RestorationRecord) => void;
 }
 
 // Visual pipeline stages (simplified 3-stage model)
@@ -306,9 +305,7 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
 // MAIN COMPONENT - Minimal, iPad-first
 // ============================================================================
 
-export function RestorationOperations({ data, loading, onRefresh }: RestorationOperationsProps) {
-  const { lastRefresh } = useDashboard();
-  const [selectedRestoration, setSelectedRestoration] = useState<RestorationRecord | null>(null);
+export function RestorationOperations({ data, loading, onRefresh, onCardClick }: RestorationOperationsProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Filter to active pipeline items
@@ -360,6 +357,19 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
     const config = stage ? STAGE_CONFIG[stage] : null;
     return config && r.days_in_status > config.thresholds.amber;
   }).length;
+
+  // Filter unresolved damaged items (status='damaged' AND resolved_at IS NULL)
+  const unresolvedDamagedItems = useMemo(() => {
+    if (!data?.restorations) return [];
+    return data.restorations
+      .filter((r) => r.status === "damaged" && !r.resolved_at)
+      .sort((a, b) => {
+        // Sort by days since damaged (oldest first = highest priority)
+        const aDays = a.damaged_at ? Date.now() - new Date(a.damaged_at).getTime() : 0;
+        const bDays = b.damaged_at ? Date.now() - new Date(b.damaged_at).getTime() : 0;
+        return bDays - aDays;
+      });
+  }, [data?.restorations]);
 
   // Loading state
   if (loading && !data) {
@@ -422,35 +432,104 @@ export function RestorationOperations({ data, loading, onRefresh }: RestorationO
         </div>
       </div>
 
+      {/* Damaged Items Table - CS Action Queue (TOP OF PAGE - urgent items) */}
+      {unresolvedDamagedItems.length > 0 && (
+        <div className="mx-2 mb-4 bg-bg-secondary rounded-xl border-2 border-red-500/30">
+          <div className="px-5 py-4 border-b border-red-500/20 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            <h2 className="text-lg font-bold text-red-400 tracking-tight">
+              DAMAGED ITEMS REQUIRING CS ACTION
+            </h2>
+            <span className="px-2 py-0.5 text-sm font-bold bg-red-500/20 text-red-300 rounded">
+              {unresolvedDamagedItems.length}
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border/20 bg-bg-tertiary/50">
+                  <th className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Order
+                  </th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Reason
+                  </th>
+                  <th className="py-3 px-4 text-center text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Days
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {unresolvedDamagedItems.map((item) => {
+                  const orderName = item.order_name || item.rma_number || `#${item.id}`;
+                  const daysSinceDamaged = item.damaged_at
+                    ? Math.floor((Date.now() - new Date(item.damaged_at).getTime()) / (1000 * 60 * 60 * 24))
+                    : 0;
+
+                  // Format damage reason for display
+                  const reasonLabel = item.damage_reason
+                    ? item.damage_reason
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c) => c.toUpperCase())
+                    : "Unknown";
+
+                  // Color coding for damage reason
+                  const reasonColorClass =
+                    item.damage_reason === "lost"
+                      ? "bg-red-500/20 text-red-300"
+                      : item.damage_reason === "damaged_internal"
+                      ? "bg-amber-500/20 text-amber-300"
+                      : "bg-slate-500/20 text-slate-300";
+
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={() => onCardClick(item)}
+                      className="border-b border-border-subtle hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4">
+                        <span className="text-sm font-semibold text-accent-blue">
+                          {orderName}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 text-xs font-medium rounded ${reasonColorClass}`}>
+                          {reasonLabel}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`text-lg font-bold tabular-nums ${daysSinceDamaged > 7 ? "text-red-400" : "text-text-secondary"}`}>
+                          {daysSinceDamaged}d
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Three Column Board - flex on mobile/iPad, grid on desktop */}
       <div className="flex gap-4 overflow-x-auto pb-4 px-2 lg:grid lg:grid-cols-3 lg:overflow-visible">
         <Column
           stage="here"
           items={itemsByStage.here}
-          onCardClick={setSelectedRestoration}
+          onCardClick={onCardClick}
         />
         <Column
           stage="out"
           items={itemsByStage.out}
-          onCardClick={setSelectedRestoration}
+          onCardClick={onCardClick}
         />
         <Column
           stage="ship"
           items={itemsByStage.ship}
-          onCardClick={setSelectedRestoration}
+          onCardClick={onCardClick}
         />
       </div>
-
-      {/* Detail Modal - This is where all the action happens */}
-      <RestorationDetailModal
-        isOpen={!!selectedRestoration}
-        onClose={() => setSelectedRestoration(null)}
-        restoration={selectedRestoration}
-        onSave={() => {
-          setSelectedRestoration(null);
-          onRefresh();
-        }}
-      />
     </div>
   );
 }

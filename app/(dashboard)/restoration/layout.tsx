@@ -1,11 +1,12 @@
 "use client";
 
 import { ReactNode, createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDashboard } from "../layout";
 import { getAuthHeaders } from "@/lib/auth";
-import type { RestorationResponse } from "@/app/api/restorations/route";
+import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
+import { RestorationDetailModal } from "@/components/restorations/RestorationDetailModal";
 import { BarChart3, Wrench } from "lucide-react";
 
 // ============================================================================
@@ -33,6 +34,10 @@ interface RestorationContextType {
   dateRange: RestorationDateRange;
   setDateRange: (range: RestorationDateRange) => void;
   refresh: () => void;
+  // Modal state - lifted to layout for shared deep linking
+  selectedRestoration: RestorationRecord | null;
+  openRestoration: (restoration: RestorationRecord) => void;
+  closeRestoration: () => void;
 }
 
 const RestorationContext = createContext<RestorationContextType | null>(null);
@@ -97,6 +102,15 @@ export default function RestorationLayout({
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<RestorationDateRange>("all");
 
+  // Modal state - single source of truth for both pages
+  const [selectedRestoration, setSelectedRestoration] = useState<RestorationRecord | null>(null);
+
+  // Deep linking support
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const idParam = searchParams.get("id");
+
   const fetchRestorations = useCallback(async () => {
     try {
       setLoading(true);
@@ -157,6 +171,60 @@ export default function RestorationLayout({
     }
   }, [dateRange, data, fetchRestorations]);
 
+  // Track processed deep link IDs to prevent re-opening after save
+  const processedDeepLinkRef = useRef<string | null>(null);
+
+  // Auto-open modal when URL has ?id= parameter (deep linking)
+  useEffect(() => {
+    // Skip if no ID param or already processing this ID
+    if (!idParam || processedDeepLinkRef.current === idParam) return;
+    // Skip if data hasn't loaded yet
+    if (!data?.restorations) return;
+    // Skip if modal is already open
+    if (selectedRestoration) return;
+
+    const restoration = data.restorations.find(
+      (r) => String(r.id) === idParam
+    );
+
+    if (restoration) {
+      // Mark as processed and open modal
+      processedDeepLinkRef.current = idParam;
+      setSelectedRestoration(restoration);
+    } else {
+      // ID not found - clear the stale URL param
+      console.warn(`[RESTORATION] Deep link ID ${idParam} not found in data`);
+      router.replace(pathname, { scroll: false });
+    }
+  }, [idParam, data?.restorations, selectedRestoration, router, pathname]);
+
+  // Reset processed ID tracking when URL param is cleared
+  useEffect(() => {
+    if (!idParam) {
+      processedDeepLinkRef.current = null;
+    }
+  }, [idParam]);
+
+  // Handler: Open restoration modal (updates URL for shareability)
+  const openRestoration = useCallback((restoration: RestorationRecord) => {
+    setSelectedRestoration(restoration);
+    router.replace(`${pathname}?id=${restoration.id}`, { scroll: false });
+  }, [pathname, router]);
+
+  // Handler: Close modal and clear URL param
+  const closeRestoration = useCallback(() => {
+    setSelectedRestoration(null);
+    if (idParam) {
+      router.replace(pathname, { scroll: false });
+    }
+  }, [idParam, pathname, router]);
+
+  // Handler: After save, refresh data and close modal
+  const handleSave = useCallback(() => {
+    fetchRestorations();
+    closeRestoration();
+  }, [fetchRestorations, closeRestoration]);
+
   // Context value
   const contextValue: RestorationContextType = {
     data,
@@ -165,12 +233,22 @@ export default function RestorationLayout({
     dateRange,
     setDateRange,
     refresh: fetchRestorations,
+    selectedRestoration,
+    openRestoration,
+    closeRestoration,
   };
 
   return (
     <RestorationContext.Provider value={contextValue}>
       <TabNavigation />
       {children}
+      {/* Modal rendered at layout level - shared by Operations and Analytics */}
+      <RestorationDetailModal
+        isOpen={!!selectedRestoration}
+        onClose={closeRestoration}
+        restoration={selectedRestoration}
+        onSave={handleSave}
+      />
     </RestorationContext.Provider>
   );
 }

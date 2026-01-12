@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  Scatter,
 } from "recharts";
 import {
   RefreshCw,
@@ -62,9 +63,10 @@ const CS_THRESHOLDS = {
 
 interface InternalCycleTrendChartProps {
   data: Array<{ month: string; medianDays: number; count: number; exceededSLA: number }>;
+  damagedByMonth: Record<string, number>; // month (YYYY-MM) -> count
 }
 
-function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
+function InternalCycleTrendChart({ data, damagedByMonth }: InternalCycleTrendChartProps) {
   if (!data || data.length < 2) return null;
 
   // Format month for display - include year if > 12 months of data
@@ -86,10 +88,11 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
     days: d.medianDays,
     count: d.count,
     exceeded: d.exceededSLA,
+    damaged: damagedByMonth[d.month] || 0, // Add damaged count for this month
   }));
 
   const maxDays = Math.max(...data.map((d) => d.medianDays), 25);
-  const maxExceeded = Math.max(...data.map((d) => d.exceededSLA), 1);
+  const maxExceeded = Math.max(...data.map((d) => d.exceededSLA), ...Object.values(damagedByMonth), 1);
 
   return (
     <div
@@ -139,21 +142,26 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
           tickFormatter={(value) => `${Math.round(value)}`}
         />
         <Tooltip
-          contentStyle={{
-            backgroundColor: "#1E293B",
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: "8px",
-            fontSize: "12px",
-          }}
-          labelStyle={{ color: "#E2E8F0", marginBottom: "4px" }}
-          formatter={(value: number, name: string) => {
-            if (name === "days") {
-              return [<span key="v" style={{ color: "#f59e0b", fontWeight: 600 }}>{value}d</span>, "Median Cycle"];
-            }
-            if (name === "exceeded") {
-              return [<span key="v" style={{ color: "#ef4444", fontWeight: 600 }}>{value}</span>, "Exceeded SLA"];
-            }
-            return [value, name];
+          content={({ active, payload, label }) => {
+            if (!active || !payload?.length) return null;
+            const data = payload[0]?.payload;
+            if (!data) return null;
+            return (
+              <div style={{
+                backgroundColor: "#1E293B",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                fontSize: "12px",
+              }}>
+                <div style={{ color: "#E2E8F0", marginBottom: "6px", fontWeight: 500 }}>{label}</div>
+                <div style={{ color: "#f59e0b", fontWeight: 600 }}>Median Cycle : {data.days}d</div>
+                <div style={{ color: "#ef4444", fontWeight: 600 }}>Exceeded SLA : {data.exceeded}</div>
+                {data.damaged > 0 && (
+                  <div style={{ color: "#ec4899", fontWeight: 600 }}>Damaged : {data.damaged}</div>
+                )}
+              </div>
+            );
           }}
         />
         <ReferenceLine
@@ -185,6 +193,44 @@ function InternalCycleTrendChart({ data }: InternalCycleTrendChartProps) {
           fill="url(#cycleGradient)"
           dot={{ fill: "#f59e0b", strokeWidth: 0, r: 4 }}
           activeDot={{ fill: "#f59e0b", strokeWidth: 2, stroke: "#fff", r: 6 }}
+        />
+        {/* Damage indicators - small pink markers at top of chart */}
+        <Scatter
+          yAxisId="exceeded"
+          dataKey="damaged"
+          fill="#ec4899"
+          shape={(props: { cx?: number; payload?: { damaged?: number; exceeded?: number } }) => {
+            const { cx, payload } = props;
+            if (cx === undefined || !payload?.damaged) return <g />;
+
+            // Position just above the exceeded bar (or at baseline if no bar)
+            // We'll use a fixed position relative to the chart top
+            const barHeight = payload.exceeded || 0;
+            const yPos = 10; // Fixed position near top of chart area
+
+            return (
+              <g>
+                {/* Small pink diamond indicator */}
+                <path
+                  d={`M ${cx} ${yPos - 4} L ${cx + 4} ${yPos} L ${cx} ${yPos + 4} L ${cx - 4} ${yPos} Z`}
+                  fill="#ec4899"
+                  stroke="#1E293B"
+                  strokeWidth={1}
+                />
+                {/* Count badge - always show for visibility */}
+                <text
+                  x={cx}
+                  y={yPos + 14}
+                  textAnchor="middle"
+                  fill="#ec4899"
+                  fontSize={9}
+                  fontWeight={600}
+                >
+                  {payload.damaged}
+                </text>
+              </g>
+            );
+          }}
         />
       </ComposedChart>
     </ResponsiveContainer>
@@ -415,6 +461,55 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
 
   const stats = data?.stats;
   const restorations = data?.restorations || [];
+
+  // Compute damage statistics and item list
+  const damageData = useMemo(() => {
+    const items = restorations
+      .filter((r) => r.status === "damaged")
+      .map((r) => {
+        const daysSinceDamaged = r.damaged_at
+          ? Math.floor((Date.now() - new Date(r.damaged_at).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        return { ...r, _daysSinceDamaged: daysSinceDamaged };
+      })
+      .sort((a, b) => {
+        // Unresolved first, then by date (most recent first)
+        if (!a.resolved_at && b.resolved_at) return -1;
+        if (a.resolved_at && !b.resolved_at) return 1;
+        return b._daysSinceDamaged - a._daysSinceDamaged;
+      });
+
+    const unresolvedCount = items.filter((r) => !r.resolved_at).length;
+
+    // Count by reason
+    const byReason = items.reduce((acc, r) => {
+      const reason = r.damage_reason || "unknown";
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      items,
+      total: items.length,
+      unresolved: unresolvedCount,
+      byReason,
+    };
+  }, [restorations]);
+
+  // Expand/collapse state for damage history
+  const [damageExpanded, setDamageExpanded] = useState(false);
+
+  // Compute damaged items by month for trend chart overlay
+  const damagedByMonth = useMemo(() => {
+    const byMonth: Record<string, number> = {};
+    restorations
+      .filter((r) => r.status === "damaged" && r.damaged_at)
+      .forEach((r) => {
+        const month = r.damaged_at!.substring(0, 7); // YYYY-MM format
+        byMonth[month] = (byMonth[month] || 0) + 1;
+      });
+    return byMonth;
+  }, [restorations]);
 
   // Destructure the new stats structure for clarity
   const current = stats?.current;
@@ -908,7 +1003,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
               <div className="text-[10px] text-text-muted uppercase">Latest Month</div>
             </div>
           </div>
-          <InternalCycleTrendChart data={internalCycleTrend.filter((m) => m.count > 0)} />
+          <InternalCycleTrendChart data={internalCycleTrend.filter((m) => m.count > 0)} damagedByMonth={damagedByMonth} />
         </div>
       )}
 
@@ -934,6 +1029,133 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
           </div>
         )}
       </div>
+
+      {/* ============================================================ */}
+      {/* DAMAGED ITEMS - Expandable history with clickable rows */}
+      {/* ============================================================ */}
+      {damageData.total > 0 && (
+        <div className="bg-bg-secondary rounded-lg border border-red-500/20 overflow-hidden">
+          {/* Summary header - clickable to expand */}
+          <button
+            onClick={() => setDamageExpanded(!damageExpanded)}
+            className="w-full p-4 text-left hover:bg-red-500/5 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 bg-red-500/10 rounded">
+                  <AlertTriangle className="w-4 h-4 text-red-400" />
+                </div>
+                <h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                  Damaged Items Summary
+                </h2>
+              </div>
+              {damageExpanded ? (
+                <ChevronUp className="w-4 h-4 text-red-400/60" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-red-400/60" />
+              )}
+            </div>
+
+            {/* Summary counts */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-text-tertiary">Total:</span>
+                <span className="font-semibold text-text-secondary">{damageData.total}</span>
+              </div>
+              {damageData.unresolved > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-text-tertiary">Unresolved:</span>
+                  <span className="font-semibold text-amber-400">{damageData.unresolved}</span>
+                </div>
+              )}
+              {Object.entries(damageData.byReason).map(([reason, count]) => (
+                <div key={reason} className="flex items-center gap-2">
+                  <span className="text-text-muted capitalize">
+                    {reason.replace(/_/g, " ")}:
+                  </span>
+                  <span className="text-text-tertiary">{count}</span>
+                </div>
+              ))}
+            </div>
+          </button>
+
+          {/* Expanded history table */}
+          {damageExpanded && (
+            <div className="border-t border-red-500/20 bg-red-500/5">
+              <div className="max-h-80 overflow-y-auto scrollbar-thin">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-bg-tertiary/95 backdrop-blur-sm z-10">
+                    <tr className="border-b border-border/20">
+                      <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                        Order
+                      </th>
+                      <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                        Reason
+                      </th>
+                      <th className="py-2 px-4 text-center text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                        Days
+                      </th>
+                      <th className="py-2 px-4 text-center text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {damageData.items.map((item) => {
+                      const reasonLabels: Record<string, string> = {
+                        damaged_upon_arrival: "Damaged on Arrival",
+                        damaged_internal: "Damaged Internal",
+                        lost: "Lost",
+                      };
+                      const reasonLabel = reasonLabels[item.damage_reason || ""] || item.damage_reason || "Unknown";
+                      const reasonColorClass = item.damage_reason === "lost"
+                        ? "bg-purple-500/20 text-purple-400"
+                        : item.damage_reason === "damaged_internal"
+                        ? "bg-amber-500/20 text-amber-400"
+                        : "bg-red-500/20 text-red-400";
+
+                      return (
+                        <tr
+                          key={item.id}
+                          onClick={() => onItemClick?.(item)}
+                          className="border-b border-border-subtle hover:bg-white/[0.02] transition-colors cursor-pointer"
+                        >
+                          <td className="py-2.5 px-4">
+                            <span className="text-sm font-semibold text-accent-blue">
+                              {item.order_name || `#${item.id}`}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <span className={`px-2 py-1 text-xs font-medium rounded ${reasonColorClass}`}>
+                              {reasonLabel}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            <span className="text-sm font-bold tabular-nums text-text-secondary">
+                              {item._daysSinceDamaged}d
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-center">
+                            {item.resolved_at ? (
+                              <span className="px-2 py-1 text-xs font-medium rounded bg-emerald-500/20 text-emerald-400">
+                                Resolved
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 text-xs font-medium rounded bg-amber-500/20 text-amber-400">
+                                Unresolved
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/* ALL-TIME STATS (BENCHMARK) - Never filtered */}
@@ -1020,6 +1242,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
           </div>
         </div>
       )}
+
     </div>
   );
 }

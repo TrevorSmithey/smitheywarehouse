@@ -92,7 +92,8 @@ export interface RestorationRecord {
   shipped_at: string | null;
   delivered_at: string | null;
   damaged_at: string | null; // When marked as damaged
-  damage_reason: string | null; // Reason for damage
+  damage_reason: string | null; // Reason for damage: damaged_upon_arrival, damaged_internal, lost
+  resolved_at: string | null; // When CS marked damaged item as resolved (NULL = needs CS attention)
   is_pos: boolean;
   notes: string | null;
   photos: string[];
@@ -281,6 +282,7 @@ export async function GET(request: NextRequest) {
         delivered_at,
         damaged_at,
         damage_reason,
+        resolved_at,
         is_pos,
         notes,
         photos,
@@ -393,6 +395,7 @@ export async function GET(request: NextRequest) {
         delivered_at: r.delivered_at,
         damaged_at: r.damaged_at,
         damage_reason: r.damage_reason,
+        resolved_at: r.resolved_at,
         is_pos: r.is_pos || false,
         notes: r.notes,
         photos: r.photos || [],

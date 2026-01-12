@@ -1,27 +1,18 @@
 "use client";
 
-import { useState, useCallback } from "react";
 import { useRestoration } from "../layout";
 import { RestorationAnalytics } from "@/components/restorations/RestorationAnalytics";
-import { RestorationDetailModal } from "@/components/restorations/RestorationDetailModal";
-import type { RestorationRecord } from "@/app/api/restorations/route";
 
 export default function RestorationAnalyticsPage() {
-  const { data, loading, error, refresh, dateRange, setDateRange } = useRestoration();
-  const [selectedRestoration, setSelectedRestoration] = useState<RestorationRecord | null>(null);
-
-  const handleItemClick = useCallback((restoration: RestorationRecord) => {
-    setSelectedRestoration(restoration);
-  }, []);
-
-  const handleCloseModal = useCallback(() => {
-    setSelectedRestoration(null);
-  }, []);
-
-  const handleSave = useCallback(() => {
-    refresh();
-    setSelectedRestoration(null);
-  }, [refresh]);
+  const {
+    data,
+    loading,
+    error,
+    refresh,
+    dateRange,
+    setDateRange,
+    openRestoration,
+  } = useRestoration();
 
   return (
     <>
@@ -40,15 +31,9 @@ export default function RestorationAnalyticsPage() {
         data={data}
         loading={loading}
         onRefresh={refresh}
-        onItemClick={handleItemClick}
+        onItemClick={openRestoration}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
-      />
-      <RestorationDetailModal
-        isOpen={!!selectedRestoration}
-        onClose={handleCloseModal}
-        restoration={selectedRestoration}
-        onSave={handleSave}
       />
     </>
   );

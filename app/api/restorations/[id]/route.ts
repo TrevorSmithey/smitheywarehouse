@@ -94,7 +94,8 @@ interface UpdateBody {
   notes?: string;
   photos?: string[]; // Array of Supabase Storage URLs (max 3)
   cancellation_reason?: string;
-  damage_reason?: string; // For damaged status: broken_beyond_repair, defective_material, lost, other
+  damage_reason?: string; // For damaged status: damaged_upon_arrival, damaged_internal, lost
+  resolved_at?: string; // When CS marks a damaged item as resolved (customer contacted, handled)
 }
 
 // Supabase project ID for URL validation
@@ -122,6 +123,67 @@ function isValidPhotoUrl(url: unknown): url is string {
 function getStatusIndex(status: string): number {
   const index = STATUS_ORDER.indexOf(status as (typeof STATUS_ORDER)[number]);
   return index >= 0 ? index : -1;
+}
+
+// =============================================================================
+// TEAMS NOTIFICATION - Fire and forget alert for damaged items
+// =============================================================================
+
+const DAMAGE_REASON_LABELS: Record<string, string> = {
+  damaged_upon_arrival: "Damaged Upon Arrival",
+  damaged_internal: "Damaged Internally",
+  lost: "Lost",
+};
+
+/**
+ * Sends a Teams notification when a restoration is marked as damaged.
+ * Non-blocking: failures are logged but don't affect the API response.
+ * Includes 5-second timeout to prevent hanging if webhook is slow.
+ */
+async function sendTeamsNotification(
+  restorationId: number,
+  damageReason?: string
+): Promise<void> {
+  const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn("[RESTORATION API] TEAMS_WEBHOOK_URL not configured, skipping notification");
+    return;
+  }
+
+  // Build direct link to restoration modal
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smitheywarehouse.vercel.app";
+  const directLink = `${baseUrl}/restoration?id=${restorationId}`;
+
+  // Format the damage reason
+  const reasonText = DAMAGE_REASON_LABELS[damageReason || ""] || damageReason || "Unknown";
+
+  const message = {
+    text: `🚨 **Restoration Marked Damaged**\n\n` +
+          `**Restoration ID:** #${restorationId}\n` +
+          `**Reason:** ${reasonText}\n\n` +
+          `[View Details](${directLink})`,
+  };
+
+  // 5-second timeout for non-critical notification
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Teams webhook returned ${response.status}: ${response.statusText}`);
+    }
+
+    console.log(`[RESTORATION API] Teams notification sent for restoration #${restorationId}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /** Check if this is a backward movement */
@@ -366,6 +428,23 @@ export async function PATCH(
       update.photos = validPhotos;
     }
 
+    // Handle resolved_at for damaged items (CS marks as resolved)
+    if (body.resolved_at !== undefined) {
+      // Validate it's either null or a valid ISO timestamp
+      if (body.resolved_at !== null) {
+        const resolvedDate = new Date(body.resolved_at);
+        if (isNaN(resolvedDate.getTime())) {
+          return NextResponse.json(
+            { error: "Invalid resolved_at timestamp" },
+            { status: 400 }
+          );
+        }
+        update.resolved_at = resolvedDate.toISOString();
+      } else {
+        update.resolved_at = null;
+      }
+    }
+
     // Perform update with optimistic locking on status
     // This prevents race conditions where two concurrent requests try to change status simultaneously
     const { data: updated, error: updateError } = await supabase
@@ -409,10 +488,15 @@ export async function PATCH(
     if (body.damage_reason) {
       eventData.damage_reason = body.damage_reason;
     }
+    if (body.resolved_at !== undefined) {
+      eventData.resolved_at = body.resolved_at;
+    }
 
     // Determine event type based on what changed
     let eventType = "manual_update";
-    if (body.status === "damaged") {
+    if (body.resolved_at && body.resolved_at !== null) {
+      eventType = "damage_resolved"; // CS marked damaged item as resolved
+    } else if (body.status === "damaged") {
       eventType = "marked_damaged";
     } else if (body.status === "received") {
       eventType = "checked_in";
@@ -442,6 +526,13 @@ export async function PATCH(
     if (eventError) {
       console.error("[RESTORATION API] Error logging event:", eventError);
       // Don't fail the request for event logging failure
+    }
+
+    // Send Teams notification when marked as damaged (fire and forget)
+    if (body.status === "damaged") {
+      sendTeamsNotification(restorationId, body.damage_reason).catch((err) => {
+        console.error("[RESTORATION API] Teams notification failed:", err);
+      });
     }
 
     return NextResponse.json({

@@ -4,7 +4,7 @@ import { useRestoration } from "./layout";
 import { RestorationOperations } from "@/components/restorations/RestorationOperations";
 
 export default function RestorationPage() {
-  const { data, loading, error, refresh } = useRestoration();
+  const { data, loading, error, refresh, openRestoration } = useRestoration();
 
   return (
     <>
@@ -23,6 +23,7 @@ export default function RestorationPage() {
         data={data}
         loading={loading}
         onRefresh={refresh}
+        onCardClick={openRestoration}
       />
     </>
   );

@@ -130,10 +130,9 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 // Damage reason options
 const DAMAGE_REASONS = [
-  { value: "broken_beyond_repair", label: "Broken Beyond Repair" },
-  { value: "defective_material", label: "Defective Material" },
+  { value: "damaged_upon_arrival", label: "Damaged Upon Arrival" },
+  { value: "damaged_internal", label: "Damaged Internal" },
   { value: "lost", label: "Lost" },
-  { value: "other", label: "Other" },
 ] as const;
 
 /** Check if a status transition is backward */
@@ -324,6 +323,8 @@ export function RestorationDetailModal({
   // Damaged dialog state
   const [showDamageDialog, setShowDamageDialog] = useState(false);
   const [selectedDamageReason, setSelectedDamageReason] = useState<string>("");
+  // Resolve damaged item state
+  const [resolving, setResolving] = useState(false);
 
   // Refs for async operation safety
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -700,6 +701,37 @@ export function RestorationDetailModal({
       statusUpdateInProgressRef.current = false;
       if (isMountedRef.current) {
         setSaving(false);
+      }
+    }
+  };
+
+  // Handle resolving a damaged item (CS has contacted customer)
+  const handleResolveDamaged = async () => {
+    if (!restoration || resolving) return;
+
+    setResolving(true);
+    try {
+      const res = await fetch(`/api/restorations/${restoration.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({
+          resolved_at: new Date().toISOString(),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to resolve");
+      }
+
+      onSave();
+      onClose(); // Close modal after resolving
+    } catch (error) {
+      console.error("Error resolving damaged item:", error);
+      alert(error instanceof Error ? error.message : "Failed to resolve item");
+    } finally {
+      if (isMountedRef.current) {
+        setResolving(false);
       }
     }
   };
@@ -1359,6 +1391,31 @@ export function RestorationDetailModal({
                   {AdvanceIcon && <AdvanceIcon className="w-5 h-5" aria-hidden="true" />}
                   {advanceConfig.label}
                   <ChevronRight className="w-5 h-5" aria-hidden="true" />
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Primary Action: Mark Resolved (for damaged items) */}
+          {restoration.status === "damaged" && !restoration.resolved_at && (
+            <button
+              onClick={handleResolveDamaged}
+              disabled={resolving || saving}
+              aria-busy={resolving}
+              aria-label="Mark as resolved - confirms CS has contacted customer about damage"
+              className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
+                bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed
+                min-h-[56px] mb-3 transition-all active:scale-[0.98]"
+            >
+              {resolving ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                  <span>Resolving...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5" aria-hidden="true" />
+                  <span>Mark Resolved</span>
                 </>
               )}
             </button>
