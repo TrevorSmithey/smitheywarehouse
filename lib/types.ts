@@ -1549,8 +1549,9 @@ export interface LeadsResponse {
 // ============================================================
 
 export interface CustomerOrderingPattern {
-  avg_order_interval_days: number | null;  // Median days between orders (user-facing "Typical interval")
-  interval_range_high: number | null;  // P75 - used internally for overdue detection (more conservative than median)
+  avg_order_interval_days: number | null;  // EWMA - user-facing "Typical interval" (adapts to recent behavior)
+  median_interval_days: number | null;     // Historical median - all-time baseline
+  interval_range_high: number | null;      // P75 - used internally for overdue detection (conservative threshold)
   days_since_last_order: number | null;
   last_order_date: string | null;
   first_order_date: string | null;

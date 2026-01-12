@@ -102,10 +102,15 @@ export async function GET(
       : null;
 
     // Get interval stats from RPC result
-    // EWMA = user-facing "typical interval" (adapts to recent behavior changes)
-    // P75 = internal threshold for overdue detection (more conservative than EWMA)
+    // Three measurements for transparency:
+    // - EWMA = user-facing "typical interval" (adapts to recent behavior changes)
+    // - Median = historical baseline (all-time, doesn't adapt)
+    // - P75 = internal threshold for overdue detection (conservative)
     const avgOrderIntervalDays: number | null = customerIntervalData?.ewma_interval
       ? Math.round(parseFloat(customerIntervalData.ewma_interval))
+      : null;
+    const medianIntervalDays: number | null = customerIntervalData?.median_interval
+      ? Math.round(parseFloat(customerIntervalData.median_interval))
       : null;
     const intervalRangeHigh: number | null = customerIntervalData?.p75_interval
       ? Math.round(parseFloat(customerIntervalData.p75_interval))
@@ -128,8 +133,9 @@ export async function GET(
     }
 
     const orderingPattern: CustomerOrderingPattern = {
-      avg_order_interval_days: avgOrderIntervalDays,
-      interval_range_high: intervalRangeHigh, // P75 used internally for overdue detection
+      avg_order_interval_days: avgOrderIntervalDays,     // EWMA (hero metric - adapts to recent)
+      median_interval_days: medianIntervalDays,          // Historical median (all-time baseline)
+      interval_range_high: intervalRangeHigh,            // P75 (conservative overdue threshold)
       days_since_last_order: daysSinceLastOrder,
       last_order_date: customerData.last_sale_date,
       first_order_date: customerData.first_sale_date,

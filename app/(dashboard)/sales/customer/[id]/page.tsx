@@ -199,13 +199,14 @@ function formatDate(dateString: string | null): string {
 // ============================================================================
 
 interface ForgeHeatMeterProps {
-  avgInterval: number | null;  // Median days between orders (user-facing)
-  intervalRangeHigh: number | null; // P75 - used internally for overdue threshold
+  avgInterval: number | null;     // EWMA - user-facing "Typical" (adapts to recent)
+  medianInterval: number | null;  // Historical median - all-time baseline
+  intervalRangeHigh: number | null; // P75 - conservative overdue threshold
   daysSinceLast: number | null;
   expectedDate: string | null;
 }
 
-function ForgeHeatMeter({ avgInterval, intervalRangeHigh: _intervalRangeHigh, daysSinceLast, expectedDate }: ForgeHeatMeterProps) {
+function ForgeHeatMeter({ avgInterval, medianInterval, intervalRangeHigh, daysSinceLast, expectedDate }: ForgeHeatMeterProps) {
   if (!avgInterval || daysSinceLast === null) {
     return (
       <div className="flex items-center gap-3 text-sm text-text-muted">
@@ -304,6 +305,47 @@ function ForgeHeatMeter({ avgInterval, intervalRangeHigh: _intervalRangeHigh, da
         <div className="flex items-center gap-2 text-xs text-text-muted pt-2 border-t border-border/10">
           <Calendar className="w-3.5 h-3.5" />
           <span>Expected by {formatDate(expectedDate)}</span>
+        </div>
+      )}
+
+      {/* Interval Comparison - All Three Measurements */}
+      {(medianInterval || intervalRangeHigh) && (
+        <div className="mt-5 pt-4 border-t border-border/10">
+          <div className="text-[9px] uppercase tracking-[0.15em] text-text-muted font-medium mb-3">
+            Interval Analysis
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {/* Historical Median */}
+            <div className="bg-bg-tertiary/50 rounded-lg px-3 py-2.5">
+              <div className="text-[9px] uppercase tracking-wider text-text-muted mb-1">
+                Historical
+              </div>
+              <div className="text-lg font-bold tabular-nums text-text-secondary">
+                {medianInterval ?? "—"}
+                <span className="text-xs font-normal text-text-muted ml-0.5">d</span>
+              </div>
+            </div>
+            {/* EWMA - Hero */}
+            <div className="bg-forge-copper/10 rounded-lg px-3 py-2.5 ring-1 ring-forge-copper/20">
+              <div className="text-[9px] uppercase tracking-wider text-forge-copper mb-1">
+                Typical
+              </div>
+              <div className="text-lg font-bold tabular-nums text-text-primary">
+                {avgInterval}
+                <span className="text-xs font-normal text-text-muted ml-0.5">d</span>
+              </div>
+            </div>
+            {/* P75 - Conservative */}
+            <div className="bg-bg-tertiary/50 rounded-lg px-3 py-2.5">
+              <div className="text-[9px] uppercase tracking-wider text-text-muted mb-1">
+                Conservative
+              </div>
+              <div className="text-lg font-bold tabular-nums text-text-secondary">
+                {intervalRangeHigh ?? "—"}
+                <span className="text-xs font-normal text-text-muted ml-0.5">d</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -780,6 +822,7 @@ export default function CustomerDetailPage() {
 
           <ForgeHeatMeter
             avgInterval={orderingPattern.avg_order_interval_days}
+            medianInterval={orderingPattern.median_interval_days}
             intervalRangeHigh={orderingPattern.interval_range_high}
             daysSinceLast={orderingPattern.days_since_last_order}
             expectedDate={orderingPattern.expected_order_date}
