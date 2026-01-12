@@ -698,15 +698,13 @@ export function RestorationDetailModal({
       setSaving(false);
       statusUpdateInProgressRef.current = false;
 
-      // Trigger data refresh in parent
-      onSave();
-
-      // Close modal after brief confirmation display
+      // Close modal after brief confirmation display, THEN refresh data
       setTimeout(() => {
         if (isMountedRef.current) {
           setShowDamageDialog(false);
           setSelectedDamageReason("");
           setDamageConfirmed(false);
+          onSave(); // Refresh data in parent
           onClose(); // Close the entire modal - damage is terminal
         }
       }, 1500);
