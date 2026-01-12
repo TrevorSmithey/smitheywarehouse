@@ -21,10 +21,12 @@ import {
   LogOut,
   FileText,
   Wrench,
+  SlidersHorizontal,
 } from "lucide-react";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { NotificationBell } from "@/components/NotificationBell";
+import UserTabOrderModal from "@/components/layout/UserTabOrderModal";
 import { AnnouncementProvider } from "@/lib/announcements";
 import { useAuth } from "@/lib/auth";
 import { getAuthHeaders } from "@/lib/auth/session";
@@ -139,6 +141,7 @@ export default function DashboardLayout({
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [triggerRefresh, setTriggerRefresh] = useState<(() => void) | null>(null);
+  const [showTabOrderModal, setShowTabOrderModal] = useState(false);
 
   // Track previous pathname to avoid duplicate logs
   const prevPathnameRef = useRef<string | null>(null);
@@ -379,6 +382,14 @@ export default function DashboardLayout({
                 </div>
               );
             })}
+            {/* Customize tab order button */}
+            <button
+              onClick={() => setShowTabOrderModal(true)}
+              className="ml-auto px-3 py-2.5 text-text-muted hover:text-text-secondary transition-colors flex-shrink-0 border-b-2 border-transparent -mb-px"
+              title="Customize tab order"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
           </nav>
 
           {/* Inventory Sub-tabs */}
@@ -430,6 +441,11 @@ export default function DashboardLayout({
 
         {/* Page Content */}
         {children}
+
+        {/* User Tab Order Modal */}
+        {showTabOrderModal && (
+          <UserTabOrderModal onClose={() => setShowTabOrderModal(false)} />
+        )}
       </div>
       </AnnouncementProvider>
     </DashboardContext.Provider>

@@ -14,8 +14,9 @@
  * - standard: Everything except production, planning, exec revenue report
  * - sales: Same as standard, starts on sales tab
  * - fulfillment: Restoration (home) + inventory only - for warehouse team
+ * - customer_service: Inventory, restoration, and customer service (VOC) - for CS team
  */
-export type DashboardRole = "admin" | "exec" | "ops1" | "ops2" | "standard" | "sales" | "fulfillment";
+export type DashboardRole = "admin" | "exec" | "ops1" | "ops2" | "standard" | "sales" | "fulfillment" | "customer_service";
 
 /**
  * All possible dashboard tabs
@@ -59,6 +60,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<DashboardRole, DashboardTab[] | ["
   standard: ["inventory", "fulfillment", "budget", "revenue-tracker", "holiday", "voc", "marketing", "sales", "ecommerce"],
   sales: ["inventory", "fulfillment", "budget", "revenue-tracker", "holiday", "voc", "marketing", "sales", "ecommerce"],
   fulfillment: ["restoration", "inventory"],
+  customer_service: ["inventory", "restoration", "voc"],
 };
 
 /**
@@ -72,6 +74,7 @@ export const DEFAULT_ROLE_DEFAULTS: Record<DashboardRole, DashboardTab> = {
   standard: "inventory",
   sales: "sales",
   fulfillment: "restoration",
+  customer_service: "voc",
 };
 
 /**
@@ -126,6 +129,7 @@ export const ROLE_CONFIG: Record<DashboardRole, { label: string; color: string }
   standard: { label: "Standard", color: "bg-slate-600 text-white" },
   sales: { label: "Sales", color: "bg-blue-600 text-white" },
   fulfillment: { label: "Fulfillment", color: "bg-emerald-600 text-white" },
+  customer_service: { label: "Customer Service", color: "bg-pink-600 text-white" },
 };
 
 /**
@@ -203,7 +207,7 @@ export function getAccessibleTabs(
 /**
  * All dashboard roles
  */
-export const ALL_ROLES: DashboardRole[] = ["admin", "exec", "ops1", "ops2", "standard", "sales", "fulfillment"];
+export const ALL_ROLES: DashboardRole[] = ["admin", "exec", "ops1", "ops2", "standard", "sales", "fulfillment", "customer_service"];
 
 /**
  * All dashboard tabs

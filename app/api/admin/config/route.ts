@@ -1,15 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/server";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
+
+// ============================================================================
+// VALIDATION SCHEMAS
+// ============================================================================
+
+const DashboardTabSchema = z.enum([
+  "inventory",
+  "production",
+  "fulfillment",
+  "production-planning",
+  "restoration",
+  "budget",
+  "revenue-tracker",
+  "holiday",
+  "pl",
+  "voc",
+  "marketing",
+  "sales",
+  "ecommerce",
+]);
+
+const DashboardRoleSchema = z.enum([
+  "admin",
+  "exec",
+  "ops1",
+  "ops2",
+  "standard",
+  "sales",
+  "fulfillment",
+  "customer_service",
+]);
+
+// Permissions can include "*" for wildcard or specific tabs
+const PermissionValueSchema = z.union([
+  z.array(DashboardTabSchema),
+  z.tuple([z.literal("*")]),
+]);
+
+const ConfigUpdateSchema = z.object({
+  tab_order: z.array(DashboardTabSchema).optional(),
+  hidden_tabs: z.array(DashboardTabSchema).optional(),
+  role_permissions: z.record(DashboardRoleSchema, z.array(z.string())).optional(),
+  role_defaults: z.record(DashboardRoleSchema, DashboardTabSchema).optional(),
+  role_tab_orders: z.record(DashboardRoleSchema, z.array(DashboardTabSchema)).optional(),
+  updated_by: z.string().optional(),
+}).strict();
 
 /**
  * GET /api/admin/config
  *
  * Get all dashboard configuration (tab order, hidden tabs, role permissions, role defaults).
+ * REQUIRES: Admin role
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Verify admin access
+  const auth = await requireAdmin(request);
+  if (auth.error) return auth.error;
+
   try {
     const supabase = createServiceClient();
     const { data, error } = await supabase
@@ -50,7 +102,18 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { tab_order, hidden_tabs, role_permissions, role_defaults, role_tab_orders, updated_by } = body;
+
+    // Validate input against schema
+    const parsed = ConfigUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      console.error("Config validation failed:", parsed.error.format());
+      return NextResponse.json(
+        { error: "Invalid config data", details: parsed.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const { tab_order, hidden_tabs, role_permissions, role_defaults, role_tab_orders, updated_by } = parsed.data;
 
     const supabase = createServiceClient();
     const updates: Array<{ key: string; value: unknown; updated_by?: string }> = [];
@@ -83,7 +146,7 @@ export async function PUT(request: NextRequest) {
           {
             key: update.key,
             value: update.value,
-            updated_by: update.updated_by || null,
+            updated_by: update.updated_by?.trim() || null,
           },
           { onConflict: "key" }
         );

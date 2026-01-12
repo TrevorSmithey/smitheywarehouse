@@ -1763,6 +1763,7 @@ export interface DashboardUser {
   notes: string | null;
   default_page_override: string | null;
   additional_tabs: string[] | null;
+  user_tab_order: DashboardTab[] | null;
 }
 
 export interface UserActivitySummary {

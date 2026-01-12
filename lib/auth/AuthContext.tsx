@@ -18,6 +18,7 @@ import {
   getOriginalSession,
   startImpersonation as startImpersonationSession,
   stopImpersonation as stopImpersonationSession,
+  getAuthHeaders,
 } from "./session";
 import {
   DashboardRole,
@@ -53,6 +54,9 @@ interface AuthContextType {
   accessibleTabs: DashboardTab[];
   defaultTab: DashboardTab | null;
   refreshConfig: () => Promise<void>;
+  // User tab ordering
+  userTabOrder: DashboardTab[] | null;
+  updateUserTabOrder: (order: DashboardTab[] | null) => Promise<void>;
   // Impersonation
   isImpersonating: boolean;
   originalSession: AuthSession | null;
@@ -73,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [config, setConfig] = useState<DashboardConfig | null>(null);
+  const [userTabOrder, setUserTabOrder] = useState<DashboardTab[] | null>(null);
   const [isImpersonatingState, setIsImpersonatingState] = useState(false);
   const [originalSession, setOriginalSession] = useState<AuthSession | null>(
     null
@@ -112,6 +117,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Fetch user preferences (including custom tab order)
+  // Only called when user is authenticated
+  const fetchUserPreferences = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch("/api/auth/preferences", {
+        headers: getAuthHeaders(),
+        signal,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserTabOrder(data.user_tab_order || null);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      console.error("Failed to fetch user preferences:", error);
+    }
+  }, []);
+
+  // Update user's custom tab order
+  const updateUserTabOrder = useCallback(async (order: DashboardTab[] | null) => {
+    try {
+      const res = await fetch("/api/auth/preferences", {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ user_tab_order: order }),
+      });
+      if (res.ok) {
+        setUserTabOrder(order);
+      } else {
+        const error = await res.json();
+        console.error("Failed to update tab order:", error);
+        throw new Error(error.error || "Failed to update tab order");
+      }
+    } catch (error) {
+      console.error("Error updating user tab order:", error);
+      throw error;
+    }
+  }, []);
+
   // Check for existing session on mount
   useEffect(() => {
     const abortController = new AbortController();
@@ -124,7 +170,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOriginalSession(getOriginalSession());
 
     // Fetch config regardless of auth state (for login redirect)
-    fetchConfig(abortController.signal).finally(() => {
+    // Also fetch user preferences if authenticated
+    const fetchAll = async () => {
+      await fetchConfig(abortController.signal);
+      if (existingSession) {
+        await fetchUserPreferences(abortController.signal);
+      }
+    };
+
+    fetchAll().finally(() => {
       // Only update loading state if not aborted
       if (!abortController.signal.aborted) {
         setIsLoading(false);
@@ -135,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       abortController.abort();
     };
-  }, [fetchConfig]);
+  }, [fetchConfig, fetchUserPreferences]);
 
   // Redirect logic based on auth state
   useEffect(() => {
@@ -169,6 +223,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const newSession = setAuthSession(user);
       setSession(newSession);
 
+      // Fetch user preferences (tab order, etc.) after login
+      fetchUserPreferences().catch((err) => {
+        console.error("Failed to fetch user preferences after login:", err);
+      });
+
       // Redirect to role's default tab
       const defaultPath = getDefaultTab(
         user.role,
@@ -176,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       router.push(`/${defaultPath}`);
     },
-    [router, config]
+    [router, config, fetchUserPreferences]
   );
 
   const logout = useCallback(() => {
@@ -186,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     clearAuthSession();
     setSession(null);
+    setUserTabOrder(null);
     setIsImpersonatingState(false);
     setOriginalSession(null);
     router.push("/login");
@@ -242,10 +302,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = session ? canAccessAdmin(session.role) : false;
 
-  // Use role-specific tab order if it exists, otherwise fall back to global
-  const effectiveTabOrder = session && config?.roleTabOrders?.[session.role]
-    ? config.roleTabOrders[session.role]
-    : config?.tabOrder;
+  // Tab order priority: user-specific → role-specific → global
+  const effectiveTabOrder = userTabOrder  // User's custom order (highest priority)
+    || (session && config?.roleTabOrders?.[session.role] ? config.roleTabOrders[session.role] : null)  // Role-specific order
+    || config?.tabOrder;  // Global default order
 
   const accessibleTabs = session
     ? getAccessibleTabs(session.role, {
@@ -275,6 +335,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessibleTabs,
         defaultTab,
         refreshConfig,
+        // User tab ordering
+        userTabOrder,
+        updateUserTabOrder,
         // Impersonation
         isImpersonating: isImpersonatingState,
         originalSession,

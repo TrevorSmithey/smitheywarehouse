@@ -69,7 +69,7 @@ interface AdminContextType {
   refreshConfig: () => Promise<void>;
   refreshStats: () => Promise<void>;
   refreshSyncHealth: () => Promise<void>;
-  saveConfig: (updates: Partial<DashboardConfig>) => Promise<void>;
+  saveConfig: (updates: Partial<DashboardConfig>) => void;
 
   // User CRUD
   createUser: (user: {
@@ -110,6 +110,10 @@ export default function AdminLayout({
   // Mounted ref for async safety
   const isMountedRef = useRef(true);
 
+  // Session ref for accessing current session in async callbacks (avoids stale closures)
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
   // Users state
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -118,6 +122,10 @@ export default function AdminLayout({
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
+
+  // Debounce refs for config saves (prevents race conditions with rapid clicks)
+  const pendingConfigUpdates = useRef<Partial<DashboardConfig>>({});
+  const saveDebounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Stats state
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -157,7 +165,9 @@ export default function AdminLayout({
   const loadConfig = useCallback(async () => {
     setConfigLoading(true);
     try {
-      const res = await fetch("/api/admin/config");
+      const res = await fetch("/api/admin/config", {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (isMountedRef.current) {
         setConfig({
@@ -215,27 +225,66 @@ export default function AdminLayout({
     }
   }, []);
 
-  // Save config
-  const saveConfig = useCallback(async (updates: Partial<DashboardConfig>) => {
+  // Save config (debounced to prevent race conditions)
+  // Rapid clicks are merged and sent as a single API call after 300ms of inactivity
+  const saveConfig = useCallback((updates: Partial<DashboardConfig>) => {
+    // Merge new updates with any pending updates
+    pendingConfigUpdates.current = {
+      ...pendingConfigUpdates.current,
+      ...updates,
+    };
+
+    // Apply optimistic update to local state immediately for responsive UI
+    setConfig((prev) => {
+      if (!prev) return prev;
+      return { ...prev, ...updates };
+    });
+
+    // Show saving indicator
     setConfigSaving(true);
-    try {
-      const res = await fetch("/api/admin/config", {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          ...updates,
-          updated_by: session?.userId,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to save");
-      await loadConfig();
-    } catch (error) {
-      console.error("Failed to save config:", error);
-      throw error;
-    } finally {
-      setConfigSaving(false);
+
+    // Clear any existing timeout
+    if (saveDebounceTimeout.current) {
+      clearTimeout(saveDebounceTimeout.current);
     }
-  }, [session?.userId, loadConfig]);
+
+    // Set new debounced save
+    saveDebounceTimeout.current = setTimeout(async () => {
+      const updatesToSend = { ...pendingConfigUpdates.current };
+      pendingConfigUpdates.current = {}; // Clear pending updates
+
+      try {
+        const res = await fetch("/api/admin/config", {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            ...updatesToSend,
+            // Use sessionRef.current to get the current session at execution time
+            // (avoids stale closure if session changes while debounce timer is running)
+            updated_by: sessionRef.current?.userId,
+          }),
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          console.error("Failed to save config:", errorData);
+          // Reload config to restore server state on error
+          await loadConfig();
+          throw new Error(errorData.error || "Failed to save");
+        }
+
+        // Reload to ensure we have the latest server state
+        await loadConfig();
+      } catch (error) {
+        console.error("Failed to save config:", error);
+        // Don't throw - the optimistic update is already reverted by loadConfig
+      } finally {
+        if (isMountedRef.current) {
+          setConfigSaving(false);
+        }
+      }
+    }, 300); // 300ms debounce
+  }, [loadConfig]); // sessionRef is a ref, doesn't need to be a dependency
 
   // ============================================================================
   // USER CRUD
@@ -307,6 +356,10 @@ export default function AdminLayout({
 
     return () => {
       isMountedRef.current = false;
+      // Clean up debounce timeout on unmount
+      if (saveDebounceTimeout.current) {
+        clearTimeout(saveDebounceTimeout.current);
+      }
     };
   }, [isAdmin, loadUsers, loadConfig, loadStats, loadSyncHealth]);
 
