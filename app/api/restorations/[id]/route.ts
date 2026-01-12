@@ -534,11 +534,12 @@ export async function PATCH(
     }
 
     // Send Teams notification when marked as damaged (fire and forget)
-    if (body.status === "damaged") {
-      sendTeamsNotification(restorationId, body.damage_reason).catch((err) => {
-        console.error("[RESTORATION API] Teams notification failed:", err);
-      });
-    }
+    // PAUSED: Uncomment to re-enable Teams notifications
+    // if (body.status === "damaged") {
+    //   sendTeamsNotification(restorationId, body.damage_reason).catch((err) => {
+    //     console.error("[RESTORATION API] Teams notification failed:", err);
+    //   });
+    // }
 
     return NextResponse.json({
       success: true,
