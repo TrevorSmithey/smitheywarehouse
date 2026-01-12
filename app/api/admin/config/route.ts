@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/server";
+import { requireAuth, requireAdmin } from "@/lib/auth/server";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -55,11 +55,13 @@ const ConfigUpdateSchema = z.object({
  * GET /api/admin/config
  *
  * Get all dashboard configuration (tab order, hidden tabs, role permissions, role defaults).
- * REQUIRES: Admin role
+ * All authenticated users can read config (needed to determine their accessible tabs).
+ * REQUIRES: Any authenticated user
  */
 export async function GET(request: NextRequest) {
-  // Verify admin access
-  const auth = await requireAdmin(request);
+  // All authenticated users can read config (required for permission checks)
+  // Write access (PUT) still requires admin
+  const auth = await requireAuth(request);
   if (auth.error) return auth.error;
 
   try {

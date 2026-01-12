@@ -89,7 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Accepts optional AbortSignal for cleanup on unmount/logout
   const fetchConfig = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch("/api/admin/config", { signal });
+      const res = await fetch("/api/admin/config", {
+        headers: getAuthHeaders(),
+        signal,
+      });
       if (res.ok) {
         const data = await res.json();
         setConfig({
