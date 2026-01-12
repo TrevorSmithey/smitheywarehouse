@@ -839,10 +839,10 @@ export function RestorationDetailModal({
       aria-modal="true"
       aria-labelledby="restoration-modal-title"
     >
-      {/* Backdrop */}
+      {/* Backdrop - use onMouseDown to prevent focus-steal from auto-focused inputs */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={handleClose}
+        onMouseDown={handleClose}
         aria-hidden="true"
       />
 
@@ -894,7 +894,7 @@ export function RestorationDetailModal({
             {/* Backdrop - closes dropdown when clicked outside */}
             <div
               className="fixed inset-0 z-[5]"
-              onClick={() => setShowStatusDropdown(false)}
+              onMouseDown={() => setShowStatusDropdown(false)}
               aria-hidden="true"
             />
             <div
@@ -1486,7 +1486,7 @@ export function RestorationDetailModal({
       {showDamageDialog && (
         <div
           className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
-          onClick={() => {
+          onMouseDown={() => {
             if (!damageConfirmed && !saving) {
               setShowDamageDialog(false);
               setSelectedDamageReason("");
@@ -1498,7 +1498,7 @@ export function RestorationDetailModal({
         >
           <div
             className="bg-bg-secondary rounded-2xl border border-border w-full max-w-md overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {/* SUCCESS STATE - Show after damage confirmed */}
             {damageConfirmed ? (
@@ -1601,7 +1601,7 @@ export function RestorationDetailModal({
       {lightboxIndex !== null && photos[lightboxIndex] && isValidPhotoUrl(photos[lightboxIndex]) && (
         <div
           className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center"
-          onClick={() => setLightboxIndex(null)}
+          onMouseDown={() => setLightboxIndex(null)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setLightboxIndex(null);
