@@ -194,7 +194,7 @@ export default function AnnualBudgetTab({ annualSkuTargets, year, currentMonth }
 
       {/* Table Container */}
       <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg overflow-hidden">
-        <div className="overflow-auto max-h-[calc(100vh-220px)]">
+        <div className="overflow-auto max-h-[calc(100vh-220px)] scrollbar-thin">
           {Object.entries(grouped).map(([category, items]) => {
             if (items.length === 0) return null;
 
