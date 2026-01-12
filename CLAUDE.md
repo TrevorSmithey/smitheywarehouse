@@ -906,6 +906,52 @@ For every cron job, verify:
 
 ---
 
+## The Silent Auth Failure (January 2026)
+
+### What Happened
+Exec role permissions were broken - RESTORATION missing from nav, Q4 PACE showing despite being in `hidden_tabs`. I audited the database (correct), read the permission logic (correct), checked the rendering (correct) - multiple times across multiple sessions. Kept missing the actual bug.
+
+### The Root Cause
+The `/api/admin/config` fetch was returning **401 Unauthorized** for non-admin users. The client silently fell back to hardcoded defaults which didn't match database config. Two bugs:
+1. API required admin role for read access (should allow all authenticated users)
+2. `fetchConfig()` wasn't sending auth headers
+
+### Why I Missed It
+I read the code instead of observing the system. The server logs showed `GET /api/admin/config 401` on every page load for non-admin users. One look at that log would have found it immediately.
+
+### The Rule
+
+**When data doesn't match expectations, check the network layer FIRST:**
+1. Open browser DevTools → Network tab (or check server logs)
+2. Look for 4xx/5xx errors on API calls
+3. Verify the API actually returns expected data, not an error response
+
+Code that looks correct can still fail at runtime. The network request is the truth.
+
+### Silent Fallback Anti-Pattern
+
+This code pattern is dangerous:
+```typescript
+const res = await fetch("/api/config");
+if (res.ok) {
+  setConfig(await res.json());
+}
+// No else! Silently uses stale/default config on 401/403/500
+```
+
+Better:
+```typescript
+const res = await fetch("/api/config");
+if (!res.ok) {
+  console.error(`Config fetch failed: ${res.status}`);
+  // Either throw, show error UI, or explicitly log the fallback
+}
+```
+
+**If an API can fail, handle the failure visibly.**
+
+---
+
 ## Development Commands
 ```bash
 npm run dev          # Local development
