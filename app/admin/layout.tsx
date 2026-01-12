@@ -168,6 +168,11 @@ export default function AdminLayout({
       const res = await fetch("/api/admin/config", {
         headers: getAuthHeaders(),
       });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("Failed to load config:", res.status, errorData);
+        throw new Error(errorData.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (isMountedRef.current) {
         setConfig({
@@ -254,6 +259,7 @@ export default function AdminLayout({
       pendingConfigUpdates.current = {}; // Clear pending updates
 
       try {
+        console.log("[Admin] Saving config:", updatesToSend);
         const res = await fetch("/api/admin/config", {
           method: "PUT",
           headers: getAuthHeaders(),
@@ -267,16 +273,17 @@ export default function AdminLayout({
 
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
-          console.error("Failed to save config:", errorData);
+          console.error("[Admin] Save config failed:", res.status, errorData);
           // Reload config to restore server state on error
           await loadConfig();
           throw new Error(errorData.error || "Failed to save");
         }
 
+        console.log("[Admin] Config saved successfully");
         // Reload to ensure we have the latest server state
         await loadConfig();
       } catch (error) {
-        console.error("Failed to save config:", error);
+        console.error("[Admin] Save config error:", error);
         // Don't throw - the optimistic update is already reverted by loadConfig
       } finally {
         if (isMountedRef.current) {
