@@ -34,12 +34,13 @@ const MIN_ORDERS_FOR_PATTERN = 6;
 const MAX_DAYS_SINCE_LAST_ORDER = 365;
 
 // Helper to determine customer segment based on revenue
+// MUST match thresholds in wholesale/route.ts, door-health/route.ts, and compute_customer_metrics SQL
 function getCustomerSegment(totalRevenue: number): CustomerSegment {
   if (totalRevenue >= 50000) return "major";
   if (totalRevenue >= 20000) return "large";
-  if (totalRevenue >= 10000) return "mid";
-  if (totalRevenue >= 5000) return "small";
-  if (totalRevenue >= 2000) return "starter";
+  if (totalRevenue >= 5000) return "mid";     // Aligned with DB and other APIs
+  if (totalRevenue >= 1000) return "small";   // Aligned with DB and other APIs
+  if (totalRevenue > 0) return "starter";     // DB uses > 0, not >= threshold
   return "minimal";
 }
 
