@@ -333,6 +333,8 @@ export function RestorationDetailModal({
   const uploadAbortControllerRef = useRef<AbortController | null>(null);
   // Mutex to prevent concurrent status update operations (prevents race conditions)
   const statusUpdateInProgressRef = useRef(false);
+  // Ref for damage success timeout (to clean up on unmount)
+  const damageSuccessTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Track mount state to prevent state updates after unmount
   useEffect(() => {
@@ -342,6 +344,10 @@ export function RestorationDetailModal({
       isMountedRef.current = false;
       // Abort any pending uploads on unmount
       uploadAbortControllerRef.current?.abort();
+      // Clear damage success timeout
+      if (damageSuccessTimeoutRef.current) {
+        clearTimeout(damageSuccessTimeoutRef.current);
+      }
       // Clear file input reference
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -699,13 +705,16 @@ export function RestorationDetailModal({
       statusUpdateInProgressRef.current = false;
 
       // Close modal after brief confirmation display, THEN refresh data
-      setTimeout(() => {
+      // Store timeout ref so it can be cleaned up on unmount
+      damageSuccessTimeoutRef.current = setTimeout(() => {
         if (isMountedRef.current) {
+          // Call parent callbacks first, then reset local state
+          onSave(); // Refresh data in parent
+          onClose(); // Close the entire modal - damage is terminal
+          // Reset state (after close, but keeps things clean)
           setShowDamageDialog(false);
           setSelectedDamageReason("");
           setDamageConfirmed(false);
-          onSave(); // Refresh data in parent
-          onClose(); // Close the entire modal - damage is terminal
         }
       }, 1500);
     } catch (error) {
@@ -1501,7 +1510,7 @@ export function RestorationDetailModal({
                   Damage Confirmed
                 </h3>
                 <p className="text-sm text-text-secondary">
-                  Teams notification sent. Item moved to damaged section.
+                  Item moved to damaged section.
                 </p>
               </div>
             ) : (

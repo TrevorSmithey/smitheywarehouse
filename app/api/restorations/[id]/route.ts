@@ -39,6 +39,13 @@ const KNOWN_STATUSES = [
 
 type KnownStatus = (typeof KNOWN_STATUSES)[number];
 
+// Valid damage reasons (must match frontend DAMAGE_REASONS)
+const VALID_DAMAGE_REASONS = [
+  "damaged_upon_arrival",
+  "damaged_internal",
+  "lost",
+] as const;
+
 // Status order for determining forward/backward movement
 const STATUS_ORDER = [
   "pending_label",
@@ -365,7 +372,26 @@ export async function PATCH(
 
       // Handle damaged status
       // Note: damaged_at is already set by STATUS_TIMESTAMP_FIELDS mapping above
-      if (body.status === "damaged" && body.damage_reason) {
+      if (body.status === "damaged") {
+        // Validate damage_reason is required and valid
+        if (!body.damage_reason) {
+          return NextResponse.json(
+            {
+              error: "damage_reason is required when marking as damaged",
+              valid_reasons: VALID_DAMAGE_REASONS,
+            },
+            { status: 400 }
+          );
+        }
+        if (!VALID_DAMAGE_REASONS.includes(body.damage_reason as typeof VALID_DAMAGE_REASONS[number])) {
+          return NextResponse.json(
+            {
+              error: `Invalid damage_reason: '${body.damage_reason}'`,
+              valid_reasons: VALID_DAMAGE_REASONS,
+            },
+            { status: 400 }
+          );
+        }
         update.damage_reason = body.damage_reason;
       }
     }
