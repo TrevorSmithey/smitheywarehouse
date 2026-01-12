@@ -156,14 +156,29 @@ export function canAccessAdmin(role: DashboardRole): boolean {
 }
 
 /**
- * Get default tab for a role
+ * Get default tab for a role.
+ * Validates the configured default and falls back to hardcoded default if invalid.
  */
 export function getDefaultTab(
   role: DashboardRole,
   defaults?: Record<DashboardRole, string>
 ): DashboardTab {
-  const defaultTab = defaults?.[role] ?? DEFAULT_ROLE_DEFAULTS[role];
-  return defaultTab as DashboardTab;
+  const configuredDefault = defaults?.[role];
+  const hardcodedDefault = DEFAULT_ROLE_DEFAULTS[role];
+
+  // If we have a configured default, validate it
+  if (configuredDefault !== undefined) {
+    if (ALL_TABS.includes(configuredDefault as DashboardTab)) {
+      return configuredDefault as DashboardTab;
+    }
+    // Invalid configured default - log and fall back
+    console.error(
+      `[Permissions] Invalid default tab "${configuredDefault}" for role "${role}". ` +
+      `Falling back to hardcoded default: "${hardcodedDefault}"`
+    );
+  }
+
+  return hardcodedDefault;
 }
 
 /**
@@ -227,3 +242,31 @@ export const ALL_TABS: DashboardTab[] = [
   "sales",
   "ecommerce",
 ];
+
+// ============================================================================
+// TYPE GUARDS - Runtime validation with developer logging
+// ============================================================================
+
+/**
+ * Type guard for validating role strings at runtime.
+ * Logs invalid values for developer debugging.
+ */
+export function isValidRole(value: string): value is DashboardRole {
+  const valid = ALL_ROLES.includes(value as DashboardRole);
+  if (!valid) {
+    console.error(`[Permissions] Invalid role: "${value}". Valid roles: ${ALL_ROLES.join(", ")}`);
+  }
+  return valid;
+}
+
+/**
+ * Type guard for validating tab strings at runtime.
+ * Logs invalid values for developer debugging.
+ */
+export function isValidTab(value: string): value is DashboardTab {
+  const valid = ALL_TABS.includes(value as DashboardTab);
+  if (!valid) {
+    console.error(`[Permissions] Invalid tab: "${value}". Valid tabs: ${ALL_TABS.join(", ")}`);
+  }
+  return valid;
+}

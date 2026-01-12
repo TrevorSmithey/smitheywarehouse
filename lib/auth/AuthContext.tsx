@@ -93,23 +93,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: getAuthHeaders(),
         signal,
       });
-      if (res.ok) {
-        const data = await res.json();
+
+      // Handle non-OK responses (401, 403, 500, etc.)
+      if (!res.ok) {
+        console.error(`[Auth] Config API returned ${res.status}. Using defaults.`);
         setConfig({
-          tabOrder: data.tab_order || DEFAULT_TAB_ORDER,
-          hiddenTabs: data.hidden_tabs || [],
-          rolePermissions: data.role_permissions || DEFAULT_ROLE_PERMISSIONS,
-          roleDefaults: data.role_defaults || DEFAULT_ROLE_DEFAULTS,
-          roleTabOrders: data.role_tab_orders || ({} as Record<DashboardRole, DashboardTab[]>),
+          tabOrder: DEFAULT_TAB_ORDER as DashboardTab[],
+          hiddenTabs: [],
+          rolePermissions: DEFAULT_ROLE_PERMISSIONS as Record<DashboardRole, string[]>,
+          roleDefaults: DEFAULT_ROLE_DEFAULTS as Record<DashboardRole, string>,
+          roleTabOrders: {} as Record<DashboardRole, DashboardTab[]>,
         });
+        return;
       }
+
+      const data = await res.json();
+      setConfig({
+        tabOrder: data.tab_order || DEFAULT_TAB_ORDER,
+        hiddenTabs: data.hidden_tabs || [],
+        rolePermissions: data.role_permissions || DEFAULT_ROLE_PERMISSIONS,
+        roleDefaults: data.role_defaults || DEFAULT_ROLE_DEFAULTS,
+        roleTabOrders: data.role_tab_orders || ({} as Record<DashboardRole, DashboardTab[]>),
+      });
     } catch (error) {
       // Ignore abort errors (expected on cleanup)
       if (error instanceof Error && error.name === "AbortError") {
         return;
       }
-      console.error("Failed to fetch dashboard config:", error);
-      // Use defaults on error
+      // Log network errors, JSON parse errors, etc.
+      console.error("[Auth] Config fetch failed:", error);
+      console.error("[Auth] Falling back to hardcoded defaults");
       setConfig({
         tabOrder: DEFAULT_TAB_ORDER as DashboardTab[],
         hiddenTabs: [],
@@ -128,15 +141,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: getAuthHeaders(),
         signal,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setUserTabOrder(data.user_tab_order || null);
+
+      // Handle non-OK responses
+      if (!res.ok) {
+        console.error(`[Auth] Preferences API returned ${res.status}. Using defaults.`);
+        setUserTabOrder(null);
+        return;
       }
+
+      const data = await res.json();
+      setUserTabOrder(data.user_tab_order || null);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         return;
       }
-      console.error("Failed to fetch user preferences:", error);
+      console.error("[Auth] Preferences fetch failed:", error);
+      setUserTabOrder(null);
     }
   }, []);
 

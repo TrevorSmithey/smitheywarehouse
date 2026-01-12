@@ -5,7 +5,7 @@
  * No server-side sessions - purely client-side for simplicity.
  */
 
-import type { DashboardRole } from "./permissions";
+import { type DashboardRole, isValidRole } from "./permissions";
 
 /**
  * Auth session stored in localStorage
@@ -22,9 +22,6 @@ const AUTH_STORAGE_KEY = "smithey_warehouse_auth";
 const IMPERSONATION_STORAGE_KEY = "smithey_warehouse_impersonating";
 const AUTH_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-// Valid roles for session validation
-const VALID_ROLES = ["admin", "exec", "ops1", "ops2", "standard", "sales", "fulfillment", "customer_service"];
-
 /**
  * Get current auth session from localStorage
  * Returns null if not authenticated, session expired, or session is invalid
@@ -38,7 +35,7 @@ export function getAuthSession(): AuthSession | null {
 
     const parsed = JSON.parse(stored);
 
-    // Validate session structure
+    // Validate session structure - must have all required fields
     if (
       typeof parsed.userId !== "string" ||
       typeof parsed.name !== "string" ||
@@ -46,14 +43,20 @@ export function getAuthSession(): AuthSession | null {
       typeof parsed.authenticatedAt !== "number" ||
       typeof parsed.expiresAt !== "number"
     ) {
-      console.warn("Invalid session structure, clearing");
+      console.error("[Session] Invalid session structure - missing required fields:", {
+        hasUserId: typeof parsed.userId === "string",
+        hasName: typeof parsed.name === "string",
+        hasRole: typeof parsed.role === "string",
+        hasAuthenticatedAt: typeof parsed.authenticatedAt === "number",
+        hasExpiresAt: typeof parsed.expiresAt === "number",
+      });
       clearAuthSession();
       return null;
     }
 
-    // Validate role is a valid DashboardRole
-    if (!VALID_ROLES.includes(parsed.role)) {
-      console.warn("Invalid role in session, clearing");
+    // Validate role is a valid DashboardRole (uses type guard with logging)
+    if (!isValidRole(parsed.role)) {
+      console.error(`[Session] Token contains invalid role: "${parsed.role}". Clearing session.`);
       clearAuthSession();
       return null;
     }
@@ -62,12 +65,14 @@ export function getAuthSession(): AuthSession | null {
 
     // Check expiration
     if (Date.now() > session.expiresAt) {
+      console.error("[Session] Session expired. Clearing.");
       clearAuthSession();
       return null;
     }
 
     return session;
-  } catch {
+  } catch (error) {
+    console.error("[Session] Failed to parse auth session from localStorage:", error);
     clearAuthSession();
     return null;
   }

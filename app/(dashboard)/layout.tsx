@@ -30,7 +30,7 @@ import UserTabOrderModal from "@/components/layout/UserTabOrderModal";
 import { AnnouncementProvider } from "@/lib/announcements";
 import { useAuth } from "@/lib/auth";
 import { getAuthHeaders } from "@/lib/auth/session";
-import type { DashboardTab } from "@/lib/auth/permissions";
+import { type DashboardTab, isValidTab } from "@/lib/auth/permissions";
 
 /**
  * Dashboard Context
@@ -173,20 +173,27 @@ export default function DashboardLayout({
     const pathParts = pathname.split("/").filter(Boolean);
     if (pathParts.length === 0) return;
 
-    const currentTab = pathParts[0] as DashboardTab;
+    const tabFromPath = pathParts[0];
 
-    // Check if it's a valid dashboard tab (not admin or other routes)
-    const allValidTabs: DashboardTab[] = [
-      "inventory", "production", "fulfillment", "production-planning", "restoration",
-      "budget", "revenue-tracker", "holiday", "pl", "voc", "marketing", "sales", "ecommerce"
-    ];
+    // Validate the path segment is a known dashboard tab
+    // If not valid (e.g., "/admin", "/login", or typos like "/invnetory"), skip this check
+    if (!isValidTab(tabFromPath)) {
+      // Only log for paths that look like they SHOULD be tabs (not /admin, /api, etc.)
+      // This catches typos and invalid direct URL access
+      if (!tabFromPath.startsWith("admin") && !tabFromPath.startsWith("api") && !tabFromPath.startsWith("login")) {
+        console.error(`[Layout] Invalid tab in URL: "/${tabFromPath}". Not a valid dashboard tab.`);
+      }
+      return;
+    }
 
-    if (!allValidTabs.includes(currentTab)) return;
+    // Now we know tabFromPath is a valid DashboardTab (type guard narrowed it)
+    const currentTab = tabFromPath;
 
-    // Check if user has access
+    // Check if user has access to this valid tab
     if (!canAccess(currentTab)) {
       // Redirect to first accessible tab or inventory
       const defaultTab = accessibleTabs[0] || "inventory";
+      console.error(`[Layout] User "${session.name}" (${session.role}) lacks access to "/${currentTab}". Redirecting to "/${defaultTab}".`);
       router.replace(`/${defaultTab}`);
     }
   }, [pathname, session, isLoading, canAccess, accessibleTabs, router]);
