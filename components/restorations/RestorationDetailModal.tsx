@@ -323,6 +323,7 @@ export function RestorationDetailModal({
   // Damaged dialog state
   const [showDamageDialog, setShowDamageDialog] = useState(false);
   const [selectedDamageReason, setSelectedDamageReason] = useState<string>("");
+  const [damageConfirmed, setDamageConfirmed] = useState(false);
   // Resolve damaged item state
   const [resolving, setResolving] = useState(false);
 
@@ -367,6 +368,7 @@ export function RestorationDetailModal({
       setShowStatusDropdown(false);
       setShowDamageDialog(false);
       setSelectedDamageReason("");
+      setDamageConfirmed(false);
       setLoadedImages(new Set()); // Reset loaded images tracking
     }
   }, [restoration]);
@@ -691,13 +693,26 @@ export function RestorationDetailModal({
         throw new Error(data.error || "Failed to mark as damaged");
       }
 
-      setShowDamageDialog(false);
-      setSelectedDamageReason("");
+      // Show confirmation state
+      setDamageConfirmed(true);
+      setSaving(false);
+      statusUpdateInProgressRef.current = false;
+
+      // Trigger data refresh in parent
       onSave();
+
+      // Close modal after brief confirmation display
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          setShowDamageDialog(false);
+          setSelectedDamageReason("");
+          setDamageConfirmed(false);
+          onClose(); // Close the entire modal - damage is terminal
+        }
+      }, 1500);
     } catch (error) {
       console.error("Error marking as damaged:", error);
       alert(error instanceof Error ? error.message : "Failed to mark as damaged");
-    } finally {
       statusUpdateInProgressRef.current = false;
       if (isMountedRef.current) {
         setSaving(false);
@@ -1465,8 +1480,10 @@ export function RestorationDetailModal({
         <div
           className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
           onClick={() => {
-            setShowDamageDialog(false);
-            setSelectedDamageReason("");
+            if (!damageConfirmed && !saving) {
+              setShowDamageDialog(false);
+              setSelectedDamageReason("");
+            }
           }}
           role="dialog"
           aria-modal="true"
@@ -1476,80 +1493,97 @@ export function RestorationDetailModal({
             className="bg-bg-secondary rounded-2xl border border-border w-full max-w-md overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-border bg-rose-500/10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-rose-400" />
+            {/* SUCCESS STATE - Show after damage confirmed */}
+            {damageConfirmed ? (
+              <div className="px-6 py-10 flex flex-col items-center justify-center text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-4 animate-bounce">
+                  <CheckCircle className="w-10 h-10 text-emerald-400" />
                 </div>
-                <div>
-                  <h3 id="damage-dialog-title" className="text-lg font-semibold text-text-primary">
-                    Mark as Damaged
-                  </h3>
-                  <p className="text-sm text-text-secondary">This action cannot be undone</p>
-                </div>
+                <h3 className="text-xl font-semibold text-text-primary mb-2">
+                  Damage Confirmed
+                </h3>
+                <p className="text-sm text-text-secondary">
+                  Teams notification sent. Item moved to damaged section.
+                </p>
               </div>
-            </div>
-
-            {/* Content */}
-            <div className="px-6 py-5 space-y-4">
-              <p className="text-sm text-text-secondary">
-                Select a reason for marking this restoration as damaged. The item will be removed from the active pipeline.
-              </p>
-
-              {/* Reason Selection */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-text-muted uppercase tracking-wider">
-                  Damage Reason
-                </label>
-                <div className="space-y-2">
-                  {DAMAGE_REASONS.map((reason) => (
-                    <button
-                      key={reason.value}
-                      onClick={() => setSelectedDamageReason(reason.value)}
-                      className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                        selectedDamageReason === reason.value
-                          ? "border-rose-500 bg-rose-500/10 text-text-primary"
-                          : "border-border hover:border-border-hover bg-bg-tertiary/50 text-text-secondary hover:text-text-primary"
-                      }`}
-                    >
-                      {reason.label}
-                    </button>
-                  ))}
+            ) : (
+              <>
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-border bg-rose-500/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center">
+                      <AlertTriangle className="w-5 h-5 text-rose-400" />
+                    </div>
+                    <div>
+                      <h3 id="damage-dialog-title" className="text-lg font-semibold text-text-primary">
+                        Mark as Damaged
+                      </h3>
+                      <p className="text-sm text-text-secondary">This action cannot be undone</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 border-t border-border bg-bg-tertiary/30 flex items-center justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowDamageDialog(false);
-                  setSelectedDamageReason("");
-                }}
-                className="px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleMarkDamaged}
-                disabled={!selectedDamageReason || saving}
-                className={`px-5 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-                  selectedDamageReason && !saving
-                    ? "bg-rose-500 text-white hover:bg-rose-600 active:scale-95"
-                    : "bg-rose-500/30 text-rose-300/50 cursor-not-allowed"
-                }`}
-              >
-                {saving ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Processing...
-                  </span>
-                ) : (
-                  "Confirm Damage"
-                )}
-              </button>
-            </div>
+                {/* Content */}
+                <div className="px-6 py-5 space-y-4">
+                  <p className="text-sm text-text-secondary">
+                    Select a reason for marking this restoration as damaged. The item will be removed from the active pipeline.
+                  </p>
+
+                  {/* Reason Selection */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-text-muted uppercase tracking-wider">
+                      Damage Reason
+                    </label>
+                    <div className="space-y-2">
+                      {DAMAGE_REASONS.map((reason) => (
+                        <button
+                          key={reason.value}
+                          onClick={() => setSelectedDamageReason(reason.value)}
+                          className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                            selectedDamageReason === reason.value
+                              ? "border-rose-500 bg-rose-500/10 text-text-primary"
+                              : "border-border hover:border-border-hover bg-bg-tertiary/50 text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          {reason.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 border-t border-border bg-bg-tertiary/30 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setShowDamageDialog(false);
+                      setSelectedDamageReason("");
+                    }}
+                    className="px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleMarkDamaged}
+                    disabled={!selectedDamageReason || saving}
+                    className={`px-5 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                      selectedDamageReason && !saving
+                        ? "bg-rose-500 text-white hover:bg-rose-600 active:scale-95"
+                        : "bg-rose-500/30 text-rose-300/50 cursor-not-allowed"
+                    }`}
+                  >
+                    {saving ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Processing...
+                      </span>
+                    ) : (
+                      "Confirm Damage"
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
