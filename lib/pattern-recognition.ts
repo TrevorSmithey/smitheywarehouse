@@ -34,6 +34,7 @@ export interface CustomerOrderHistory {
 export interface OrderIntervalStats {
   avgIntervalDays: number;
   medianIntervalDays: number;
+  ewmaIntervalDays: number;  // EWMA-based "typical" interval (adapts to recent behavior)
   stdDevDays: number;
   minIntervalDays: number;
   maxIntervalDays: number;
@@ -174,6 +175,15 @@ export function analyzeOrderIntervals(
   const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / intervals.length;
   const stdDev = Math.sqrt(avgSquaredDiff);
 
+  // EWMA: Exponentially Weighted Moving Average (α = 0.3)
+  // This adapts to recent behavior changes - critical for customers like Forager
+  // whose historical median (18d) doesn't reflect their current pattern (50d)
+  const alpha = 0.3;
+  let ewma = intervals[0];
+  for (let i = 1; i < intervals.length; i++) {
+    ewma = alpha * intervals[i] + (1 - alpha) * ewma;
+  }
+
   // Coefficient of variation (std dev / mean) - if < 0.5, they're consistent
   const cv = stdDev / avg;
   const isConsistent = cv < 0.5;
@@ -181,6 +191,7 @@ export function analyzeOrderIntervals(
   return {
     avgIntervalDays: Math.round(avg),
     medianIntervalDays: median,
+    ewmaIntervalDays: Math.round(ewma),
     stdDevDays: Math.round(stdDev),
     minIntervalDays: min,
     maxIntervalDays: max,
@@ -321,8 +332,8 @@ export function detectIntervalAnomaly(
     (now.getTime() - lastOrder.getTime()) / (1000 * 60 * 60 * 24)
   );
 
-  // Use median for expected interval (more robust to outliers)
-  const expectedInterval = intervalStats.medianIntervalDays;
+  // Use EWMA for expected interval (adapts to behavior changes like Forager: 18d median → 49d EWMA)
+  const expectedInterval = intervalStats.ewmaIntervalDays;
   const expectedOrderDate = new Date(lastOrder);
   expectedOrderDate.setDate(expectedOrderDate.getDate() + expectedInterval);
 
@@ -500,7 +511,7 @@ export function calculateChurnRiskScore(
       type: "pattern_break",
       severity: "warning",
       description: "Breaking an otherwise consistent ordering pattern",
-      evidence: `Customer had a reliable ${intervalStats.medianIntervalDays}-day order cycle`,
+      evidence: `Customer had a reliable ${intervalStats.ewmaIntervalDays}-day order cycle`,
     });
   }
 
@@ -522,12 +533,12 @@ export function generateNarrative(
   if (intervalStats && intervalStats.isConsistent && orderCount >= 10) {
     // Only claim "consistent" with 10+ orders AND low variance
     parts.push(
-      `${company_name} has an established ordering pattern of approximately every ${intervalStats.medianIntervalDays} days across ${orderCount} orders.`
+      `${company_name} has an established ordering pattern of approximately every ${intervalStats.ewmaIntervalDays} days across ${orderCount} orders.`
     );
   } else if (intervalStats && orderCount >= 6) {
     // 6-9 orders: we see a pattern but shouldn't oversell it
     parts.push(
-      `${company_name} has placed ${orderCount} orders, typically about ${intervalStats.medianIntervalDays} days apart.`
+      `${company_name} has placed ${orderCount} orders, typically about ${intervalStats.ewmaIntervalDays} days apart.`
     );
   } else {
     // Not enough data to claim a pattern - just state the facts
@@ -539,11 +550,11 @@ export function generateNarrative(
     if (sizeAnomaly && sizeStats && orderCount >= 8) {
       // Both interval and size issues - but only claim if we have the data
       parts.push(
-        `They're ${intervalAnomaly.daysOverdue} days past their typical ${intervalStats.medianIntervalDays}-day interval. Order sizes also declining: recent avg $${sizeStats.recentAvg.toLocaleString()} vs historical $${sizeStats.historicalAvg.toLocaleString()}.`
+        `They're ${intervalAnomaly.daysOverdue} days past their typical ${intervalStats.ewmaIntervalDays}-day interval. Order sizes also declining: recent avg $${sizeStats.recentAvg.toLocaleString()} vs historical $${sizeStats.historicalAvg.toLocaleString()}.`
       );
     } else {
       parts.push(
-        `They're ${intervalAnomaly.daysOverdue} days past their typical ${intervalStats.medianIntervalDays}-day interval (${intervalAnomaly.overdueRatio.toFixed(1)}x normal gap).`
+        `They're ${intervalAnomaly.daysOverdue} days past their typical ${intervalStats.ewmaIntervalDays}-day interval (${intervalAnomaly.overdueRatio.toFixed(1)}x normal gap).`
       );
     }
   } else if (sizeAnomaly && sizeStats && orderCount >= 8) {

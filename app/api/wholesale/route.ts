@@ -506,8 +506,9 @@ export async function GET(request: NextRequest) {
     const orderingAnomalies: WholesaleOrderingAnomaly[] = [];
 
     // Build a map of interval stats from RPC call
+    // EWMA = Exponentially Weighted Moving Average - adapts to recent behavior changes
     const intervalMap = new Map<number, {
-      medianInterval: number;
+      typicalInterval: number;  // EWMA-based (weights recent orders more heavily)
       meanInterval: number;
       stdDev: number;
     }>();
@@ -515,7 +516,7 @@ export async function GET(request: NextRequest) {
     if (intervalData) {
       for (const row of intervalData) {
         intervalMap.set(row.ns_customer_id, {
-          medianInterval: row.median_interval || 0,
+          typicalInterval: row.ewma_interval || row.median_interval || 0,
           meanInterval: row.mean_interval || 0,
           stdDev: row.std_dev || 0,
         });
@@ -552,12 +553,13 @@ export async function GET(request: NextRequest) {
       }
 
       // Get interval stats (from RPC or fallback to simple calculation)
-      let medianInterval: number;
+      // typicalInterval uses EWMA which adapts to behavior changes (e.g., Forager: 18d median → 49d EWMA)
+      let typicalInterval: number;
       let coefficientOfVariation: number;
 
       const stats = intervalMap.get(customerId);
-      if (stats && stats.medianInterval > 0) {
-        medianInterval = stats.medianInterval;
+      if (stats && stats.typicalInterval > 0) {
+        typicalInterval = stats.typicalInterval;
         // Coefficient of variation = stdDev / mean (lower = more consistent)
         coefficientOfVariation = stats.meanInterval > 0 ? stats.stdDev / stats.meanInterval : 999;
       } else {
@@ -565,12 +567,12 @@ export async function GET(request: NextRequest) {
         const daysBetweenFirstAndLast = Math.floor(
           (lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24)
         );
-        medianInterval = daysBetweenFirstAndLast / (orderCount - 1);
+        typicalInterval = daysBetweenFirstAndLast / (orderCount - 1);
         coefficientOfVariation = 0.5; // Assume moderate variability for fallback
       }
 
       // Skip if interval is too short (split shipments) or too long (infrequent)
-      if (medianInterval < 14 || medianInterval > 180) {
+      if (typicalInterval < 14 || typicalInterval > 180) {
         continue;
       }
 
@@ -581,11 +583,11 @@ export async function GET(request: NextRequest) {
       }
 
       // Calculate overdue metrics
-      const expectedOrderDate = new Date(lastOrderDate.getTime() + medianInterval * 24 * 60 * 60 * 1000);
+      const expectedOrderDate = new Date(lastOrderDate.getTime() + typicalInterval * 24 * 60 * 60 * 1000);
       const daysOverdue = Math.floor(
         (now.getTime() - expectedOrderDate.getTime()) / (1000 * 60 * 60 * 24)
       );
-      const overdueRatio = daysSinceLastOrder / medianInterval;
+      const overdueRatio = daysSinceLastOrder / typicalInterval;
 
       // Only include customers who are >20% overdue
       if (overdueRatio <= 1.2) {
@@ -600,7 +602,7 @@ export async function GET(request: NextRequest) {
         segment,
         total_revenue: totalRevenue,
         order_count: orderCount,
-        avg_order_interval_days: Math.round(medianInterval),
+        avg_order_interval_days: Math.round(typicalInterval),
         last_order_date: c.last_sale_date, // Use current data from transaction sync
         days_since_last_order: daysSinceLastOrder,
         expected_order_date: expectedOrderDate.toISOString().split("T")[0],

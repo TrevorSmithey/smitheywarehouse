@@ -102,10 +102,10 @@ export async function GET(
       : null;
 
     // Get interval stats from RPC result
-    // Median = user-facing "typical interval"
-    // P75 = internal threshold for overdue detection (more conservative than median)
-    const avgOrderIntervalDays: number | null = customerIntervalData?.median_interval
-      ? Math.round(parseFloat(customerIntervalData.median_interval))
+    // EWMA = user-facing "typical interval" (adapts to recent behavior changes)
+    // P75 = internal threshold for overdue detection (more conservative than EWMA)
+    const avgOrderIntervalDays: number | null = customerIntervalData?.ewma_interval
+      ? Math.round(parseFloat(customerIntervalData.ewma_interval))
       : null;
     const intervalRangeHigh: number | null = customerIntervalData?.p75_interval
       ? Math.round(parseFloat(customerIntervalData.p75_interval))

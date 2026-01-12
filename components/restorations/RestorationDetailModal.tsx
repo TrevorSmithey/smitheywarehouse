@@ -390,7 +390,12 @@ export function RestorationDetailModal({
         ? [restoration.magnet_number]
         : [];
     const tagsChanged = JSON.stringify(tagNumbers) !== JSON.stringify(originalTags);
-    const photosChanged = JSON.stringify(photos) !== JSON.stringify(restoration.photos || []);
+    // Compare photos using the SAME filtering as when we load them
+    // This ensures hasChanges=false when no user action has occurred
+    const originalPhotos = Array.isArray(restoration.photos)
+      ? restoration.photos.filter((url): url is string => typeof url === "string" && isValidPhotoUrl(url))
+      : [];
+    const photosChanged = JSON.stringify(photos) !== JSON.stringify(originalPhotos);
     return notesChanged || tagsChanged || photosChanged;
   }, [notes, tagNumbers, photos, restoration]);
 
@@ -891,7 +896,7 @@ export function RestorationDetailModal({
         {/* Status Dropdown (shown when badge is tapped) */}
         {showStatusDropdown && (
           <>
-            {/* Backdrop - closes dropdown when clicked outside */}
+            {/* Backdrop - closes just the dropdown when clicked outside */}
             <div
               className="fixed inset-0 z-[5]"
               onMouseDown={() => setShowStatusDropdown(false)}

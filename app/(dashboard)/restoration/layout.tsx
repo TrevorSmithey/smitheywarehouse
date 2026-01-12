@@ -212,12 +212,20 @@ export default function RestorationLayout({
   }, [pathname, router]);
 
   // Handler: Close modal and clear URL param
+  // IMPORTANT: Update URL first, THEN clear state, to avoid race condition
+  // where the deep-link effect sees stale idParam and re-opens the modal
   const closeRestoration = useCallback(() => {
+    // Mark this ID as "closing" so deep-link effect won't re-open it
+    // even if there's a race between URL update and state update
+    const closingId = selectedRestoration?.id ? String(selectedRestoration.id) : null;
+    if (closingId) {
+      processedDeepLinkRef.current = closingId;
+    }
     setSelectedRestoration(null);
     if (idParam) {
       router.replace(pathname, { scroll: false });
     }
-  }, [idParam, pathname, router]);
+  }, [idParam, pathname, router, selectedRestoration?.id]);
 
   // Handler: After save, refresh data and close modal
   const handleSave = useCallback(() => {
