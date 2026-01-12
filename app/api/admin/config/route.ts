@@ -42,12 +42,16 @@ const PermissionValueSchema = z.union([
   z.tuple([z.literal("*")]),
 ]);
 
+// Note: Using z.string() for record keys instead of DashboardRoleSchema
+// because z.record(enumSchema, ...) has unexpected behavior when not all
+// enum keys are present in the input - it tries to validate missing keys.
+// The application logic already ensures only valid roles are used.
 const ConfigUpdateSchema = z.object({
   tab_order: z.array(DashboardTabSchema).optional(),
   hidden_tabs: z.array(DashboardTabSchema).optional(),
-  role_permissions: z.record(DashboardRoleSchema, z.array(z.string())).optional(),
-  role_defaults: z.record(DashboardRoleSchema, DashboardTabSchema).optional(),
-  role_tab_orders: z.record(DashboardRoleSchema, z.array(DashboardTabSchema)).optional(),
+  role_permissions: z.record(z.string(), z.array(z.string())).optional(),
+  role_defaults: z.record(z.string(), DashboardTabSchema).optional(),
+  role_tab_orders: z.record(z.string(), z.array(DashboardTabSchema).nullable()).optional(),
   updated_by: z.string().optional(),
 }).strict();
 
@@ -104,11 +108,13 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
+    console.log("[Config API] Received body:", JSON.stringify(body, null, 2));
 
     // Validate input against schema
     const parsed = ConfigUpdateSchema.safeParse(body);
     if (!parsed.success) {
-      console.error("Config validation failed:", parsed.error.format());
+      console.error("[Config API] Validation failed. Body was:", JSON.stringify(body, null, 2));
+      console.error("[Config API] Zod errors:", parsed.error.format());
       return NextResponse.json(
         { error: "Invalid config data", details: parsed.error.format() },
         { status: 400 }

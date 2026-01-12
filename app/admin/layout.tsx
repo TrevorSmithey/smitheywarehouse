@@ -259,7 +259,11 @@ export default function AdminLayout({
       pendingConfigUpdates.current = {}; // Clear pending updates
 
       try {
-        console.log("[Admin] Saving config:", updatesToSend);
+        const payload = {
+          ...updatesToSend,
+          updated_by: sessionRef.current?.userId,
+        };
+        console.log("[Admin] Saving config payload:", JSON.stringify(payload, null, 2));
         const res = await fetch("/api/admin/config", {
           method: "PUT",
           headers: getAuthHeaders(),
@@ -273,7 +277,11 @@ export default function AdminLayout({
 
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
-          console.error("[Admin] Save config failed:", res.status, errorData);
+          console.error("[Admin] Save config failed:", res.status);
+          console.error("[Admin] Error response:", JSON.stringify(errorData, null, 2));
+          if (errorData.details) {
+            console.error("[Admin] Validation details:", JSON.stringify(errorData.details, null, 2));
+          }
           // Reload config to restore server state on error
           await loadConfig();
           throw new Error(errorData.error || "Failed to save");
