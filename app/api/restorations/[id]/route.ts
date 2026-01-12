@@ -157,11 +157,13 @@ async function sendTeamsNotification(
   // Format the damage reason
   const reasonText = DAMAGE_REASON_LABELS[damageReason || ""] || damageReason || "Unknown";
 
+  // Power Automate has issues with emojis and markdown asterisks in JSON
+  // Using simple text format that works reliably
   const message = {
-    text: `🚨 **Restoration Marked Damaged**\n\n` +
-          `**Restoration ID:** #${restorationId}\n` +
-          `**Reason:** ${reasonText}\n\n` +
-          `[View Details](${directLink})`,
+    text: `ALERT: Restoration Marked Damaged\n\n` +
+          `Restoration ID: #${restorationId}\n` +
+          `Reason: ${reasonText}\n\n` +
+          `View Details: ${directLink}`,
   };
 
   // 5-second timeout for non-critical notification
@@ -177,6 +179,9 @@ async function sendTeamsNotification(
     });
 
     if (!response.ok) {
+      // Log the response body for debugging
+      const errorBody = await response.text().catch(() => "Could not read body");
+      console.error(`[RESTORATION API] Teams webhook failed: ${response.status} - ${errorBody}`);
       throw new Error(`Teams webhook returned ${response.status}: ${response.statusText}`);
     }
 
