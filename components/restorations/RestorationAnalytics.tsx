@@ -40,7 +40,7 @@ interface RestorationAnalyticsProps {
   onDateRangeChange: (range: RestorationDateRange) => void;
 }
 
-// Pipeline stages (for CS action items)
+// Pipeline stages (for 8-week timeout check)
 const PIPELINE_STAGES = [
   "delivered_warehouse",
   "received",
@@ -50,12 +50,8 @@ const PIPELINE_STAGES = [
 
 type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
-// Thresholds for CS callouts
-const CS_THRESHOLDS = {
-  delivered_warehouse: 2, // Contact if > 2 days
-  at_restoration: 14, // Contact if > 14 days
-  timeout_warning: 49, // 7 weeks (1 week before 8-week timeout)
-};
+// 8-week timeout threshold: 49 days = 7 weeks (1 week warning before 56-day deadline)
+const TIMEOUT_WARNING_DAYS = 49;
 
 // ============================================================================
 // INTERNAL CYCLE TREND CHART (Recharts)
@@ -314,101 +310,36 @@ interface CSActionItemsProps {
 }
 
 function CSActionItems({ restorations, onItemClick }: CSActionItemsProps) {
-  // Group items by CS action type
-  const deliveredTooLong = restorations.filter(
-    (r) => r.status === "delivered_warehouse" && r.days_in_status > CS_THRESHOLDS.delivered_warehouse
-  );
-
-  const atRestorationTooLong = restorations.filter(
-    (r) => r.status === "at_restoration" && r.days_in_status > CS_THRESHOLDS.at_restoration
-  );
-
+  // 8-week timeout approaching (49 days = 1 week before 8-week deadline)
   const timeoutApproaching = restorations.filter(
     (r) =>
       PIPELINE_STAGES.includes(r.status as PipelineStage) &&
-      r.total_days > CS_THRESHOLDS.timeout_warning
+      r.total_days > TIMEOUT_WARNING_DAYS
   );
 
-  const hasItems = deliveredTooLong.length > 0 || atRestorationTooLong.length > 0 || timeoutApproaching.length > 0;
-
-  if (!hasItems) {
-    return (
-      <div className="bg-bg-secondary border border-border rounded-lg p-4 text-center">
-        <div className="text-text-secondary text-sm">No customers need proactive outreach right now</div>
-      </div>
-    );
+  if (timeoutApproaching.length === 0) {
+    return null;
   }
 
   return (
-    <div className="space-y-4">
-      {/* Delivered > 2 days */}
-      {deliveredTooLong.length > 0 && (
-        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-orange-400" />
-            <span className="text-sm font-semibold text-orange-400 uppercase tracking-wider">
-              Delivered &gt; 2 Days ({deliveredTooLong.length})
-            </span>
-          </div>
-          <p className="text-xs text-text-secondary mb-3">
-            Customer may be asking &quot;where&apos;s my stuff?&quot; - item delivered but not checked in
-          </p>
-          <div className="space-y-2">
-            {deliveredTooLong.slice(0, 5).map((item) => (
-              <CSItem key={item.id} item={item} onItemClick={onItemClick} />
-            ))}
-            {deliveredTooLong.length > 5 && (
-              <div className="text-xs text-text-muted">+{deliveredTooLong.length - 5} more</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* At Restoration > 14 days */}
-      {atRestorationTooLong.length > 0 && (
-        <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-purple-400" />
-            <span className="text-sm font-semibold text-purple-400 uppercase tracking-wider">
-              At Restoration &gt; 14 Days ({atRestorationTooLong.length})
-            </span>
-          </div>
-          <p className="text-xs text-text-secondary mb-3">
-            Consider proactive status update - customer hasn&apos;t heard from us in a while
-          </p>
-          <div className="space-y-2">
-            {atRestorationTooLong.slice(0, 5).map((item) => (
-              <CSItem key={item.id} item={item} onItemClick={onItemClick} />
-            ))}
-            {atRestorationTooLong.length > 5 && (
-              <div className="text-xs text-text-muted">+{atRestorationTooLong.length - 5} more</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 8-week timeout approaching */}
-      {timeoutApproaching.length > 0 && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span className="text-sm font-semibold text-red-400 uppercase tracking-wider">
-              8-Week Timeout Approaching ({timeoutApproaching.length})
-            </span>
-          </div>
-          <p className="text-xs text-text-secondary mb-3">
-            Contact before auto-cancel - these orders are approaching the 8-week deadline
-          </p>
-          <div className="space-y-2">
-            {timeoutApproaching.slice(0, 5).map((item) => (
-              <CSItem key={item.id} item={item} showTotalDays onItemClick={onItemClick} />
-            ))}
-            {timeoutApproaching.length > 5 && (
-              <div className="text-xs text-text-muted">+{timeoutApproaching.length - 5} more</div>
-            )}
-          </div>
-        </div>
-      )}
+    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertTriangle className="w-4 h-4 text-red-400" />
+        <span className="text-sm font-semibold text-red-400 uppercase tracking-wider">
+          8-Week Timeout Approaching ({timeoutApproaching.length})
+        </span>
+      </div>
+      <p className="text-xs text-text-secondary mb-3">
+        Contact before auto-cancel - these orders are approaching the 8-week deadline
+      </p>
+      <div className="space-y-2">
+        {timeoutApproaching.slice(0, 5).map((item) => (
+          <CSItem key={item.id} item={item} showTotalDays onItemClick={onItemClick} />
+        ))}
+        {timeoutApproaching.length > 5 && (
+          <div className="text-xs text-text-muted">+{timeoutApproaching.length - 5} more</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1008,18 +939,13 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
       )}
 
       {/* ============================================================ */}
-      {/* CS ACTION ITEMS + STAGE BREAKDOWN */}
+      {/* 8-WEEK TIMEOUT WARNING + STAGE BREAKDOWN */}
       {/* ============================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* CS Action Items - 2 cols */}
-        <div className="lg:col-span-2">
-          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">
-            CS Action Items
-          </h2>
-          <CSActionItems restorations={restorations} onItemClick={onItemClick} />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 8-Week Timeout Warning (only shows when items exist) */}
+        <CSActionItems restorations={restorations} onItemClick={onItemClick} />
 
-        {/* Stage Breakdown - 1 col */}
+        {/* Stage Breakdown */}
         {period?.internalCycle && (
           <div className="bg-bg-secondary rounded-lg border border-border p-4">
             <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-4">
