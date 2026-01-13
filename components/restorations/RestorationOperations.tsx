@@ -44,21 +44,21 @@ const STAGE_CONFIG: Record<PipelineStage, {
   thresholds: { green: number; amber: number };
 }> = {
   here: {
-    label: "HERE",
+    label: "HOBSON",
     color: "text-sky-400",
     bgColor: "bg-sky-500/10",
     borderColor: "border-sky-500/30",
     thresholds: { green: 3, amber: 7 },
   },
   out: {
-    label: "OUT",
+    label: "PIPEFITTER",
     color: "text-purple-400",
     bgColor: "bg-purple-500/10",
     borderColor: "border-purple-500/30",
     thresholds: { green: 7, amber: 14 },
   },
   ship: {
-    label: "SHIP",
+    label: "HOBSON",
     color: "text-emerald-400",
     bgColor: "bg-emerald-500/10",
     borderColor: "border-emerald-500/30",
