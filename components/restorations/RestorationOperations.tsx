@@ -109,7 +109,7 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
       daysSincePossession = Math.floor((Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24));
     }
   }
-  const isLate = daysSincePossession >= LATE_THRESHOLD_DAYS;
+  const isLate = daysSincePossession > LATE_THRESHOLD_DAYS;
 
   // Warning: SLA-based thresholds for visual feedback
   const isPastThreshold = daysSincePossession > 14; // Over 2 weeks
@@ -285,18 +285,18 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
 
     const aDays = getDaysSincePossession(a);
     const bDays = getDaysSincePossession(b);
-    const aLate = aDays >= LATE_THRESHOLD_DAYS;
-    const bLate = bDays >= LATE_THRESHOLD_DAYS;
+    const aLate = aDays > LATE_THRESHOLD_DAYS;
+    const bLate = bDays > LATE_THRESHOLD_DAYS;
 
     if (aLate && !bLate) return -1;
     if (!aLate && bLate) return 1;
     return bDays - aDays;
   });
 
-  // Count items that are late (21+ days since possession)
+  // Count items that are late (>21 days since possession, past SLA)
   const lateCount = items.filter(i => {
     if (i.status === "in_transit_inbound") return false;
-    return getDaysSincePossession(i) >= LATE_THRESHOLD_DAYS;
+    return getDaysSincePossession(i) > LATE_THRESHOLD_DAYS;
   }).length;
 
   return (
@@ -398,7 +398,7 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
 
   // Counts
   const totalActive = pipelineItems.length;
-  // Late = 21+ days since Smithey took possession (same calculation as column badges)
+  // Late = >21 days since Smithey took possession (past SLA, matches Analytics page)
   const totalLate = pipelineItems.filter((r) => {
     // In-transit items excluded - we can't control carrier speed
     if (r.status === "in_transit_inbound") return false;
@@ -408,7 +408,7 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
     const daysSincePossession = Math.floor(
       (Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24)
     );
-    return daysSincePossession >= LATE_THRESHOLD_DAYS;
+    return daysSincePossession > LATE_THRESHOLD_DAYS;
   }).length;
 
   // Filter unresolved damaged items (status='damaged' AND resolved_at IS NULL)
