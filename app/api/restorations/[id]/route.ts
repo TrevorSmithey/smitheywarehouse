@@ -60,12 +60,13 @@ const STATUS_ORDER = [
 ] as const;
 
 // Valid status transitions - NOW INCLUDES BACKWARD MOVEMENT
+// Note: delivered_warehouse can now go directly to at_restoration (skipping "received")
 const VALID_TRANSITIONS: Record<KnownStatus, KnownStatus[]> = {
   // Forward + backward + terminal transitions
   pending_label: ["label_sent", "cancelled", "damaged"],
   label_sent: ["in_transit_inbound", "pending_label", "cancelled", "damaged"],
   in_transit_inbound: ["delivered_warehouse", "label_sent", "pending_label", "cancelled", "damaged"],
-  delivered_warehouse: ["received", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
+  delivered_warehouse: ["at_restoration", "received", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
   received: ["at_restoration", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
   at_restoration: ["ready_to_ship", "received", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
   ready_to_ship: ["shipped", "at_restoration", "received", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],

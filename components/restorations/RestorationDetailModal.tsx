@@ -79,14 +79,17 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bgColor: stri
 };
 
 // Status advancement configuration
+// Note: "received" status removed from forward workflow - delivered_warehouse now goes directly to at_restoration
+// The "received" entry remains for backward compatibility with 6 existing items in that status
 const STATUS_ADVANCE: Record<string, { nextStatus: string; label: string; icon: React.ElementType; bgClass: string }> = {
   delivered_warehouse: {
-    nextStatus: "received",
-    label: "Check In",
-    icon: CheckCircle,
-    bgClass: "bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700",
+    nextStatus: "at_restoration",
+    label: "Send to Restoration",
+    icon: Package,
+    bgClass: "bg-purple-500 hover:bg-purple-600 active:bg-purple-700",
   },
   received: {
+    // Legacy: for items already in "received" status before workflow simplification
     nextStatus: "at_restoration",
     label: "Send to Restoration",
     icon: Package,
@@ -114,11 +117,12 @@ const STATUS_ORDER = [
 ] as const;
 
 // Valid status transitions - includes backward movement and damaged (mirrors API)
+// Note: delivered_warehouse can now go directly to at_restoration (skipping "received")
 const VALID_TRANSITIONS: Record<string, string[]> = {
   pending_label: ["label_sent", "cancelled", "damaged"],
   label_sent: ["in_transit_inbound", "pending_label", "cancelled", "damaged"],
   in_transit_inbound: ["delivered_warehouse", "label_sent", "pending_label", "cancelled", "damaged"],
-  delivered_warehouse: ["received", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
+  delivered_warehouse: ["at_restoration", "received", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
   received: ["at_restoration", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
   at_restoration: ["ready_to_ship", "received", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
   ready_to_ship: ["shipped", "at_restoration", "received", "delivered_warehouse", "in_transit_inbound", "label_sent", "pending_label", "cancelled", "damaged"],
