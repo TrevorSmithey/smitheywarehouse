@@ -75,7 +75,7 @@ const VALID_TRANSITIONS: Record<KnownStatus, KnownStatus[]> = {
   shipped: ["delivered", "ready_to_ship", "at_restoration", "received", "damaged"], // Limited backward after shipping
   delivered: [], // Terminal state
   cancelled: [], // Terminal state
-  damaged: ["delivered_warehouse", "pending_trash"], // Decision point: continue restoration OR trash
+  damaged: ["delivered_warehouse", "pending_trash", "ready_to_ship"], // Decision point: continue restoration, trash, or return to customer
   pending_trash: ["trashed"], // Only valid transition is confirming disposal
   trashed: [], // Terminal state
 };
@@ -114,6 +114,7 @@ interface UpdateBody {
   // Damaged workflow action flags
   continue_restoration?: boolean; // If true, return damaged item to delivered_warehouse with was_damaged flag
   mark_for_trash?: boolean; // If true, move damaged item to pending_trash (customer said trash it)
+  return_to_customer?: boolean; // If true, skip restoration and go directly to ready_to_ship (return as-is)
   confirm_trashed?: boolean; // If true, move pending_trash item to trashed (physical disposal confirmed)
 }
 
@@ -397,6 +398,23 @@ export async function PATCH(
       // Note: damage_reason preserved for analytics
     }
 
+    // Handle "Return to Customer" - skip restoration, ship back as-is
+    if (body.return_to_customer) {
+      if (current.status !== "damaged") {
+        return NextResponse.json(
+          { error: "return_to_customer can only be used on damaged items" },
+          { status: 400 }
+        );
+      }
+      // Go directly to ready_to_ship (skip restoration), set was_damaged flag
+      update.status = "ready_to_ship";
+      update.was_damaged = true;
+      update.damaged_at = null;
+      update.resolved_at = null;
+      update.back_from_restoration_at = new Date().toISOString();
+      // Note: damage_reason preserved for analytics
+    }
+
     // Handle "Confirm Trashed" - physical disposal confirmed by operator
     if (body.confirm_trashed) {
       if (current.status !== "pending_trash") {
@@ -624,9 +642,11 @@ export async function PATCH(
       ? "delivered_warehouse"
       : body.mark_for_trash
         ? "pending_trash"
-        : body.confirm_trashed
-          ? "trashed"
-          : body.status || current.status;
+        : body.return_to_customer
+          ? "ready_to_ship"
+          : body.confirm_trashed
+            ? "trashed"
+            : body.status || current.status;
 
     const eventData: Record<string, unknown> = {
       previous_status: current.status,
@@ -661,6 +681,9 @@ export async function PATCH(
       eventData.was_damaged = true;
     } else if (body.mark_for_trash) {
       eventType = "marked_for_trash"; // Customer said trash it
+    } else if (body.return_to_customer) {
+      eventType = "returned_to_customer"; // Skip restoration, ship back as-is
+      eventData.was_damaged = true;
     } else if (body.confirm_trashed) {
       eventType = "disposal_confirmed"; // Physical disposal confirmed by operator
     } else if (body.resolved_at && body.resolved_at !== null) {

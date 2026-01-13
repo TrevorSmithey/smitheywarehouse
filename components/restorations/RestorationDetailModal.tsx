@@ -130,7 +130,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   shipped: ["delivered", "ready_to_ship", "at_restoration", "received", "damaged"],
   delivered: [], // Terminal state
   cancelled: [], // Terminal state
-  damaged: ["delivered_warehouse", "pending_trash"], // Decision point: continue restoration OR trash
+  damaged: ["delivered_warehouse", "ready_to_ship", "pending_trash"], // Decision point: continue restoration, return to customer, OR trash
   pending_trash: ["trashed"], // Only valid transition is confirming disposal
   trashed: [], // Terminal state
 };
@@ -336,6 +336,7 @@ export function RestorationDetailModal({
   // Damaged workflow action states
   const [continuingRestoration, setContinuingRestoration] = useState(false);
   const [markingForTrash, setMarkingForTrash] = useState(false);
+  const [returningToCustomer, setReturningToCustomer] = useState(false);
   const [confirmingTrash, setConfirmingTrash] = useState(false);
   // Local pickup toggle state
   const [localPickup, setLocalPickup] = useState<boolean | null>(null);
@@ -854,6 +855,42 @@ export function RestorationDetailModal({
     }
   };
 
+  // Handle return to customer (skip restoration, ship back as-is)
+  const handleReturnToCustomer = async () => {
+    if (!restoration || returningToCustomer) return;
+
+    const confirmed = confirm(
+      "Return this item to customer without restoration?\n\n" +
+      "Item will be moved directly to the ship column (ready to ship).\n\n" +
+      "Continue?"
+    );
+    if (!confirmed) return;
+
+    setReturningToCustomer(true);
+    try {
+      const res = await fetch(`/api/restorations/${restoration.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ return_to_customer: true }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to return to customer");
+      }
+
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error("Error returning to customer:", error);
+      alert(error instanceof Error ? error.message : "Failed to return to customer");
+    } finally {
+      if (isMountedRef.current) {
+        setReturningToCustomer(false);
+      }
+    }
+  };
+
   // Handle confirming physical disposal (operator has disposed of item)
   const handleConfirmTrashed = async () => {
     if (!restoration || confirmingTrash) return;
@@ -1019,6 +1056,14 @@ export function RestorationDetailModal({
             {restoration.was_damaged && (
               <span className="text-[10px] px-2 py-1 bg-amber-500/30 text-amber-300 rounded font-semibold" aria-label="Previously marked as damaged">
                 WAS DAMAGED
+              </span>
+            )}
+            {/* Damage Reason - shown for damaged/trashed items or items that were damaged */}
+            {restoration.damage_reason && (restoration.status === "damaged" || restoration.status === "pending_trash" || restoration.status === "trashed" || restoration.was_damaged) && (
+              <span className="text-[10px] px-2 py-1 bg-rose-500/20 text-rose-300 rounded font-medium" aria-label={`Damage reason: ${restoration.damage_reason}`}>
+                {restoration.damage_reason === "damaged_upon_arrival" && "Damaged Upon Arrival"}
+                {restoration.damage_reason === "damaged_internal" && "Damaged Internally"}
+                {restoration.damage_reason === "lost" && "Lost"}
               </span>
             )}
           </div>
@@ -1381,6 +1426,16 @@ export function RestorationDetailModal({
                 if (restoration.shipped_at) {
                   entries.push({ label: "Shipped", date: formatDate(restoration.shipped_at), color: "text-cyan-400", dotColor: "bg-cyan-500" });
                 }
+                // Damage events (shown with warning styling)
+                if (restoration.damaged_at) {
+                  entries.push({ label: "⚠ Damaged", date: formatDate(restoration.damaged_at), color: "text-rose-400", dotColor: "bg-rose-500" });
+                }
+                if (restoration.trashed_at) {
+                  entries.push({ label: "Marked for Trash", date: formatDate(restoration.trashed_at), color: "text-slate-400", dotColor: "bg-slate-500" });
+                }
+                if (restoration.trash_confirmed_at) {
+                  entries.push({ label: "Disposed", date: formatDate(restoration.trash_confirmed_at), color: "text-slate-500", dotColor: "bg-slate-600" });
+                }
 
                 if (entries.length === 0) return null;
 
@@ -1606,7 +1661,7 @@ export function RestorationDetailModal({
               {/* Continue Restoration - Item goes back to Hobson */}
               <button
                 onClick={handleContinueRestoration}
-                disabled={continuingRestoration || markingForTrash || saving}
+                disabled={continuingRestoration || markingForTrash || returningToCustomer || saving}
                 aria-busy={continuingRestoration}
                 aria-label="Continue restoration - sends item back to warehouse for processing"
                 className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
@@ -1626,10 +1681,33 @@ export function RestorationDetailModal({
                 )}
               </button>
 
+              {/* Return to Customer - Skip restoration, ship back as-is */}
+              <button
+                onClick={handleReturnToCustomer}
+                disabled={continuingRestoration || markingForTrash || returningToCustomer || saving}
+                aria-busy={returningToCustomer}
+                aria-label="Return to customer - ship back without restoration"
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
+                  bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed
+                  min-h-[56px] transition-all active:scale-[0.98]"
+              >
+                {returningToCustomer ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Package className="w-5 h-5" aria-hidden="true" />
+                    <span>Return to Customer (Skip Restoration)</span>
+                  </>
+                )}
+              </button>
+
               {/* Mark for Trash - Customer says toss it */}
               <button
                 onClick={handleMarkForTrash}
-                disabled={continuingRestoration || markingForTrash || saving}
+                disabled={continuingRestoration || markingForTrash || returningToCustomer || saving}
                 aria-busy={markingForTrash}
                 aria-label="Mark for disposal - customer decided to discard the item"
                 className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl

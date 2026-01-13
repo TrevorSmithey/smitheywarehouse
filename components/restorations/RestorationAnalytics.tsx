@@ -53,6 +53,28 @@ type PipelineStage = (typeof PIPELINE_STAGES)[number];
 // 8-week timeout threshold: 49 days = 7 weeks (1 week warning before 56-day deadline)
 const TIMEOUT_WARNING_DAYS = 49;
 
+/**
+ * Calculate internal days - how long Smithey has been responsible for the item
+ * - POS: from order_created_at (immediate possession)
+ * - D2C: from delivered_to_warehouse_at (courier delivery) or received_at (manual check-in)
+ */
+function getInternalDays(r: RestorationRecord): number | null {
+  const now = new Date();
+  let startDate: Date | null = null;
+
+  if (r.is_pos && r.order_created_at) {
+    startDate = new Date(r.order_created_at);
+  } else if (r.delivered_to_warehouse_at) {
+    startDate = new Date(r.delivered_to_warehouse_at);
+  } else if (r.received_at) {
+    startDate = new Date(r.received_at);
+  }
+
+  if (!startDate) return null;
+
+  return Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 // ============================================================================
 // INTERNAL CYCLE TREND CHART (Recharts)
 // ============================================================================
@@ -255,27 +277,41 @@ function StageBreakdown({ internalCycle }: StageBreakdownProps) {
   ];
 
   const maxStage = Math.max(...stages.map((s) => s.days || 0));
+  const stagesSum = stages.reduce((sum, s) => sum + (s.days || 0), 0);
+
+  // Detect incomplete data: total > 0 but all stages = 0
+  const hasStageData = stagesSum > 0;
 
   return (
     <div className="space-y-3">
-      {stages.map((stage) => {
-        const width = maxStage > 0 ? ((stage.days || 0) / maxStage) * 100 : 0;
-        return (
-          <div key={stage.label}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-text-secondary">{stage.label}</span>
-              <span className="text-sm font-semibold text-text-primary">{stage.days || 0}d</span>
+      {hasStageData ? (
+        // Show stage breakdown when data is available
+        stages.map((stage) => {
+          const width = maxStage > 0 ? ((stage.days || 0) / maxStage) * 100 : 0;
+          return (
+            <div key={stage.label}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-text-secondary">{stage.label}</span>
+                <span className="text-sm font-semibold text-text-primary">{stage.days || 0}d</span>
+              </div>
+              <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${stage.color} rounded-full transition-all`}
+                  style={{ width: `${width}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
-              <div
-                className={`h-full ${stage.color} rounded-full transition-all`}
-                style={{ width: `${width}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-      <div className="pt-3 border-t border-border/30">
+          );
+        })
+      ) : (
+        // Show message when stage data is incomplete (older items without timestamps)
+        <div className="text-center py-4">
+          <p className="text-xs text-text-muted">
+            Stage breakdown available for items completed after Jan 2026
+          </p>
+        </div>
+      )}
+      <div className={`pt-3 border-t border-border/30 ${!hasStageData ? 'mt-0' : ''}`}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
             Your Total Time
@@ -311,11 +347,12 @@ interface CSActionItemsProps {
 
 function CSActionItems({ restorations, onItemClick }: CSActionItemsProps) {
   // 8-week timeout approaching (49 days = 1 week before 8-week deadline)
-  const timeoutApproaching = restorations.filter(
-    (r) =>
-      PIPELINE_STAGES.includes(r.status as PipelineStage) &&
-      r.total_days > TIMEOUT_WARNING_DAYS
-  );
+  // Uses INTERNAL days (since Smithey took possession), not total days since order
+  const timeoutApproaching = restorations.filter((r) => {
+    if (!PIPELINE_STAGES.includes(r.status as PipelineStage)) return false;
+    const internalDays = getInternalDays(r);
+    return internalDays !== null && internalDays > TIMEOUT_WARNING_DAYS;
+  });
 
   if (timeoutApproaching.length === 0) {
     return null;
@@ -394,9 +431,15 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
   const restorations = data?.restorations || [];
 
   // Compute damage statistics and item list
+  // Includes: currently damaged, continued restoration (was_damaged), and trashed items
   const damageData = useMemo(() => {
     const items = restorations
-      .filter((r) => r.status === "damaged")
+      .filter((r) =>
+        r.status === "damaged" ||
+        r.was_damaged === true ||
+        r.status === "pending_trash" ||
+        r.status === "trashed"
+      )
       .map((r) => {
         const daysSinceDamaged = r.damaged_at
           ? Math.floor((Date.now() - new Date(r.damaged_at).getTime()) / (1000 * 60 * 60 * 24))
@@ -404,13 +447,14 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
         return { ...r, _daysSinceDamaged: daysSinceDamaged };
       })
       .sort((a, b) => {
-        // Unresolved first, then by date (most recent first)
-        if (!a.resolved_at && b.resolved_at) return -1;
-        if (a.resolved_at && !b.resolved_at) return 1;
+        // Awaiting decision first (status=damaged), then by date (most recent first)
+        if (a.status === "damaged" && b.status !== "damaged") return -1;
+        if (a.status !== "damaged" && b.status === "damaged") return 1;
         return b._daysSinceDamaged - a._daysSinceDamaged;
       });
 
-    const unresolvedCount = items.filter((r) => !r.resolved_at).length;
+    // Awaiting decision = status is still "damaged" (hasn't been resolved via new workflow)
+    const awaitingDecisionCount = items.filter((r) => r.status === "damaged").length;
 
     // Count by reason
     const byReason = items.reduce((acc, r) => {
@@ -422,7 +466,7 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
     return {
       items,
       total: items.length,
-      unresolved: unresolvedCount,
+      awaitingDecision: awaitingDecisionCount,
       byReason,
     };
   }, [restorations]);
@@ -431,10 +475,18 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
   const [damageExpanded, setDamageExpanded] = useState(false);
 
   // Compute damaged items by month for trend chart overlay
+  // Includes all items that were ever damaged (current, continued, trashed)
   const damagedByMonth = useMemo(() => {
     const byMonth: Record<string, number> = {};
     restorations
-      .filter((r) => r.status === "damaged" && r.damaged_at)
+      .filter((r) =>
+        r.damaged_at && (
+          r.status === "damaged" ||
+          r.was_damaged === true ||
+          r.status === "pending_trash" ||
+          r.status === "trashed"
+        )
+      )
       .forEach((r) => {
         const month = r.damaged_at!.substring(0, 7); // YYYY-MM format
         byMonth[month] = (byMonth[month] || 0) + 1;
@@ -988,10 +1040,10 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
                 <span className="text-text-tertiary">Total:</span>
                 <span className="font-semibold text-text-secondary">{damageData.total}</span>
               </div>
-              {damageData.unresolved > 0 && (
+              {damageData.awaitingDecision > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-text-tertiary">Unresolved:</span>
-                  <span className="font-semibold text-amber-400">{damageData.unresolved}</span>
+                  <span className="text-text-tertiary">Awaiting Decision:</span>
+                  <span className="font-semibold text-amber-400">{damageData.awaitingDecision}</span>
                 </div>
               )}
               {Object.entries(damageData.byReason).map(([reason, count]) => (
@@ -1062,15 +1114,59 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
                             </span>
                           </td>
                           <td className="py-2.5 px-4 text-center">
-                            {item.resolved_at ? (
-                              <span className="px-2 py-1 text-xs font-medium rounded bg-emerald-500/20 text-emerald-400">
-                                Resolved
-                              </span>
-                            ) : (
-                              <span className="px-2 py-1 text-xs font-medium rounded bg-amber-500/20 text-amber-400">
-                                Unresolved
-                              </span>
-                            )}
+                            {(() => {
+                              // New workflow statuses
+                              if (item.status === "damaged") {
+                                return (
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-amber-500/20 text-amber-400">
+                                    Awaiting Decision
+                                  </span>
+                                );
+                              }
+                              if (item.status === "pending_trash") {
+                                return (
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-red-500/20 text-red-400">
+                                    Pending Disposal
+                                  </span>
+                                );
+                              }
+                              if (item.status === "trashed") {
+                                return (
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-slate-500/20 text-slate-400">
+                                    Trashed
+                                  </span>
+                                );
+                              }
+                              // was_damaged items that continued
+                              if (item.was_damaged) {
+                                if (item.status === "shipped" || item.status === "delivered") {
+                                  return (
+                                    <span className="px-2 py-1 text-xs font-medium rounded bg-emerald-500/20 text-emerald-400">
+                                      Completed
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-blue-500/20 text-blue-400">
+                                    Continuing
+                                  </span>
+                                );
+                              }
+                              // Legacy resolved items
+                              if (item.resolved_at) {
+                                return (
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-emerald-500/20 text-emerald-400">
+                                    Resolved
+                                  </span>
+                                );
+                              }
+                              // Fallback
+                              return (
+                                <span className="px-2 py-1 text-xs font-medium rounded bg-slate-500/20 text-slate-400">
+                                  Unknown
+                                </span>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );

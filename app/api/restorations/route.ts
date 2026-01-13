@@ -369,7 +369,7 @@ export async function GET(request: NextRequest) {
         cancelled: null,
         damaged: r.damaged_at,
         pending_trash: r.trashed_at,
-        trashed: r.trashed_at,
+        trashed: r.trash_confirmed_at,
       };
 
       const currentStatusTimestamp = statusTimestamps[r.status as RestorationStatus];
