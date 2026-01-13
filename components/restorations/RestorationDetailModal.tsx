@@ -831,7 +831,16 @@ export function RestorationDetailModal({
 
   // Use pre-computed values from API (already calculated server-side)
   const daysInStatus = restoration.days_in_status ?? 0;
-  const totalDays = restoration.total_days ?? 0;
+
+  // Total time = days since Smithey took possession
+  // POS: from order creation (immediate possession)
+  // Regular: from warehouse delivery (or received_at as fallback)
+  const possessionDate = restoration.is_pos
+    ? restoration.order_created_at
+    : (restoration.delivered_to_warehouse_at || restoration.received_at);
+  const totalDays = possessionDate
+    ? Math.floor((Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
 
   // Get advance config for the primary action button (if status can be advanced)
   const advanceConfig = STATUS_ADVANCE[restoration.status] || null;
