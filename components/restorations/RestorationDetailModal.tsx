@@ -130,7 +130,9 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   shipped: ["delivered", "ready_to_ship", "at_restoration", "received", "damaged"],
   delivered: [], // Terminal state
   cancelled: [], // Terminal state
-  damaged: [], // Terminal state
+  damaged: ["delivered_warehouse", "pending_trash"], // Decision point: continue restoration OR trash
+  pending_trash: ["trashed"], // Only valid transition is confirming disposal
+  trashed: [], // Terminal state
 };
 
 // Damage reason options
@@ -183,6 +185,8 @@ const STATUS_LABELS: Record<string, string> = {
   delivered: "Delivered to Customer",
   cancelled: "Cancelled",
   damaged: "Damaged",
+  pending_trash: "Pending Disposal",
+  trashed: "Disposed",
 };
 
 function formatDate(dateStr: string | null): string {
