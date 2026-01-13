@@ -22,7 +22,26 @@ Path alias: `@/*` → project root
 
 ## Git Workflow
 
-**This is a single-developer internal tool. Commits go directly to main.**
+### Human (Trevor)
+
+Direct commits to main. Single developer with full context.
+
+### Claude Code
+
+**Always use feature branches.** Never push directly to main.
+
+```bash
+# Claude Code branches use this pattern:
+claude/<task-description>-<session-id>
+
+# Example: claude/init-project-setup-9lWAY
+```
+
+**Workflow:**
+1. Work on assigned `claude/` branch
+2. Commit atomic changes with clear messages
+3. Push to the feature branch
+4. Human reviews and merges (or Claude creates PR if requested)
 
 ### Before Every Commit
 
@@ -32,7 +51,7 @@ npm run build && npm run lint   # Both must pass
 
 ### Commit Style
 
-Mixed style is acceptable. Examples from this repo:
+Mixed style is acceptable. Match existing patterns:
 - `feat(restorations): Add Teams notification on damage`
 - `fix: modal backdrop close requires single click`
 - `Add type guards and developer logging to eliminate silent auth failures`
