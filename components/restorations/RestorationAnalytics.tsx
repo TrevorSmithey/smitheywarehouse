@@ -435,10 +435,11 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
   const damageData = useMemo(() => {
     const items = restorations
       .filter((r) =>
-        r.status === "damaged" ||
+        !r.archived_at && // Exclude archived items (test orders, cleanup)
+        (r.status === "damaged" ||
         r.was_damaged === true ||
         r.status === "pending_trash" ||
-        r.status === "trashed"
+        r.status === "trashed")
       )
       .map((r) => {
         const daysSinceDamaged = r.damaged_at
@@ -481,10 +482,11 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
     const byMonth: Record<string, number> = {};
     restorations
       .filter((r) =>
-        r.status === "damaged" ||
+        !r.archived_at && // Exclude archived items (test orders, cleanup)
+        (r.status === "damaged" ||
         r.was_damaged === true ||
         r.status === "pending_trash" ||
-        r.status === "trashed"
+        r.status === "trashed")
       )
       .forEach((r) => {
         // Use damaged_at if available, fallback to received_at or order_created_at

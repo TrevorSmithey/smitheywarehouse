@@ -116,6 +116,7 @@ interface UpdateBody {
   mark_for_trash?: boolean; // If true, move damaged item to pending_trash (customer said trash it)
   return_to_customer?: boolean; // If true, skip restoration and go directly to ready_to_ship (return as-is)
   confirm_trashed?: boolean; // If true, move pending_trash item to trashed (physical disposal confirmed)
+  archive?: boolean; // If true, set archived_at to hide from all views (for test orders)
 }
 
 // Supabase project ID for URL validation
@@ -425,6 +426,12 @@ export async function PATCH(
       }
       update.status = "trashed";
       update.trash_confirmed_at = new Date().toISOString();
+    }
+
+    // Handle "Archive" - hide test orders or cleanup from all views
+    if (body.archive) {
+      update.archived_at = new Date().toISOString();
+      console.log(`[RESTORATION API] Archiving restoration #${restorationId}`);
     }
 
     // Handle status transition
