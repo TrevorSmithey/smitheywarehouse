@@ -2,1002 +2,239 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-Internal operations dashboard for Smithey Ironware. Aggregates data from NetSuite, Shopify, ShipHero, Klaviyo, AfterShip, Meta Ads, Google Ads, Typeform, and Re:amaze into unified views for Sales, Fulfillment, Inventory, Marketing, Production, Restoration, and VOC analysis.
-
-## Development Commands
+## Quick Start
 
 ```bash
-npm run dev          # Local development (http://localhost:3000)
-npm run build        # Production build (also runs type checking)
-npm run lint         # ESLint check
-
-# Data scripts (run locally with tsx)
-npm run bootstrap              # Initial data setup
-npm run sync-inventory         # Manual inventory sync
-npm run sync-b2b               # Manual B2B sync
-npm run import-forecasts       # Import forecast data
+npm run dev          # http://localhost:3000
+npm run build        # Production build (MUST pass before commit)
+npm run lint         # ESLint
 ```
 
-**No test suite exists** - the project relies on TypeScript strict mode and ESLint for quality checks.
+No tests. Quality gates: TypeScript strict + ESLint + successful build.
 
-## Tech Stack
+## The Stack
 
-- **Framework**: Next.js 14 (App Router)
-- **Database**: Supabase (PostgreSQL)
-- **Styling**: Tailwind CSS 4 with custom design system
-- **Deployment**: Vercel (with cron jobs)
-- **Auth**: Role-based with Supabase + custom PIN session management
+Next.js 14 (App Router) · React 19 · TypeScript 5 · Supabase · Tailwind 4 · Vercel
 
-## Path Alias
-
-Use `@/*` for imports (configured in tsconfig.json):
-```typescript
-import { WholesaleCustomer } from "@/lib/types";
-import { createClient } from "@/lib/supabase/server";
-```
-
-## Key Architecture Patterns
-
-### Data Sync Strategy
-- Cron jobs sync external data (NetSuite, Klaviyo, ShipHero) to Supabase
-- API routes aggregate and compute metrics on demand
-- Future: Consider precomputing aggregates nightly for performance
-
-### Customer Classification
-- `is_corporate_gifting: boolean` - Primary flag for corporate customers
-- `category: string` - "Corporate", "4" (legacy), or wholesale tier
-- **IMPORTANT**: Always use `is_corporate_gifting === true` OR `category === "Corporate"` OR `category === "4"` for corporate exclusion
-- B2B metrics EXCLUDE corporate customers (different buying patterns skew AOV, order frequency)
+Path alias: `@/*` → project root (e.g., `@/lib/types`, `@/components/...`)
 
 ---
 
-## Dashboard Architecture Lessons (December 2024)
+## Safety Rules
 
-### 1. Single Source of Truth for Metrics
-**Problem**: "New Customers" showed different numbers in header (109), badge (77), and table (11) because each pulled from different sources.
+These prevent expensive mistakes. Follow them always.
 
-**Root cause**:
-- `health_status='new'` = 90-day rolling window (11 customers)
-- `ytdNewCustomerIds` = calendar year acquisitions (109 customers)
-- `acquisition.currentPeriod.newCustomerCount` = YoY comparison metric
+### 1. "Clear the view" ≠ Delete from database
 
-**Lesson**: Define each metric ONCE. Name explicitly: `new_customers_90d`, `new_customers_ytd`, `first_time_buyers_2025`. One component, one data source - pass the same array to header count, badge, and table.
+When asked to "clear", "clean up", or "hide" data:
+- **Default assumption**: Filter the UI (add WHERE clause)
+- **Before ANY delete**: Show `SELECT COUNT(*)` and ask for explicit confirmation
+- **Prefer soft delete**: Add `is_archived` flag, not `DELETE FROM`
 
-### 2. Explicit Time Window Naming
-**Problem**: "New customers" meant different things in different contexts.
+### 2. Check git status before switching context
 
-**Solution**: Always encode the time window in the variable/field name:
-- `newCustomers90d` - rolling 90-day window
-- `ytdNewCustomerIds` - calendar year to date
-- `firstOrderDate` - the actual date for custom filtering
+```bash
+git status                              # ALWAYS run first
+git stash save "WIP: what I was doing"  # If changes exist
+```
 
-### Revenue Time Windows (YTD vs T12)
-**Current State** (December 2024):
-- **Wholesale Dashboard** uses `ytd_revenue` (calendar year-to-date) from DB column, computed by NetSuite sync cron
-- **Customer Detail Page** uses `t12_revenue` (trailing 12 months) computed on-demand from transactions
+### 3. API failures must be visible
 
-**Why different?**
-- Dashboard needs fast aggregation across 700+ customers → precomputed YTD in DB
-- Detail view needs accurate single-customer health check → real-time T12 calculation
-
-**Future consideration**: Migrate everything to T12 for consistency. Would require:
-1. Rename DB column `ytd_revenue` → `t12_revenue`
-2. Update NetSuite sync cron (`sync-netsuite-customers`) to compute trailing 12 months
-3. Update `WholesaleCustomer` type and all consumers
-4. Update wholesale dashboard API to read `t12_revenue`
-
-### 3. Business Logic Flags Belong in Database
-**Problem**: Manually flagging corporate customers one-by-one via SQL is not scalable.
-
-**Better approaches**:
-1. Sync from NetSuite if classification exists there
-2. Admin UI to bulk-tag customers
-3. Heuristics based on order patterns, email domains, company name keywords
-4. Computed `is_b2b_standard` boolean updated by cron
-
-### 4. Precompute Heavy Aggregations
-**Problem**: Computing AOV, YoY comparisons, customer counts by segment on every page load is expensive.
-
-**Better architecture**:
-- Nightly cron computes aggregates into `wholesale_stats_daily` table
-- API serves cached data instantly
-- Manual refresh button triggers recompute if needed
-- Include `computed_at` timestamp for staleness detection
-
-### 5. Utility Functions for Repeated Logic
-**Problem**: Corporate customer filtering was inconsistent across codebase - sometimes checking `category`, sometimes `is_corporate_gifting`, sometimes both.
-
-**Solution**: Single utility function used everywhere:
 ```typescript
-function isCorpCustomer(c: WholesaleCustomer): boolean {
-  return c.is_corporate_gifting === true ||
-         c.category === "Corporate" ||
-         c.category === "4";
+// WRONG: silent fallback
+if (res.ok) setData(await res.json());
+
+// RIGHT: visible failure
+if (!res.ok) throw new Error(`API failed: ${res.status}`);
+setData(await res.json());
+```
+
+### 4. Critical operations always run
+
+```typescript
+// WRONG: conditional critical path
+if (condition) await computeMetrics();
+
+// RIGHT: always run, log outcome
+const { error } = await computeMetrics();
+console.log(error ? `Failed: ${error}` : "Success");
+```
+
+### 5. Build must pass before commit
+
+```bash
+npm run build && npm run lint  # Both must succeed
+```
+
+---
+
+## Where Things Live
+
+### By Concern
+
+| Area | Dashboard Route | API Route | Key Components |
+|------|----------------|-----------|----------------|
+| Inventory | `/inventory` | `/api/inventory` | `InventoryDashboard.tsx` |
+| Fulfillment | `/fulfillment` | `/api/metrics` | `FulfillmentDashboard.tsx` |
+| Production | `/production` | `/api/assembly` | `ProductionDashboard.tsx` |
+| Restoration | `/restoration` | `/api/restorations` | `RestorationOperations.tsx` |
+| Sales (B2B) | `/sales` | `/api/wholesale` | `WholesaleDashboard.tsx` |
+| Leads | `/sales/leads` | `/api/leads` | `LeadsDashboard.tsx` |
+| Marketing | `/marketing` | `/api/klaviyo` | `MarketingDashboard.tsx` |
+| Paid Media | `/marketing/paid` | `/api/ads` | `PaidMediaDashboard.tsx` |
+| VOC | `/voc` | `/api/tickets` | `VOCDashboard.tsx` |
+| Budget | `/budget` | `/api/budget` | `BudgetDashboard.tsx` |
+
+### By Layer
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| Routes | `app/(dashboard)/` | Page components, layouts |
+| API | `app/api/` | Data aggregation, business logic |
+| Cron | `app/api/cron/` | Scheduled syncs (see `vercel.json`) |
+| Components | `components/` | Reusable UI |
+| Types | `lib/types.ts` | All TypeScript interfaces |
+| Auth | `lib/auth/` | Permissions, session management |
+| DB Clients | `lib/supabase/` | Server and client Supabase |
+| Styles | `app/globals.css` | Design system CSS variables |
+
+### External Data Sources
+
+| Source | Synced To | Cron Job |
+|--------|-----------|----------|
+| Shopify | `orders`, `line_items` | `high-frequency-sync` (15m) |
+| ShipHero | `shiphero_inventory` | `high-frequency-sync` (15m) |
+| NetSuite | `ns_wholesale_customers`, `ns_transactions` | `sync-netsuite-*` (daily) |
+| Klaviyo | `klaviyo_campaigns` | `sync-klaviyo` (daily) |
+| Meta Ads | `meta_campaigns`, `ad_daily_stats` | `sync-meta` (daily) |
+| Google Ads | `google_campaigns`, `ad_daily_stats` | `sync-google-ads` (daily) |
+| AfterShip | `restorations` | `sync-aftership-returns` (30m) |
+| Re:amaze | `support_tickets` | `sync-reamaze` |
+
+---
+
+## Patterns
+
+### API Route
+
+```typescript
+export async function GET(request: NextRequest) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.from("table").select("*");
+
+  if (error) {
+    console.error("[ROUTE_NAME]", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(data);
 }
 ```
 
-### 6. API Response Shape Consistency
-When returning customer arrays with metrics, always include:
-- The array of customers
-- Count that matches array.length
-- Any computed aggregates (totals, averages)
-- Clear field names that indicate what's included/excluded
+### Supabase Client
 
----
-
-## File Structure Notes
-
-### Key Files
-- `app/api/wholesale/route.ts` - Main wholesale dashboard API (~1000 lines, handles all metrics)
-- `components/WholesaleDashboard.tsx` - Main dashboard UI
-- `lib/types.ts` - TypeScript interfaces for all data shapes
-- `supabase/migrations/` - Database schema changes
-
-### Database Tables
-- `ns_wholesale_customers` - Customer master data with metrics
-- `ns_transactions` - Order/invoice history
-- `sync_logs` - Cron job execution history
-- `typeform_leads` - Lead tracking from forms
-- `b2b_draft_orders` - Open B2B draft orders from Shopify (synced hourly, full resync approach)
-
-### Inventory Dashboard
-- **Data Priority Tiers**:
-  - Tier 1 (Primary): Product, Hobson, Selery, Total, DOI - full opacity
-  - Tier 2 (Secondary): Vel, Draft - 70% opacity (`text-sky-400/70`, `text-purple-400/70`)
-- **Velocity**: 3-day moving average, retail-only (from `line_items` + `orders`, NOT `b2b_fulfilled`)
-- **Draft column**: Open wholesale draft orders from `b2b_draft_orders` table
-- **MetricLabel component**: Tooltip-on-hover for column headers, no visible icons
-- **Desktop columns**: Vel and Draft only show on `xl:` breakpoint (hidden on mobile)
-
----
-
-## Corporate Customers Marked (for reference)
-These are manually flagged as corporate gifting (one-time buyers, not recurring wholesale):
-- Struc Design, LLC
-- Fox building supply & carpet
-- Now Healthcare Recruiting
-- Ducks Unlimited
-- Field Studio
-- Mirador
-- Baumann Building Inc
-- SA Recycling
-- Copper Creek Landscapes
-- Ameripride Construction LLC
-- Merrill Lynch
-- IBA, Inc
-- Jfisher Co
-
----
-
-## Design Philosophy: Whimsy & Delight
-
-### The Rule
-**Little bits of whimsy are okay as long as they are subservient.** This is a serious business operations dashboard, but occasional moments of fun and personality are welcome—when they don't get in the way.
-
-### When Whimsy Works
-- **Loading states**: Cast-iron themed messages ("Seasoning the data...", "Tempering the numbers...") transform dead time into brand moments
-- **Login celebration**: A 2-second moment of delight with the bouncing quail creates emotional connection
-- **Empty states**: A gentle message or subtle animation can soften the "nothing here" experience
-- **Success feedback**: After completing an action, a brief celebration feels earned
-
-### When Whimsy Fails
-- **Never forced**: If it feels like "we added this to be quirky," cut it
-- **Never blocking**: Fun should never add friction or slow down work
-- **Never repetitive**: The 10th time someone sees a cute animation, it becomes annoying
-- **Never in data**: Metrics, charts, tables—these are sacred. No jokes in the numbers.
-
-### The AnimatedQuail System
-The Smithey quail mascot has four states:
-- `idle`: Gentle pecking animation (default, for loading)
-- `looking`: Head raised, attentive (when user is typing)
-- `happy`: Bouncing celebration (success moments)
-- `surprised`: Shake animation (error/wrong PIN)
-
-Use sparingly. The quail appears on:
-- Login page (interactive)
-- Loading states (subtle background presence)
-
-### Loading Messages
-Located in `/components/SmitheyLoader.tsx`:
 ```typescript
-const LOADING_MESSAGES = [
-  "Seasoning the data...",      // Default/signature
-  "Firing up the forge...",
-  "Heating the iron...",
-  "Opening the vault...",
-  "Tempering the numbers...",
-  "Polishing the pans...",
-  "Stoking the coals...",
-  "Forging ahead...",
-  "Hammering out the details...",
-  "Preheating the numbers...",
-];
+// Server (API routes, server components)
+import { createClient } from "@/lib/supabase/server";
+const supabase = await createClient();
+
+// Client (browser components)
+import { createClient } from "@/lib/supabase/client";
+const supabase = createClient();
 ```
 
-These rotate randomly during longer loads. For quick loads, "Seasoning the data..." is the default signature message.
+### Async Safety in Components
 
-### The Test
-Before adding any whimsy, ask:
-1. Does this serve the user or just amuse the developer?
-2. Will this be delightful on the 100th viewing?
-3. Does it slow anything down?
-4. Is it on-brand (cast iron, forge, craftsmanship themes)?
-
-If any answer is no, cut it.
-
----
-
-## Design System (January 2026)
-
-This section defines the visual language for building new features. **Follow these patterns exactly** to ensure new UI looks native without iteration.
-
-### Color System
-
-All colors are defined as CSS variables in `globals.css`. **Never use hardcoded hex values** - always reference variables or Tailwind classes.
-
-#### Backgrounds (Depth Hierarchy)
-| Variable | Value | Tailwind | Use Case |
-|----------|-------|----------|----------|
-| `--color-bg-primary` | `#0B0E1A` | `bg-bg-primary` | Base page canvas |
-| `--color-bg-secondary` | `#12151F` | `bg-bg-secondary` | Cards, panels, modals |
-| `--color-bg-tertiary` | `#1A1D2A` | `bg-bg-tertiary` | Hover states, elevated elements, table headers |
-
-#### Text (Information Hierarchy)
-| Variable | Value | Tailwind | Use Case |
-|----------|-------|----------|----------|
-| `--color-text-primary` | `#FFFFFF` | `text-text-primary` | Headlines, key metrics, primary content |
-| `--color-text-secondary` | `#94A3B8` | `text-text-secondary` | Labels, descriptions, supporting text |
-| `--color-text-tertiary` | `#64748B` | `text-text-tertiary` | De-emphasized content, timestamps |
-| `--color-text-muted` | `#475569` | `text-text-muted` | Nearly invisible, decorative text |
-
-#### Status Colors (Use ONLY for Status)
-| Variable | Value | Tailwind | When to Use |
-|----------|-------|----------|-------------|
-| `--color-status-good` | `#10B981` | `text-status-good` | On-track, healthy, success, within target |
-| `--color-status-warning` | `#F59E0B` | `text-status-warning` | Needs attention, approaching limits |
-| `--color-status-bad` | `#DC2626` | `text-status-bad` | Problem, urgent, behind target |
-
-**Important**: Status colors are for status indication ONLY. Don't use green just because you want something to "pop."
-
-#### Accent Colors
-| Variable | Value | Tailwind | Use Case |
-|----------|-------|----------|----------|
-| `--color-accent-blue` | `#0EA5E9` | `text-accent-blue` | Links, active states, primary data series |
-| `--color-accent-cyan` | `#06B6D4` | `text-accent-cyan` | Secondary accent (use sparingly) |
-
-#### Borders
-| Variable | Opacity | Tailwind | Use Case |
-|----------|---------|----------|----------|
-| `--color-border` | 6% white | `border-border` | Standard card/section borders |
-| `--color-border-subtle` | 3% white | `border-border-subtle` | Row dividers, subtle separators |
-| `--color-border-hover` | 10% white | `border-border-hover` | Hover states |
-
-**Pattern**: Use `/30` opacity modifier for softer borders: `border-border/30`
-
----
-
-### Typography Scale
-
-#### Custom Utility Classes (defined in globals.css)
-```jsx
-// Large metric numbers (hero stats)
-<span className="text-metric">1,234</span>  // 42px, line-height: 1
-
-// Section labels (uppercase headers)
-<span className="text-label">IN QUEUE</span>  // 11px, uppercase, tracking-wider
-
-// Body context text
-<span className="text-context">Additional details</span>  // 13px
-```
-
-#### Standard Tailwind Sizes
-| Size | Pixels | Use Case |
-|------|--------|----------|
-| `text-4xl` | 36px | Hero metrics (alternative to .text-metric) |
-| `text-2xl` | 24px | Large card values |
-| `text-lg` | 18px | Card titles, section headers |
-| `text-sm` | 14px | Body text, table content |
-| `text-xs` | 12px | Secondary labels, help text |
-
-#### Font Weights
-- **`font-bold`** - Metric values, important numbers
-- **`font-semibold`** - Section headers, card titles
-- **`font-medium`** - Labels, button text
-- **`font-normal`** - Body text, descriptions
-
-#### Section Labels Pattern
-```jsx
-// Standard section header
-<h3 className="text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-text-muted">
-  SECTION TITLE
-</h3>
-
-// Or use the utility
-<span className="text-label font-medium text-text-tertiary">
-  SECTION TITLE
-</span>
-```
-
----
-
-### Spacing Conventions
-
-#### Card Padding
-| Context | Class | Use Case |
-|---------|-------|----------|
-| Standard card | `p-5` | Most dashboard cards |
-| Compact card | `p-4` | Smaller info boxes, nested cards |
-| Spacious card | `p-6` | Full-width sections, hero areas |
-
-#### Gap Between Items
-| Context | Class | Use Case |
-|---------|-------|----------|
-| Tight | `gap-2` | Between small badges, inline items |
-| Standard | `gap-3` or `gap-4` | Between cards, list items |
-| Spacious | `gap-6` | Between major sections |
-
-#### Vertical Spacing
-| Context | Class | Use Case |
-|---------|-------|----------|
-| Between label and value | `mt-1` | Metric label below number |
-| Between sections | `mb-6` | Standard section spacing |
-| Within card sections | `space-y-4` or `space-y-5` | Stacked content |
-
----
-
-### Component Patterns
-
-#### Standard Card
-```jsx
-<div className="bg-bg-secondary rounded-xl border border-border/30 p-5 transition-all hover:border-border-hover">
-  <h3 className="text-label font-medium text-text-tertiary mb-4">
-    CARD TITLE
-  </h3>
-  {/* content */}
-</div>
-```
-
-#### Metric Display
-```jsx
-<div>
-  <div className="text-4xl font-bold tabular-nums text-text-primary">
-    {formatNumber(value)}
-  </div>
-  <div className="text-xs text-text-muted mt-1">METRIC LABEL</div>
-</div>
-
-// With status coloring
-<div className={`text-4xl font-bold tabular-nums ${
-  value > threshold ? "text-status-warning" : "text-text-primary"
-}`}>
-  {formatNumber(value)}
-</div>
-```
-
-#### Button Styles
-```jsx
-// Primary action
-<button className="px-3 py-1.5 rounded-md text-sm font-medium bg-accent-blue text-white hover:bg-accent-blue/90 transition-colors">
-  Primary Action
-</button>
-
-// Secondary/default action
-<button className="px-3 py-1.5 rounded-md text-sm font-medium bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors">
-  Secondary Action
-</button>
-
-// Filter/toggle pills
-<button className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${
-  isActive
-    ? "bg-accent-blue text-white"
-    : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
-}`}>
-  Filter Option
-</button>
-```
-
-#### Sub-Tabs (Secondary Navigation)
-
-Sub-tabs appear below main navigation to switch between views within a section (e.g., Sales → Wholesale/Leads/Door Health). **Always use underline style** - never pills, segments, or other patterns.
-
-```jsx
-// Container with bottom border
-<div className="flex gap-4 border-b border-border/30 pb-2">
-  {tabs.map((tab) => (
-    <Link
-      key={tab.name}
-      href={tab.href}
-      className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
-        isActive
-          ? "text-text-primary border-accent-blue"
-          : "text-text-muted hover:text-text-secondary border-transparent"
-      }`}
-    >
-      {tab.name}
-    </Link>
-  ))}
-</div>
-```
-
-**Key details:**
-- `border-b-2 -mb-[10px]` - The negative margin overlays the tab underline onto the container's border, creating a seamless "tab" effect
-- No icons in sub-tabs (main nav has icons, sub-tabs are text-only)
-- Sentence case labels ("Door Health" not "DOOR HEALTH")
-- `gap-4` between tabs for breathing room
-
-**Why underline, not pills:**
-1. Main nav uses underlines → same visual language = clear hierarchy
-2. Space efficient (no background containers)
-3. Scales from 2 tabs to 5+ without crowding
-
-#### Table Pattern
-```jsx
-<div className="max-h-[400px] overflow-y-auto scrollbar-thin">
-  <table className="w-full">
-    <thead className="sticky top-0 bg-bg-tertiary/95 backdrop-blur-sm z-10">
-      <tr className="border-b border-border/20">
-        <th className="py-2 px-4 text-left text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-          Column
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr className="border-b border-border-subtle hover:bg-white/[0.02] transition-colors">
-        <td className="py-2.5 px-4 text-sm text-text-primary">Content</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-```
-
-#### Scrollable Container
-```jsx
-// Always use scrollbar-thin for vertical scroll
-<div className="max-h-[400px] overflow-y-auto scrollbar-thin">
-  {/* content */}
-</div>
-```
-
-#### Status Indicators
-```jsx
-// Colored text
-<span className="text-status-good">On track</span>
-<span className="text-status-warning">Needs attention</span>
-<span className="text-status-bad">Critical</span>
-
-// Colored background badges
-<span className="px-2 py-0.5 text-xs font-medium rounded bg-status-good/20 text-status-good">
-  GOOD
-</span>
-
-// Pulsing indicator for urgent items
-<span className="animate-soft-pulse text-status-warning">Urgent</span>
-```
-
-#### Empty States
-```jsx
-<div className="flex flex-col items-center justify-center py-8 text-text-muted">
-  <IconComponent className="w-8 h-8 mx-auto mb-2 opacity-40" />
-  <span className="text-sm">No items found</span>
-</div>
-```
-
----
-
-### Border Radius
-
-| Use Case | Class |
-|----------|-------|
-| Cards, modals, large containers | `rounded-xl` |
-| Buttons, inputs, smaller elements | `rounded-lg` or `rounded-md` |
-| Badges, pills | `rounded-full` |
-| Progress bars | `rounded-sm` |
-
----
-
-### Shadows
-
-Use sparingly. Most cards use borders, not shadows.
-
-```jsx
-// Standard card shadow
-<div className="shadow-card">
-
-// Hover state shadow
-<div className="shadow-card-hover">
-
-// Dropdowns/modals (more pronounced)
-<div className="shadow-xl">
-```
-
----
-
-### Animation Classes
-
-Defined in `globals.css`:
-- `.animate-soft-pulse` - Gentle pulsing for urgent items
-- `.animate-peck` - Quail pecking animation
-- `.animate-idle-sway` - Gentle idle movement
-- Tailwind: `transition-all`, `transition-colors`
-
----
-
-### Known Exceptions
-
-#### ProductionPlanningDashboard
-The Production Planning dashboard intentionally uses a **different visual language** (GitHub dark theme, spreadsheet aesthetic) for its control-panel style interface. This is documented as an exception:
-
-- Uses hardcoded GitHub colors (`#1e3a5f`, `#58a6ff`, `#3fb950`, etc.)
-- Has dense, spreadsheet-like layout with editable cells
-- Not subject to standard design system colors
-
-**Do NOT** copy ProductionPlanningDashboard patterns for new dashboards. Follow this design system instead.
-
----
-
-### Quick Reference Checklist
-
-Before shipping new UI:
-- [ ] Using CSS variables / Tailwind theme classes (not hardcoded hex)
-- [ ] Cards use `bg-bg-secondary rounded-xl border border-border/30 p-5`
-- [ ] Tables have sticky headers with `scrollbar-thin` containers
-- [ ] Status colors only used for actual status (not decoration)
-- [ ] Font sizes match typography scale
-- [ ] Padding follows spacing conventions
-- [ ] Empty states have centered icon + message
-
----
-
-## Paid Media Integration (January 2026)
-
-### Architecture Decisions
-
-**Platform-Specific Tables (Not Unified)**
-- `meta_campaigns` and `google_campaigns` are separate tables, NOT a unified `ad_campaigns` table
-- Why: Meta has `reach`, `frequency`, `add_to_carts` that Google doesn't. Google has `search_impression_share` that Meta doesn't. A unified table would have 10+ nullable columns and messy TypeScript unions.
-- Aggregation happens in `ad_daily_stats` and `ad_monthly_stats` which join on `date`.
-
-**MER vs Platform ROAS**
-- MER (Marketing Efficiency Ratio) = Shopify Revenue / Total Ad Spend
-- Platform ROAS is inflated by attribution overlap. MER is the truth.
-- Always show MER as the hero metric. Platform ROAS is for channel comparison only.
-
-**nCAC Calculation**
-- Uses `Set<string>` to count DISTINCT `shopify_customer_id` per day
-- Previous bug: counted orders instead of unique customers, inflating new customer count
-
-### Race Condition Fix
-When `sync-meta` and `sync-google-ads` run concurrently, they can overwrite each other's data in `ad_daily_stats`. Solution: atomic upsert functions (`upsert_ad_daily_stats_meta`, `upsert_ad_daily_stats_google`) that use `COALESCE` to preserve the other platform's columns.
-
-### Vercel Cron Limits
-- **Limit: 20 cron jobs per project**
-- Combined weekly jobs (`reconcile-shopify-stats` + `refresh-shiphero-token`) into `weekly-maintenance` to save slots
-- Before adding new crons, always check current count: `grep -c '"path":' vercel.json`
-
-### Secrets in Code
-- GitHub Push Protection blocks commits with hardcoded secrets
-- NEVER put OAuth tokens, API keys, or credentials directly in code
-- Always use `process.env.VARIABLE_NAME` even in utility scripts
-
----
-
-## Production Dashboard (January 2026)
-
-### Seasonality Context
-**Production is level-loaded** - Unlike fulfillment, marketing, and sales which are highly seasonal, Smithey intentionally maintains steady production output year-round. This means:
-- MoM comparisons are meaningful (not skewed by seasonal peaks)
-- T7 velocity is a reliable health indicator
-- Defect rates should remain stable (spikes = real problems, not volume effects)
-
-### Defect Rate Pattern
-- **Identification**: Defect SKUs have "-D" suffix (e.g., `SMITH-CI-12FLAT-D`)
-- **Calculation**: `defect_qty / (fq_qty + defect_qty) × 100`
-- **All-time vs 60-day**: Track both to detect emerging quality issues
-- **Anomaly detection**: Flag when recent rate > all-time × 1.3 AND > all-time + 1.5pp AND volume ≥ 50
-
-### Statistical Noise Filtering
-`MIN_VOLUME_THRESHOLD = 500` - SKUs with fewer than 500 total units are excluded from defect rate analysis. Low-volume SKUs create misleading percentages (4 units with 1 defect = 25% defect rate).
-
-### Visual Patterns
-- **Elevated indicators**: Pulsing amber dot for SKUs with recent rates significantly above baseline
-- **Color-coded rates**: Green (<2%), Amber (2-5%), Red (>5%) for all-time defect rates
-- **Ember-tinted scrollbar**: `.scrollbar-thin` class with `rgba(249, 115, 22, x)` for on-brand dark theme
-
-### Known Limitations (Revisit Later)
-1. **MIN_VOLUME_THRESHOLD = 500 may be too aggressive**
-   - New SKUs or low-volume specialty items won't appear until 500+ units produced
-   - Could miss critical early-stage quality problems
-   - Consider: Lower to 100-200, or show low-volume SKUs with "Low Volume" badge
-
-2. **Anomaly detection thresholds are hardcoded**
-   - `recentRate > allTimeRate * 1.3` (30% higher)
-   - `recentRate > allTimeRate + 1.5` (+1.5 percentage points)
-   - `recentTotal >= 50` (minimum recent volume)
-   - Edge case: 0.5% → 1.8% is +260% but only +1.3pp (wouldn't flag)
-   - Consider: Extract to named constants, validate against historical data
-
----
-
-## React Async Safety Patterns (January 2026)
-
-### The Problem
-Photo upload in RestorationDetailModal caused memory leaks and race conditions when:
-- Component unmounted during upload (state updates on unmounted component)
-- User rapidly triggered multiple uploads (concurrent operations)
-- Large images took time to compress (user could navigate away)
-
-### The Patterns
-
-**1. Mounted Ref Pattern**
 ```typescript
 const isMountedRef = useRef(true);
+useEffect(() => () => { isMountedRef.current = false; }, []);
 
-useEffect(() => {
-  isMountedRef.current = true;
-  return () => { isMountedRef.current = false; };
-}, []);
-
-// In async handlers:
-if (isMountedRef.current) {
-  setState(newValue); // Only update if still mounted
-}
+// In async handler:
+if (isMountedRef.current) setState(result);
 ```
-Why useRef not useState: Ref doesn't trigger re-renders, and the cleanup function guarantees it's set to false before any pending async operations could complete.
 
-**2. AbortController for Cancellable Operations**
+---
+
+## Business Rules
+
+### Time Windows
+
+Always encode time window in names:
+- `revenue90d`, `revenueYtd`, `revenueT12` — never just `revenue`
+- `newCustomers30d`, `newCustomersYtd` — never just `newCustomers`
+
+### Customer Health (B2B)
+
+| Status | Days Since Last Order |
+|--------|----------------------|
+| healthy | < 180 |
+| at_risk | 180-269 |
+| churning | 270-364 |
+| churned | 365+ |
+
+### Corporate Customer Check
+
 ```typescript
-const abortControllerRef = useRef<AbortController | null>(null);
-
-const handleUpload = async () => {
-  abortControllerRef.current?.abort(); // Cancel previous
-  const controller = new AbortController();
-  abortControllerRef.current = controller;
-
-  try {
-    await someAsyncOperation(controller.signal);
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      return; // Silently ignore abort errors
-    }
-    throw e;
-  }
-};
-
-// Cleanup on unmount
-useEffect(() => () => abortControllerRef.current?.abort(), []);
+// Always check all three conditions
+const isCorp = c.is_corporate_gifting === true ||
+               c.category === "Corporate" ||
+               c.category === "4";
 ```
 
-**3. URL Validation for XSS Prevention (Defense in Depth)**
-```typescript
-function isValidPhotoUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === "rpfkpxoyucocriifutfy.supabase.co" &&
-      parsed.pathname.includes("/restoration-photos/") &&
-      parsed.protocol === "https:"
-    );
-  } catch { return false; }
-}
+Corporate customers are excluded from B2B metrics (different buying patterns).
 
-// Apply at multiple layers:
-// 1. When loading from database
-// 2. When receiving from storage upload
-// 3. When rendering (conditional render)
+### Restoration SLA
+
+- Clock starts: `delivered_to_warehouse_at`
+- Target: 21 days
+- Overdue = physically at Smithey AND > 21 days
+
+### Defect SKUs
+
+Pattern: `{SKU}-D` (e.g., `SMITH-CI-12FLAT-D`)
+
+---
+
+## Git Workflow
+
+### Commit Format
+
+```
+<type>(<scope>): <description>
+
+feat|fix|refactor|docs|style|perf|chore
 ```
 
-### When to Apply These Patterns
-- Any component with file uploads or long-running operations
-- Modals that can be closed mid-operation
-- Forms with async validation
-- Any `await` inside an event handler
+### Before Commit
 
----
-
-## CATASTROPHIC DATA DELETION MISTAKE (January 2026)
-
-### What Happened
-User said "clear test data from the ops view" meaning **FILTER THE UI**. I interpreted this as "delete from database" and ran DELETE queries that removed 1,991 restoration records from production.
-
-**The actual request**: Hide old/completed items from the operations Kanban view
-**What I did**: `DELETE FROM restorations WHERE delivered_to_warehouse_at < NOW() - INTERVAL '7 days'`
-
-### The Damage
-- Lost 1,991 historical restoration records
-- Analytics broken (All-Time stats, trend charts, historical comparisons)
-- Only 4 records remained (recent week's deliveries)
-- No PITR enabled, only daily backups available
-- Partial recovery possible via AfterShip resync but manual data (notes, tags, photos) lost forever
-
-### The Root Cause
-I confused **UI filtering** with **data deletion**. When someone says "clear" or "clean up" data from a VIEW:
-- They mean FILTER the display
-- They do NOT mean DELETE from database
-- Production data is PRECIOUS - it represents months of business operations
-
-### The Rule - NEVER AGAIN
-
-**BEFORE ANY DELETE STATEMENT:**
-1. **ASK EXPLICITLY**: "Do you want me to DELETE this data permanently from the database, or just filter/hide it from the UI?"
-2. **ASSUME FILTER**: Unless the user explicitly says "delete from database" or "remove permanently", assume they want a UI filter
-3. **PREVIEW FIRST**: Before ANY delete, run `SELECT COUNT(*)` and show the user exactly what would be affected
-4. **SUGGEST SOFT DELETE**: Propose `is_archived` or `is_hidden` flags instead of hard deletes
-5. **CHECK BACKUPS**: Confirm PITR or backup recovery options BEFORE executing destructive operations
-
-**"Clear the view" = Add a WHERE clause to the query**
-**"Delete the data" = Actually delete (ONLY if explicitly confirmed)**
-
-### Data Recovery Pattern
-If deletion happens accidentally:
-1. Check PITR first (if enabled, can restore to exact point)
-2. Check daily backups (can restore entire DB to previous day)
-3. Re-sync from source APIs (AfterShip, Shopify, NetSuite)
-4. Accept manual data loss (notes, photos, custom fields)
-
-This mistake cost production data and user trust. **Never make assumptions about destructive operations.**
-
----
-
-## Restoration SLA Rules (January 2026)
-
-### Clock Start (When Smithey Becomes Responsible)
-- **Regular orders**: Clock starts at `delivered_to_warehouse_at` - when courier (AfterShip) confirms delivery
-- **POS orders**: Clock starts at order creation - Smithey has immediate possession
-- Fallback: `received_at` (manual check-in) if no courier delivery timestamp
-
-### SLA Target
-- **21 days** from clock start to ship out
-- Items past 21 days are "overdue"
-
-### Data Sources
-- `delivered_to_warehouse_at`: From AfterShip Returns API when tracking shows "Delivered"
-- `received_at`: Manual check-in timestamp (fallback)
-- `shipped_at`: When restoration ships back to customer
-
-### Analytics
-- **Internal cycle time**: `delivered_to_warehouse_at` → `shipped_at` (what Smithey controls)
-- **Chart cohorts**: Grouped by intake month (when delivered to warehouse)
-- **Overdue**: Only items physically at Smithey (status: delivered_warehouse, received, at_restoration, ready_to_ship) AND >21 days
-
----
-
-## Restoration UI - Remaining Work (January 2026)
-
-### Completed
-- RestorationDetailModal with iPad-optimized photo upload
-- Canvas-based image compression (3MB → 200-400KB)
-- Supabase storage bucket with 5MB limit
-- Status advancement from modal
-- XSS protection, memory leak fixes, accessibility
-
-### TODO: Page-Level Restructure
-The plan (`~/.claude/plans/zesty-popping-orbit.md`) calls for separating Operations from Analytics:
-
-1. **Create `/restoration/analytics` route**
-   - Move charts/KPIs to separate page
-   - Add CS Action Items (customers waiting >X days)
-   - Add trend charts, SLA tracking
-
-2. **Simplify Operations page (`/restoration`)**
-   - Strip to pipeline columns + action buttons only
-   - Consider table layout vs current Kanban cards
-   - Remove all analytics/charts from main view
-
-3. **Add tab navigation in layout.tsx**
-   - "Operations" tab → `/restoration`
-   - "Analytics" tab → `/restoration/analytics`
-
-### Key Files
-- `components/restorations/RestorationDetailModal.tsx` - Photo upload, status changes
-- `components/restorations/RestorationOperations.tsx` - Kanban board
-- `app/(dashboard)/restoration/page.tsx` - Current combined view
-- `app/api/restorations/[id]/route.ts` - PATCH for status updates
-
----
-
-## Context-Switch Discipline (January 2026)
-
-### What Happened
-User asked to merge a PR while I was mid-work on a different branch with uncommitted changes. User's tone was urgent ("merge the fucking pr"). I immediately jumped to the new task without:
-1. Running `git status`
-2. Noticing uncommitted work in progress
-3. Stashing or committing WIP
-
-After fixing merge conflicts and completing the PR merge, we discovered orphaned changes left behind - work that was neither committed nor stashed, just abandoned.
-
-### The Root Cause
-**Reactivity over discipline.** Urgency in the request triggered immediate action without pausing to assess current state. This is the same pattern that causes:
-- Abandoning half-written functions to chase new bugs
-- Switching files without finishing a thought
-- Starting new tasks without closing out existing work
-
-### The Rule - CONTEXT SWITCH PROTOCOL
-
-**Before ANY context switch (new branch, new task, urgent request):**
-
-1. **PAUSE** - Do not immediately execute. Urgency is not an excuse to skip discipline.
-2. **RUN `git status`** - See what's in flight. Always.
-3. **DECIDE explicitly**:
-   - Commit WIP: `git commit -m "WIP: description"`
-   - Stash: `git stash save "description of what I was doing"`
-   - Or finish the current task first
-4. **ONLY THEN** switch context
-
-**The mantra**: "What am I in the middle of?"
-
-### Why This Matters
-- Orphaned changes cause confusion and lost work
-- Context buried in uncommitted files is invisible to future sessions
-- Sloppy git hygiene compounds into larger messes
-- The user's time is wasted debugging process failures instead of building features
-
-### Git Hygiene Basics
 ```bash
-# Before switching branches - ALWAYS
+npm run build && npm run lint
+```
+
+### Before Branch Switch
+
+```bash
 git status
-
-# If you have changes and need to switch
-git stash save "WIP: what I was doing"
-# ... do other work ...
-git stash pop
-
-# Or commit WIP (squash later)
-git commit -m "WIP: partial door-health column fix"
+git stash save "WIP: description"
 ```
-
-**Urgency does not override discipline. Slow down to go fast.**
 
 ---
 
-## Silent Dependency Failures (January 2026)
+## Design System
 
-### What Happened
-The Door Health tab showed 121 churned customers. The Wholesale Dashboard showed 65 churned customers. Same data source, same time period, completely different numbers.
+See `DESIGN_SYSTEM.md` for colors, typography, and component patterns.
 
-**Root cause**: The `compute_customer_metrics()` function was wrapped in a conditional:
-```typescript
-// In sync-netsuite-transactions/route.ts
-if (!stoppedEarly) {
-  await supabase.rpc("compute_customer_metrics");
-}
-```
-
-The transaction sync has a 280-second time budget. When exceeded, `stoppedEarly = true`. Sync logs showed most runs were `status: "partial"` due to hitting the time budget. This meant `compute_customer_metrics()` **rarely ever ran** - the database `health_status` column was perpetually stale.
-
-### Why This Is Deadly
-- **No errors**: The function simply didn't execute. No logs, no warnings.
-- **No visibility**: You only discover the problem when downstream data looks wrong.
-- **False confidence**: The sync "succeeded" (records were saved), but derived metrics were stale.
-- **Cascading incorrectness**: Multiple dashboard views consumed the stale `health_status` value.
-
-### The Pattern to Hunt
-
-**Conditional execution of critical operations:**
-```typescript
-// DANGEROUS PATTERN - hunt and kill these
-if (someCondition) {
-  await criticalOperation();  // ← What happens when this doesn't run?
-}
-```
-
-**Questions to ask:**
-1. What happens when the condition is false?
-2. How often is the condition false in production?
-3. Will anyone notice if this doesn't run?
-4. Is there any logging when it's skipped?
-
-### The Fix Applied
-
-**Before (silent skip):**
-```typescript
-if (!stoppedEarly) {
-  console.log("[NETSUITE] Computing customer metrics...");
-  const { error } = await supabase.rpc("compute_customer_metrics");
-}
-```
-
-**After (always run, log success/failure):**
-```typescript
-// Always compute metrics - partial sync still has useful transaction data
-console.log("[NETSUITE] Computing customer metrics...");
-const { error: metricsError } = await supabase.rpc("compute_customer_metrics");
-if (metricsError) {
-  console.error("[NETSUITE] Failed to compute metrics:", metricsError.message);
-} else {
-  console.log("[NETSUITE] Metrics computed successfully");
-}
-```
-
-### The Rule
-
-**Critical post-sync operations must ALWAYS run.**
-
-Even if a sync is partial:
-- Transactions were still inserted
-- Customer data was still updated
-- Derived metrics should reflect the new data
-
-The `compute_customer_metrics()` function is idempotent (can run multiple times safely). There's no reason to skip it.
-
-### Audit Checklist for Cron Jobs
-
-For every cron job, verify:
-- [ ] Are there conditional blocks wrapping critical operations?
-- [ ] What happens when each condition is false?
-- [ ] Are skipped operations logged?
-- [ ] Check `sync_logs` - how often is status != "success"?
-- [ ] If partial runs are common, do downstream consumers handle stale data?
-
-**Silent failures are the worst failures. Make them loud or make them impossible.**
+Key rules:
+- Use CSS variables from `globals.css`, never hardcoded hex
+- Status colors (`text-status-good/warning/bad`) only for actual status
+- Cards: `bg-bg-secondary rounded-xl border border-border/30 p-5`
+- Tables: sticky headers, `scrollbar-thin` containers
 
 ---
 
-## The Silent Auth Failure (January 2026)
+## Environment
 
-### What Happened
-Exec role permissions were broken - RESTORATION missing from nav, Q4 PACE showing despite being in `hidden_tabs`. I audited the database (correct), read the permission logic (correct), checked the rendering (correct) - multiple times across multiple sessions. Kept missing the actual bug.
+See `.env.local.example` for all required variables.
 
-### The Root Cause
-The `/api/admin/config` fetch was returning **401 Unauthorized** for non-admin users. The client silently fell back to hardcoded defaults which didn't match database config. Two bugs:
-1. API required admin role for read access (should allow all authenticated users)
-2. `fetchConfig()` wasn't sending auth headers
-
-### Why I Missed It
-I read the code instead of observing the system. The server logs showed `GET /api/admin/config 401` on every page load for non-admin users. One look at that log would have found it immediately.
-
-### The Rule
-
-**When data doesn't match expectations, check the network layer FIRST:**
-1. Open browser DevTools → Network tab (or check server logs)
-2. Look for 4xx/5xx errors on API calls
-3. Verify the API actually returns expected data, not an error response
-
-Code that looks correct can still fail at runtime. The network request is the truth.
-
-### Silent Fallback Anti-Pattern
-
-This code pattern is dangerous:
-```typescript
-const res = await fetch("/api/config");
-if (res.ok) {
-  setConfig(await res.json());
-}
-// No else! Silently uses stale/default config on 401/403/500
-```
-
-Better:
-```typescript
-const res = await fetch("/api/config");
-if (!res.ok) {
-  console.error(`Config fetch failed: ${res.status}`);
-  // Either throw, show error UI, or explicitly log the fallback
-}
-```
-
-**If an API can fail, handle the failure visibly.**
-
----
-
-## Cron Jobs
-
-Cron schedules are defined in `vercel.json`. Key sync frequencies:
-- **Every 15 min**: `high-frequency-sync` (Shopify orders, ShipHero inventory), `sync-b2b`
-- **Hourly**: `sync-b2b-drafts`, tracking checks
-- **Daily at 6-8 AM UTC**: NetSuite syncs, Klaviyo, Meta Ads, Google Ads
-- **Weekly (Sunday 2 AM)**: `weekly-maintenance` (Shopify reconciliation, token refresh)
-
-**Vercel limit: 20 cron jobs** - check count before adding: `grep -c '"path":' vercel.json`
-
-## Environment Variables
-
-See `.env.local.example` for required variables. Key integrations:
-- Supabase (URL, anon key, service key)
-- Shopify Admin API
-- NetSuite OAuth 2.0
-- ShipHero (access + refresh tokens)
-- Klaviyo API
-- AfterShip Returns API
-- Meta Ads (access token, ad account ID)
-- Google Ads (OAuth credentials, customer ID, developer token)
+Vercel cron limit: 20 jobs. Check before adding: `grep -c '"path":' vercel.json`
