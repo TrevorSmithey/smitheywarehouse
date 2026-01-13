@@ -2,15 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**IMPORTANT: The user is not an engineer. Claude is the primary engineer for this codebase. This means Claude must own quality, validation, and best practices — there is no one else to catch mistakes.**
+
 ## Quick Start
 
 ```bash
+npm install          # ALWAYS run first if node_modules missing
 npm run dev          # http://localhost:3000
-npm run build        # MUST pass before commit (type checks)
-npm run lint         # ESLint
+npm run build        # Type checking - MUST pass before commit
+npm run lint         # ESLint - MUST pass before commit
 ```
 
-No tests. Quality gates: TypeScript strict + ESLint + successful build.
+## Claude's Engineering Responsibilities
+
+Since the user relies on Claude for engineering:
+
+1. **Own the quality gate** — No one else will catch type errors, bugs, or regressions
+2. **Always validate** — Run `npm run build && npm run lint` before ANY commit
+3. **Set up the environment** — If `node_modules` is missing, run `npm install` first
+4. **Trace your changes** — Explain WHY the code is correct, not just WHAT changed
+5. **Don't push broken code** — If validation fails, fix it before committing
+6. **Be explicit about uncertainty** — If you can't verify something, say so clearly
 
 ## Stack
 
@@ -22,43 +34,39 @@ Path alias: `@/*` → project root
 
 ## Git Workflow
 
-### Human (Trevor)
+### Branch Strategy
 
-Direct commits to main. Single developer with full context.
-
-### Claude Code
-
-**Always use feature branches.** Never push directly to main.
+Claude always works on feature branches. Never push directly to main.
 
 ```bash
-# Claude Code branches use this pattern:
+# Branch naming pattern:
 claude/<task-description>-<session-id>
 
 # Example: claude/init-project-setup-9lWAY
 ```
 
-**Workflow:**
-1. Work on assigned `claude/` branch
-2. Commit atomic changes with clear messages
-3. Push to the feature branch
-4. Human reviews and merges (or Claude creates PR if requested)
-
 ### Before Every Commit (REQUIRED)
 
 ```bash
-npm run build && npm run lint   # Both MUST pass
+# 1. Ensure environment is set up
+npm install          # If node_modules missing
+
+# 2. Validate the code
+npm run build        # Must pass - catches type errors
+npm run lint         # Must pass - catches code issues
+
+# 3. Only then commit
+git add <files>
+git commit -m "message"
 ```
 
-**Claude Code validation rules:**
-1. **Always run build + lint** before committing code changes
-2. **If build/lint can't run** (e.g., no `node_modules`): State this explicitly in the commit message or tell the human
-3. **For logic changes**: Trace through the code path and explain why it's correct
-4. **For UI changes**: Describe what the human should visually verify
-5. **Never assume** — if you can't verify, say so
+**If validation fails:** Fix the errors. Do not commit broken code.
 
-### Commit Style
+**If validation can't run:** Tell the user and do not proceed until resolved.
 
-Mixed style is acceptable. Match existing patterns:
+### Commit Messages
+
+Match existing patterns in this repo:
 - `feat(restorations): Add Teams notification on damage`
 - `fix: modal backdrop close requires single click`
 - `Add type guards and developer logging to eliminate silent auth failures`
@@ -67,7 +75,7 @@ Mixed style is acceptable. Match existing patterns:
 
 ```bash
 git status                              # ALWAYS check first
-git stash save "WIP: what I was doing"  # If uncommitted changes
+git stash save "WIP: what I was doing"  # If uncommitted changes exist
 ```
 
 ---
