@@ -80,35 +80,81 @@ git stash save "WIP: what I was doing"  # If uncommitted changes exist
 
 ---
 
-## Safety Rules
+## Data Integrity (HIGHEST PRIORITY)
 
-### 1. "Clear the view" ≠ Delete from database
+**This is the operational hub for a $100M enterprise. Data integrity is non-negotiable. Silent failures are the enemy — half of historical PRs have been fixing them.**
 
-When asked to "clear", "clean up", or "hide" data:
-- **Assume they mean filter the UI** (add WHERE clause)
-- Before ANY delete: `SELECT COUNT(*)` and ask for confirmation
-- Prefer soft delete: `is_archived` flag
+### The Prime Directive: No Silent Failures
 
-### 2. API failures must be visible
+Every operation must either:
+1. **Succeed visibly** — Log success, update UI, confirm to user
+2. **Fail loudly** — Throw error, log failure, alert user
+
+There is no third option. Silent failures corrupt data and erode trust.
+
+### Pattern 1: API Calls Must Handle Failure
 
 ```typescript
-// WRONG - silent fallback
+// WRONG - silent fallback (data shows stale/default values, no one knows)
+const res = await fetch("/api/data");
 if (res.ok) setData(await res.json());
+// ← What happens on 401/500? Silent stale data!
 
 // RIGHT - visible failure
-if (!res.ok) throw new Error(`API failed: ${res.status}`);
+const res = await fetch("/api/data");
+if (!res.ok) {
+  console.error(`API failed: ${res.status}`);
+  throw new Error(`Failed to fetch data: ${res.status}`);
+}
+setData(await res.json());
 ```
 
-### 3. Critical operations always run
+### Pattern 2: Critical Operations Always Run
 
 ```typescript
-// WRONG - conditional critical path
-if (condition) await computeMetrics();
+// WRONG - conditional critical path (operation silently skipped)
+if (!stoppedEarly) {
+  await computeMetrics();  // ← Never runs if stoppedEarly=true
+}
 
 // RIGHT - always run, log outcome
 const { error } = await computeMetrics();
-console.log(error ? `Failed: ${error}` : "Success");
+if (error) {
+  console.error("[METRICS] Failed:", error);
+  // Decide: throw, retry, or alert — but NEVER ignore
+} else {
+  console.log("[METRICS] Computed successfully");
+}
 ```
+
+### Pattern 3: Database Operations Must Verify
+
+```typescript
+// WRONG - assume success
+await supabase.from("table").update({ status: "done" });
+
+// RIGHT - check result
+const { error } = await supabase.from("table").update({ status: "done" });
+if (error) {
+  console.error("[DB] Update failed:", error.message);
+  throw error;
+}
+```
+
+### Pattern 4: Never Delete Without Confirmation
+
+When asked to "clear", "clean up", or "hide" data:
+- **Assume they mean filter the UI** (add WHERE clause)
+- Before ANY delete: `SELECT COUNT(*)` and show the user what will be affected
+- Prefer soft delete: `is_archived = true`, not `DELETE FROM`
+- Production data represents months of business operations — treat it as precious
+
+### Debugging: Check Network First
+
+When data looks wrong, don't read code — observe the system:
+1. Check browser DevTools → Network tab for 4xx/5xx errors
+2. Check server logs for failed API calls
+3. The network request is the truth; code can look correct and still fail
 
 ---
 
