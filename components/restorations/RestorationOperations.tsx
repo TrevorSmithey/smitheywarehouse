@@ -398,6 +398,8 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
 
   // Counts
   const totalActive = pipelineItems.length;
+  const inboundCount = pipelineItems.filter((r) => r.status === "in_transit_inbound").length;
+  const inHouseCount = totalActive - inboundCount;
   // Late = >21 days since Smithey took possession (past SLA, matches Analytics page)
   const totalLate = pipelineItems.filter((r) => {
     // In-transit items excluded - we can't control carrier speed
@@ -492,7 +494,14 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
             RESTORATIONS
           </h1>
           <span className="text-lg text-text-secondary">
-            {searchQuery ? `${filteredItems.length} of ${totalActive}` : `${totalActive} active`}
+            {searchQuery ? (
+              `${filteredItems.length} of ${totalActive}`
+            ) : (
+              <>
+                {inHouseCount} in-house
+                {inboundCount > 0 && <span className="text-sky-400"> • {inboundCount} inbound</span>}
+              </>
+            )}
             {totalLate > 0 && !searchQuery && (
               <span className="text-red-400 ml-2">• {totalLate} late</span>
             )}
