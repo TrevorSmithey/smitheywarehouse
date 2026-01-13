@@ -225,6 +225,71 @@ if (!stoppedEarly) {
 
 **Rule: If an operation is critical, it runs unconditionally.**
 
+### Pattern E: Row Limit Truncation (15+ historical bugs)
+
+Supabase defaults to 1000 rows. Without explicit limits, data is silently truncated.
+
+```typescript
+// BUG: Silent truncation — Supabase returns max 1000 rows
+const { data } = await supabase.from("orders").select("*");
+// 15,000 orders exist, but only 1000 returned. No error!
+
+// FIX: Explicit limit + truncation check
+import { QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
+
+const { data, count } = await supabase
+  .from("orders")
+  .select("*", { count: "exact" })
+  .limit(QUERY_LIMITS.LEAD_TIME);
+
+if (count) checkQueryLimit(data?.length || 0, QUERY_LIMITS.LEAD_TIME, "orders");
+```
+
+**Rule: All Supabase queries must have explicit limits from `lib/constants.ts`.**
+
+### Pattern F: Timezone / Date Handling (12+ historical bugs)
+
+Business logic runs on EST. JavaScript Date defaults to local/UTC. DST causes off-by-one errors.
+
+```typescript
+// BUG: Assumes UTC — date is wrong during EST business hours
+const today = new Date().toISOString().split("T")[0];
+
+// FIX: Explicit EST for business date boundaries
+const estNow = new Date().toLocaleString("en-US", {
+  timeZone: "America/New_York"
+});
+const today = new Date(estNow).toISOString().split("T")[0];
+```
+
+```typescript
+// BUG: DST transition causes date shift
+const dayStart = new Date(dateStr);
+dayStart.setHours(0, 0, 0, 0);
+
+// FIX: Use date string directly, don't manipulate Date objects
+const dayStart = dateStr; // Keep as ISO string "2025-03-09"
+```
+
+**Rule: Use ISO date strings for storage/comparison. Only convert to Date for display.**
+
+### Pattern G: SKU Case Sensitivity (8+ historical bugs)
+
+NetSuite sends `SMITH-CI-12FLAT`, Shopify sends `Smith-CI-12Flat`, ShipHero sends `smith-ci-12flat`.
+
+```typescript
+// BUG: Direct comparison fails
+if (sku === "SMITH-CI-12FLAT") { ... }
+
+// FIX: Normalize before comparison
+if (sku.toUpperCase() === "SMITH-CI-12FLAT") { ... }
+
+// BETTER: Normalize at data ingestion
+const normalizedSku = rawSku.toUpperCase();
+```
+
+**Rule: Always normalize SKUs to uppercase before comparison or storage.**
+
 ---
 
 ## Architecture
@@ -379,43 +444,16 @@ ALTER TABLE table_name ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALS
 
 ---
 
-## Business Rules
+## Business Logic
 
-### Time Windows in Names
-
-Always encode time window:
-- `revenue90d`, `revenueYtd`, `revenueT12` — never just `revenue`
-- `newCustomers30d`, `newCustomersYtd` — never just `newCustomers`
-
-### Customer Health (B2B)
-
-| Status | Days Since Last Order |
-|--------|----------------------|
-| healthy | < 180 |
-| at_risk | 180-269 |
-| churning | 270-364 |
-| churned | 365+ |
-
-### Corporate Customer Check
-
-```typescript
-// Always check all three - legacy data has inconsistent flags
-const isCorp = c.is_corporate_gifting === true ||
-               c.category === "Corporate" ||
-               c.category === "4";
-```
-
-Corporate excluded from B2B metrics (different buying patterns).
-
-### Restoration SLA
-
-- Clock starts: `delivered_to_warehouse_at`
-- Target: 21 days to ship out
-- Overdue: physically at Smithey AND > 21 days
-
-### Defect SKUs
-
-Pattern: `{SKU}-D` (e.g., `SMITH-CI-12FLAT-D`)
+See `BUSINESS_LOGIC.md` for domain-specific rules:
+- Customer health thresholds (180/270/365 days)
+- Customer segment revenue tiers ($1k/$5k/$20k/$50k)
+- Corporate customer detection
+- Restoration SLA (21 days)
+- SKU patterns and defect codes
+- B2B vs DTC filtering rules
+- Revenue metric definitions (YTD/T12/MER)
 
 ---
 
@@ -454,8 +492,3 @@ Key secrets:
 - `DASHBOARD_PIN` — login credential
 - API keys for: NetSuite, Shopify, Klaviyo, ShipHero, Meta, Google Ads, AfterShip, Re:amaze
 
----
-
-## TODO
-
-- [ ] **BUSINESS_LOGIC.md** — Extract domain rules from codebase, PRs, and past conversations. Should cover: customer health thresholds, corporate detection, restoration SLA, inventory calculations, revenue metrics (YTD/T12/MER), B2B vs DTC filtering rules.
