@@ -4,8 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   X,
   ExternalLink,
-  Clock,
-  Calendar,
   Tag,
   FileText,
   Save,
@@ -23,6 +21,7 @@ import {
   AlertTriangle,
   Plus,
   ArrowLeft,
+  RefreshCw,
 } from "lucide-react";
 import type { RestorationRecord } from "@/app/api/restorations/route";
 import { createClient } from "@/lib/supabase/client";
@@ -76,6 +75,8 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bgColor: stri
   delivered: { label: "Delivered", color: "text-green-400", bgColor: "bg-green-500/20", borderColor: "border-green-500" },
   cancelled: { label: "Cancelled", color: "text-red-400", bgColor: "bg-red-500/20", borderColor: "border-red-500" },
   damaged: { label: "Damaged", color: "text-rose-400", bgColor: "bg-rose-500/20", borderColor: "border-rose-500" },
+  pending_trash: { label: "Pending Disposal", color: "text-slate-400", bgColor: "bg-slate-500/20", borderColor: "border-slate-500" },
+  trashed: { label: "Disposed", color: "text-slate-500", bgColor: "bg-slate-600/20", borderColor: "border-slate-600" },
 };
 
 // Status advancement configuration
@@ -328,8 +329,10 @@ export function RestorationDetailModal({
   const [showDamageDialog, setShowDamageDialog] = useState(false);
   const [selectedDamageReason, setSelectedDamageReason] = useState<string>("");
   const [damageConfirmed, setDamageConfirmed] = useState(false);
-  // Resolve damaged item state
-  const [resolving, setResolving] = useState(false);
+  // Damaged workflow action states
+  const [continuingRestoration, setContinuingRestoration] = useState(false);
+  const [markingForTrash, setMarkingForTrash] = useState(false);
+  const [confirmingTrash, setConfirmingTrash] = useState(false);
   // Local pickup toggle state
   const [localPickup, setLocalPickup] = useState<boolean | null>(null);
   const [togglingPickup, setTogglingPickup] = useState(false);
@@ -774,33 +777,110 @@ export function RestorationDetailModal({
     }
   };
 
-  // Handle resolving a damaged item (CS has contacted customer)
-  const handleResolveDamaged = async () => {
-    if (!restoration || resolving) return;
+  // Handle continuing restoration from damaged (customer wants it restored anyway)
+  const handleContinueRestoration = async () => {
+    if (!restoration || continuingRestoration) return;
 
-    setResolving(true);
+    const confirmed = confirm(
+      "This will return the item to the Hobson queue for restoration.\n\n" +
+      "The item will be flagged as 'previously damaged' for tracking purposes.\n\n" +
+      "Continue?"
+    );
+    if (!confirmed) return;
+
+    setContinuingRestoration(true);
     try {
       const res = await fetch(`/api/restorations/${restoration.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          resolved_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify({ continue_restoration: true }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to resolve");
+        throw new Error(data.error || "Failed to continue restoration");
       }
 
       onSave();
-      onClose(); // Close modal after resolving
+      onClose();
     } catch (error) {
-      console.error("Error resolving damaged item:", error);
-      alert(error instanceof Error ? error.message : "Failed to resolve item");
+      console.error("Error continuing restoration:", error);
+      alert(error instanceof Error ? error.message : "Failed to continue restoration");
     } finally {
       if (isMountedRef.current) {
-        setResolving(false);
+        setContinuingRestoration(false);
+      }
+    }
+  };
+
+  // Handle marking for trash (customer says toss it)
+  const handleMarkForTrash = async () => {
+    if (!restoration || markingForTrash) return;
+
+    const confirmed = confirm(
+      "This will mark the item for disposal.\n\n" +
+      "A notification will be sent to the Teams channel.\n" +
+      "The warehouse operator will need to confirm physical disposal.\n\n" +
+      "Continue?"
+    );
+    if (!confirmed) return;
+
+    setMarkingForTrash(true);
+    try {
+      const res = await fetch(`/api/restorations/${restoration.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ mark_for_trash: true }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to mark for trash");
+      }
+
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error("Error marking for trash:", error);
+      alert(error instanceof Error ? error.message : "Failed to mark for trash");
+    } finally {
+      if (isMountedRef.current) {
+        setMarkingForTrash(false);
+      }
+    }
+  };
+
+  // Handle confirming physical disposal (operator has disposed of item)
+  const handleConfirmTrashed = async () => {
+    if (!restoration || confirmingTrash) return;
+
+    const confirmed = confirm(
+      "Confirm that this item has been physically disposed?\n\n" +
+      "This action cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setConfirmingTrash(true);
+    try {
+      const res = await fetch(`/api/restorations/${restoration.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ confirm_trashed: true }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to confirm disposal");
+      }
+
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error("Error confirming disposal:", error);
+      alert(error instanceof Error ? error.message : "Failed to confirm disposal");
+    } finally {
+      if (isMountedRef.current) {
+        setConfirmingTrash(false);
       }
     }
   };
@@ -930,6 +1010,11 @@ export function RestorationDetailModal({
             {restoration.is_pos && (
               <span className="text-[10px] px-2 py-1 bg-purple-500/30 text-purple-300 rounded font-semibold" aria-label="Point of Sale order">
                 POS
+              </span>
+            )}
+            {restoration.was_damaged && (
+              <span className="text-[10px] px-2 py-1 bg-amber-500/30 text-amber-300 rounded font-semibold" aria-label="Previously marked as damaged">
+                WAS DAMAGED
               </span>
             )}
           </div>
@@ -1070,40 +1155,49 @@ export function RestorationDetailModal({
                 )}
               </div>
 
-              {/* Key Metrics Row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
-                    <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>In Stage</span>
+              {/* SLA Clock - THE HERO METRIC */}
+              {/* Days since Smithey took possession. 21-day target. This is THE number. */}
+              <div className={`rounded-xl p-4 border-2 transition-colors ${
+                totalDays > 21
+                  ? "bg-red-500/10 border-red-500/50"
+                  : totalDays > 14
+                  ? "bg-amber-500/10 border-amber-500/40"
+                  : "bg-bg-secondary border-border"
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-text-muted uppercase tracking-wider mb-1">
+                      Time in Shop
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`text-4xl font-black tabular-nums ${
+                        totalDays > 21
+                          ? "text-red-400"
+                          : totalDays > 14
+                          ? "text-amber-400"
+                          : "text-text-primary"
+                      }`}>
+                        {totalDays}
+                      </span>
+                      <span className={`text-lg font-semibold ${
+                        totalDays > 21
+                          ? "text-red-400/70"
+                          : totalDays > 14
+                          ? "text-amber-400/70"
+                          : "text-text-muted"
+                      }`}>
+                        / 21 days
+                      </span>
+                    </div>
                   </div>
-                  <div
-                    className={`text-2xl font-bold tabular-nums ${
-                      daysInStatus <= 3
-                        ? "text-emerald-400"
-                        : daysInStatus <= 7
-                        ? "text-amber-400"
-                        : "text-red-400"
-                    }`}
-                  >
-                    {daysInStatus}d
-                  </div>
-                </div>
-                <div className="bg-bg-secondary rounded-xl p-4 border border-border">
-                  <div className="flex items-center gap-2 text-text-tertiary text-xs mb-1">
-                    <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Total Time</span>
-                  </div>
-                  <div
-                    className={`text-2xl font-bold tabular-nums ${
-                      totalDays <= 14
-                        ? "text-emerald-400"
-                        : totalDays <= 21
-                        ? "text-amber-400"
-                        : "text-red-400"
-                    }`}
-                  >
-                    {totalDays}d
+                  {/* Stage indicator - secondary info */}
+                  <div className="text-right">
+                    <div className="text-[10px] text-text-muted uppercase tracking-wider">
+                      This Stage
+                    </div>
+                    <div className="text-lg font-bold tabular-nums text-text-secondary">
+                      {daysInStatus}d
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1502,26 +1596,77 @@ export function RestorationDetailModal({
             </button>
           )}
 
-          {/* Primary Action: Mark Resolved (for damaged items) */}
-          {restoration.status === "damaged" && !restoration.resolved_at && (
+          {/* Primary Actions: Damaged Item Decision Point */}
+          {restoration.status === "damaged" && (
+            <div className="space-y-3 mb-3">
+              {/* Continue Restoration - Item goes back to Hobson */}
+              <button
+                onClick={handleContinueRestoration}
+                disabled={continuingRestoration || markingForTrash || saving}
+                aria-busy={continuingRestoration}
+                aria-label="Continue restoration - sends item back to warehouse for processing"
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
+                  bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed
+                  min-h-[56px] transition-all active:scale-[0.98]"
+              >
+                {continuingRestoration ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                    <span>Sending to Warehouse...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-5 h-5" aria-hidden="true" />
+                    <span>Continue Restoration (Back to Hobson)</span>
+                  </>
+                )}
+              </button>
+
+              {/* Mark for Trash - Customer says toss it */}
+              <button
+                onClick={handleMarkForTrash}
+                disabled={continuingRestoration || markingForTrash || saving}
+                aria-busy={markingForTrash}
+                aria-label="Mark for disposal - customer decided to discard the item"
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
+                  bg-rose-500 hover:bg-rose-600 active:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed
+                  min-h-[56px] transition-all active:scale-[0.98]"
+              >
+                {markingForTrash ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-5 h-5" aria-hidden="true" />
+                    <span>Customer Says Trash It</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Primary Action: Confirm Disposal (for pending_trash items) */}
+          {restoration.status === "pending_trash" && (
             <button
-              onClick={handleResolveDamaged}
-              disabled={resolving || saving}
-              aria-busy={resolving}
-              aria-label="Mark as resolved - confirms CS has contacted customer about damage"
+              onClick={handleConfirmTrashed}
+              disabled={confirmingTrash || saving}
+              aria-busy={confirmingTrash}
+              aria-label="Confirm physically disposed - item has been physically discarded"
               className="w-full flex items-center justify-center gap-3 px-6 py-4 text-base font-bold text-white rounded-xl
-                bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed
+                bg-slate-600 hover:bg-slate-700 active:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed
                 min-h-[56px] mb-3 transition-all active:scale-[0.98]"
             >
-              {resolving ? (
+              {confirmingTrash ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
-                  <span>Resolving...</span>
+                  <span>Confirming...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle className="w-5 h-5" aria-hidden="true" />
-                  <span>Mark Resolved</span>
+                  <span>Confirm Physically Disposed</span>
                 </>
               )}
             </button>

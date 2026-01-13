@@ -34,7 +34,9 @@ const STATUS_ORDER = [
   "shipped",
   "delivered",
   "cancelled",
-  "damaged", // Terminal status for damaged items
+  "damaged", // Decision point - can continue restoration or trash
+  "pending_trash", // Customer said trash it, awaiting physical disposal confirmation
+  "trashed", // Terminal - physically disposed
 ] as const;
 
 type RestorationStatus = (typeof STATUS_ORDER)[number];
@@ -70,6 +72,8 @@ const STATUS_CONFIG: Record<RestorationStatus, { label: string; color: string }>
   delivered: { label: "Delivered to Customer", color: "green" },
   cancelled: { label: "Cancelled", color: "red" },
   damaged: { label: "Damaged", color: "rose" },
+  pending_trash: { label: "Pending Disposal", color: "red" },
+  trashed: { label: "Disposed", color: "slate" },
 };
 
 export interface RestorationRecord {
@@ -93,7 +97,10 @@ export interface RestorationRecord {
   delivered_at: string | null;
   damaged_at: string | null; // When marked as damaged
   damage_reason: string | null; // Reason for damage: damaged_upon_arrival, damaged_internal, lost
-  resolved_at: string | null; // When CS marked damaged item as resolved (NULL = needs CS attention)
+  resolved_at: string | null; // When CS marked damaged item as resolved (legacy - see new workflow)
+  was_damaged: boolean; // Flag indicating item was previously damaged but continued through restoration
+  trashed_at: string | null; // When marked for trash disposal (customer said trash it)
+  trash_confirmed_at: string | null; // When operator confirmed physical disposal
   is_pos: boolean;
   local_pickup: boolean | null; // If TRUE, customer picks up restored item (no return shipping)
   source: string | null; // How restoration was created: aftership, shopify_webhook, manual, sync
@@ -283,6 +290,9 @@ export async function GET(request: NextRequest) {
         shipped_at,
         delivered_at,
         damaged_at,
+        trashed_at,
+        trash_confirmed_at,
+        was_damaged,
         damage_reason,
         resolved_at,
         is_pos,
@@ -358,6 +368,8 @@ export async function GET(request: NextRequest) {
         delivered: r.delivered_at,
         cancelled: null,
         damaged: r.damaged_at,
+        pending_trash: r.trashed_at,
+        trashed: r.trashed_at,
       };
 
       const currentStatusTimestamp = statusTimestamps[r.status as RestorationStatus];
@@ -398,6 +410,9 @@ export async function GET(request: NextRequest) {
         shipped_at: r.shipped_at,
         delivered_at: r.delivered_at,
         damaged_at: r.damaged_at,
+        trashed_at: r.trashed_at,
+        trash_confirmed_at: r.trash_confirmed_at,
+        was_damaged: r.was_damaged || false,
         damage_reason: r.damage_reason,
         resolved_at: r.resolved_at,
         is_pos: r.is_pos || false,
@@ -420,8 +435,8 @@ export async function GET(request: NextRequest) {
       };
     })
     .filter(r => {
-      // Keep terminal statuses regardless of order status (for analytics)
-      if (r.status === "cancelled" || r.status === "damaged") return true;
+      // Keep terminal/decision-point statuses regardless of order status (for analytics)
+      if (r.status === "cancelled" || r.status === "damaged" || r.status === "pending_trash" || r.status === "trashed") return true;
 
       // Keep shipped/delivered for analytics - these are completed restorations
       if (r.status === "shipped" || r.status === "delivered") return true;

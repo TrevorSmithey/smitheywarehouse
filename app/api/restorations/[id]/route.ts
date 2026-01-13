@@ -34,7 +34,9 @@ const KNOWN_STATUSES = [
   "shipped",
   "delivered",
   "cancelled",
-  "damaged", // Terminal status for damaged items
+  "damaged", // Decision point - can continue restoration or trash
+  "pending_trash", // Customer said trash it, awaiting physical disposal confirmation
+  "trashed", // Terminal - physically disposed
 ] as const;
 
 type KnownStatus = (typeof KNOWN_STATUSES)[number];
@@ -73,7 +75,9 @@ const VALID_TRANSITIONS: Record<KnownStatus, KnownStatus[]> = {
   shipped: ["delivered", "ready_to_ship", "at_restoration", "received", "damaged"], // Limited backward after shipping
   delivered: [], // Terminal state
   cancelled: [], // Terminal state
-  damaged: [], // Terminal state
+  damaged: ["delivered_warehouse", "pending_trash"], // Decision point: continue restoration OR trash
+  pending_trash: ["trashed"], // Only valid transition is confirming disposal
+  trashed: [], // Terminal state
 };
 
 /** Validates that a status is a known status value */
@@ -93,6 +97,8 @@ const STATUS_TIMESTAMP_FIELDS: Record<string, string> = {
   delivered: "delivered_at",
   cancelled: "cancelled_at",
   damaged: "damaged_at",
+  pending_trash: "trashed_at",
+  trashed: "trash_confirmed_at",
 };
 
 interface UpdateBody {
@@ -105,6 +111,10 @@ interface UpdateBody {
   damage_reason?: string; // For damaged status: damaged_upon_arrival, damaged_internal, lost
   resolved_at?: string; // When CS marks a damaged item as resolved (customer contacted, handled)
   local_pickup?: boolean; // If true, customer will pick up restored item (no return shipping)
+  // Damaged workflow action flags
+  continue_restoration?: boolean; // If true, return damaged item to delivered_warehouse with was_damaged flag
+  mark_for_trash?: boolean; // If true, move damaged item to pending_trash (customer said trash it)
+  confirm_trashed?: boolean; // If true, move pending_trash item to trashed (physical disposal confirmed)
 }
 
 // Supabase project ID for URL validation
@@ -200,6 +210,55 @@ async function sendTeamsNotification(
   }
 }
 
+/**
+ * Sends a Teams notification when a restoration is marked for trash disposal.
+ * Different message format from damage notification.
+ * Non-blocking: failures are logged but don't affect the API response.
+ */
+async function sendTeamsTrashNotification(
+  restorationId: number,
+  damageReason?: string
+): Promise<void> {
+  const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn("[RESTORATION API] TEAMS_WEBHOOK_URL not configured, skipping trash notification");
+    return;
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://smitheywarehouse.vercel.app";
+  const directLink = `${baseUrl}/restoration?id=${restorationId}`;
+  const reasonText = DAMAGE_REASON_LABELS[damageReason || ""] || damageReason || "Unknown";
+
+  const message = {
+    text: `ACTION REQUIRED: Restoration Marked for Disposal\n\n` +
+          `Restoration ID: #${restorationId}\n` +
+          `Original Damage Reason: ${reasonText}\n\n` +
+          `Item pending physical disposal confirmation.\n` +
+          `View Details: ${directLink}`,
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "Could not read body");
+      console.error(`[RESTORATION API] Teams trash webhook failed: ${response.status} - ${errorBody}`);
+    } else {
+      console.log(`[RESTORATION API] Teams trash notification sent for restoration #${restorationId}`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /** Check if this is a backward movement */
 function isBackwardMovement(fromStatus: string, toStatus: string): boolean {
   const fromIndex = getStatusIndex(fromStatus);
@@ -290,7 +349,7 @@ export async function PATCH(
     // Get current restoration
     const { data: current, error: fetchError } = await supabase
       .from("restorations")
-      .select("id, status, tag_numbers, magnet_number")
+      .select("id, status, tag_numbers, magnet_number, damage_reason, was_damaged")
       .eq("id", restorationId)
       .single();
 
@@ -302,6 +361,53 @@ export async function PATCH(
     const update: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
+
+    // =========================================================================
+    // DAMAGED WORKFLOW ACTION FLAGS
+    // These special flags handle the two-path decision from damaged status
+    // =========================================================================
+
+    // Handle "Continue Restoration" - return damaged item to pipeline with flag
+    if (body.continue_restoration) {
+      if (current.status !== "damaged") {
+        return NextResponse.json(
+          { error: "continue_restoration can only be used on damaged items" },
+          { status: 400 }
+        );
+      }
+      // Return to delivered_warehouse, set was_damaged flag, clear damaged timestamps
+      update.status = "delivered_warehouse";
+      update.was_damaged = true;
+      update.damaged_at = null;
+      update.resolved_at = null;
+      update.delivered_to_warehouse_at = new Date().toISOString();
+      // Note: damage_reason is preserved for analytics
+    }
+
+    // Handle "Mark for Trash" - customer said trash it
+    if (body.mark_for_trash) {
+      if (current.status !== "damaged") {
+        return NextResponse.json(
+          { error: "mark_for_trash can only be used on damaged items" },
+          { status: 400 }
+        );
+      }
+      update.status = "pending_trash";
+      update.trashed_at = new Date().toISOString();
+      // Note: damage_reason preserved for analytics
+    }
+
+    // Handle "Confirm Trashed" - physical disposal confirmed by operator
+    if (body.confirm_trashed) {
+      if (current.status !== "pending_trash") {
+        return NextResponse.json(
+          { error: "confirm_trashed can only be used on pending_trash items" },
+          { status: 400 }
+        );
+      }
+      update.status = "trashed";
+      update.trash_confirmed_at = new Date().toISOString();
+    }
 
     // Handle status transition
     if (body.status && body.status !== current.status) {
@@ -513,9 +619,18 @@ export async function PATCH(
     }
 
     // Log the event
+    // Determine new_status from action flags or explicit status change
+    const newStatus = body.continue_restoration
+      ? "delivered_warehouse"
+      : body.mark_for_trash
+        ? "pending_trash"
+        : body.confirm_trashed
+          ? "trashed"
+          : body.status || current.status;
+
     const eventData: Record<string, unknown> = {
       previous_status: current.status,
-      new_status: body.status || current.status,
+      new_status: newStatus,
     };
 
     if (body.tag_numbers) {
@@ -541,8 +656,15 @@ export async function PATCH(
 
     // Determine event type based on what changed
     let eventType = "manual_update";
-    if (body.resolved_at && body.resolved_at !== null) {
-      eventType = "damage_resolved"; // CS marked damaged item as resolved
+    if (body.continue_restoration) {
+      eventType = "continued_from_damaged"; // Damaged item returned to restoration pipeline
+      eventData.was_damaged = true;
+    } else if (body.mark_for_trash) {
+      eventType = "marked_for_trash"; // Customer said trash it
+    } else if (body.confirm_trashed) {
+      eventType = "disposal_confirmed"; // Physical disposal confirmed by operator
+    } else if (body.resolved_at && body.resolved_at !== null) {
+      eventType = "damage_resolved"; // CS marked damaged item as resolved (legacy)
     } else if (body.status === "damaged") {
       eventType = "marked_damaged";
     } else if (body.status === "received") {
@@ -579,6 +701,13 @@ export async function PATCH(
     if (body.status === "damaged") {
       sendTeamsNotification(restorationId, body.damage_reason).catch((err) => {
         console.error("[RESTORATION API] Teams notification failed:", err);
+      });
+    }
+
+    // Send Teams notification when marked for trash (fire and forget)
+    if (body.mark_for_trash) {
+      sendTeamsTrashNotification(restorationId, current.damage_reason).catch((err) => {
+        console.error("[RESTORATION API] Teams trash notification failed:", err);
       });
     }
 

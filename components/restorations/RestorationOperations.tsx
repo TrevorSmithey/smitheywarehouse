@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, memo } from "react";
-import { RefreshCw, Search, X, AlertTriangle, Plus, Loader2 } from "lucide-react";
+import { RefreshCw, Search, X, AlertTriangle, Plus, Loader2, Trash2 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 
@@ -83,7 +83,7 @@ const LATE_THRESHOLD_DAYS = 21;
 // Memoized card component - prevents re-renders when parent re-renders but props unchanged
 const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const config = STAGE_CONFIG[stage];
-  const days = typeof item.days_in_status === "number" ? item.days_in_status : 0;
+  const daysInStage = typeof item.days_in_status === "number" ? item.days_in_status : 0;
 
   const orderName = item.order_name || item.rma_number || `#${item.id}`;
   // Use tag_numbers array (new) or fall back to magnet_number (legacy)
@@ -94,21 +94,26 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const isInbound = item.status === "in_transit_inbound";
   const isArrived = item.status === "delivered_warehouse";
 
-  // "Late" = 21+ days since warehouse arrival, until shipped
-  // Clock starts at delivered_to_warehouse_at, stops at shipped status
+  // HERO METRIC: Days since Smithey took possession (SLA clock)
+  // POS orders: from order creation (customer walked in)
+  // Regular orders: from warehouse delivery
   const terminalStatuses = ["shipped", "delivered", "cancelled", "damaged"];
   const isTerminal = terminalStatuses.includes(item.status);
 
-  let daysSinceArrival = 0;
-  if (item.delivered_to_warehouse_at && !isTerminal) {
-    const arrivalDate = new Date(item.delivered_to_warehouse_at);
-    daysSinceArrival = Math.floor((Date.now() - arrivalDate.getTime()) / (1000 * 60 * 60 * 24));
+  let daysSincePossession = 0;
+  if (!isTerminal) {
+    const possessionDate = item.is_pos
+      ? item.order_created_at
+      : item.delivered_to_warehouse_at;
+    if (possessionDate) {
+      daysSincePossession = Math.floor((Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24));
+    }
   }
-  const isLate = daysSinceArrival >= LATE_THRESHOLD_DAYS;
+  const isLate = daysSincePossession >= LATE_THRESHOLD_DAYS;
 
-  // Warning: per-stage threshold for visual feedback (amber border)
-  const isPastThreshold = days > config.thresholds.amber;
-  const isWarning = days > config.thresholds.green && !isPastThreshold;
+  // Warning: SLA-based thresholds for visual feedback
+  const isPastThreshold = daysSincePossession > 14; // Over 2 weeks
+  const isWarning = daysSincePossession > 7 && !isPastThreshold; // 1-2 weeks
 
   // Card styling based on priority
   const getCardClasses = () => {
@@ -164,6 +169,11 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
                     Late
                   </span>
                 )}
+                {item.was_damaged && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-amber-500/80 text-amber-100 rounded">
+                    WAS DAMAGED
+                  </span>
+                )}
               </div>
               {/* Tags as secondary */}
               {hasTags && (
@@ -210,6 +220,11 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
                     Late
                   </span>
                 )}
+                {item.was_damaged && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-amber-500/80 text-amber-100 rounded">
+                    WAS DAMAGED
+                  </span>
+                )}
               </div>
               {/* Order name as secondary */}
               <div className="mt-1">
@@ -219,10 +234,19 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
           )}
         </div>
 
-        {/* Right side: Days counter - BIG */}
-        <div className={`text-right shrink-0 ${isLate ? "text-red-300" : isWarning ? "text-amber-400" : "text-text-secondary"}`}>
-          <span className="text-2xl font-black tabular-nums">{days}</span>
-          <span className="text-sm font-medium ml-0.5">d</span>
+        {/* Right side: Days counter */}
+        <div className="text-right shrink-0">
+          {/* Hero: Days since possession (SLA clock) */}
+          <div className={`${isLate ? "text-red-300" : isPastThreshold ? "text-amber-400" : isWarning ? "text-amber-300" : "text-text-primary"}`}>
+            <span className="text-2xl font-black tabular-nums">{daysSincePossession}</span>
+            <span className="text-sm font-medium ml-0.5">d</span>
+          </div>
+          {/* Sub: Days in current stage */}
+          {daysInStage > 0 && (
+            <div className="text-xs text-text-muted tabular-nums">
+              {daysInStage}d in stage
+            </div>
+          )}
         </div>
       </div>
     </button>
@@ -242,7 +266,16 @@ interface ColumnProps {
 function Column({ stage, items, onCardClick }: ColumnProps) {
   const config = STAGE_CONFIG[stage];
 
-  // Sort: in-transit at bottom, then late items first, then by days descending
+  // Helper: Calculate days since possession for an item
+  const getDaysSincePossession = (item: RestorationRecord): number => {
+    const possessionDate = item.is_pos
+      ? item.order_created_at
+      : item.delivered_to_warehouse_at;
+    if (!possessionDate) return 0;
+    return Math.floor((Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  // Sort: in-transit at bottom, then late items first (21+ days), then by days descending
   const sortedItems = [...items].sort((a, b) => {
     // In-transit items always go to the bottom
     const aInTransit = a.status === "in_transit_inbound";
@@ -250,21 +283,20 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
     if (aInTransit && !bInTransit) return 1;
     if (!aInTransit && bInTransit) return -1;
 
-    const aDays = typeof a.days_in_status === "number" ? a.days_in_status : 0;
-    const bDays = typeof b.days_in_status === "number" ? b.days_in_status : 0;
-    const aLate = aDays > config.thresholds.amber;
-    const bLate = bDays > config.thresholds.amber;
+    const aDays = getDaysSincePossession(a);
+    const bDays = getDaysSincePossession(b);
+    const aLate = aDays >= LATE_THRESHOLD_DAYS;
+    const bLate = bDays >= LATE_THRESHOLD_DAYS;
 
     if (aLate && !bLate) return -1;
     if (!aLate && bLate) return 1;
     return bDays - aDays;
   });
 
+  // Count items that are late (21+ days since possession)
   const lateCount = items.filter(i => {
-    // Late flag only applies after delivery to warehouse, not while in transit
     if (i.status === "in_transit_inbound") return false;
-    const days = typeof i.days_in_status === "number" ? i.days_in_status : 0;
-    return days > config.thresholds.amber;
+    return getDaysSincePossession(i) >= LATE_THRESHOLD_DAYS;
   }).length;
 
   return (
@@ -383,6 +415,19 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
         // Sort by days since damaged (oldest first = highest priority)
         const aDays = a.damaged_at ? Date.now() - new Date(a.damaged_at).getTime() : 0;
         const bDays = b.damaged_at ? Date.now() - new Date(b.damaged_at).getTime() : 0;
+        return bDays - aDays;
+      });
+  }, [data?.restorations]);
+
+  // Filter items pending physical disposal (status='pending_trash')
+  const pendingTrashItems = useMemo(() => {
+    if (!data?.restorations) return [];
+    return data.restorations
+      .filter((r) => r.status === "pending_trash")
+      .sort((a, b) => {
+        // Sort by days since marked for trash (oldest first)
+        const aDays = a.trashed_at ? Date.now() - new Date(a.trashed_at).getTime() : 0;
+        const bDays = b.trashed_at ? Date.now() - new Date(b.trashed_at).getTime() : 0;
         return bDays - aDays;
       });
   }, [data?.restorations]);
@@ -672,6 +717,78 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
           onCardClick={onCardClick}
         />
       </div>
+
+      {/* Trash Bin - Items pending physical disposal confirmation */}
+      {pendingTrashItems.length > 0 && (
+        <div className="mx-2 mt-6 bg-bg-secondary rounded-xl border-2 border-slate-500/30">
+          <div className="px-5 py-4 border-b border-slate-500/20 flex items-center gap-3">
+            <Trash2 className="w-5 h-5 text-slate-400" />
+            <h2 className="text-lg font-bold text-slate-400 tracking-tight">
+              TRASH BIN — PENDING DISPOSAL
+            </h2>
+            <span className="px-2 py-0.5 text-sm font-bold bg-slate-500/20 text-slate-300 rounded">
+              {pendingTrashItems.length}
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border/20 bg-bg-tertiary/50">
+                  <th className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Order
+                  </th>
+                  <th className="py-3 px-4 text-left text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Original Damage Reason
+                  </th>
+                  <th className="py-3 px-4 text-center text-xs font-semibold uppercase tracking-wider text-text-muted">
+                    Days Pending
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingTrashItems.map((item) => {
+                  const orderName = item.order_name || item.rma_number || `#${item.id}`;
+                  const daysPending = item.trashed_at
+                    ? Math.floor((Date.now() - new Date(item.trashed_at).getTime()) / (1000 * 60 * 60 * 24))
+                    : 0;
+
+                  // Format damage reason for display
+                  const reasonLabel = item.damage_reason
+                    ? item.damage_reason
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c) => c.toUpperCase())
+                    : "Unknown";
+
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={() => onCardClick(item)}
+                      className="border-b border-border-subtle hover:bg-white/[0.02] transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4">
+                        <span className="text-sm font-semibold text-accent-blue">
+                          {orderName}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-1 text-xs font-medium rounded bg-slate-500/20 text-slate-300">
+                          {reasonLabel}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`text-lg font-bold tabular-nums ${daysPending > 3 ? "text-amber-400" : "text-text-secondary"}`}>
+                          {daysPending}d
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
