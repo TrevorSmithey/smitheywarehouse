@@ -43,11 +43,18 @@ claude/<task-description>-<session-id>
 3. Push to the feature branch
 4. Human reviews and merges (or Claude creates PR if requested)
 
-### Before Every Commit
+### Before Every Commit (REQUIRED)
 
 ```bash
-npm run build && npm run lint   # Both must pass
+npm run build && npm run lint   # Both MUST pass
 ```
+
+**Claude Code validation rules:**
+1. **Always run build + lint** before committing code changes
+2. **If build/lint can't run** (e.g., no `node_modules`): State this explicitly in the commit message or tell the human
+3. **For logic changes**: Trace through the code path and explain why it's correct
+4. **For UI changes**: Describe what the human should visually verify
+5. **Never assume** — if you can't verify, say so
 
 ### Commit Style
 
