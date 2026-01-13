@@ -158,6 +158,75 @@ When data looks wrong, don't read code — observe the system:
 
 ---
 
+## Lessons from Git History (51% of commits are fixes)
+
+These patterns caused real bugs. Learn from them.
+
+### Pattern A: Data Filtering Edge Cases
+
+Many bugs came from not filtering edge cases:
+
+```typescript
+// BUG: $0 invoices counted as real orders (skewed metrics)
+// FIX: WHERE foreign_total > 0
+
+// BUG: Customers with 0 orders included in health metrics
+// FIX: WHERE lifetime_orders > 0
+
+// BUG: Corporate customers inconsistently excluded
+// FIX: Always check is_corporate_gifting OR category='Corporate' OR category='4'
+
+// BUG: Inactive customers included
+// FIX: WHERE is_inactive = false
+```
+
+**Rule: When querying customer/transaction data, always consider:**
+- Zero-dollar transactions (credits, adjustments)
+- Customers with no orders
+- Corporate vs standard B2B
+- Active vs inactive status
+
+### Pattern B: Cross-View Inconsistency
+
+Same metric showing different numbers on different pages:
+
+```
+Door Health: 121 churned customers
+Wholesale: 65 churned customers
+← Same time period, same data source, different filters!
+```
+
+**Rule: Same metric = same calculation.** If two views show "churned customers":
+- Use the same SQL/function
+- Apply the same filters
+- If they must differ, name them differently (`churned_all` vs `churned_active`)
+
+### Pattern C: Missing Auth Headers
+
+```typescript
+// BUG: Fetch without auth headers → 401 → silent fallback to defaults
+const res = await fetch("/api/config");
+
+// FIX: Always include auth headers
+const res = await fetch("/api/config", {
+  headers: getAuthHeaders()
+});
+```
+
+### Pattern D: Conditional Critical Paths
+
+```typescript
+// BUG: compute_customer_metrics() wrapped in condition
+// Result: Never ran when stoppedEarly=true (most runs!)
+if (!stoppedEarly) {
+  await supabase.rpc("compute_customer_metrics");
+}
+```
+
+**Rule: If an operation is critical, it runs unconditionally.**
+
+---
+
 ## Architecture
 
 ### Data Flow
