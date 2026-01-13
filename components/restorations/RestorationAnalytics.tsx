@@ -476,19 +476,21 @@ export function RestorationAnalytics({ data, loading, onRefresh, onItemClick, da
 
   // Compute damaged items by month for trend chart overlay
   // Includes all items that were ever damaged (current, continued, trashed)
+  // MUST use same filter as damageData.items to avoid count discrepancy
   const damagedByMonth = useMemo(() => {
     const byMonth: Record<string, number> = {};
     restorations
       .filter((r) =>
-        r.damaged_at && (
-          r.status === "damaged" ||
-          r.was_damaged === true ||
-          r.status === "pending_trash" ||
-          r.status === "trashed"
-        )
+        r.status === "damaged" ||
+        r.was_damaged === true ||
+        r.status === "pending_trash" ||
+        r.status === "trashed"
       )
       .forEach((r) => {
-        const month = r.damaged_at!.substring(0, 7); // YYYY-MM format
+        // Use damaged_at if available, fallback to received_at or order_created_at
+        const dateStr = r.damaged_at || r.received_at || r.order_created_at;
+        if (!dateStr) return; // Skip items with no usable date (should be rare)
+        const month = dateStr.substring(0, 7); // YYYY-MM format
         byMonth[month] = (byMonth[month] || 0) + 1;
       });
     return byMonth;
