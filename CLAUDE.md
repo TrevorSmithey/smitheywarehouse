@@ -290,6 +290,160 @@ const normalizedSku = rawSku.toUpperCase();
 
 **Rule: Always normalize SKUs to uppercase before comparison or storage.**
 
+### Pattern H: NetSuite Type Coercion (5+ historical bugs)
+
+NetSuite's SuiteQL API returns all numbers as strings in JSON responses. This breaks Set/Map lookups and comparisons.
+
+```typescript
+// BUG: Set.has() fails - comparing string "152858" to number 152858
+const existingIds = new Set(dbRecords.map(r => r.id)); // numbers
+const newRecord = nsResponse[0]; // { id: "152858" } - string!
+if (existingIds.has(newRecord.id)) { ... } // Always false!
+
+// FIX: Convert to Number() immediately after fetching
+const customers = nsResponse.map(c => ({
+  ...c,
+  id: Number(c.id),
+  parent_id: c.parent_id ? Number(c.parent_id) : null,
+}));
+```
+
+**Rule: Always convert NetSuite numeric fields with `Number()` before any comparison or storage.**
+
+### Pattern I: NetSuite Pagination (3+ historical bugs)
+
+SuiteQL completely ignores OFFSET clauses. Using OFFSET causes infinite loops returning the same records.
+
+```typescript
+// BUG: OFFSET ignored — fetches same 1000 records forever
+let offset = 0;
+while (true) {
+  const batch = await fetchCustomers(offset, 1000);
+  offset += 1000; // SuiteQL ignores this!
+}
+
+// FIX: Cursor-based pagination using WHERE id > lastId
+let lastId = 0;
+while (true) {
+  const batch = await fetchCustomers(lastId, 1000);
+  if (batch.length === 0) break;
+  lastId = Math.max(...batch.map(r => r.id));
+}
+```
+
+**Rule: NetSuite syncs MUST use cursor-based pagination (`WHERE id > :lastId`), never OFFSET.**
+
+### Pattern J: Foreign Key Timing in Syncs (4+ historical bugs)
+
+Child records (line items) may reference parent records (transactions) that haven't synced yet, causing FK violations.
+
+```typescript
+// BUG: Entire batch fails if one FK is missing
+const { error } = await supabase.from("line_items").upsert(batch);
+// error: "violates foreign key constraint" — 999 good records lost!
+
+// FIX: Graceful degradation - save what you can
+const { error } = await supabase.from("line_items").upsert(batch);
+if (error?.code === "23503") { // FK violation
+  // Fall back to individual inserts, skip failures
+  for (const item of batch) {
+    await supabase.from("line_items").upsert(item).catch(() => {});
+  }
+}
+```
+
+**Rule: Multi-table syncs must handle FK violations gracefully. Never let one bad record kill the batch.**
+
+### Pattern K: Partial Data Today (8+ historical bugs)
+
+Charts showing "today" are misleading because the day isn't complete. YoY comparisons become unfair.
+
+```typescript
+// BUG: Today shows 50% of yesterday's value (day is half over)
+const dailyData = data.filter(d => d.date <= today);
+
+// FIX: Exclude today, show only completed days
+const yesterday = new Date();
+yesterday.setDate(yesterday.getDate() - 1);
+const dailyData = data.filter(d => d.date <= yesterday.toISOString().split("T")[0]);
+```
+
+```typescript
+// BUG: Cumulative chart shows current year losing because today is partial
+// FIX: Both years stop at same completed day
+const lastCompleteDay = Math.min(currentYearLastDay, priorYearLastDay);
+```
+
+**Rule: Daily metrics exclude today. Cumulative YoY comparisons use same day count for both years.**
+
+### Pattern L: External API Rate Limiting (3+ historical bugs)
+
+External APIs (Klaviyo, Meta, Google Ads) return 429 with retry-after headers. Ignoring them causes sync failures.
+
+```typescript
+// BUG: Retry immediately, get banned
+while (hasMore) {
+  const res = await fetch(url);
+  if (res.status === 429) continue; // Hammering the API!
+}
+
+// FIX: Respect retry-after header
+if (res.status === 429) {
+  const retryAfter = parseInt(res.headers.get("retry-after") || "60");
+  console.log(`[Klaviyo] Rate limited, waiting ${retryAfter}s`);
+  await new Promise(r => setTimeout(r, retryAfter * 1000));
+  continue;
+}
+```
+
+**Rule: Always check for 429 responses and respect `retry-after` headers.**
+
+### Pattern M: Cron Slot Limits (5+ historical bugs)
+
+Vercel has a **20 cron job limit**. Adding new crons without checking causes silent failures.
+
+```bash
+# Before adding ANY new cron:
+grep -c '"path":' vercel.json  # Must be < 20
+```
+
+```typescript
+// Pattern: Consolidate related syncs into one cron
+// BEFORE: 3 separate crons
+// sync-abandoned-checkouts (daily)
+// sync-lead-conversions (daily)
+// sync-daily-stats (daily)
+
+// AFTER: 1 consolidated cron
+// daily-snapshot (runs all three)
+```
+
+**Rule: Check `vercel.json` cron count before adding. Consolidate related syncs.**
+
+### Pattern N: Split Shipments / Deduplication (4+ historical bugs)
+
+One order can have multiple shipments. One customer can appear in multiple syncs. Always dedupe.
+
+```typescript
+// BUG: Order interval calculation counts each shipment as separate order
+const intervals = transactions.map((t, i) => /* ... */);
+// Customer with 1 order split into 3 shipments shows interval of 0 days!
+
+// FIX: Dedupe by order number first
+const uniqueOrders = [...new Map(transactions.map(t => [t.order_number, t])).values()];
+```
+
+```typescript
+// BUG: Restoration sync processes same order multiple times
+orders.forEach(order => processRestoration(order));
+
+// FIX: Dedupe before processing
+const uniqueOrders = [...new Map(orders.map(o => [o.id, o])).values()];
+uniqueOrders.forEach(order => processRestoration(order));
+```
+
+**Rule: Any data that can have duplicates (syncs, multi-shipment orders) must be deduped before processing.**
+
 ---
 
 ## Architecture
