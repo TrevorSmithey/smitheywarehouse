@@ -103,11 +103,6 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
     (item) => item.sku && item.sku.toLowerCase().includes("-rest-")
   );
 
-  // Auto-create restoration tracking record for restoration orders
-  if (isRestoration) {
-    await ensureRestorationRecord(supabase, order, fulfilledAt);
-  }
-
   // Determine if this is the customer's first order
   // Shopify sometimes doesn't send orders_count in the webhook payload
   // If missing, check our database to see if we've seen this customer before
@@ -173,6 +168,12 @@ async function upsertOrder(supabase: ReturnType<typeof createServiceClient>, ord
   if (orderError) {
     console.error("Error upserting order:", orderError);
     throw orderError;
+  }
+
+  // Auto-create restoration tracking record for restoration orders
+  // MUST happen AFTER order upsert to satisfy FK constraint (Pattern J)
+  if (isRestoration) {
+    await ensureRestorationRecord(supabase, order, fulfilledAt);
   }
 
   // Upsert line items
