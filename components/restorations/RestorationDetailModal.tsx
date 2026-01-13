@@ -932,19 +932,6 @@ export function RestorationDetailModal({
                 POS
               </span>
             )}
-            {/* Local Pickup Toggle - tappable badge to toggle pickup vs ship */}
-            <button
-              onClick={handleToggleLocalPickup}
-              disabled={togglingPickup}
-              aria-label={localPickup ? "Local pickup enabled - tap to switch to ship back" : "Ship back enabled - tap to switch to local pickup"}
-              className={`text-[10px] px-2 py-1 rounded font-semibold transition-all min-h-[28px] active:scale-95 ${
-                localPickup
-                  ? "bg-amber-500/30 text-amber-300 hover:bg-amber-500/40"
-                  : "bg-slate-500/20 text-slate-400 hover:bg-slate-500/30"
-              } ${togglingPickup ? "opacity-50 cursor-wait" : ""}`}
-            >
-              {togglingPickup ? "..." : localPickup ? "LOCAL PICKUP" : "SHIP BACK"}
-            </button>
           </div>
           {/* Close Button - 44px touch target */}
           <button
@@ -1244,6 +1231,34 @@ export function RestorationDetailModal({
                     resize-none transition-colors min-h-[88px]"
                 />
               </div>
+
+              {/* Local Pickup Toggle - Override for customers picking up at warehouse */}
+              <button
+                onClick={handleToggleLocalPickup}
+                disabled={togglingPickup}
+                aria-pressed={localPickup ?? false}
+                aria-label={localPickup ? "Local pickup enabled - tap to disable" : "Enable local pickup"}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all min-h-[52px] active:scale-[0.99] ${
+                  localPickup
+                    ? "bg-amber-500/15 border-amber-500/50 hover:bg-amber-500/20"
+                    : "bg-bg-secondary border-border hover:border-border-hover"
+                } ${togglingPickup ? "opacity-50 cursor-wait" : ""}`}
+              >
+                <div className="flex items-center gap-3">
+                  <Package className={`w-5 h-5 ${localPickup ? "text-amber-400" : "text-text-muted"}`} />
+                  <span className={`text-sm font-medium ${localPickup ? "text-amber-300" : "text-text-secondary"}`}>
+                    Local Pickup
+                  </span>
+                </div>
+                {/* Toggle Switch */}
+                <div className={`relative w-11 h-6 rounded-full transition-colors ${
+                  localPickup ? "bg-amber-500" : "bg-bg-tertiary"
+                }`}>
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                    localPickup ? "translate-x-6" : "translate-x-1"
+                  }`} />
+                </div>
+              </button>
 
               {/* Timeline - Compact Horizontal Stepper */}
               {(() => {
