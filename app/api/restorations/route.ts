@@ -95,6 +95,8 @@ export interface RestorationRecord {
   damage_reason: string | null; // Reason for damage: damaged_upon_arrival, damaged_internal, lost
   resolved_at: string | null; // When CS marked damaged item as resolved (NULL = needs CS attention)
   is_pos: boolean;
+  local_pickup: boolean | null; // If TRUE, customer picks up restored item (no return shipping)
+  source: string | null; // How restoration was created: aftership, shopify_webhook, manual, sync
   notes: string | null;
   photos: string[];
   archived_at: string | null; // When set, hidden from ops board
@@ -284,6 +286,8 @@ export async function GET(request: NextRequest) {
         damage_reason,
         resolved_at,
         is_pos,
+        local_pickup,
+        source,
         notes,
         photos,
         archived_at,
@@ -397,6 +401,8 @@ export async function GET(request: NextRequest) {
         damage_reason: r.damage_reason,
         resolved_at: r.resolved_at,
         is_pos: r.is_pos || false,
+        local_pickup: r.local_pickup ?? null,
+        source: r.source || null,
         notes: r.notes,
         photos: r.photos || [],
         archived_at: r.archived_at,
@@ -739,5 +745,171 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[RESTORATIONS API] Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+// ============================================================================
+// POST - Manual Restoration Creation
+// ============================================================================
+// Creates a restoration record for an existing Shopify order that was
+// dropped off in person (walk-in). The item is already at the warehouse,
+// so we start at status "delivered_warehouse".
+// ============================================================================
+
+interface ManualCreateBody {
+  order_number: string; // Shopify order name (e.g., "S372281" or "#S372281")
+}
+
+export async function POST(request: NextRequest) {
+  // Auth check - requires admin session
+  const { error: authError } = await requireAuth(request);
+  if (authError) return authError;
+
+  try {
+    const supabase = createServiceClient();
+    const body: ManualCreateBody = await request.json();
+
+    // Validate order_number is provided
+    if (!body.order_number || typeof body.order_number !== "string") {
+      return NextResponse.json(
+        { error: "order_number is required" },
+        { status: 400 }
+      );
+    }
+
+    // Normalize order number - remove # prefix if present, ensure S prefix
+    let orderName = body.order_number.trim().replace(/^#/, "");
+    if (!orderName.startsWith("S") && !orderName.startsWith("s")) {
+      orderName = "S" + orderName;
+    }
+    // Normalize to uppercase S prefix
+    orderName = orderName.replace(/^s/, "S");
+    // Format as #S123456 for database lookup
+    const formattedOrderName = "#" + orderName;
+
+    // Look up the order in the orders table
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("id, order_name, source_name, created_at, canceled, archived")
+      .eq("order_name", formattedOrderName)
+      .maybeSingle();
+
+    if (orderError) {
+      console.error("[RESTORATIONS POST] Order lookup error:", orderError);
+      return NextResponse.json(
+        { error: "Failed to look up order" },
+        { status: 500 }
+      );
+    }
+
+    if (!order) {
+      return NextResponse.json(
+        { error: `Order ${orderName} not found` },
+        { status: 404 }
+      );
+    }
+
+    // Validate order status
+    if (order.canceled) {
+      return NextResponse.json(
+        { error: `Order ${orderName} is cancelled` },
+        { status: 400 }
+      );
+    }
+
+    if (order.archived) {
+      return NextResponse.json(
+        { error: `Order ${orderName} is archived` },
+        { status: 400 }
+      );
+    }
+
+    // Check if restoration already exists for this order
+    const { data: existing, error: existingError } = await supabase
+      .from("restorations")
+      .select("id, status")
+      .eq("order_id", order.id)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("[RESTORATIONS POST] Existing check error:", existingError);
+      return NextResponse.json(
+        { error: "Failed to check for existing restoration" },
+        { status: 500 }
+      );
+    }
+
+    if (existing) {
+      return NextResponse.json(
+        { error: `Restoration already exists for ${orderName} (status: ${existing.status})` },
+        { status: 409 }
+      );
+    }
+
+    // Determine if this is a POS order
+    const isPOS = order.source_name === "pos";
+
+    // Create the restoration record
+    // - Status: delivered_warehouse (item is already physically here)
+    // - is_pos: based on Shopify source_name
+    // - local_pickup: defaults to is_pos (POS customers likely pick up)
+    // - source: 'manual' to track how it was created
+    const now = new Date().toISOString();
+    const { data: newRestoration, error: createError } = await supabase
+      .from("restorations")
+      .insert({
+        order_id: order.id,
+        status: "delivered_warehouse",
+        is_pos: isPOS,
+        local_pickup: isPOS, // Default: POS orders are local pickup
+        source: "manual",
+        delivered_to_warehouse_at: now, // Item is here now
+        created_at: now,
+        updated_at: now,
+      })
+      .select("id")
+      .single();
+
+    if (createError) {
+      console.error("[RESTORATIONS POST] Create error:", createError);
+      return NextResponse.json(
+        { error: "Failed to create restoration" },
+        { status: 500 }
+      );
+    }
+
+    // Log the manual creation event
+    await supabase.from("restoration_events").insert({
+      restoration_id: newRestoration.id,
+      event_type: "manual_creation",
+      event_timestamp: now,
+      event_data: {
+        order_name: order.order_name,
+        order_id: order.id,
+        is_pos: isPOS,
+        local_pickup: isPOS,
+        source: "manual",
+        created_via: "operations_board",
+      },
+      source: "manual",
+      created_by: "system",
+    });
+
+    console.log(`[RESTORATIONS POST] Created restoration for ${orderName} (id: ${newRestoration.id})`);
+
+    return NextResponse.json({
+      success: true,
+      restoration_id: newRestoration.id,
+      order_name: order.order_name,
+      status: "delivered_warehouse",
+      is_pos: isPOS,
+      local_pickup: isPOS,
+    });
+  } catch (error) {
+    console.error("[RESTORATIONS POST] Error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

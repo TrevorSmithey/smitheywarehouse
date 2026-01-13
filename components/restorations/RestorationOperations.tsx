@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, memo } from "react";
-import { RefreshCw, Search, X, AlertTriangle } from "lucide-react";
+import { RefreshCw, Search, X, AlertTriangle, Plus, Loader2 } from "lucide-react";
+import { getAuthHeaders } from "@/lib/auth";
 import type { RestorationResponse, RestorationRecord } from "@/app/api/restorations/route";
 
 interface RestorationOperationsProps {
@@ -153,6 +154,11 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
                     POS
                   </span>
                 )}
+                {item.local_pickup && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-amber-500/80 text-white rounded">
+                    PICKUP
+                  </span>
+                )}
                 {isLate && (
                   <span className="shrink-0 text-xs font-black px-2 py-0.5 bg-red-500 text-white rounded uppercase">
                     Late
@@ -192,6 +198,11 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
                 {item.is_pos && (
                   <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-teal-500/80 text-white rounded">
                     POS
+                  </span>
+                )}
+                {item.local_pickup && (
+                  <span className="shrink-0 text-xs font-bold px-2 py-0.5 bg-amber-500/80 text-white rounded">
+                    PICKUP
                   </span>
                 )}
                 {isLate && (
@@ -307,6 +318,11 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
 
 export function RestorationOperations({ data, loading, onRefresh, onCardClick }: RestorationOperationsProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  // Add order modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addOrderNumber, setAddOrderNumber] = useState("");
+  const [addingOrder, setAddingOrder] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   // Filter to active pipeline items
   const pipelineItems = useMemo(() => {
@@ -371,6 +387,40 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
       });
   }, [data?.restorations]);
 
+  // Handler: Add order manually
+  const handleAddOrder = async () => {
+    if (!addOrderNumber.trim() || addingOrder) return;
+
+    setAddingOrder(true);
+    setAddError(null);
+
+    try {
+      const res = await fetch("/api/restorations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ order_number: addOrderNumber.trim() }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        setAddError(result.error || "Failed to add order");
+        return;
+      }
+
+      // Success - close modal and refresh
+      setShowAddModal(false);
+      setAddOrderNumber("");
+      setAddError(null);
+      onRefresh();
+    } catch (error) {
+      console.error("Error adding order:", error);
+      setAddError("Failed to add order. Please try again.");
+    } finally {
+      setAddingOrder(false);
+    }
+  };
+
   // Loading state
   if (loading && !data) {
     return (
@@ -429,8 +479,100 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
           >
             <RefreshCw className={`w-5 h-5 text-text-secondary ${loading ? "animate-spin" : ""}`} />
           </button>
+
+          {/* Add Order Button - small, tucked away for manual drop-offs */}
+          <button
+            onClick={() => {
+              setShowAddModal(true);
+              setAddOrderNumber("");
+              setAddError(null);
+            }}
+            className="p-2.5 rounded-lg bg-bg-secondary hover:bg-border transition-colors border border-border/50"
+            aria-label="Add order manually"
+            title="Add walk-in drop-off"
+          >
+            <Plus className="w-5 h-5 text-text-secondary" />
+          </button>
         </div>
       </div>
+
+      {/* Add Order Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              if (!addingOrder) {
+                setShowAddModal(false);
+                setAddOrderNumber("");
+                setAddError(null);
+              }
+            }}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-bg-primary border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+            <h2 className="text-lg font-bold text-white mb-4">Add Walk-In Drop-Off</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                  Shopify Order Number
+                </label>
+                <input
+                  type="text"
+                  value={addOrderNumber}
+                  onChange={(e) => setAddOrderNumber(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !addingOrder) {
+                      handleAddOrder();
+                    }
+                  }}
+                  placeholder="e.g., S372281"
+                  autoFocus
+                  disabled={addingOrder}
+                  className="w-full px-4 py-3 rounded-lg bg-bg-secondary border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue transition-colors disabled:opacity-50"
+                />
+              </div>
+
+              {addError && (
+                <div className="text-sm text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">
+                  {addError}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setAddOrderNumber("");
+                    setAddError(null);
+                  }}
+                  disabled={addingOrder}
+                  className="flex-1 px-4 py-3 rounded-lg bg-bg-secondary text-text-secondary hover:bg-border transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddOrder}
+                  disabled={addingOrder || !addOrderNumber.trim()}
+                  className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {addingOrder ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add to Queue"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Damaged Items Table - CS Action Queue (TOP OF PAGE - urgent items) */}
       {unresolvedDamagedItems.length > 0 && (

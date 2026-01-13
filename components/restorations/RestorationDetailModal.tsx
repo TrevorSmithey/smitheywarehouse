@@ -330,6 +330,9 @@ export function RestorationDetailModal({
   const [damageConfirmed, setDamageConfirmed] = useState(false);
   // Resolve damaged item state
   const [resolving, setResolving] = useState(false);
+  // Local pickup toggle state
+  const [localPickup, setLocalPickup] = useState<boolean | null>(null);
+  const [togglingPickup, setTogglingPickup] = useState(false);
 
   // Refs for async operation safety
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -380,6 +383,7 @@ export function RestorationDetailModal({
       setSelectedDamageReason("");
       setDamageConfirmed(false);
       setLoadedImages(new Set()); // Reset loaded images tracking
+      setLocalPickup(restoration.local_pickup ?? null);
     }
   }, [restoration]);
 
@@ -568,6 +572,40 @@ export function RestorationDetailModal({
 
     // All retries failed - log but don't alert user (storage cleanup isn't critical to their workflow)
     console.error(`Failed to delete photo from storage after ${maxRetries} attempts: ${filePath}`);
+  };
+
+  // Toggle local pickup flag
+  const handleToggleLocalPickup = async () => {
+    if (!restoration || togglingPickup) return;
+
+    const newValue = !localPickup;
+    setTogglingPickup(true);
+    // Optimistic update
+    setLocalPickup(newValue);
+
+    try {
+      const res = await fetch(`/api/restorations/${restoration.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ local_pickup: newValue }),
+      });
+
+      if (!res.ok) {
+        // Revert on failure
+        setLocalPickup(!newValue);
+        throw new Error("Failed to update local pickup");
+      }
+
+      // Refresh parent data to sync state
+      onSave();
+    } catch (error) {
+      console.error("Error toggling local pickup:", error);
+      alert("Failed to update pickup setting. Please try again.");
+    } finally {
+      if (isMountedRef.current) {
+        setTogglingPickup(false);
+      }
+    }
   };
 
   // Save changes without advancing status
@@ -894,6 +932,19 @@ export function RestorationDetailModal({
                 POS
               </span>
             )}
+            {/* Local Pickup Toggle - tappable badge to toggle pickup vs ship */}
+            <button
+              onClick={handleToggleLocalPickup}
+              disabled={togglingPickup}
+              aria-label={localPickup ? "Local pickup enabled - tap to switch to ship back" : "Ship back enabled - tap to switch to local pickup"}
+              className={`text-[10px] px-2 py-1 rounded font-semibold transition-all min-h-[28px] active:scale-95 ${
+                localPickup
+                  ? "bg-amber-500/30 text-amber-300 hover:bg-amber-500/40"
+                  : "bg-slate-500/20 text-slate-400 hover:bg-slate-500/30"
+              } ${togglingPickup ? "opacity-50 cursor-wait" : ""}`}
+            >
+              {togglingPickup ? "..." : localPickup ? "LOCAL PICKUP" : "SHIP BACK"}
+            </button>
           </div>
           {/* Close Button - 44px touch target */}
           <button

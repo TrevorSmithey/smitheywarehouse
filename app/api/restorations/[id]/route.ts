@@ -104,6 +104,7 @@ interface UpdateBody {
   cancellation_reason?: string;
   damage_reason?: string; // For damaged status: damaged_upon_arrival, damaged_internal, lost
   resolved_at?: string; // When CS marks a damaged item as resolved (customer contacted, handled)
+  local_pickup?: boolean; // If true, customer will pick up restored item (no return shipping)
 }
 
 // Supabase project ID for URL validation
@@ -477,6 +478,17 @@ export async function PATCH(
       }
     }
 
+    // Handle local_pickup toggle (customer picks up vs ship back)
+    if (body.local_pickup !== undefined) {
+      if (typeof body.local_pickup !== "boolean") {
+        return NextResponse.json(
+          { error: "local_pickup must be a boolean" },
+          { status: 400 }
+        );
+      }
+      update.local_pickup = body.local_pickup;
+    }
+
     // Perform update with optimistic locking on status
     // This prevents race conditions where two concurrent requests try to change status simultaneously
     const { data: updated, error: updateError } = await supabase
@@ -522,6 +534,9 @@ export async function PATCH(
     }
     if (body.resolved_at !== undefined) {
       eventData.resolved_at = body.resolved_at;
+    }
+    if (body.local_pickup !== undefined) {
+      eventData.local_pickup = body.local_pickup;
     }
 
     // Determine event type based on what changed
