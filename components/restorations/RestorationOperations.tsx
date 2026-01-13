@@ -398,12 +398,17 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
 
   // Counts
   const totalActive = pipelineItems.length;
+  // Late = 21+ days since Smithey took possession (same calculation as column badges)
   const totalLate = pipelineItems.filter((r) => {
-    // Late flag only applies after delivery to warehouse, not while in transit
+    // In-transit items excluded - we can't control carrier speed
     if (r.status === "in_transit_inbound") return false;
-    const stage = getStageForStatus(r.status);
-    const config = stage ? STAGE_CONFIG[stage] : null;
-    return config && r.days_in_status > config.thresholds.amber;
+    // Calculate days since possession (POS: order creation, Regular: warehouse delivery)
+    const possessionDate = r.is_pos ? r.order_created_at : r.delivered_to_warehouse_at;
+    if (!possessionDate) return false;
+    const daysSincePossession = Math.floor(
+      (Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return daysSincePossession >= LATE_THRESHOLD_DAYS;
   }).length;
 
   // Filter unresolved damaged items (status='damaged' AND resolved_at IS NULL)
