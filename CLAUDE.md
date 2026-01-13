@@ -6,131 +6,171 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run dev          # http://localhost:3000
-npm run build        # Production build (MUST pass before commit)
+npm run build        # MUST pass before commit (type checks)
 npm run lint         # ESLint
 ```
 
 No tests. Quality gates: TypeScript strict + ESLint + successful build.
 
-## The Stack
+## Stack
 
-Next.js 14 (App Router) · React 19 · TypeScript 5 · Supabase · Tailwind 4 · Vercel
+Next.js 14 (App Router) · React 19 · TypeScript 5 (strict) · Supabase · Tailwind 4 · Vercel
 
-Path alias: `@/*` → project root (e.g., `@/lib/types`, `@/components/...`)
+Path alias: `@/*` → project root
+
+---
+
+## Git Workflow
+
+**This is a single-developer internal tool. Commits go directly to main.**
+
+### Before Every Commit
+
+```bash
+npm run build && npm run lint   # Both must pass
+```
+
+### Commit Style
+
+Mixed style is acceptable. Examples from this repo:
+- `feat(restorations): Add Teams notification on damage`
+- `fix: modal backdrop close requires single click`
+- `Add type guards and developer logging to eliminate silent auth failures`
+
+### Before Switching Context
+
+```bash
+git status                              # ALWAYS check first
+git stash save "WIP: what I was doing"  # If uncommitted changes
+```
 
 ---
 
 ## Safety Rules
 
-These prevent expensive mistakes. Follow them always.
-
 ### 1. "Clear the view" ≠ Delete from database
 
 When asked to "clear", "clean up", or "hide" data:
-- **Default assumption**: Filter the UI (add WHERE clause)
-- **Before ANY delete**: Show `SELECT COUNT(*)` and ask for explicit confirmation
-- **Prefer soft delete**: Add `is_archived` flag, not `DELETE FROM`
+- **Assume they mean filter the UI** (add WHERE clause)
+- Before ANY delete: `SELECT COUNT(*)` and ask for confirmation
+- Prefer soft delete: `is_archived` flag
 
-### 2. Check git status before switching context
-
-```bash
-git status                              # ALWAYS run first
-git stash save "WIP: what I was doing"  # If changes exist
-```
-
-### 3. API failures must be visible
+### 2. API failures must be visible
 
 ```typescript
-// WRONG: silent fallback
+// WRONG - silent fallback
 if (res.ok) setData(await res.json());
 
-// RIGHT: visible failure
+// RIGHT - visible failure
 if (!res.ok) throw new Error(`API failed: ${res.status}`);
-setData(await res.json());
 ```
 
-### 4. Critical operations always run
+### 3. Critical operations always run
 
 ```typescript
-// WRONG: conditional critical path
+// WRONG - conditional critical path
 if (condition) await computeMetrics();
 
-// RIGHT: always run, log outcome
+// RIGHT - always run, log outcome
 const { error } = await computeMetrics();
 console.log(error ? `Failed: ${error}` : "Success");
 ```
 
-### 5. Build must pass before commit
+---
 
-```bash
-npm run build && npm run lint  # Both must succeed
+## Architecture
+
+### Data Flow
+
 ```
+External APIs → Cron Jobs (vercel.json) → Supabase → API Routes → React
+```
+
+### Dashboards
+
+| Area | Route | API | Component |
+|------|-------|-----|-----------|
+| Inventory | `/inventory` | `/api/inventory` | `InventoryDashboard.tsx` |
+| Fulfillment | `/fulfillment` | `/api/metrics` | `FulfillmentDashboard.tsx` |
+| Production | `/production` | `/api/assembly` | `AssemblyDashboard.tsx` |
+| Prod Planning | `/production-planning` | `/api/production-planning` | `ProductionPlanningDashboardV2.tsx` |
+| Restoration | `/restoration` | `/api/restorations` | `RestorationOperations.tsx` |
+| Sales (B2B) | `/sales` | `/api/wholesale` | `WholesaleDashboard.tsx` |
+| Door Health | `/sales/door-health` | `/api/door-health` | `DoorHealthDashboard.tsx` |
+| Leads | `/sales/leads` | `/api/leads` | `LeadsDashboard.tsx` |
+| Marketing | `/marketing` | `/api/klaviyo` | `KlaviyoDashboard.tsx` |
+| Paid Media | `/marketing/paid` | `/api/ads` | `PaidMediaDashboard.tsx` |
+| VOC | `/voc` | `/api/tickets` | `VoiceOfCustomerDashboard.tsx` |
+| Budget | `/budget` | `/api/budget` | `BudgetDashboard.tsx` |
+| Revenue | `/revenue-tracker` | `/api/revenue-tracker` | `RevenueTrackerDashboard.tsx` |
+| Ecommerce | `/ecommerce` | `/api/analytics` | `EcommerceAnalyticsDashboard.tsx` |
+| Q4 Pace | `/holiday` | `/api/holiday` | `HolidayDashboard.tsx` |
+| P&L | `/pl` | `/api/pl` | page component |
+
+### External Integrations
+
+| Source | Tables | Cron | Client |
+|--------|--------|------|--------|
+| Shopify | `orders`, `line_items` | `high-frequency-sync` (15m) | `lib/shopify.ts` |
+| ShipHero | `shiphero_inventory` | `high-frequency-sync` (15m) | `lib/shiphero.ts` |
+| NetSuite | `ns_wholesale_customers`, `ns_transactions`, `ns_line_items` | `sync-netsuite-*` (daily 6am) | `lib/netsuite.ts` |
+| Klaviyo | `klaviyo_campaigns`, `klaviyo_flows` | `sync-klaviyo` (daily) | `lib/klaviyo.ts` |
+| Meta Ads | `meta_campaigns`, `ad_daily_stats` | `sync-meta` (daily) | `lib/meta.ts` |
+| Google Ads | `google_campaigns`, `ad_daily_stats` | `sync-google-ads` (daily) | `lib/google-ads.ts` |
+| AfterShip | `restorations` | `sync-aftership-returns` | `lib/aftership.ts` |
+| Re:amaze | `support_tickets` | `sync-reamaze` | `lib/reamaze.ts` |
+| Typeform | `typeform_leads` | webhook | — |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `lib/types.ts` | All TypeScript interfaces (1,800+ lines) |
+| `lib/auth/permissions.ts` | Role definitions, tab access rules |
+| `lib/auth/session.ts` | localStorage session management |
+| `lib/auth/server.ts` | Server-side auth verification |
+| `app/globals.css` | Design system CSS variables |
+| `vercel.json` | Cron schedules + function timeouts |
+| `supabase/migrations/` | 47 database migrations |
 
 ---
 
-## Where Things Live
+## Auth System
 
-### By Concern
+### Session Model
+- **Storage**: localStorage (`smithey_warehouse_auth`)
+- **Duration**: 30 days
+- **Login**: PIN-based (`/api/auth/verify-pin`)
 
-| Area | Dashboard Route | API Route | Key Components |
-|------|----------------|-----------|----------------|
-| Inventory | `/inventory` | `/api/inventory` | `InventoryDashboard.tsx` |
-| Fulfillment | `/fulfillment` | `/api/metrics` | `FulfillmentDashboard.tsx` |
-| Production | `/production` | `/api/assembly` | `ProductionDashboard.tsx` |
-| Restoration | `/restoration` | `/api/restorations` | `RestorationOperations.tsx` |
-| Sales (B2B) | `/sales` | `/api/wholesale` | `WholesaleDashboard.tsx` |
-| Leads | `/sales/leads` | `/api/leads` | `LeadsDashboard.tsx` |
-| Marketing | `/marketing` | `/api/klaviyo` | `MarketingDashboard.tsx` |
-| Paid Media | `/marketing/paid` | `/api/ads` | `PaidMediaDashboard.tsx` |
-| VOC | `/voc` | `/api/tickets` | `VOCDashboard.tsx` |
-| Budget | `/budget` | `/api/budget` | `BudgetDashboard.tsx` |
+### Roles (8 total)
 
-### By Layer
+| Role | Access | Default Tab |
+|------|--------|-------------|
+| `admin` | All + admin panel | inventory |
+| `exec` | All except production-planning | inventory |
+| `ops1` | Operations dashboards (no revenue) | inventory |
+| `ops2` | ops1 + revenue-tracker | inventory |
+| `standard` | Most dashboards | inventory |
+| `sales` | Sales-focused | sales |
+| `fulfillment` | Restoration + inventory | restoration |
+| `customer_service` | VOC + inventory + restoration | voc |
 
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Routes | `app/(dashboard)/` | Page components, layouts |
-| API | `app/api/` | Data aggregation, business logic |
-| Cron | `app/api/cron/` | Scheduled syncs (see `vercel.json`) |
-| Components | `components/` | Reusable UI |
-| Types | `lib/types.ts` | All TypeScript interfaces |
-| Auth | `lib/auth/` | Permissions, session management |
-| DB Clients | `lib/supabase/` | Server and client Supabase |
-| Styles | `app/globals.css` | Design system CSS variables |
+### Authorization Pattern
 
-### External Data Sources
+```typescript
+// API routes - use server helpers
+import { requireAuth, requireAdmin } from "@/lib/auth/server";
 
-| Source | Synced To | Cron Job |
-|--------|-----------|----------|
-| Shopify | `orders`, `line_items` | `high-frequency-sync` (15m) |
-| ShipHero | `shiphero_inventory` | `high-frequency-sync` (15m) |
-| NetSuite | `ns_wholesale_customers`, `ns_transactions` | `sync-netsuite-*` (daily) |
-| Klaviyo | `klaviyo_campaigns` | `sync-klaviyo` (daily) |
-| Meta Ads | `meta_campaigns`, `ad_daily_stats` | `sync-meta` (daily) |
-| Google Ads | `google_campaigns`, `ad_daily_stats` | `sync-google-ads` (daily) |
-| AfterShip | `restorations` | `sync-aftership-returns` (30m) |
-| Re:amaze | `support_tickets` | `sync-reamaze` |
+export async function GET(request: NextRequest) {
+  const { session, error } = await requireAuth(request);
+  if (error) return error;  // Returns 401/403
+  // ... authorized logic
+}
+```
 
 ---
 
 ## Patterns
-
-### API Route
-
-```typescript
-export async function GET(request: NextRequest) {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.from("table").select("*");
-
-  if (error) {
-    console.error("[ROUTE_NAME]", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
-}
-```
 
 ### Supabase Client
 
@@ -139,28 +179,62 @@ export async function GET(request: NextRequest) {
 import { createClient } from "@/lib/supabase/server";
 const supabase = await createClient();
 
-// Client (browser components)
+// Client (browser)
 import { createClient } from "@/lib/supabase/client";
 const supabase = createClient();
+
+// Service (bypasses RLS - for crons/webhooks)
+import { createServiceClient } from "@/lib/supabase/server";
+const supabase = createServiceClient();
 ```
 
-### Async Safety in Components
+### Cron Job Structure
 
 ```typescript
-const isMountedRef = useRef(true);
-useEffect(() => () => { isMountedRef.current = false; }, []);
+// app/api/cron/sync-something/route.ts
+import { verifyCronAuth } from "@/lib/cron-auth";
+import { acquireLock, releaseLock } from "@/lib/cron-lock";
 
-// In async handler:
-if (isMountedRef.current) setState(result);
+export async function GET(request: NextRequest) {
+  if (!verifyCronAuth(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const lockAcquired = await acquireLock("sync-something");
+  if (!lockAcquired) {
+    return NextResponse.json({ message: "Already running" });
+  }
+
+  try {
+    // ... sync logic
+    return NextResponse.json({ success: true, synced: count });
+  } finally {
+    await releaseLock("sync-something");
+  }
+}
+```
+
+### Database Migrations
+
+Location: `supabase/migrations/`
+Naming: `YYYYMMDD_description.sql` (timestamp-based)
+
+```sql
+-- Always idempotent
+CREATE TABLE IF NOT EXISTS table_name (...);
+CREATE INDEX IF NOT EXISTS idx_name ON table_name(...);
+
+-- Soft deletes preferred
+ALTER TABLE table_name ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
 ```
 
 ---
 
 ## Business Rules
 
-### Time Windows
+### Time Windows in Names
 
-Always encode time window in names:
+Always encode time window:
 - `revenue90d`, `revenueYtd`, `revenueT12` — never just `revenue`
 - `newCustomers30d`, `newCustomersYtd` — never just `newCustomers`
 
@@ -176,19 +250,19 @@ Always encode time window in names:
 ### Corporate Customer Check
 
 ```typescript
-// Always check all three conditions
+// Always check all three - legacy data has inconsistent flags
 const isCorp = c.is_corporate_gifting === true ||
                c.category === "Corporate" ||
                c.category === "4";
 ```
 
-Corporate customers are excluded from B2B metrics (different buying patterns).
+Corporate excluded from B2B metrics (different buying patterns).
 
 ### Restoration SLA
 
 - Clock starts: `delivered_to_warehouse_at`
-- Target: 21 days
-- Overdue = physically at Smithey AND > 21 days
+- Target: 21 days to ship out
+- Overdue: physically at Smithey AND > 21 days
 
 ### Defect SKUs
 
@@ -196,40 +270,29 @@ Pattern: `{SKU}-D` (e.g., `SMITH-CI-12FLAT-D`)
 
 ---
 
-## Git Workflow
+## Cron Jobs
 
-### Commit Format
+**18/20 slots used** — check before adding: `grep -c '"path":' vercel.json`
 
-```
-<type>(<scope>): <description>
-
-feat|fix|refactor|docs|style|perf|chore
-```
-
-### Before Commit
-
-```bash
-npm run build && npm run lint
-```
-
-### Before Branch Switch
-
-```bash
-git status
-git stash save "WIP: description"
-```
+| Frequency | Jobs |
+|-----------|------|
+| 15 min | `high-frequency-sync`, `sync-b2b` |
+| Hourly | `sync-b2b-drafts`, `tracking/check` |
+| Daily | NetSuite (6am), Klaviyo, Meta, Google Ads, Shopify stats |
+| 2 hours | `sync-netsuite-assembly` |
+| Weekly | `weekly-maintenance` (Sunday 2am) |
 
 ---
 
 ## Design System
 
-See `DESIGN_SYSTEM.md` for colors, typography, and component patterns.
+See `DESIGN_SYSTEM.md` for colors, typography, component patterns.
 
-Key rules:
-- Use CSS variables from `globals.css`, never hardcoded hex
-- Status colors (`text-status-good/warning/bad`) only for actual status
+Key points:
+- CSS variables in `globals.css`, never hardcoded hex
+- Status colors only for actual status
 - Cards: `bg-bg-secondary rounded-xl border border-border/30 p-5`
-- Tables: sticky headers, `scrollbar-thin` containers
+- Tables: sticky headers + `scrollbar-thin`
 
 ---
 
@@ -237,4 +300,7 @@ Key rules:
 
 See `.env.local.example` for all required variables.
 
-Vercel cron limit: 20 jobs. Check before adding: `grep -c '"path":' vercel.json`
+Key secrets:
+- `SUPABASE_SERVICE_KEY` — bypasses RLS (crons, webhooks)
+- `DASHBOARD_PIN` — login credential
+- API keys for: NetSuite, Shopify, Klaviyo, ShipHero, Meta, Google Ads, AfterShip, Re:amaze
