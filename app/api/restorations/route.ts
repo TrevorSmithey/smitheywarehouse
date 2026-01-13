@@ -59,6 +59,13 @@ const PRE_WAREHOUSE_STATUSES: RestorationStatus[] = [
   "in_transit_inbound",
 ];
 
+// Items physically at Smithey location (not at Pipefitter, not in transit)
+const AT_SMITHEY_STATUSES: RestorationStatus[] = [
+  "delivered_warehouse",
+  "received",
+  "ready_to_ship",
+];
+
 // Status display configuration
 const STATUS_CONFIG: Record<RestorationStatus, { label: string; color: string }> = {
   pending_label: { label: "Pending Label", color: "slate" },
@@ -471,6 +478,11 @@ export async function GET(request: NextRequest) {
     const preWarehouseRestorations = transformedRestorations.filter(r =>
       PRE_WAREHOUSE_STATUSES.includes(r.status)
     );
+    // Items physically at Smithey location (delivered + received + ready_to_ship)
+    // Does NOT include at_restoration (those are at Pipefitter)
+    const atSmitheyRestorations = transformedRestorations.filter(r =>
+      AT_SMITHEY_STATUSES.includes(r.status)
+    );
     // Overdue = items where Smithey is responsible AND internal time > 21 days
     // POS: from order creation (order_created_at). Regular: from courier delivery (or manual check-in)
     const overdueRestorations = activeRestorations.filter(r => {
@@ -492,7 +504,7 @@ export async function GET(request: NextRequest) {
     const current: CurrentStats = {
       activeQueue: activeRestorations.length,
       preWarehouse: preWarehouseRestorations.length,
-      inHouse: activeRestorations.length - preWarehouseRestorations.length,
+      inHouse: atSmitheyRestorations.length, // Items physically at Smithey (not at Pipefitter)
       overdueCount: overdueRestorations.length,
       byStatus,
     };
