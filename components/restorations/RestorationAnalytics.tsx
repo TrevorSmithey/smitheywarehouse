@@ -249,9 +249,9 @@ interface StageBreakdownProps {
 
 function StageBreakdown({ internalCycle }: StageBreakdownProps) {
   const stages = [
-    { label: "Check-in → Send Out", days: internalCycle.receivedToRestoration, color: "bg-emerald-500" },
-    { label: "At Restoration", days: internalCycle.atRestoration, color: "bg-purple-500" },
-    { label: "Back → Shipped", days: internalCycle.restorationToShipped, color: "bg-blue-500" },
+    { label: "Hobson → Pipefitter", days: internalCycle.receivedToRestoration, color: "bg-emerald-500" },
+    { label: "At Pipefitter", days: internalCycle.atRestoration, color: "bg-purple-500" },
+    { label: "Pipefitter → Shipped", days: internalCycle.restorationToShipped, color: "bg-blue-500" },
   ];
 
   const maxStage = Math.max(...stages.map((s) => s.days || 0));
@@ -293,7 +293,7 @@ function StageBreakdown({ internalCycle }: StageBreakdownProps) {
           </span>
         </div>
         <p className="text-[10px] text-text-muted mt-1">
-          Median time from received to shipped (what you control)
+          Median time from arrival to shipped (what you control)
         </p>
       </div>
     </div>
