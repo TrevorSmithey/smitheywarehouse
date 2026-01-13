@@ -453,3 +453,9 @@ Key secrets:
 - `SUPABASE_SERVICE_KEY` — bypasses RLS (crons, webhooks)
 - `DASHBOARD_PIN` — login credential
 - API keys for: NetSuite, Shopify, Klaviyo, ShipHero, Meta, Google Ads, AfterShip, Re:amaze
+
+---
+
+## TODO
+
+- [ ] **BUSINESS_LOGIC.md** — Extract domain rules from codebase, PRs, and past conversations. Should cover: customer health thresholds, corporate detection, restoration SLA, inventory calculations, revenue metrics (YTD/T12/MER), B2B vs DTC filtering rules.
