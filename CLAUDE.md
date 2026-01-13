@@ -1,14 +1,42 @@
-# Smithey Warehouse Dashboard
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-Internal operations dashboard for Smithey Ironware. Aggregates data from NetSuite, Shopify, ShipHero, Klaviyo, Typeform, and Re:amaze into unified views for Sales, Fulfillment, Inventory, Marketing, and VOC analysis.
+
+Internal operations dashboard for Smithey Ironware. Aggregates data from NetSuite, Shopify, ShipHero, Klaviyo, AfterShip, Meta Ads, Google Ads, Typeform, and Re:amaze into unified views for Sales, Fulfillment, Inventory, Marketing, Production, Restoration, and VOC analysis.
+
+## Development Commands
+
+```bash
+npm run dev          # Local development (http://localhost:3000)
+npm run build        # Production build (also runs type checking)
+npm run lint         # ESLint check
+
+# Data scripts (run locally with tsx)
+npm run bootstrap              # Initial data setup
+npm run sync-inventory         # Manual inventory sync
+npm run sync-b2b               # Manual B2B sync
+npm run import-forecasts       # Import forecast data
+```
+
+**No test suite exists** - the project relies on TypeScript strict mode and ESLint for quality checks.
 
 ## Tech Stack
+
 - **Framework**: Next.js 14 (App Router)
 - **Database**: Supabase (PostgreSQL)
-- **Styling**: Tailwind CSS with custom design system
-- **Deployment**: Vercel
-- **Auth**: Vercel password protection (internal tool)
+- **Styling**: Tailwind CSS 4 with custom design system
+- **Deployment**: Vercel (with cron jobs)
+- **Auth**: Role-based with Supabase + custom PIN session management
+
+## Path Alias
+
+Use `@/*` for imports (configured in tsconfig.json):
+```typescript
+import { WholesaleCustomer } from "@/lib/types";
+import { createClient } from "@/lib/supabase/server";
+```
 
 ## Key Architecture Patterns
 
@@ -952,12 +980,24 @@ if (!res.ok) {
 
 ---
 
-## Development Commands
-```bash
-npm run dev          # Local development
-npm run build        # Production build
-npm run lint         # ESLint check
-```
+## Cron Jobs
+
+Cron schedules are defined in `vercel.json`. Key sync frequencies:
+- **Every 15 min**: `high-frequency-sync` (Shopify orders, ShipHero inventory), `sync-b2b`
+- **Hourly**: `sync-b2b-drafts`, tracking checks
+- **Daily at 6-8 AM UTC**: NetSuite syncs, Klaviyo, Meta Ads, Google Ads
+- **Weekly (Sunday 2 AM)**: `weekly-maintenance` (Shopify reconciliation, token refresh)
+
+**Vercel limit: 20 cron jobs** - check count before adding: `grep -c '"path":' vercel.json`
 
 ## Environment Variables
-See `.env.local.example` for required variables (Supabase, NetSuite, Klaviyo, ShipHero keys).
+
+See `.env.local.example` for required variables. Key integrations:
+- Supabase (URL, anon key, service key)
+- Shopify Admin API
+- NetSuite OAuth 2.0
+- ShipHero (access + refresh tokens)
+- Klaviyo API
+- AfterShip Returns API
+- Meta Ads (access token, ad account ID)
+- Google Ads (OAuth credentials, customer ID, developer token)
