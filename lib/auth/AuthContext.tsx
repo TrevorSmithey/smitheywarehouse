@@ -229,10 +229,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.push("/login");
     } else if (session && pathname === "/login") {
       // Authenticated on login page - redirect to default tab
-      const defaultPath = getDefaultTab(
-        session.role,
-        config?.roleDefaults as Record<DashboardRole, string>
-      );
+      // Use user's override if set, otherwise role default
+      const defaultPath = userDefaultTab
+        || getDefaultTab(
+          session.role,
+          config?.roleDefaults as Record<DashboardRole, string>
+        );
       router.push(`/${defaultPath}`);
     } else if (session && isAdminRoute && !canAccessAdmin(session.role)) {
       // Non-admin trying to access admin page
@@ -242,7 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       router.push(`/${defaultPath}`);
     }
-  }, [session, isLoading, pathname, router, config]);
+  }, [session, isLoading, pathname, router, config, userDefaultTab]);
 
   const login = useCallback(
     (user: { id: string; name: string; role: DashboardRole; default_page_override?: string | null }) => {
