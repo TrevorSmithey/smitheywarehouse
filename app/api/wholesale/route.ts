@@ -60,13 +60,11 @@ async function getExcludedCustomerIds(supabase: ReturnType<typeof createServiceC
 
 // Helper to determine customer segment based on revenue
 // IMPORTANT: Must match door-health API and database compute_customer_metrics() exactly
+// Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
 function getCustomerSegment(totalRevenue: number): CustomerSegment {
-  if (totalRevenue >= 50000) return "major";
-  if (totalRevenue >= 20000) return "large";
-  if (totalRevenue >= 5000) return "mid";     // Aligned with door-health
-  if (totalRevenue >= 1000) return "small";   // Aligned with door-health
-  if (totalRevenue > 0) return "starter";     // DB uses > 0, not >= threshold
-  return "minimal";
+  if (totalRevenue >= 20000) return "major";   // >= $20K = key accounts
+  if (totalRevenue >= 5000) return "mid";      // >= $5K = growth accounts
+  return "small";                               // < $5K = emerging accounts
 }
 
 // NOTE: health_status is now computed directly in the database by compute_customer_metrics()
@@ -775,13 +773,11 @@ export async function GET(request: NextRequest) {
     };
 
     // Segment distribution - B2B ONLY
+    // Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
     const segmentDistribution = {
       major: b2bCustomers.filter((c) => c.segment === "major").length,
-      large: b2bCustomers.filter((c) => c.segment === "large").length,
       mid: b2bCustomers.filter((c) => c.segment === "mid").length,
       small: b2bCustomers.filter((c) => c.segment === "small").length,
-      starter: b2bCustomers.filter((c) => c.segment === "starter").length,
-      minimal: b2bCustomers.filter((c) => c.segment === "minimal").length,
     };
 
     // ========================================================================
@@ -1202,11 +1198,12 @@ export async function GET(request: NextRequest) {
 }
 
 // Helper to determine opportunity type
+// Updated 2026-01-15: Simplified for 3-tier system
 function getOpportunityType(
   customer: WholesaleCustomer
 ): "upsell" | "cross_sell" | "volume_increase" | "new_category" {
-  if (customer.segment === "starter" || customer.segment === "small") {
-    return "volume_increase";
+  if (customer.segment === "small") {
+    return "volume_increase";  // Small accounts: focus on growing volume
   }
   if (customer.order_trend > customer.revenue_trend) {
     return "upsell";

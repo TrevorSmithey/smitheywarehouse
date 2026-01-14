@@ -1020,12 +1020,9 @@ export type CustomerHealthStatus =
   | "one_time";     // Only one order ever
 
 export type CustomerSegment =
-  | "major"       // $50K+ lifetime revenue
-  | "large"       // $20-50K lifetime revenue
-  | "mid"         // $10-20K lifetime revenue
-  | "small"       // $5-10K lifetime revenue
-  | "starter"     // $2-5K lifetime revenue
-  | "minimal";    // <$2K lifetime revenue
+  | "major"       // >= $20,000 lifetime revenue
+  | "mid"         // >= $5,000 lifetime revenue
+  | "small";      // < $5,000 lifetime revenue
 
 // 4-bucket retention health - time-based classification (aligned with Door Health tab)
 // This is the PRIMARY classification for cross-tab "At Risk" / "Churned" alignment
@@ -1130,12 +1127,9 @@ export interface WholesaleRetentionDistribution {
 }
 
 export interface WholesaleSegmentDistribution {
-  major: number;
-  large: number;
-  mid: number;
-  small: number;
-  starter: number;
-  minimal: number;
+  major: number;    // >= $20,000 lifetime
+  mid: number;      // >= $5,000 lifetime
+  small: number;    // < $5,000 lifetime
 }
 
 // Revenue breakdown by business type (corporate vs standard B2B)

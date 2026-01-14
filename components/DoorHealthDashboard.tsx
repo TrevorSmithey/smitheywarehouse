@@ -71,22 +71,17 @@ const FORGE = {
 // CONSTANTS
 // ============================================================================
 
+// Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
 const SEGMENT_LABELS: Record<CustomerSegment, string> = {
   major: "Major",
-  large: "Large",
   mid: "Mid",
   small: "Small",
-  starter: "Starter",
-  minimal: "Minimal",
 };
 
 const SEGMENT_COLORS: Record<CustomerSegment, string> = {
-  major: "text-accent-blue",
-  large: "text-accent-cyan",
-  mid: "text-text-primary",
+  major: "text-status-good",
+  mid: "text-accent-blue",
   small: "text-text-secondary",
-  starter: "text-text-tertiary",
-  minimal: "text-text-muted",
 };
 
 const LIFESPAN_LABELS: Record<LifespanBucket, string> = {
@@ -256,7 +251,7 @@ function CohortRetentionTable({
 }
 
 // ============================================================================
-// CUSTOMER HEALTH BAR - Single stacked bar showing health distribution
+// DOOR HEALTH BAR - Single stacked bar showing health distribution
 // ============================================================================
 
 function CustomerHealthBar({
@@ -285,7 +280,7 @@ function CustomerHealthBar({
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-text-muted" />
           <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
-            CUSTOMER HEALTH
+            DOOR HEALTH
           </span>
         </div>
         <span className="text-sm text-text-secondary tabular-nums">
@@ -643,7 +638,7 @@ function DrillDownTable({
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-text-muted" />
           <span className="text-[10px] uppercase tracking-widest text-text-tertiary">
-            Churned Customers
+            Churned Doors
           </span>
           <span className="text-xs text-text-muted ml-1">
             ({data.funnel.churned})
@@ -868,7 +863,8 @@ function InfoTooltip({
   );
 }
 
-function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCorporate?: boolean }) {
+// Accept string to handle legacy DB values during migration transition
+function SegmentBadge({ segment, isCorporate }: { segment: string; isCorporate?: boolean }) {
   if (isCorporate) {
     return (
       <InfoTooltip content="Corporate Gifting Customer">
@@ -879,15 +875,19 @@ function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCo
     );
   }
 
+  // Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
+  // Fallback: map legacy segments until DB migration runs
+  const normalizedSegment: CustomerSegment =
+    segment === "large" ? "major" :
+    segment === "starter" || segment === "minimal" ? "small" :
+    (segment as CustomerSegment);
+
   const config: Record<CustomerSegment, { label: string; color: string; tooltip: string }> = {
-    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Lifetime revenue $25,000+" },
-    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "$10,000 – $25,000 lifetime" },
-    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400", tooltip: "$5,000 – $10,000 lifetime" },
-    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning", tooltip: "$1,000 – $5,000 lifetime" },
-    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary", tooltip: "$500 – $1,000 lifetime" },
-    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted", tooltip: "Under $500 lifetime" },
+    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Key accounts: $20,000+ lifetime" },
+    mid: { label: "MID", color: "bg-accent-blue/20 text-accent-blue", tooltip: "Growth accounts: $5,000 – $20,000 lifetime" },
+    small: { label: "SMALL", color: "bg-text-muted/20 text-text-secondary", tooltip: "Emerging accounts: Under $5,000 lifetime" },
   };
-  const { label, color, tooltip } = config[segment];
+  const { label, color, tooltip } = config[normalizedSegment] || config.small;
   return (
     <InfoTooltip content={tooltip}>
       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
@@ -1119,7 +1119,7 @@ export function DoorHealthDashboard({
 
   return (
     <div className="space-y-6">
-      {/* === HERO: CUSTOMER HEALTH BAR === */}
+      {/* === HERO: DOOR HEALTH BAR === */}
       <CustomerHealthBar funnel={funnel} total={metrics.totalB2BCustomers} />
 
       {/* === STAT CARDS WITH TOOLTIPS === */}
@@ -1252,7 +1252,7 @@ export function DoorHealthDashboard({
           <div className="space-y-2">
             <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Terms</h4>
             <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Customer</span>
+              <span className="text-text-secondary">Door</span>
               <span className="text-text-muted">B2B account with ≥1 order (excl. corporate/test)</span>
             </div>
             <div className="flex justify-between text-xs">
@@ -1282,7 +1282,7 @@ export function DoorHealthDashboard({
             <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Advanced Metrics</h4>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Dud</span>
-              <span className="text-text-muted">One-order customer ≥133 days to reorder</span>
+              <span className="text-text-muted">One-order door ≥133 days to reorder</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Dud Maturity</span>
@@ -1290,7 +1290,7 @@ export function DoorHealthDashboard({
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Churn Year</span>
-              <span className="text-text-muted">Year customer crossed 365-day threshold</span>
+              <span className="text-text-muted">Year door crossed 365-day threshold</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Annual Churn Rate</span>
@@ -1304,7 +1304,7 @@ export function DoorHealthDashboard({
         </div>
         <div className="mt-4 pt-3 border-t border-border/30">
           <p className="text-[10px] text-text-muted">
-            All metrics exclude corporate customers. Churn threshold of 365 days is industry standard (12 months).
+            All metrics exclude corporate doors. Churn threshold of 365 days is industry standard (12 months).
             Dud maturity of 133 days is 2× the median reorder interval of 67 days observed in this dataset.
           </p>
         </div>

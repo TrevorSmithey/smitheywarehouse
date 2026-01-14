@@ -583,8 +583,9 @@ export function getRecommendedAction(
   const hasPatternBreak = signals.some((s) => s.type === "pattern_break");
 
   if (riskLevel === "critical") {
-    if (segment === "major" || segment === "large") {
-      return "Immediate executive-level outreach. Schedule a call to understand their current needs and address any concerns. This is a high-value account showing pre-churn behavior.";
+    // Updated 2026-01-15: Simplified to 3-tier system (major now includes former "large")
+    if (segment === "major") {
+      return "Immediate executive-level outreach. Schedule a call to understand their current needs and address any concerns. This is a key account showing pre-churn behavior.";
     }
     if (hasSizeIssue && hasIntervalIssue) {
       return "Direct outreach from sales rep within 24 hours. Both order size and frequency are declining - they may be testing alternatives or facing budget constraints.";

@@ -143,7 +143,8 @@ function InfoTooltip({
 // SEGMENT / HEALTH BADGES
 // ============================================================================
 
-function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCorporate?: boolean }) {
+// Accept string to handle legacy DB values during migration transition
+function SegmentBadge({ segment, isCorporate }: { segment: string; isCorporate?: boolean }) {
   // Corporate customers get CORP badge instead of segment badge
   if (isCorporate) {
     return (
@@ -155,15 +156,19 @@ function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCo
     );
   }
 
+  // Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
+  // Fallback: map legacy segments until DB migration runs
+  const normalizedSegment: CustomerSegment =
+    segment === "large" ? "major" :
+    segment === "starter" || segment === "minimal" ? "small" :
+    (segment as CustomerSegment);
+
   const config: Record<CustomerSegment, { label: string; color: string; tooltip: string }> = {
-    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Lifetime revenue $25,000+" },
-    large: { label: "LARGE", color: "bg-accent-blue/20 text-accent-blue", tooltip: "$10,000 – $25,000 lifetime" },
-    mid: { label: "MID", color: "bg-purple-400/20 text-purple-400", tooltip: "$5,000 – $10,000 lifetime" },
-    small: { label: "SMALL", color: "bg-status-warning/20 text-status-warning", tooltip: "$1,000 – $5,000 lifetime" },
-    starter: { label: "STARTER", color: "bg-text-muted/20 text-text-secondary", tooltip: "$500 – $1,000 lifetime" },
-    minimal: { label: "MINIMAL", color: "bg-text-muted/10 text-text-muted", tooltip: "Under $500 lifetime" },
+    major: { label: "MAJOR", color: "bg-status-good/20 text-status-good", tooltip: "Key accounts: $20,000+ lifetime" },
+    mid: { label: "MID", color: "bg-accent-blue/20 text-accent-blue", tooltip: "Growth accounts: $5,000 – $20,000 lifetime" },
+    small: { label: "SMALL", color: "bg-text-muted/20 text-text-secondary", tooltip: "Emerging accounts: Under $5,000 lifetime" },
   };
-  const { label, color, tooltip } = config[segment];
+  const { label, color, tooltip } = config[normalizedSegment] || config.small;
   return (
     <InfoTooltip content={tooltip}>
       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${color}`}>
@@ -1424,50 +1429,48 @@ function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomer
   const [expandedPrediction, setExpandedPrediction] = useState<number | null>(null);
 
   // Calculate total accounts
-  const total = distribution.major + distribution.large + distribution.mid +
-                distribution.small + distribution.starter + distribution.minimal;
+  // Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
+  const total = distribution.major + distribution.mid + distribution.small;
 
   // Segment revenue estimates (based on tier midpoints)
-  // Major: $25K+, Large: $10-25K, Mid: $5-10K, Small: $1-5K, Starter: $500-1K, Minimal: <$500
+  // Major: >= $20K (key accounts), Mid: $5K-$20K (growth), Small: < $5K (emerging)
   const segmentRevenue = {
-    major: distribution.major * 35000,  // ~$35K avg for major
-    large: distribution.large * 17500,   // ~$17.5K avg for large
-    mid: distribution.mid * 7500,        // ~$7.5K avg for mid
-    small: distribution.small * 3000,    // ~$3K avg for small
-    starter: distribution.starter * 750, // ~$750 avg for starter
-    minimal: distribution.minimal * 250, // ~$250 avg for minimal
+    major: distribution.major * 35000,  // ~$35K avg for major (key accounts)
+    mid: distribution.mid * 12500,      // ~$12.5K avg for mid (growth accounts)
+    small: distribution.small * 2500,   // ~$2.5K avg for small (emerging accounts)
   };
   const totalEstRevenue = Object.values(segmentRevenue).reduce((a, b) => a + b, 0);
 
-  // Revenue concentration - what % comes from top tiers
-  const topTierRevenue = segmentRevenue.major + segmentRevenue.large;
+  // Revenue concentration - what % comes from top tier (Major)
+  const topTierRevenue = segmentRevenue.major;
   const revenueConcentration = totalEstRevenue > 0 ? (topTierRevenue / totalEstRevenue) * 100 : 0;
 
-  // Customers in top tiers
-  const topTierCount = distribution.major + distribution.large;
+  // Customers in top tier (Major)
+  const topTierCount = distribution.major;
   const topTierPct = total > 0 ? (topTierCount / total) * 100 : 0;
 
-  // Segment upgrade potential - Mid customers that could become Large
+  // Segment upgrade potential - Mid customers that could become Major
   const midUpgradePotential = distribution.mid;
-  const midUpgradeRevenue = midUpgradePotential * 10000; // $10K additional if upgraded
+  const midUpgradeRevenue = midUpgradePotential * 15000; // $15K additional if upgraded to Major
 
   // Small to Mid upgrade potential
   const smallUpgradePotential = distribution.small;
-  const smallUpgradeRevenue = smallUpgradePotential * 4500; // $4.5K additional if upgraded
+  const smallUpgradeRevenue = smallUpgradePotential * 7500; // $7.5K additional if upgraded to Mid
 
   // At-risk revenue calculation (at_risk + declining customers in valuable segments)
   // Count how many top customers are at risk or declining
   const atRiskTopCustomers = topCustomers.filter(c =>
-    (c.segment === "major" || c.segment === "large" || c.segment === "mid") &&
+    (c.segment === "major" || c.segment === "mid") &&
     (c.health_status === "at_risk" || c.health_status === "declining" || c.health_status === "churning")
   );
   const atRiskRevenue = atRiskTopCustomers.reduce((sum, c) => sum + c.total_revenue, 0);
 
-  // Find customers close to tier upgrade (within 20% of next tier)
+  // Find customers close to tier upgrade
+  // Mid → Major: >= $15K (75% of $20K threshold)
+  // Small → Mid: >= $3.5K (70% of $5K threshold)
   const nearUpgrade = topCustomers.filter(c => {
-    if (c.segment === "mid" && c.total_revenue >= 8000) return true; // Near Large
-    if (c.segment === "small" && c.total_revenue >= 4000) return true; // Near Mid
-    if (c.segment === "starter" && c.total_revenue >= 800) return true; // Near Small
+    if (c.segment === "mid" && c.total_revenue >= 15000) return true;   // Near Major
+    if (c.segment === "small" && c.total_revenue >= 3500) return true;  // Near Mid
     return false;
   });
 
@@ -1484,13 +1487,11 @@ function SegmentIntelligenceCard({ distribution, healthDistribution, topCustomer
   ));
 
   // Segment data for visualization
+  // Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
   const segments = [
-    { name: "Major", value: distribution.major, color: "#10B981", revenue: segmentRevenue.major, threshold: "$25K+" },
-    { name: "Large", value: distribution.large, color: "#0EA5E9", revenue: segmentRevenue.large, threshold: "$10-25K" },
-    { name: "Mid", value: distribution.mid, color: "#A855F7", revenue: segmentRevenue.mid, threshold: "$5-10K" },
-    { name: "Small", value: distribution.small, color: "#F59E0B", revenue: segmentRevenue.small, threshold: "$1-5K" },
-    { name: "Starter", value: distribution.starter, color: "#64748B", revenue: segmentRevenue.starter, threshold: "$500-1K" },
-    { name: "Minimal", value: distribution.minimal, color: "#475569", revenue: segmentRevenue.minimal, threshold: "<$500" },
+    { name: "Major", value: distribution.major, color: "#10B981", revenue: segmentRevenue.major, threshold: "$20K+" },
+    { name: "Mid", value: distribution.mid, color: "#0EA5E9", revenue: segmentRevenue.mid, threshold: "$5K-$20K" },
+    { name: "Small", value: distribution.small, color: "#6B7280", revenue: segmentRevenue.small, threshold: "<$5K" },
   ].filter(d => d.value > 0);
 
   return (

@@ -48,7 +48,8 @@ const FORGE_COLORS = {
 // BADGE COMPONENTS
 // ============================================================================
 
-function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCorporate?: boolean }) {
+// Accept string to handle legacy DB values during migration transition
+function SegmentBadge({ segment, isCorporate }: { segment: string; isCorporate?: boolean }) {
   if (isCorporate) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
@@ -58,15 +59,20 @@ function SegmentBadge({ segment, isCorporate }: { segment: CustomerSegment; isCo
     );
   }
 
+  // Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
+  // Fallback: map legacy segments from DB until migration completes
+  const rawSegment = segment as string;
+  const normalizedSegment: CustomerSegment =
+    rawSegment === "large" ? "major" :
+    rawSegment === "starter" || rawSegment === "minimal" ? "small" :
+    (segment as CustomerSegment);
+
   const config: Record<CustomerSegment, { label: string; bg: string; text: string; border: string }> = {
     major: { label: "MAJOR", bg: "bg-status-good/10", text: "text-status-good", border: "border-status-good/20" },
-    large: { label: "LARGE", bg: "bg-accent-blue/10", text: "text-accent-blue", border: "border-accent-blue/20" },
-    mid: { label: "MID", bg: "bg-purple-400/10", text: "text-purple-400", border: "border-purple-400/20" },
-    small: { label: "SMALL", bg: "bg-forge-copper/10", text: "text-forge-copper", border: "border-forge-copper/20" },
-    starter: { label: "STARTER", bg: "bg-text-muted/10", text: "text-text-secondary", border: "border-text-muted/20" },
-    minimal: { label: "MINIMAL", bg: "bg-text-muted/5", text: "text-text-muted", border: "border-text-muted/10" },
+    mid: { label: "MID", bg: "bg-accent-blue/10", text: "text-accent-blue", border: "border-accent-blue/20" },
+    small: { label: "SMALL", bg: "bg-text-muted/10", text: "text-text-secondary", border: "border-text-muted/20" },
   };
-  const { label, bg, text, border } = config[segment];
+  const { label, bg, text, border } = config[normalizedSegment] || config.small;
   return (
     <span className={`text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full ${bg} ${text} border ${border}`}>
       {label}

@@ -68,14 +68,12 @@ const THRESHOLDS = {
   DECLINING_YOY_PCT: -20, // YoY revenue drop >20% = Declining
 } as const;
 
-// Segment revenue thresholds (from compute_customer_metrics SQL - 20260109 migration)
+// Segment revenue thresholds (from compute_customer_metrics SQL - 20260115 migration)
 // IMPORTANT: These must match database thresholds exactly
+// Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
 const SEGMENT_THRESHOLDS = {
-  major: 50000,   // >= $50,000 lifetime
-  large: 20000,   // >= $20,000 lifetime
-  mid: 5000,      // >= $5,000 lifetime
-  small: 1000,    // >= $1,000 lifetime
-  starter: 0,     // > $0 lifetime (any revenue)
+  major: 20000,   // >= $20,000 lifetime (key accounts)
+  mid: 5000,      // >= $5,000 lifetime (growth accounts)
 } as const;
 
 /**
@@ -99,14 +97,12 @@ function monthsBetween(start: Date, end: Date): number {
 /**
  * Determine customer segment from revenue
  * MUST match database compute_customer_metrics() logic exactly
+ * Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
  */
 function getSegment(totalRevenue: number): CustomerSegment {
-  if (totalRevenue >= SEGMENT_THRESHOLDS.major) return "major";
-  if (totalRevenue >= SEGMENT_THRESHOLDS.large) return "large";
-  if (totalRevenue >= SEGMENT_THRESHOLDS.mid) return "mid";
-  if (totalRevenue >= SEGMENT_THRESHOLDS.small) return "small";
-  if (totalRevenue > 0) return "starter";  // DB uses > 0, not >= 0
-  return "minimal";
+  if (totalRevenue >= SEGMENT_THRESHOLDS.major) return "major";   // >= $20K = key accounts
+  if (totalRevenue >= SEGMENT_THRESHOLDS.mid) return "mid";       // >= $5K = growth accounts
+  return "small";                                                  // < $5K = emerging accounts
 }
 
 /**
@@ -313,7 +309,8 @@ export async function GET(request: NextRequest) {
       }
       bySegmentMap.set(c.segment, existing);
     });
-    const segmentOrder: CustomerSegment[] = ["major", "large", "mid", "small", "starter", "minimal"];
+    // Updated 2026-01-15: Simplified to 3-tier system
+    const segmentOrder: CustomerSegment[] = ["major", "mid", "small"];
     const churnedBySegment: ChurnedBySegment[] = segmentOrder
       .filter((seg) => bySegmentMap.has(seg))
       .map((segment) => {

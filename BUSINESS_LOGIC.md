@@ -4,6 +4,35 @@ Domain rules for Smithey Ironware operations. Reference this when working on spe
 
 ---
 
+## Account Hierarchy
+
+### Account > Doors Relationship
+
+In B2B/wholesale context, we track two related concepts:
+
+- **Account**: The billing entity / business relationship
+- **Door**: A physical retail location that receives shipments
+
+**Most B2B relationships are 1:1:**
+- "Trevor's General Store" = 1 account, 1 door
+- The account and door are effectively the same entity
+
+**Some accounts have multiple doors:**
+- "Williams Sonoma" (account) → 47 retail locations (doors)
+- Segment is assigned at **account level**, revenue aggregates across all doors
+
+### Data Model
+
+| Field | Table | Description |
+|-------|-------|-------------|
+| `ns_customer_id` | `ns_wholesale_customers` | Primary account identifier |
+| `parent_id` | `ns_wholesale_customers` | Child doors reference parent account |
+| `segment` | `ns_wholesale_customers` | Assigned at account level |
+
+**Note**: Door Health dashboard operates at the door level (treating each location as separate tracking entity), while Wholesale dashboard operates at the account level (aggregating all doors).
+
+---
+
 ## Customer Health (B2B / Wholesale)
 
 ### Health Status Thresholds
@@ -34,28 +63,26 @@ const THRESHOLDS = {
 
 Based on lifetime revenue. Must match database `compute_customer_metrics()` exactly.
 
-| Segment | Lifetime Revenue | Sales Priority |
-|---------|-----------------|----------------|
-| `major` | >= $50,000 | Highest |
-| `large` | >= $20,000 | High |
-| `mid` | >= $5,000 | Medium |
-| `small` | >= $1,000 | Standard |
-| `starter` | > $0 | Low |
-| `minimal` | $0 | Inactive |
+**Updated 2026-01-15**: Simplified from 6-tier to 3-tier system for clearer sales prioritization.
 
-**Source**: `app/api/door-health/route.ts:73-79`
+| Segment | Lifetime Revenue | Description |
+|---------|-----------------|-------------|
+| `major` | >= $20,000 | Key accounts - highest priority |
+| `mid` | >= $5,000 | Growth accounts - nurture to major |
+| `small` | < $5,000 | Emerging accounts - volume opportunity |
+
+**Source**: `app/api/door-health/route.ts:71-77`, `supabase/migrations/20260115_simplify_customer_segments.sql`
 
 ### Tier Upgrade Thresholds
 
-Used in sales dashboard to flag customers near next tier.
+Used in sales dashboard to flag customers approaching next tier (for proactive outreach).
 
-| Current Segment | Upgrade Threshold | Next Tier |
-|----------------|-------------------|-----------|
-| `mid` | >= $8,000 | Large ($20k) |
-| `small` | >= $4,000 | Mid ($5k) |
-| `starter` | >= $800 | Small ($1k) |
+| Current Segment | Upgrade Flag At | Target Tier |
+|----------------|-----------------|-------------|
+| `mid` | >= $15,000 (75% of $20K) | Major |
+| `small` | >= $3,500 (70% of $5K) | Mid |
 
-**Source**: `components/WholesaleDashboard.tsx:1468-1470`
+**Source**: `components/WholesaleDashboard.tsx:1461-1468`
 
 ### New Customer Nurturing
 

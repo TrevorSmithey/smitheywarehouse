@@ -35,13 +35,11 @@ const MAX_DAYS_SINCE_LAST_ORDER = 365;
 
 // Helper to determine customer segment based on revenue
 // MUST match thresholds in wholesale/route.ts, door-health/route.ts, and compute_customer_metrics SQL
+// Updated 2026-01-15: Simplified to 3-tier system (Major/Mid/Small)
 function getCustomerSegment(totalRevenue: number): CustomerSegment {
-  if (totalRevenue >= 50000) return "major";
-  if (totalRevenue >= 20000) return "large";
-  if (totalRevenue >= 5000) return "mid";     // Aligned with DB and other APIs
-  if (totalRevenue >= 1000) return "small";   // Aligned with DB and other APIs
-  if (totalRevenue > 0) return "starter";     // DB uses > 0, not >= threshold
-  return "minimal";
+  if (totalRevenue >= 20000) return "major";   // >= $20K = key accounts
+  if (totalRevenue >= 5000) return "mid";      // >= $5K = growth accounts
+  return "small";                               // < $5K = emerging accounts
 }
 
 export interface PatternInsightsResponse {
