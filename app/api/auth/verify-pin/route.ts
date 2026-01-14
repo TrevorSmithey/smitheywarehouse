@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient();
     const { data: user, error } = await supabase
       .from("dashboard_users")
-      .select("id, name, role")
+      .select("id, name, role, default_page_override")
       .eq("pin", pin)
       .eq("is_active", true)
       .single();
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         id: user.id,
         name: user.name,
         role: user.role,
+        default_page_override: user.default_page_override || null,
       },
     });
   } catch (error) {

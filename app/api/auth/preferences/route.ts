@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const { data: user, error } = await supabase
       .from("dashboard_users")
-      .select("user_tab_order")
+      .select("user_tab_order, default_page_override")
       .eq("id", auth.session.userId)
       .single();
 
@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       user_tab_order: user?.user_tab_order || null,
+      default_page_override: user?.default_page_override || null,
     });
   } catch (error) {
     console.error("Error in GET preferences:", error);

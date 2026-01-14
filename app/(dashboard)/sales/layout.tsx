@@ -257,7 +257,7 @@ export default function SalesLayout({
                   : "text-text-muted hover:text-text-secondary border-transparent"
               }`}
             >
-              Door Health
+              Doors
             </Link>
           </div>
         </div>

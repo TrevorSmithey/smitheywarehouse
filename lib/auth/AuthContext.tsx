@@ -47,7 +47,7 @@ interface AuthContextType {
   session: AuthSession | null;
   isLoading: boolean;
   config: DashboardConfig | null;
-  login: (user: { id: string; name: string; role: DashboardRole }) => void;
+  login: (user: { id: string; name: string; role: DashboardRole; default_page_override?: string | null }) => void;
   logout: () => void;
   canAccess: (tab: DashboardTab) => boolean;
   isAdmin: boolean;
@@ -78,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [userTabOrder, setUserTabOrder] = useState<DashboardTab[] | null>(null);
+  const [userDefaultTab, setUserDefaultTab] = useState<DashboardTab | null>(null);
   const [isImpersonatingState, setIsImpersonatingState] = useState(false);
   const [originalSession, setOriginalSession] = useState<AuthSession | null>(
     null
@@ -151,12 +152,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json();
       setUserTabOrder(data.user_tab_order || null);
+      setUserDefaultTab(data.default_page_override || null);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         return;
       }
       console.error("[Auth] Preferences fetch failed:", error);
       setUserTabOrder(null);
+      setUserDefaultTab(null);
     }
   }, []);
 
@@ -242,20 +245,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session, isLoading, pathname, router, config]);
 
   const login = useCallback(
-    (user: { id: string; name: string; role: DashboardRole }) => {
+    (user: { id: string; name: string; role: DashboardRole; default_page_override?: string | null }) => {
       const newSession = setAuthSession(user);
       setSession(newSession);
+
+      // Set user's default tab override if present
+      if (user.default_page_override) {
+        setUserDefaultTab(user.default_page_override as DashboardTab);
+      }
 
       // Fetch user preferences (tab order, etc.) after login
       fetchUserPreferences().catch((err) => {
         console.error("Failed to fetch user preferences after login:", err);
       });
 
-      // Redirect to role's default tab
-      const defaultPath = getDefaultTab(
-        user.role,
-        config?.roleDefaults as Record<DashboardRole, string>
-      );
+      // Redirect to user's override (if set) or role's default tab
+      const defaultPath = user.default_page_override
+        || getDefaultTab(user.role, config?.roleDefaults as Record<DashboardRole, string>);
       router.push(`/${defaultPath}`);
     },
     [router, config, fetchUserPreferences]
@@ -269,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthSession();
     setSession(null);
     setUserTabOrder(null);
+    setUserDefaultTab(null);
     setIsImpersonatingState(false);
     setOriginalSession(null);
     router.push("/login");
@@ -338,11 +345,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
     : [];
 
+  // User-specific override takes priority over role defaults
   const defaultTab = session
-    ? getDefaultTab(
+    ? (userDefaultTab || getDefaultTab(
         session.role,
         config?.roleDefaults as Record<DashboardRole, string>
-      )
+      ))
     : null;
 
   return (
