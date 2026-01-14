@@ -444,6 +444,35 @@ uniqueOrders.forEach(order => processRestoration(order));
 
 **Rule: Any data that can have duplicates (syncs, multi-shipment orders) must be deduped before processing.**
 
+### Pattern O: Supabase Missing Column Silent Failure (January 2026)
+
+Supabase does NOT throw errors when selecting columns that don't exist. It silently returns `null`.
+
+```typescript
+// BUG: Column doesn't exist in database, but query "succeeds"
+const { data } = await supabase
+  .from("dashboard_users")
+  .select("id, name, default_page_override")  // ← column doesn't exist!
+  .single();
+
+// data = { id: "abc", name: "Stephen", default_page_override: null }
+// No error! Code looks correct, feature silently broken.
+```
+
+This caused a bug where user `default_page_override` was always ignored—the column had never been created via migration, but all code paths returned `null` without any error.
+
+```typescript
+// DETECTION: Query information_schema to verify column exists
+const { data: columns } = await supabase
+  .from("information_schema.columns")
+  .select("column_name")
+  .eq("table_name", "dashboard_users");
+
+// Or check directly in Supabase dashboard → Table Editor → Schema
+```
+
+**Rule: When a feature silently doesn't work despite correct-looking code, verify the database schema actually has the columns you're querying. Supabase won't tell you they're missing.**
+
 ---
 
 ## Architecture
