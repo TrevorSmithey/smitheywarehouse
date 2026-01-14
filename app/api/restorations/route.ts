@@ -603,8 +603,16 @@ export async function GET(request: NextRequest) {
     // =========================================================================
     // COMPUTE ALL-TIME METRICS (BENCHMARK - never filtered)
     // =========================================================================
+    // Use INTERNAL cycle time (what Smithey controls: warehouse arrival → shipped)
+    // NOT total cycle (order_created → shipped) which includes customer shipping time
     const allCycleTimes = allCompleted
-      .map(r => computeCycleTime(r.order_created_at, r.shipped_at))
+      .map(r => computeInternalCycleTime(
+        r.delivered_to_warehouse_at,
+        r.received_at,
+        r.shipped_at,
+        r.is_pos,
+        r.order_created_at
+      ))
       .filter((d): d is number => d !== null);
 
     const cancelledCount = transformedRestorations.filter(r => r.status === "cancelled").length;

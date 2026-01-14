@@ -80,6 +80,20 @@ interface CardProps {
 // Late threshold: 21 days from warehouse arrival until shipped
 const LATE_THRESHOLD_DAYS = 21;
 
+/**
+ * Get internal start date (when Smithey's SLA clock starts)
+ * - POS orders: order_created_at (customer walked in with item)
+ * - Regular orders: delivered_to_warehouse_at, fallback to received_at
+ *
+ * MUST match API's getInternalStartDate() in route.ts to ensure consistent metrics
+ */
+function getInternalStartDate(item: RestorationRecord): string | null {
+  if (item.is_pos && item.order_created_at) {
+    return item.order_created_at;
+  }
+  return item.delivered_to_warehouse_at || item.received_at || null;
+}
+
 // Memoized card component - prevents re-renders when parent re-renders but props unchanged
 const Card = memo(function Card({ item, stage, onClick }: CardProps) {
   const config = STAGE_CONFIG[stage];
@@ -102,9 +116,7 @@ const Card = memo(function Card({ item, stage, onClick }: CardProps) {
 
   let daysSincePossession = 0;
   if (!isTerminal) {
-    const possessionDate = item.is_pos
-      ? item.order_created_at
-      : item.delivered_to_warehouse_at;
+    const possessionDate = getInternalStartDate(item);
     if (possessionDate) {
       daysSincePossession = Math.floor((Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24));
     }
@@ -268,9 +280,7 @@ function Column({ stage, items, onCardClick }: ColumnProps) {
 
   // Helper: Calculate days since possession for an item
   const getDaysSincePossession = (item: RestorationRecord): number => {
-    const possessionDate = item.is_pos
-      ? item.order_created_at
-      : item.delivered_to_warehouse_at;
+    const possessionDate = getInternalStartDate(item);
     if (!possessionDate) return 0;
     return Math.floor((Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24));
   };
@@ -401,11 +411,11 @@ export function RestorationOperations({ data, loading, onRefresh, onCardClick }:
   const inboundCount = pipelineItems.filter((r) => r.status === "in_transit_inbound").length;
   const inHouseCount = totalActive - inboundCount;
   // Late = >21 days since Smithey took possession (past SLA, matches Analytics page)
+  // Uses getInternalStartDate() to match API calculation exactly
   const totalLate = pipelineItems.filter((r) => {
     // In-transit items excluded - we can't control carrier speed
     if (r.status === "in_transit_inbound") return false;
-    // Calculate days since possession (POS: order creation, Regular: warehouse delivery)
-    const possessionDate = r.is_pos ? r.order_created_at : r.delivered_to_warehouse_at;
+    const possessionDate = getInternalStartDate(r);
     if (!possessionDate) return false;
     const daysSincePossession = Math.floor(
       (Date.now() - new Date(possessionDate).getTime()) / (1000 * 60 * 60 * 24)
