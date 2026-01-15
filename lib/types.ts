@@ -694,6 +694,7 @@ export type TicketCategory =
   | "Cooking Advice"
   | "Seasoning & Care"
   | "Seasoning Issue" // Legacy - mapped to "Seasoning & Care"
+  | "Restoration Service" // Customers wanting Smithey to reseason/restore their pan
   | "Dutch Oven Issue"
   | "Website Issue"
   | "Quality Issue"
@@ -704,6 +705,9 @@ export type TicketCategory =
   | "Delivery Delay or Problem"
   | "Return or Exchange"
   | "Wholesale Request"
+  | "Corporate Gifting Request" // Companies buying Smithey as gifts for employees/clients (distinct from Wholesale resale)
+  | "Partnership Request" // Donations, sponsorships, influencers (distinct from Wholesale)
+  | "Showroom Inquiry" // Visiting Smithey factory/showroom in Charleston
   | "Metal Testing"
   | "New Product Inquiry"
   | "Positive Feedback"
