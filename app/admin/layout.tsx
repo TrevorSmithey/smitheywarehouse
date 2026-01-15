@@ -105,7 +105,7 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { session, logout, isAdmin, isLoading: authLoading } = useAuth();
+  const { session, logout, isAdmin, isLoading: authLoading, refreshConfig: refreshAuthConfig } = useAuth();
 
   // Mounted ref for async safety
   const isMountedRef = useRef(true);
@@ -290,6 +290,8 @@ export default function AdminLayout({
         console.log("[Admin] Config saved successfully");
         // Reload to ensure we have the latest server state
         await loadConfig();
+        // Sync AuthContext so main dashboard reflects changes immediately
+        await refreshAuthConfig();
       } catch (error) {
         console.error("[Admin] Save config error:", error);
         // Don't throw - the optimistic update is already reverted by loadConfig
