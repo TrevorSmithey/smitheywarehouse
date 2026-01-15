@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   Users,
@@ -565,9 +565,8 @@ function LeadsTable({ leads, totalCount }: { leads: TypeformLead[]; totalCount: 
           </thead>
           <tbody className="divide-y divide-border/20">
             {filteredAndSortedLeads.map((lead) => (
-              <>
+              <Fragment key={lead.id}>
                 <tr
-                  key={lead.id}
                   className="group hover:bg-surface-primary/20 transition-colors cursor-pointer"
                   onClick={() => setExpandedId(expandedId === lead.id ? null : lead.id)}
                 >
@@ -697,7 +696,7 @@ function LeadsTable({ leads, totalCount }: { leads: TypeformLead[]; totalCount: 
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
