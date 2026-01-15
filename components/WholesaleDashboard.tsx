@@ -2663,27 +2663,15 @@ export function WholesaleDashboard({
             <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Customer Segments</h4>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Major</span>
-              <span className="text-text-muted">≥$50,000 lifetime revenue</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Large</span>
-              <span className="text-text-muted">$20,000 – $50,000 lifetime</span>
+              <span className="text-text-muted">≥$20,000 lifetime revenue</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Mid</span>
-              <span className="text-text-muted">$5,000 – $20,000 lifetime</span>
+              <span className="text-text-muted">≥$5,000 lifetime</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Small</span>
-              <span className="text-text-muted">$1,000 – $5,000 lifetime</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Starter</span>
-              <span className="text-text-muted">&gt;$0 – $1,000 lifetime</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Minimal</span>
-              <span className="text-text-muted">$0 lifetime (no revenue)</span>
+              <span className="text-text-muted">&lt;$5,000 lifetime</span>
             </div>
           </div>
 
