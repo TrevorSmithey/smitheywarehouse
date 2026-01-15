@@ -59,6 +59,35 @@ const THRESHOLDS = {
 };
 ```
 
+### Churn Rate (Rolling 12-Month)
+
+**Added 2026-01-15**: Primary business health metric.
+
+**Formula**: `(Currently Churned Doors ÷ Total Doors with Orders) × 100`
+
+**Why "rolling"**: Unlike annual snapshots that have high variance, this metric updates daily as doors naturally cross in/out of the 365-day churned threshold. The "12-month" refers to the churn definition (365 days = ~12 months), not a lookback window.
+
+**Example**:
+- Total doors with orders: 500
+- Currently churned (365+ days since last order): 180
+- Churn rate: 180 / 500 × 100 = 36.0%
+
+**Interpretation**: "36% of all doors who ever ordered have gone 365+ days without ordering."
+
+**Source**: `app/api/door-health/route.ts`
+
+### Reactivation Tracking
+
+**Added 2026-01-15**: Tracks customers who were previously churned but came back.
+
+**Definition**: A reactivated customer is one where:
+- `was_churned = true` (they previously crossed the 365-day threshold)
+- `days_since_last_order < 365` (they've since placed a new order)
+
+**Key behavior**: The `was_churned` flag in `ns_wholesale_customers` is **set once and never reset**. Once a customer churns, they're always marked as "was churned" even if they come back. This enables tracking win-backs.
+
+**Source**: `supabase/migrations/20260115_add_was_churned_flag.sql`, `app/api/door-health/route.ts`
+
 ### Customer Segments (Revenue Tiers)
 
 Based on lifetime revenue. Must match database `compute_customer_metrics()` exactly.
@@ -100,7 +129,51 @@ New customers (first order this year) with YTD revenue < $4,000 get flagged for 
 
 Corporate customers are **excluded from B2B metrics** because they have different buying patterns (typically one-time gifting purchases, not recurring wholesale).
 
-### Detection Logic
+### Single Source of Truth (Updated 2026-01-15)
+
+**Database column**: `is_corporate` (BOOLEAN GENERATED, never NULL)
+
+| Value | Meaning |
+|-------|---------|
+| `true` | Corporate gifting customer - **excluded** from B2B metrics |
+| `false` | B2B wholesale customer - **included** in Door Health, sales dashboards |
+
+**GENERATED from**: `COALESCE(is_corporate_gifting, false)`
+
+**Philosophy**: The database is cleaner than NetSuite. NetSuite category is NOT used for corporate detection. All corporate flags are manually set via the customer detail modal. New customers default to B2B until manually flagged.
+
+**Filter pattern**: `WHERE is_corporate = false` (explicit, no NULL handling needed)
+
+```typescript
+// CORRECT: Explicit equality check
+const b2bCustomers = customers.filter(c => c.is_corporate === false);
+
+// ALSO CORRECT: For API responses
+const b2bCustomers = customers.filter(c => !c.is_corporate);
+
+// DEPRECATED: DO NOT USE
+// c.category === "Corporate" (NetSuite data is unreliable)
+// c.category === "4" (NetSuite data is unreliable)
+```
+
+### Updating Corporate Status
+
+To change a customer's corporate flag:
+1. **Customer Detail Modal**: Toggle the "Corporate Gifting" switch
+2. **API**: PATCH `/api/wholesale/customer/[id]` with `{ "is_corporate_gifting": true/false }`
+
+The modal updates `is_corporate_gifting`, and `is_corporate` is GENERATED from it automatically.
+
+### API Response Naming
+
+For backward compatibility, API responses include `is_corporate_gifting`:
+- `is_corporate_gifting` = `is_corporate` (GENERATED alias, same value)
+- PATCH requests use `is_corporate_gifting` field
+- Both columns exist in database; update `is_corporate_gifting`, read either
+
+### Additional Detection Signals
+
+Beyond the `is_corporate` flag, `lib/corporate-detection.ts` provides heuristic detection for **flagging candidates**:
 
 **Primary Signal (95% accurate)**: `customer.taxable = true`
 - In NetSuite, `taxable = true` means no resale certificate on file
@@ -116,17 +189,20 @@ Corporate customers are **excluded from B2B metrics** because they have differen
 
 **Source**: `lib/corporate-detection.ts`
 
-### Legacy Corporate Check
+These heuristics suggest customers to review, but the final decision is always manual via `is_corporate_gifting`.
 
-Historical data has inconsistent flags. Always check all three:
+### Database History
 
-```typescript
-const isCorp = c.is_corporate_gifting === true ||
-               c.category === "Corporate" ||
-               c.category === "4";
-```
+The `is_corporate` column has gone through several iterations:
+1. Originally derived from NetSuite category with UNION logic (2025-12-18)
+2. UNION logic caused conflicts: manual flag `is_corporate_gifting=false` was overridden by NetSuite `category='4'`
+3. Fixed 2026-01-15: Removed NetSuite from GENERATED expression, now ONLY uses manual flag
 
-**CRITICAL**: The database column is `is_corporate` (boolean). The `is_corporate_gifting` column does NOT exist in the current schema.
+**The 2026-01-15 fix**:
+- Snake River Farms ($252K revenue) was incorrectly marked corporate due to `category='4'`
+- Manual flag said `is_corporate_gifting=false` (B2B), but UNION logic overrode it
+- Now: `is_corporate = COALESCE(is_corporate_gifting, false)` - NetSuite ignored
+- Result: 558 B2B customers ($12.9M), 195 corporate ($2.5M)
 
 ---
 

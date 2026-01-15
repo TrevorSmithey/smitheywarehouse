@@ -143,6 +143,9 @@ export async function GET(request: NextRequest) {
     // Fetch all B2B customers (exclude corporate)
     // Using last_sale_date (current/transactional) NOT last_order_date (stale/sync)
     // CRITICAL: Only use `is_corporate` - is_corporate_gifting does NOT exist in DB schema
+    // Updated 2026-01-15: Added was_churned for reactivation tracking
+    // NOTE: Door Health dashboard INCLUDES inactive customers to track churn metrics
+    // Other dashboards filter is_inactive=true, but this one needs full visibility
     const { data: rawCustomers, error: fetchError } = await supabase
       .from("ns_wholesale_customers")
       .select(`
@@ -153,10 +156,11 @@ export async function GET(request: NextRequest) {
         lifetime_revenue,
         lifetime_orders,
         is_corporate,
+        is_inactive,
         is_manually_churned,
-        yoy_revenue_change_pct
+        yoy_revenue_change_pct,
+        was_churned
       `)
-      .neq("is_inactive", true)
       .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS);
 
     if (fetchError) {
@@ -212,25 +216,36 @@ export async function GET(request: NextRequest) {
         lifespan_months: lifespanMonths,
         churn_year: getChurnYear(c.last_sale_date),
         is_declining: isDeclining,
+        was_churned: c.was_churned || false,
       };
     });
 
     // Build funnel counts
+    // Updated 2026-01-15: Added reactivated tracking
     const funnel: DoorHealthFunnel = {
       active: 0,
       atRisk: 0,
       churning: 0,
       churned: 0,
       healthyDeclining: 0, // Active customers with YoY revenue drop >20%
+      reactivated: 0, // Customers who were previously churned but came back
     };
 
     // Only count customers WITH order history AND revenue in the health funnel
     // Customers with no last_sale_date are excluded (never ordered = not a "door")
     // Customers with $0 revenue are excluded (cancelled/draft order = never a real customer)
+    // Updated 2026-01-15: Track reactivated customers (was_churned=true but now active)
     enrichedCustomers.forEach((c) => {
       const days = c.days_since_last_order;
       if (days === null) return; // Skip customers with no order history
       if (c.total_revenue <= 0) return; // Skip $0 revenue - not a real customer
+
+      // Count reactivated: previously churned but now NOT churned (came back)
+      // These customers count toward their current bucket AND are flagged as reactivated
+      if (c.was_churned && days < THRESHOLDS.CHURNED) {
+        funnel.reactivated++;
+      }
+
       if (days < THRESHOLDS.AT_RISK) {
         funnel.active++;
         // Track declining customers within the healthy/active segment
@@ -255,14 +270,17 @@ export async function GET(request: NextRequest) {
              c.total_revenue > 0
     );
 
-    // Total B2B customers (denominator for churn calculations)
-    // Must match health funnel filters: has order history, has revenue, has sale date
-    // This ensures Total = Active + At Risk + Churning + Churned
-    const totalB2BWithOrders = enrichedCustomers.filter(
+    // Total B2B customers - ALL TIME (for churn rate denominator)
+    // This is the historical total: active + at-risk + churning + churned
+    const allTimeDoors = enrichedCustomers.filter(
       (c) => c.order_count > 0 &&
              c.total_revenue > 0 &&
              c.days_since_last_order !== null
     ).length;
+
+    // Active Doors = customers we're currently working with (NOT churned)
+    // This is the HERO metric: healthy + at-risk + churning
+    const activeDoors = funnel.active + funnel.atRisk + funnel.churning;
 
     // Group churned by year with pool-shrinking methodology
     // Pool shrinks each year as customers churn out
@@ -283,13 +301,13 @@ export async function GET(request: NextRequest) {
 
     // First pass: compute pool size for each year (cumulative from earliest)
     for (const year of years) {
-      poolByYear.set(year, totalB2BWithOrders - cumulativeChurned);
+      poolByYear.set(year, allTimeDoors - cumulativeChurned);
       cumulativeChurned += byYearMap.get(year)?.count || 0;
     }
 
     const churnedByYear: ChurnedByYear[] = Array.from(byYearMap.entries())
       .map(([year, data]) => {
-        const poolSize = poolByYear.get(year) || totalB2BWithOrders;
+        const poolSize = poolByYear.get(year) || allTimeDoors;
         const churnRate = poolSize > 0 ? (data.count / poolSize) * 100 : 0;
         return {
           year,
@@ -465,14 +483,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Calculate YTD and prior year churn rates
-    // Churn rate = customers who crossed 365-day threshold in that year / total B2B customers WITH orders
-    // IMPORTANT: Exclude never-ordered customers from denominator (they can't churn if they never ordered)
+    // ==========================================================
+    // ROLLING 12-MONTH CHURN RATE - Updated 2026-01-15
+    // The primary churn metric: what % of all doors have we lost?
+    // This is a point-in-time snapshot that updates daily as customers
+    // naturally move in/out of the "churned" bucket.
+    //
+    // Formula: (currently churned / total customers with orders) * 100
+    //
+    // Why "rolling": The numerator changes daily as:
+    // - Customers cross the 365-day threshold (enter churned)
+    // - Customers place new orders (exit churned)
+    // This creates a naturally smoothing effect without complex windows.
+    // ==========================================================
+    const rolling12MonthChurnRate = allTimeDoors > 0
+      ? (funnel.churned / allTimeDoors) * 100
+      : 0;
+
+    // Keep YTD/prior year for the yearly breakdown table (historical view)
     const churnedYtd = churnedCustomers.filter((c) => c.churn_year === currentYear).length;
     const churnedPriorYear = churnedCustomers.filter((c) => c.churn_year === priorYear).length;
 
-    const churnRateYtd = totalB2BWithOrders > 0 ? (churnedYtd / totalB2BWithOrders) * 100 : 0;
-    const churnRatePriorYear = totalB2BWithOrders > 0 ? (churnedPriorYear / totalB2BWithOrders) * 100 : 0;
+    // Legacy rates (kept for backward compatibility with yearly breakdown)
+    const churnRateYtd = allTimeDoors > 0 ? (churnedYtd / allTimeDoors) * 100 : 0;
+    const churnRatePriorYear = allTimeDoors > 0 ? (churnedPriorYear / allTimeDoors) * 100 : 0;
     const churnRateChange = churnRateYtd - churnRatePriorYear;
 
     // Calculate average lifespan (churned customers only)
@@ -502,11 +536,14 @@ export async function GET(request: NextRequest) {
     const revenueAtRisk = atRiskCustomers.reduce((sum, c) => sum + c.total_revenue, 0);
 
     // Build metrics summary
+    // Updated 2026-01-15: Added rolling12MonthChurnRate as primary churn metric
+    // Hero metric is activeDoors (healthy + at-risk + churning), NOT allTimeDoors
     const metrics: DoorHealthMetrics = {
-      totalB2BCustomers: totalB2BWithOrders,
-      activeCustomers: funnel.active,
-      inactiveCustomers: funnel.atRisk + funnel.churning + funnel.churned,
+      totalB2BCustomers: activeDoors, // HERO: 432 active doors we're working with
+      activeCustomers: funnel.active, // Healthy customers
+      inactiveCustomers: funnel.churned, // Churned = inactive (365+ days, lost)
       churnedCustomers: funnel.churned,
+      rolling12MonthChurnRate: Math.round(rolling12MonthChurnRate * 10) / 10,
       churnRateYtd: Math.round(churnRateYtd * 10) / 10,
       churnRatePriorYear: Math.round(churnRatePriorYear * 10) / 10,
       churnRateChange: Math.round(churnRateChange * 10) / 10,

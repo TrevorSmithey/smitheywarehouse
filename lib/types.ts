@@ -1626,8 +1626,10 @@ export interface DoorHealthMetrics {
   activeCustomers: number;        // < 180 days since last order
   inactiveCustomers: number;      // >= 180 days (at_risk + churning + churned)
   churnedCustomers: number;       // >= 365 days
-  churnRateYtd: number;           // % of customers that churned this calendar year
-  churnRatePriorYear: number;     // % of customers that churned last year
+  /** Primary churn metric: (currently churned / total) * 100. Updates daily. */
+  rolling12MonthChurnRate: number;
+  churnRateYtd: number;           // % of customers that churned this calendar year (for yearly table)
+  churnRatePriorYear: number;     // % of customers that churned last year (for yearly table)
   churnRateChange: number;        // YoY change in percentage points
   avgLifespanMonths: number;      // Average months from first to last order (churned only)
   avgLifespanMonthsPriorYear: number;
@@ -1649,6 +1651,8 @@ export interface DoorHealthFunnel {
   churned: number;
   /** Count of active customers with YoY revenue decline >20% */
   healthyDeclining: number;
+  /** Customers who were previously churned (365+ days) but came back */
+  reactivated: number;
 }
 
 /**
@@ -1711,6 +1715,8 @@ export interface DoorHealthCustomer {
   churn_year: number | null;
   /** True if customer has YoY revenue decline >20% */
   is_declining?: boolean;
+  /** True if customer has ever been churned (365+ days). Never resets to false. */
+  was_churned: boolean;
 }
 
 /**

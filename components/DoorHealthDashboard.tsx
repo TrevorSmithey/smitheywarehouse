@@ -10,6 +10,7 @@ import {
   ComposedChart,
   Line,
   Area,
+  Bar,
 } from "recharts";
 import {
   TrendingUp,
@@ -32,6 +33,7 @@ import type {
   DoorHealthCustomer,
   DudRateByCohort,
   CohortRetention,
+  ChurnedByYear,
   CustomerSegment,
   LifespanBucket,
   WholesaleResponse,
@@ -328,6 +330,137 @@ function CustomerHealthBar({
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CHURN RATE TREND - Historical churn rate by year
+// ============================================================================
+
+function ChurnRateTrendChart({ churnedByYear }: { churnedByYear: ChurnedByYear[] }) {
+  // Sort by year ascending for the chart, filter out year 0
+  const chartData = useMemo(() => {
+    return [...churnedByYear]
+      .filter(d => d.year > 0)
+      .sort((a, b) => a.year - b.year)
+      .map(d => ({
+        year: String(d.year),
+        churnRate: d.churnRate,
+        churned: d.count,
+        poolSize: d.poolSize,
+        revenue: d.revenue,
+      }));
+  }, [churnedByYear]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-bg-secondary p-4 h-full flex items-center justify-center">
+        <span className="text-xs text-text-muted">No historical churn data</span>
+      </div>
+    );
+  }
+
+  // Get thermal color based on churn rate (inverted - lower is better)
+  const getChurnColor = (rate: number) => {
+    if (rate <= 10) return "#22C55E"; // Green - low churn
+    if (rate <= 15) return "#84CC16"; // Lime
+    if (rate <= 20) return "#EAB308"; // Yellow
+    if (rate <= 25) return "#F59E0B"; // Amber
+    return "#EF4444"; // Red - high churn
+  };
+
+  const avgRate = chartData.reduce((sum, d) => sum + d.churnRate, 0) / chartData.length;
+  const latestRate = chartData[chartData.length - 1]?.churnRate || 0;
+  const trend = chartData.length > 1
+    ? latestRate - chartData[chartData.length - 2].churnRate
+    : 0;
+
+  return (
+    <div className="rounded-xl border border-border bg-bg-secondary p-4 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-3">
+        <MetricLabel
+          label="CHURN RATE BY YEAR"
+          tooltip="Annual churn rate: (Customers churned that year ÷ Pool at start of year) × 100. Pool shrinks as customers churn."
+          className="text-[10px] uppercase tracking-widest text-text-tertiary"
+        />
+        <span className="text-xs text-text-muted">
+          {latestRate}% latest ·
+          <span className={trend <= 0 ? "text-emerald-400" : "text-red-400"}>
+            {trend > 0 ? " +" : " "}{trend.toFixed(1)}% vs prior
+          </span>
+        </span>
+      </div>
+      <div className="flex-1 min-h-[144px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 10, right: 25, left: -10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="churnRateFillGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#EF4444" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="#EF4444" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="year"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+            />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748B', fontSize: 10 }}
+              width={42}
+              tickFormatter={(v) => `${v}%`}
+              domain={[0, 'auto']}
+            />
+            <Tooltip
+              cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.[0]) return null;
+                const data = payload[0].payload as { year: string; churnRate: number; churned: number; poolSize: number; revenue: number };
+                const color = getChurnColor(data.churnRate);
+                return (
+                  <div className="bg-[#12151F] border border-white/10 rounded-md p-3 text-[11px]">
+                    <div className="text-text-secondary font-medium mb-2">{data.year}</div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">Churn Rate</span>
+                        <span style={{ color }}>{data.churnRate}%</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">Doors Churned</span>
+                        <span className="text-text-primary">{data.churned}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">Pool at Start</span>
+                        <span className="text-accent-blue">{data.poolSize}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-text-muted">Lost Revenue</span>
+                        <span className="text-red-400">{formatCurrency(data.revenue).replace('.00', '')}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }}
+            />
+            <Bar
+              dataKey="churnRate"
+              fill="#EF4444"
+              fillOpacity={0.7}
+              radius={[4, 4, 0, 0]}
+            />
+            <Line
+              type="monotone"
+              dataKey="churnRate"
+              stroke="#F87171"
+              strokeWidth={2}
+              dot={{ fill: '#EF4444', strokeWidth: 2, r: 4 }}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -1123,7 +1256,8 @@ export function DoorHealthDashboard({
       <CustomerHealthBar funnel={funnel} total={metrics.totalB2BCustomers} />
 
       {/* === STAT CARDS WITH TOOLTIPS === */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      {/* Row 1: Health Funnel Stages */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Healthy Doors */}
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
           <MetricLabel
@@ -1183,6 +1317,39 @@ export function DoorHealthDashboard({
             <span className="text-[10px] text-text-muted">Last order 365+d ago</span>
           </div>
         </div>
+      </div>
+
+      {/* Row 2: Key Metrics */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Rolling 12-Month Churn Rate - Primary health metric */}
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <MetricLabel
+            label="CHURN RATE"
+            tooltip="Rolling 12-month: (Currently Churned ÷ Total Doors) × 100. Updates daily as doors naturally move in/out of churned status."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-semibold tabular-nums text-red-400">
+              {metrics.rolling12MonthChurnRate}%
+            </span>
+            <span className="text-[10px] text-text-muted">rolling 12mo</span>
+          </div>
+        </div>
+
+        {/* Reactivated - Churned doors that came back */}
+        <div className="rounded-xl border border-border bg-bg-secondary p-4">
+          <MetricLabel
+            label="REACTIVATED"
+            tooltip="Doors that were previously churned (365+ days) but placed a new order. These are win-backs."
+            className="text-[10px] uppercase tracking-widest text-text-tertiary"
+          />
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className="text-2xl font-semibold tabular-nums text-emerald-400">
+              {funnel.reactivated}
+            </span>
+            <span className="text-[10px] text-text-muted">came back</span>
+          </div>
+        </div>
 
         {/* Revenue at Risk */}
         <div className="rounded-xl border border-border bg-bg-secondary p-4">
@@ -1214,16 +1381,17 @@ export function DoorHealthDashboard({
         </div>
       </div>
 
-      {/* === COHORT CHURN + B2B ACQUISITION (side by side) === */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-        <CohortRetentionTable cohortData={data.cohortRetention || []} />
-        <div className="lg:col-span-2 h-full">
-          <B2BGrowthChart
-            customersByHealth={wholesaleData?.customersByHealth}
-            totalFromDoorHealth={metrics.totalB2BCustomers}
-          />
-        </div>
+      {/* === CHURN RATE TREND + B2B ACQUISITION === */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <ChurnRateTrendChart churnedByYear={data.churnedByYear} />
+        <B2BGrowthChart
+          customersByHealth={wholesaleData?.customersByHealth}
+          totalFromDoorHealth={metrics.totalB2BCustomers}
+        />
       </div>
+
+      {/* === COHORT RETENTION === */}
+      <CohortRetentionTable cohortData={data.cohortRetention || []} />
 
       {/* === DRILL-DOWN TABLE === */}
       <DrillDownTable
@@ -1281,24 +1449,24 @@ export function DoorHealthDashboard({
           <div className="space-y-2">
             <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Advanced Metrics</h4>
             <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Dud</span>
-              <span className="text-text-muted">One-order door ≥133 days to reorder</span>
+              <span className="text-text-secondary">Churn Rate</span>
+              <span className="text-text-muted">Rolling 12-mo: (Churned ÷ Total) × 100</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Dud Maturity</span>
-              <span className="text-text-muted">133 days (2× median reorder interval)</span>
+              <span className="text-text-secondary">Reactivated</span>
+              <span className="text-text-muted">Was churned (365+d) but came back</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-text-secondary">Churn Year</span>
               <span className="text-text-muted">Year door crossed 365-day threshold</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Annual Churn Rate</span>
-              <span className="text-text-muted">Churned ÷ pool at start of year</span>
+              <span className="text-text-secondary">Dud</span>
+              <span className="text-text-muted">One-order door ≥133 days to reorder</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-text-secondary">Pool-Shrinking</span>
-              <span className="text-text-muted">Prior year churned removed from denominator</span>
+              <span className="text-text-secondary">Dud Maturity</span>
+              <span className="text-text-muted">133 days (2× median reorder interval)</span>
             </div>
           </div>
         </div>
