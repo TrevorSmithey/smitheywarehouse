@@ -27,6 +27,13 @@ export const revalidate = 0;
 
 const ITEMS_PER_PAGE = 50;
 
+// Categories to exclude from analytics (spam and non-customer-service inquiries pollute data)
+const EXCLUDED_CATEGORIES = new Set([
+  "Spam",
+  "Phone Call (No Context)",
+  "Partnership Request", // Donations/sponsorships are BD, not CS issues
+]);
+
 export async function GET(request: NextRequest) {
   // Auth check - requires admin session
   const { error: authError } = await requireAuth(request);
@@ -177,8 +184,17 @@ export async function GET(request: NextRequest) {
 
     const currentOrderCount = orderCount || 0;
     const previousOrderCount = prevOrderCount || 0;
-    const currentTicketCount = allTickets?.length || 0;
-    const previousTicketCount = prevTickets?.length || 0;
+
+    // Filter out spam and no-context categories from analytics
+    const filteredTickets = (allTickets || []).filter(
+      (t) => !EXCLUDED_CATEGORIES.has(t.category)
+    );
+    const filteredPrevTickets = (prevTickets || []).filter(
+      (t) => !EXCLUDED_CATEGORIES.has(t.category)
+    );
+
+    const currentTicketCount = filteredTickets.length;
+    const previousTicketCount = filteredPrevTickets.length;
 
     // Calculate TOR (Ticket-to-Order Ratio)
     const ticketToOrderRatio =
@@ -190,28 +206,28 @@ export async function GET(request: NextRequest) {
         ? Math.round((previousTicketCount / previousOrderCount) * 1000) / 10
         : 0;
 
-    // Calculate category counts with delta
+    // Calculate category counts with delta (using filtered data - excludes Spam)
     const categoryCounts = calculateCategoryCounts(
-      allTickets || [],
-      prevTickets || []
+      filteredTickets,
+      filteredPrevTickets
     );
 
-    // Calculate sentiment breakdown
-    const sentimentBreakdown = calculateSentimentBreakdown(allTickets || []);
+    // Calculate sentiment breakdown (using filtered data)
+    const sentimentBreakdown = calculateSentimentBreakdown(filteredTickets);
 
-    // Calculate alert counts
-    const alertCounts = calculateAlertCounts(allTickets || []);
+    // Calculate alert counts (using filtered data)
+    const alertCounts = calculateAlertCounts(filteredTickets);
 
-    // Generate word cloud with sentiment context
-    const wordCloud = generateWordCloud(allTickets || []);
+    // Generate word cloud with sentiment context (using filtered data)
+    const wordCloud = generateWordCloud(filteredTickets);
 
-    // Generate topic themes with deltas
-    const topicThemes = generateTopicThemes(allTickets || [], prevTickets || []);
+    // Generate topic themes with deltas (using filtered data)
+    const topicThemes = generateTopicThemes(filteredTickets, filteredPrevTickets);
 
-    // Generate AI-style insights
+    // Generate AI-style insights (using filtered data)
     const insights = generateInsights(
-      allTickets || [],
-      prevTickets || [],
+      filteredTickets,
+      filteredPrevTickets,
       alertCounts,
       categoryCounts,
       ticketToOrderRatio,
@@ -222,8 +238,8 @@ export async function GET(request: NextRequest) {
     // Calculate TOR trend data for line chart
     const torTrend = calculateTORTrend(dailyTickets || [], dailyOrders || []);
 
-    // Calculate pre/post purchase timing breakdown
-    const purchaseTiming = calculatePurchaseTiming(allTickets || []);
+    // Calculate pre/post purchase timing breakdown (using filtered data)
+    const purchaseTiming = calculatePurchaseTiming(filteredTickets);
 
     // Note: CSAT from Re:amaze is disabled for performance
     // Re:amaze API calls add 2-4 seconds of latency

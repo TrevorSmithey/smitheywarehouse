@@ -1,73 +1,26 @@
 /**
  * Days of Inventory (DOI) Calculator
  *
- * Uses monthly budgets from database for demand forecasting.
- * Projects stockout date by consuming inventory against monthly demand.
+ * Uses WEEKLY WEIGHTS to model seasonal demand patterns.
+ * Projects stockout date by consuming inventory against weekly demand.
  *
- * CLEAN ARCHITECTURE:
- * - Weekly weights are statistical data (rarely changes) - kept here
- * - Forecasts and budgets come from database - passed as parameters
+ * Algorithm:
+ * 1. annual_budget = sum of 12 monthly 'total' channel budgets for SKU
+ * 2. weekly_demand = annual_budget × weekly_weight[week]
+ * 3. daily_demand = weekly_demand / 7
+ * 4. Consume inventory forward from current week until depleted
+ *
+ * ARCHITECTURE:
+ * - Weekly weights come from database (weekly_weights table)
+ * - Annual budget computed from budgets table (channel='total')
+ * - Weights represent 3-year historical average of demand distribution
  */
 
-// Weekly weights based on 3-year average of cast iron movement
-// Week 1 = first week of January, Week 52 = last week of December
-// Sum of all weights = 1.0
-export const WEEKLY_WEIGHTS: Record<number, number> = {
-  1: 0.018468241890594237,
-  2: 0.01377762585010537,
-  3: 0.014258067439397597,
-  4: 0.014452917928717758,
-  5: 0.014367345253142025,
-  6: 0.015747369854114623,
-  7: 0.013849357446803934,
-  8: 0.012811481527560509,
-  9: 0.01394024834546793,
-  10: 0.013003935686060245,
-  11: 0.011248574783109583,
-  12: 0.010977015843894431,
-  13: 0.010505219197220285,
-  14: 0.01092270705635822,
-  15: 0.009886969786037562,
-  16: 0.009477131566053756,
-  17: 0.010361118685839252,
-  18: 0.013293108537089562,
-  19: 0.01142084107111365,
-  20: 0.008726324765797953,
-  21: 0.010253730507212918,
-  22: 0.011716019744524287,
-  23: 0.012370771039581193,
-  24: 0.009669382165997147,
-  25: 0.007628764149923252,
-  26: 0.008307867133236677,
-  27: 0.009402728641223197,
-  28: 0.008648179231491238,
-  29: 0.008004511688562557,
-  30: 0.008693668025334831,
-  31: 0.008315521958529859,
-  32: 0.00966872117557041,
-  33: 0.009327113141759047,
-  34: 0.00874177941633244,
-  35: 0.012784288565524963,
-  36: 0.011929247137166296,
-  37: 0.01017820287708128,
-  38: 0.0099998060705142,
-  39: 0.010025808086867698,
-  40: 0.010823413458962029,
-  41: 0.012261596631931791,
-  42: 0.01527329912909709,
-  43: 0.01732824028035048,
-  44: 0.017826505123611766,
-  45: 0.022396095877602044,
-  46: 0.028529581221997932,
-  47: 0.07269037295709502,  // BFCM week - 7.3%
-  48: 0.10152565971619675,  // Peak BFCM week - 10.2%
-  49: 0.08830931469499602,
-  50: 0.09629734166335885,
-  51: 0.05246182381927866,
-  52: 0.0271150421546096,
-};
+// Type for weekly weights lookup (week 1-52 -> decimal weight)
+export type WeeklyWeightsLookup = Map<number, number>;
 
-const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+// Type for annual budget lookup (SKU -> year -> total annual budget)
+export type AnnualBudgetLookup = Map<string, Map<number, number>>;
 
 export interface DOIResult {
   doi: number;              // Days to stockout
@@ -75,185 +28,240 @@ export interface DOIResult {
   stockoutYear: number;     // Year when stockout occurs
 }
 
-// Budget data by SKU -> year -> month (1-indexed) -> budget
-export type BudgetLookup = Map<string, Map<number, Map<number, number>>>;
+/**
+ * Build weekly weights lookup from database rows
+ * @param rows - Array of { week, weight } from weekly_weights table
+ */
+export function buildWeeklyWeightsLookup(
+  rows: Array<{ week: number; weight: number }>
+): WeeklyWeightsLookup {
+  const lookup = new Map<number, number>();
+  for (const row of rows) {
+    lookup.set(row.week, row.weight);
+  }
+  return lookup;
+}
 
 /**
- * Build budget lookup from database rows
- * @param rows - Array of { sku, year, month, budget } from budgets table
+ * Build annual budget lookup from database rows
+ * Sums all 12 monthly budgets per SKU/year for channel='total'
+ *
+ * @param rows - Array of { sku, year, month, budget } from budgets table (channel='total')
  */
-export function buildBudgetLookup(rows: Array<{ sku: string; year: number; month: number; budget: number }>): BudgetLookup {
-  const lookup: BudgetLookup = new Map();
+export function buildAnnualBudgetLookup(
+  rows: Array<{ sku: string; year: number; month: number; budget: number }>
+): AnnualBudgetLookup {
+  const lookup: AnnualBudgetLookup = new Map();
 
   for (const row of rows) {
     const skuLower = row.sku.toLowerCase();
     if (!lookup.has(skuLower)) {
       lookup.set(skuLower, new Map());
     }
-    const skuMap = lookup.get(skuLower)!;
-    if (!skuMap.has(row.year)) {
-      skuMap.set(row.year, new Map());
-    }
-    skuMap.get(row.year)!.set(row.month, row.budget);
+    const yearMap = lookup.get(skuLower)!;
+    const currentTotal = yearMap.get(row.year) || 0;
+    yearMap.set(row.year, currentTotal + row.budget);
   }
 
   return lookup;
 }
 
 /**
- * Get budget for a SKU/year/month from lookup
+ * Get annual budget for a SKU/year from lookup
  */
-function getBudget(lookup: BudgetLookup, sku: string, year: number, month: number): number | undefined {
-  const skuMap = lookup.get(sku.toLowerCase());
-  if (!skuMap) return undefined;
-  const yearMap = skuMap.get(year);
+function getAnnualBudget(
+  lookup: AnnualBudgetLookup,
+  sku: string,
+  year: number
+): number | undefined {
+  const yearMap = lookup.get(sku.toLowerCase());
   if (!yearMap) return undefined;
-  return yearMap.get(month);
+  return yearMap.get(year);
 }
 
 /**
- * Calculate Days of Inventory using monthly budgets from database
- *
- * Algorithm:
- * 1. Start from today (EST timezone)
- * 2. For remaining days in current month, use daily rate from monthly budget
- * 3. Continue through subsequent months until inventory depleted
- * 4. Return total days and stockout date
- *
- * @param sku - Product SKU
- * @param currentInventory - Total inventory on hand
- * @param budgetLookup - Budget data from database (use buildBudgetLookup)
- * @returns DOI result or undefined if no budget available
+ * Get current date components in EST timezone
  */
-export function calculateDOI(
-  sku: string,
-  currentInventory: number,
-  budgetLookup?: BudgetLookup
-): DOIResult | undefined {
-  if (!budgetLookup) return undefined;
-
-  // Use EST timezone for accurate day/month calculations
+function getESTDateComponents(): { year: number; month: number; dayOfMonth: number; dayOfWeek: number; week: number } {
   const now = new Date();
+
+  // Get date components in EST
   const estFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    weekday: "short",  // Added to get actual day of week
   });
   const estParts = estFormatter.formatToParts(now);
-  let year = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
-  let month = parseInt(estParts.find(p => p.type === "month")?.value || "1"); // 1-indexed for DB
-  let dayOfMonth = parseInt(estParts.find(p => p.type === "day")?.value || "1");
+  const year = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
+  const month = parseInt(estParts.find(p => p.type === "month")?.value || "1");
+  const dayOfMonth = parseInt(estParts.find(p => p.type === "day")?.value || "1");
+
+  // Get actual day of week (1=Sunday, 7=Saturday) from weekday name
+  const weekdayName = estParts.find(p => p.type === "weekday")?.value || "Sun";
+  const weekdayMap: Record<string, number> = {
+    "Sun": 1, "Mon": 2, "Tue": 3, "Wed": 4, "Thu": 5, "Fri": 6, "Sat": 7
+  };
+  const dayOfWeek = weekdayMap[weekdayName] || 1;
+
+  // Calculate week number
+  const estDate = new Date(year, month - 1, dayOfMonth);
+  const startOfYear = new Date(year, 0, 1);
+  const days = Math.floor((estDate.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+  const week = Math.min(52, Math.max(1, Math.ceil((days + startOfYear.getDay() + 1) / 7)));
+
+  return { year, month, dayOfMonth, dayOfWeek, week };
+}
+
+/**
+ * Calculate Days of Inventory using WEEKLY WEIGHTS
+ *
+ * Algorithm:
+ * 1. Get annual budget for SKU (sum of 12 monthly 'total' budgets)
+ * 2. Start from current week (EST timezone)
+ * 3. For each week: weekly_demand = annual_budget × weight
+ * 4. Calculate days remaining in current week, consume inventory
+ * 5. Continue through subsequent weeks until inventory depleted
+ * 6. Return total days and stockout info
+ *
+ * @param sku - Product SKU
+ * @param currentInventory - Total inventory on hand
+ * @param weeklyWeights - Weekly weights from database (use buildWeeklyWeightsLookup)
+ * @param annualBudgetLookup - Annual budget lookup from database (use buildAnnualBudgetLookup)
+ * @returns DOI result or undefined if no data available
+ */
+export function calculateDOI(
+  sku: string,
+  currentInventory: number,
+  weeklyWeights?: WeeklyWeightsLookup,
+  annualBudgetLookup?: AnnualBudgetLookup
+): DOIResult | undefined {
+  if (!weeklyWeights || weeklyWeights.size === 0) return undefined;
+  if (!annualBudgetLookup) return undefined;
+
+  const { year: currentYear, dayOfWeek, week: currentWeek } = getESTDateComponents();
+
+  // Try current year first, then next year if no budget
+  let annualBudget = getAnnualBudget(annualBudgetLookup, sku, currentYear);
+  let budgetYear = currentYear;
+
+  if (!annualBudget || annualBudget === 0) {
+    // Try next year's budget
+    annualBudget = getAnnualBudget(annualBudgetLookup, sku, currentYear + 1);
+    budgetYear = currentYear + 1;
+  }
+
+  if (!annualBudget || annualBudget === 0) {
+    return undefined;
+  }
 
   let remainingInventory = currentInventory;
   let totalDays = 0;
   const maxDays = 730; // 2 years max projection
-  let foundAnyBudget = false;
+
+  // Start at current week
+  let week = currentWeek;
+  let year = currentYear;
+
+  // Calculate what day of the week we're on (1-7, where 1 = Sunday)
+  // For first week, calculate remaining days
+  const daysRemainingInFirstWeek = 7 - ((dayOfWeek - 1) % 7);
+  let isFirstWeek = true;
 
   while (remainingInventory > 0 && totalDays < maxDays) {
-    const month0 = month - 1; // 0-indexed for DAYS_IN_MONTH
-    const daysInThisMonth = DAYS_IN_MONTH[month0];
-    const daysRemainingInMonth = daysInThisMonth - dayOfMonth + 1;
+    // Get weight for this week (use budget year's weight pattern)
+    const weight = weeklyWeights.get(week);
 
-    // Get monthly budget from lookup
-    const monthBudget = getBudget(budgetLookup, sku, year, month);
+    if (!weight || weight === 0) {
+      // No weight for this week - advance to next week with minimal consumption
+      const daysInWeek = isFirstWeek ? daysRemainingInFirstWeek : 7;
+      totalDays += daysInWeek;
+      isFirstWeek = false;
 
-    if (monthBudget === undefined || monthBudget === 0) {
-      // No budget for this month - skip to next
-      totalDays += daysRemainingInMonth;
-      month++;
-      if (month > 12) {
-        month = 1;
+      week++;
+      if (week > 52) {
+        week = 1;
         year++;
+        // Get next year's annual budget if available
+        const nextYearBudget = getAnnualBudget(annualBudgetLookup, sku, year);
+        if (nextYearBudget && nextYearBudget > 0) {
+          annualBudget = nextYearBudget;
+        }
       }
-      dayOfMonth = 1;
       continue;
     }
 
-    foundAnyBudget = true;
+    // Calculate demand for this week
+    const weeklyDemand = annualBudget * weight;
+    const dailyDemand = weeklyDemand / 7;
 
-    // Daily demand rate for this month
-    const dailyDemand = monthBudget / daysInThisMonth;
+    // For first week, only count remaining days
+    const daysInThisSegment = isFirstWeek ? daysRemainingInFirstWeek : 7;
+    const demandInSegment = dailyDemand * daysInThisSegment;
 
-    // Demand for remaining days in this month
-    const demandRemainingInMonth = dailyDemand * daysRemainingInMonth;
-
-    if (remainingInventory <= demandRemainingInMonth) {
-      // Stock out happens this month
-      const daysUntilStockout = remainingInventory / dailyDemand;
+    if (remainingInventory <= demandInSegment) {
+      // Stock out happens this week
+      const daysUntilStockout = dailyDemand > 0 ? remainingInventory / dailyDemand : daysInThisSegment;
       totalDays += daysUntilStockout;
-
-      // Calculate stockout date
-      const stockoutDate = new Date(year, month0, dayOfMonth + Math.floor(daysUntilStockout));
-      const stockoutWeek = getWeekNumber(stockoutDate);
 
       return {
         doi: Math.round(totalDays),
-        stockoutWeek: stockoutWeek,
-        stockoutYear: stockoutDate.getFullYear(),
+        stockoutWeek: week,
+        stockoutYear: year,
       };
     }
 
-    // Consume this month's remaining demand and continue
-    remainingInventory -= demandRemainingInMonth;
-    totalDays += daysRemainingInMonth;
+    // Consume this week's demand and continue
+    remainingInventory -= demandInSegment;
+    totalDays += daysInThisSegment;
+    isFirstWeek = false;
 
-    // Move to next month
-    month++;
-    if (month > 12) {
-      month = 1;
+    // Move to next week
+    week++;
+    if (week > 52) {
+      week = 1;
       year++;
+      // Get next year's annual budget if available
+      const nextYearBudget = getAnnualBudget(annualBudgetLookup, sku, year);
+      if (nextYearBudget && nextYearBudget > 0) {
+        annualBudget = nextYearBudget;
+      }
     }
-    dayOfMonth = 1;
   }
 
-  // If no budget data was found, return undefined (show N/A)
-  if (!foundAnyBudget) {
-    return undefined;
+  // Inventory lasts beyond projection window (2+ years) - return max
+  if (totalDays >= maxDays) {
+    return {
+      doi: maxDays,
+      stockoutWeek: week,
+      stockoutYear: year,
+    };
   }
 
-  // Inventory lasts beyond projection window (2+ years)
   return undefined;
-}
-
-/**
- * Get ISO week number for a date
- */
-function getWeekNumber(date: Date): number {
-  const startOfYear = new Date(date.getFullYear(), 0, 1);
-  const days = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
-  return Math.ceil((days + startOfYear.getDay() + 1) / 7);
 }
 
 /**
  * Get current ISO week number (1-52) in EST timezone
  */
 export function getCurrentWeek(): number {
-  const now = new Date();
-  const estFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const estParts = estFormatter.formatToParts(now);
-  const year = parseInt(estParts.find(p => p.type === "year")?.value || "2025");
-  const month = parseInt(estParts.find(p => p.type === "month")?.value || "1") - 1;
-  const day = parseInt(estParts.find(p => p.type === "day")?.value || "1");
-
-  const estDate = new Date(year, month, day);
-  const startOfYear = new Date(year, 0, 1);
-  const days = Math.floor((estDate.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
-  return Math.ceil((days + startOfYear.getDay() + 1) / 7);
+  const { week } = getESTDateComponents();
+  return week;
 }
 
 /**
  * Calculate remaining annual demand from current week to end of year
+ * Uses weekly weights to model seasonal demand
  */
-export function getRemainingAnnualDemand(annualForecast: number, fromWeek: number): number {
+export function getRemainingAnnualDemand(
+  annualForecast: number,
+  fromWeek: number,
+  weeklyWeights: WeeklyWeightsLookup
+): number {
   let totalWeight = 0;
   for (let w = fromWeek; w <= 52; w++) {
-    totalWeight += WEEKLY_WEIGHTS[w] || 0;
+    totalWeight += weeklyWeights.get(w) || 0;
   }
   return annualForecast * totalWeight;
 }
@@ -261,7 +269,11 @@ export function getRemainingAnnualDemand(annualForecast: number, fromWeek: numbe
 /**
  * Get weekly demand for a specific week
  */
-export function getWeeklyDemand(annualForecast: number, week: number): number {
-  const weight = WEEKLY_WEIGHTS[week] || 0;
+export function getWeeklyDemand(
+  annualForecast: number,
+  week: number,
+  weeklyWeights: WeeklyWeightsLookup
+): number {
+  const weight = weeklyWeights.get(week) || 0;
   return annualForecast * weight;
 }

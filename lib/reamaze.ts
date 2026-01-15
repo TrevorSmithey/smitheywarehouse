@@ -55,6 +55,7 @@ export interface ReamazeConversation {
   category: ReamazeCategory;
   tag_list?: string[];
   author?: ReamazeAuthor; // Customer who created the conversation
+  perma_url: string; // Public permalink with auth token (e.g., .../perma?token=xxx)
 }
 
 export interface ReamazeConversationsResponse {

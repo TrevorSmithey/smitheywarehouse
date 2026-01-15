@@ -8,7 +8,7 @@ import type {
   SkuSalesVelocity,
   B2BDraftOrderSku,
 } from "@/lib/types";
-import { calculateDOI, buildBudgetLookup } from "@/lib/doi";
+import { calculateDOI, buildWeeklyWeightsLookup, buildAnnualBudgetLookup } from "@/lib/doi";
 import { WAREHOUSE_IDS, QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
 import { checkRateLimit, rateLimitedResponse, addRateLimitHeaders, RATE_LIMITS } from "@/lib/rate-limit";
 
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
     const [
       currentMonthBudgetsResult,
       allBudgetsResult,
+      weeklyWeightsResult,
       inventoryResult,
       productsResult,
       monthlySalesResult,
@@ -85,26 +86,32 @@ export async function GET(request: NextRequest) {
         .select("sku, year, month, budget")
         .eq("channel", "total"),
 
-      // 3. Inventory
+      // 3. Weekly weights for DOI (seasonal demand distribution)
+      supabase
+        .from("weekly_weights")
+        .select("week, weight")
+        .order("week"),
+
+      // 4. Inventory
       supabase
         .from("inventory")
         .select("sku, warehouse_id, available, synced_at")
         .order("sku"),
 
-      // 4. Products
+      // 5. Products
       supabase
         .from("products")
         .select("sku, display_name, category")
         .eq("is_active", true),
 
-      // 5. Monthly retail sales (using efficient RPC that filters orders first)
+      // 6. Monthly retail sales (using efficient RPC that filters orders first)
       supabase.rpc("get_sku_sales_by_date_range", {
         p_start_date: monthStart,
         p_end_date: monthEnd,
         p_include_cancelled: false,
       }),
 
-      // 6. Monthly B2B (filter out cancelled orders using soft-delete column)
+      // 7. Monthly B2B (filter out cancelled orders using soft-delete column)
       supabase
         .from("b2b_fulfilled")
         .select("sku, quantity")
@@ -113,21 +120,21 @@ export async function GET(request: NextRequest) {
         .is("cancelled_at", null)
         .limit(QUERY_LIMITS.INVENTORY_B2B_SALES),
 
-      // 7. 3-day sales (using efficient RPC - end date is yesterday 23:59:59 UTC)
+      // 8. 3-day sales (using efficient RPC - end date is yesterday 23:59:59 UTC)
       supabase.rpc("get_sku_sales_by_date_range", {
         p_start_date: `${threeDayStartEST}T05:00:00Z`, // EST midnight in UTC
         p_end_date: new Date(Date.UTC(estYear, estMonth - 1, estDay, 4, 59, 59)).toISOString(), // Just before midnight EST today
         p_include_cancelled: false,
       }),
 
-      // 8. Prior 3-day sales (using efficient RPC)
+      // 9. Prior 3-day sales (using efficient RPC)
       supabase.rpc("get_sku_sales_by_date_range", {
         p_start_date: `${sixDayStartEST}T05:00:00Z`, // EST midnight in UTC
         p_end_date: `${threeDayStartEST}T04:59:59Z`, // Just before EST midnight 3 days ago
         p_include_cancelled: false,
       }),
 
-      // 9. B2B Draft Orders (open draft orders from Shopify B2B)
+      // 10. B2B Draft Orders (open draft orders from Shopify B2B)
       supabase
         .from("b2b_draft_orders")
         .select("sku, quantity, price, draft_order_id"),
@@ -136,6 +143,7 @@ export async function GET(request: NextRequest) {
     // Extract data and check for errors
     const { data: currentMonthBudgets } = currentMonthBudgetsResult;
     const { data: allBudgets } = allBudgetsResult;
+    const { data: weeklyWeightsData, error: weeklyWeightsError } = weeklyWeightsResult;
     const { data: inventoryData, error: inventoryError } = inventoryResult;
     const { data: productsData, error: productsError } = productsResult;
     const { data: monthlySalesData, error: monthlySalesError } = monthlySalesResult;
@@ -146,6 +154,14 @@ export async function GET(request: NextRequest) {
 
     if (inventoryError) throw new Error(`Failed to fetch inventory: ${inventoryError.message}`);
     if (productsError) throw new Error(`Failed to fetch products: ${productsError.message}`);
+    // Weekly weights: gracefully handle missing table (migration may not have run yet)
+    if (weeklyWeightsError) {
+      if (weeklyWeightsError.message.includes("does not exist")) {
+        console.warn("Weekly weights table does not exist yet (migration pending) - DOI will return N/A");
+      } else {
+        throw new Error(`Failed to fetch weekly weights: ${weeklyWeightsError.message}`);
+      }
+    }
     if (monthlySalesError) throw new Error(`Failed to fetch monthly sales: ${monthlySalesError.message}`);
     if (monthlyB2BError) throw new Error(`Failed to fetch monthly B2B data: ${monthlyB2BError.message}`);
     if (sales3DayError) throw new Error(`Failed to fetch 3-day sales: ${sales3DayError.message}`);
@@ -172,8 +188,11 @@ export async function GET(request: NextRequest) {
       budgetBySku.set(b.sku.toLowerCase(), b.budget);
     }
 
-    // Build budget lookup for DOI calculation
-    const budgetLookup = buildBudgetLookup(allBudgets || []);
+    // Build lookups for DOI calculation
+    // Weekly weights: seasonal demand distribution (sum = 1.0)
+    const weeklyWeightsLookup = buildWeeklyWeightsLookup(weeklyWeightsData || []);
+    // Annual budget: sum of 12 monthly 'total' budgets per SKU/year
+    const annualBudgetLookup = buildAnnualBudgetLookup(allBudgets || []);
 
     // Aggregate retail ordered quantity by SKU (case-insensitive)
     const retailSalesBySku = new Map<string, number>();
@@ -280,9 +299,11 @@ export async function GET(request: NextRequest) {
 
       // Include products with any inventory (including negative/backordered)
       if (total !== 0) {
-        // Calculate DOI using monthly budgets from database
+        // Calculate DOI using weekly weights for seasonal demand
         // Only calculate for positive inventory
-        const doiResult = total > 0 ? calculateDOI(sku, total, budgetLookup) : undefined;
+        const doiResult = total > 0
+          ? calculateDOI(sku, total, weeklyWeightsLookup, annualBudgetLookup)
+          : undefined;
 
         // Get monthly metrics using budgets from Supabase
         const monthSold = monthlySalesBySku.get(sku.toLowerCase()) || 0;

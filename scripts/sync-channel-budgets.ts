@@ -1,15 +1,22 @@
 /**
  * Sync Channel Budgets from CSV
  *
- * Parses the retail/wholesale budget CSV and upserts to Supabase budgets table.
+ * Parses the retail/wholesale/total budget CSV and upserts to Supabase budgets table.
  *
  * CSV Format:
  * - First column: SKU
  * - Columns 2+: Month values (Jan-25, Feb-25, etc.)
  * - "RETAIL" row marks start of retail section
  * - "WHOLESALE" row marks start of wholesale section
+ * - "TOTAL" row marks start of total section
  * - Blank cells = 0
  * - Numbers may be quoted with commas: "1,499 "
+ *
+ * IMPORTANT: Total ≠ Retail + Wholesale
+ * The 'total' channel includes marketing GWPs (Gift With Purchase) and giveaways.
+ * These are units that go out the door but are not "sold" — they're given away.
+ * The unit budget represents expected SALES for retail/wholesale, but ALL units
+ * out the door for total.
  *
  * Usage:
  *   npx ts-node scripts/sync-channel-budgets.ts
@@ -88,7 +95,7 @@ interface BudgetRow {
   sku: string;
   year: number;
   month: number;
-  channel: "retail" | "wholesale";
+  channel: "retail" | "wholesale" | "total";
   budget: number;
 }
 
@@ -124,7 +131,7 @@ async function main() {
 
   // Parse data rows
   const budgets: BudgetRow[] = [];
-  let currentChannel: "retail" | "wholesale" | null = null;
+  let currentChannel: "retail" | "wholesale" | "total" | null = null;
 
   for (let lineIndex = 1; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex].trim();
@@ -142,6 +149,11 @@ async function main() {
     if (firstCol === "WHOLESALE") {
       currentChannel = "wholesale";
       console.log(`Line ${lineIndex + 1}: Switching to WHOLESALE section`);
+      continue;
+    }
+    if (firstCol === "TOTAL") {
+      currentChannel = "total";
+      console.log(`Line ${lineIndex + 1}: Switching to TOTAL section`);
       continue;
     }
 
@@ -171,8 +183,10 @@ async function main() {
   // Group by channel for summary
   const retailCount = budgets.filter(b => b.channel === "retail").length;
   const wholesaleCount = budgets.filter(b => b.channel === "wholesale").length;
+  const totalCount = budgets.filter(b => b.channel === "total").length;
   console.log(`  Retail: ${retailCount} entries`);
   console.log(`  Wholesale: ${wholesaleCount} entries`);
+  console.log(`  Total: ${totalCount} entries`);
 
   // Sample output
   console.log("\nSample entries:");
@@ -193,27 +207,135 @@ async function main() {
     console.log("Error:", alterError.message);
   }
 
-  // Clear existing budgets for the date range we're importing
+  // NOTE: We NO LONGER delete existing budgets before inserting.
+  // The upsert with ON CONFLICT handles updates, and we preserve history.
+  // This allows tracking budget changes over time.
   const yearsInData = [...new Set(budgets.map(b => b.year))];
-  console.log(`\nClearing existing budgets for years: ${yearsInData.join(", ")}`);
+  console.log(`\nUpserting budgets for years: ${yearsInData.join(", ")} (preserving existing data)`);
+  console.log(`  Note: Existing values will be updated, new values will be inserted.`);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 1: Fetch existing budgets to detect changes for history logging
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log(`\nFetching existing budgets for change detection...`);
+
+  const existingBudgetsMap = new Map<string, { id: string; budget: number }>();
 
   for (const year of yearsInData) {
-    const { error: deleteError } = await supabase
+    const { data: existingBudgets, error: fetchError } = await supabase
       .from("budgets")
-      .delete()
+      .select("id, sku, year, month, channel, budget")
       .eq("year", year);
 
-    if (deleteError) {
-      console.error(`Error clearing year ${year}:`, deleteError.message);
+    if (fetchError) {
+      console.error(`Error fetching existing budgets for ${year}:`, fetchError.message);
+    } else if (existingBudgets) {
+      for (const b of existingBudgets) {
+        // Create composite key for lookup
+        const key = `${b.sku}|${b.year}|${b.month}|${b.channel}`;
+        existingBudgetsMap.set(key, { id: b.id, budget: b.budget });
+      }
     }
   }
 
-  // Upsert budgets in batches
+  console.log(`  Found ${existingBudgetsMap.size} existing budget records`);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2: Detect changes and prepare history records
+  // ═══════════════════════════════════════════════════════════════════════════
+  interface HistoryRecord {
+    sku: string;
+    year: number;
+    month: number;
+    channel: string;
+    old_budget: number | null;
+    new_budget: number;
+    change_source: string;
+    budget_id: string | null;
+  }
+
+  const historyRecords: HistoryRecord[] = [];
+  let newCount = 0;
+  let changedCount = 0;
+  let unchangedCount = 0;
+
+  for (const b of budgets) {
+    const key = `${b.sku}|${b.year}|${b.month}|${b.channel}`;
+    const existing = existingBudgetsMap.get(key);
+
+    if (!existing) {
+      // New record
+      newCount++;
+      historyRecords.push({
+        sku: b.sku,
+        year: b.year,
+        month: b.month,
+        channel: b.channel,
+        old_budget: null,
+        new_budget: b.budget,
+        change_source: "sync-channel-budgets",
+        budget_id: null,  // Will be set after upsert if needed
+      });
+    } else if (existing.budget !== b.budget) {
+      // Changed record
+      changedCount++;
+      historyRecords.push({
+        sku: b.sku,
+        year: b.year,
+        month: b.month,
+        channel: b.channel,
+        old_budget: existing.budget,
+        new_budget: b.budget,
+        change_source: "sync-channel-budgets",
+        budget_id: existing.id,
+      });
+    } else {
+      // Unchanged
+      unchangedCount++;
+    }
+  }
+
+  console.log(`\nChange detection results:`);
+  console.log(`  New records: ${newCount}`);
+  console.log(`  Changed records: ${changedCount}`);
+  console.log(`  Unchanged records: ${unchangedCount}`);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 3: Log changes to budget_history BEFORE upserting
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (historyRecords.length > 0) {
+    console.log(`\nLogging ${historyRecords.length} changes to budget_history...`);
+
+    const HISTORY_BATCH_SIZE = 500;
+    let historyLogged = 0;
+
+    for (let i = 0; i < historyRecords.length; i += HISTORY_BATCH_SIZE) {
+      const batch = historyRecords.slice(i, i + HISTORY_BATCH_SIZE);
+
+      const { error: historyError } = await supabase
+        .from("budget_history")
+        .insert(batch);
+
+      if (historyError) {
+        console.error(`History batch error at ${i}:`, historyError.message);
+      } else {
+        historyLogged += batch.length;
+      }
+    }
+
+    console.log(`  Logged ${historyLogged} history records`);
+  } else {
+    console.log(`\nNo changes detected - skipping history logging`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 4: Upsert budgets in batches
+  // ═══════════════════════════════════════════════════════════════════════════
   const BATCH_SIZE = 500;
   let inserted = 0;
   let errors = 0;
 
-  console.log(`\nInserting ${budgets.length} budget entries in batches of ${BATCH_SIZE}...`);
+  console.log(`\nUpserting ${budgets.length} budget entries in batches of ${BATCH_SIZE}...`);
 
   for (let i = 0; i < budgets.length; i += BATCH_SIZE) {
     const batch = budgets.slice(i, i + BATCH_SIZE);
@@ -236,13 +358,14 @@ async function main() {
       errors += batch.length;
     } else {
       inserted += batch.length;
-      process.stdout.write(`\r  Inserted: ${inserted} / ${budgets.length}`);
+      process.stdout.write(`\r  Upserted: ${inserted} / ${budgets.length}`);
     }
   }
 
   console.log(`\n\nSync complete!`);
-  console.log(`  Inserted: ${inserted}`);
+  console.log(`  Upserted: ${inserted}`);
   console.log(`  Errors: ${errors}`);
+  console.log(`  History logged: ${historyRecords.length} changes (${newCount} new, ${changedCount} modified)`);
 
   // Verify by querying
   const { data: sample, error: sampleError } = await supabase

@@ -14,6 +14,24 @@ import { verifyCronSecret, unauthorizedResponse } from "@/lib/cron-auth";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes - must be literal for Next.js static analysis
 
+// Patterns that indicate an outbound Smithey staff message (not customer inquiry)
+const OUTBOUND_PATTERNS = [
+  /^hi,?\s*(this is|it'?s)\s*(grace|gil|kathleen|charles|chris)/i,
+  /^hi\s+\w+,?\s*(this is|it'?s)\s*\w+\s*(with|from)\s*smithey/i,
+  /^(hello|hi),?\s*(this is|it'?s)\s*smithey/i,
+  /^thank you for thinking of smithey/i,
+  /^we appreciate you reaching out/i,
+  /^thanks for contacting smithey/i,
+];
+
+/**
+ * Check if a message appears to be an outbound Smithey staff message
+ */
+function isOutboundMessage(messageBody: string): boolean {
+  const trimmed = messageBody.trim().toLowerCase();
+  return OUTBOUND_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
 export async function GET(request: Request) {
   // Always verify cron secret - no exceptions
   if (!verifyCronSecret(request)) {
@@ -113,11 +131,18 @@ export async function GET(request: Request) {
         // Clean the message body for classification
         const cleanBody = cleanMessageBody(conv.message?.body || "");
 
+        // Skip outbound Smithey staff messages (not customer inquiries)
+        if (isOutboundMessage(cleanBody)) {
+          console.log(`[REAMAZE SYNC] Skipping outbound message: ${conv.slug}`);
+          skipped++;
+          continue;
+        }
+
         // Classify with Claude
         const classification = await classifyTicket(cleanBody);
 
-        // Build permalink
-        const permaUrl = ReamazeClient.getPermalink(brand, conv.slug);
+        // Use the API's perma_url directly (includes auth token for public access)
+        const permaUrl = conv.perma_url;
 
         // Insert into Supabase
         const { error: insertError } = await supabase

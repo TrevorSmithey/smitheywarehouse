@@ -228,6 +228,155 @@ const yoyChange = priorYearRevenue > 0
 
 ---
 
+## Unit Budget System
+
+The unit budget is **foundational infrastructure** that cascades through multiple downstream systems.
+
+### Budget Channels
+
+**CRITICAL**: `total` ≠ `retail` + `wholesale`
+
+| Channel | Description | Used By |
+|---------|-------------|---------|
+| `retail` | D2C e-commerce sales forecast | Budget Dashboard (variance, pace) |
+| `wholesale` | B2B sales forecast | Budget Dashboard (variance, pace) |
+| `total` | **All units out the door** — includes marketing GWPs/giveaways | Production Planning, Inventory Dashboard, DOI |
+
+The `total` channel is a separately tracked value because it includes units given away for marketing purposes (GWP = Gift With Purchase). These units are not "sold" but still leave inventory.
+
+**Unit Budget = Expected SALES** for retail/wholesale, but **ALL units out the door** for total.
+
+### What Unit Budget Drives
+
+```
+budgets table (sku, year, month, channel, budget)
+    ↓
+┌─────────────────────────────────────────────────────────────┐
+│ DOWNSTREAM SYSTEMS                                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ 1. BUDGET DASHBOARD (/api/budget)                          │
+│    • Uses retail + wholesale channels                       │
+│    • Variance = actual - budget                             │
+│    • Pace = (actual / expectedByNow) * 100                  │
+│    • Category/cookware/grand totals                         │
+│                                                             │
+│ 2. PRODUCTION PLANNING (/api/production-planning)          │
+│    • Uses channel='total' specifically                      │
+│    • Feeds "yearSalesForecast" for inventory curves         │
+│    • Gap = cumulativeProduction - cumulativeBudget          │
+│    • Determines inventory risk/buffer                       │
+│                                                             │
+│ 3. INVENTORY DASHBOARD (/api/inventory)                    │
+│    • Uses channel='total' for monthBudget                   │
+│    • monthPct = (monthSold / monthBudget) * 100             │
+│                                                             │
+│ 4. DOI CALCULATOR (lib/doi.ts)                             │
+│    • Uses weekly_weights table for seasonal demand          │
+│    • Annual budget = sum of 12 monthly 'total' budgets      │
+│    • Weekly demand = annual_budget × weekly_weight[week]    │
+│    • Projects stockout date by consuming inventory forward  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Database Schema
+
+```sql
+budgets (
+  sku TEXT,
+  year INTEGER,
+  month INTEGER (1-12),
+  channel TEXT ('retail' | 'wholesale' | 'total'),
+  budget INTEGER (unit quantity)
+)
+UNIQUE (sku, year, month, channel)
+```
+
+### Files That Query Budgets
+
+| File | Line | Channel | What It Drives |
+|------|------|---------|----------------|
+| `app/api/budget/route.ts` | 689 | `retail`, `wholesale` | Budget Dashboard variance, pace, progress |
+| `app/api/production-planning/route.ts` | 495 | `total` | Inventory curves, yearSalesForecast |
+| `app/api/inventory/route.ts` | 76 | `total` | Current month budget (monthBudget) |
+| `app/api/inventory/route.ts` | 84 | `total` | DOI (Days of Inventory) calculations |
+
+### Budget Update Process (Happens 2-3x/Year)
+
+#### Source File
+
+```
+OneDrive/Smithey Ironware Team Site - Documents/Reporting/Unit Sales Model/Unit Sales Plan (Active).xlsm
+```
+
+#### Excel Structure (Three Tabs)
+
+| Tab Name | Channel | SKU Column | 2026 Data Columns | Data Start Row |
+|----------|---------|------------|-------------------|----------------|
+| **Web Projections** | retail | B | BF-BQ (cols 58-69) | Row 65 (after "RETAIL SALES" header) |
+| **Whls Projections** | wholesale | B | Cols 56-67 | Row 45 |
+| **Budget Out The Door** | total | B | AZ-BK (cols 52-63) | Row 7 |
+
+**Note**: Column positions shift when new years are added. Always verify headers show correct year (e.g., "Jan-26").
+
+#### Extraction Process (Claude Does This)
+
+1. **Read Excel** using Python openpyxl (read-only mode, data_only=True for computed values)
+2. **Extract** all three tabs into unified format: `sku, year, month, channel, budget`
+3. **Deduplicate** — Excel may have same SKU in multiple sections (subtotals, etc.)
+4. **Generate audit files** to `~/Downloads/`:
+   - `2026_budget_audit_clean.csv` — Import format (sku, year, month, channel, budget)
+   - `2026_budget_pivot_clean.csv` — Side-by-side view for verification
+
+#### Audit Checklist
+
+Before importing, verify:
+
+| Check | Expected |
+|-------|----------|
+| Row count | SKUs × 12 months × 3 channels (e.g., 43 × 12 × 3 = 1,548) |
+| No duplicates | Each (sku, month, channel) appears once |
+| Total ≥ Retail + Wholesale | Small rounding diffs OK (1-3 units) |
+| Zero-budget SKUs | New products or discontinued — confirm intentional |
+| Incomplete months | New product launches mid-year — confirm intentional |
+| No wholesale | D2C-only products — confirm intentional |
+
+#### Import to Database
+
+```sql
+-- 1. Check current state
+SELECT channel, COUNT(*), SUM(budget) FROM budgets WHERE year = 2026 GROUP BY channel;
+
+-- 2. Delete existing year (clean slate avoids case-sensitivity issues)
+DELETE FROM budgets WHERE year = 2026;
+
+-- 3. Import new data (Claude uses Supabase MCP or Python script)
+-- Uses UPPERCASE SKUs for consistency
+
+-- 4. Verify import
+SELECT channel, COUNT(*) as rows, SUM(budget) as units
+FROM budgets WHERE year = 2026 GROUP BY channel;
+```
+
+#### Verification Queries
+
+```sql
+-- Check specific SKU
+SELECT * FROM budgets WHERE UPPER(sku) = 'SMITH-CI-SKIL12' AND year = 2026 ORDER BY month, channel;
+
+-- Compare channel totals
+SELECT
+  SUM(CASE WHEN channel = 'retail' THEN budget ELSE 0 END) as retail,
+  SUM(CASE WHEN channel = 'wholesale' THEN budget ELSE 0 END) as wholesale,
+  SUM(CASE WHEN channel = 'total' THEN budget ELSE 0 END) as total
+FROM budgets WHERE year = 2026;
+```
+
+**Source**: `scripts/sync-channel-budgets.ts`, `scripts/check-budget-integrity.ts`
+
+---
+
 ## B2B vs DTC Filtering
 
 ### Excluded from B2B Metrics
@@ -263,6 +412,76 @@ Plus any customers with `is_excluded = true` in database.
 | Selery | 93742 | `V2FyZWhvdXNlOjkzNzQy` |
 
 **Source**: `lib/constants.ts:13-28`
+
+---
+
+## Days of Inventory (DOI) Calculation
+
+### Overview
+
+DOI projects how many days until inventory runs out for a SKU, using **seasonal weekly weights** to model demand patterns. This is critical for inventory planning because demand is highly seasonal.
+
+### Weekly Weights
+
+The `weekly_weights` table stores 52 rows (one per week) with decimal weights that sum to 1.0. These weights represent the percentage of **annual demand** that occurs in each week, based on 3-year historical averages.
+
+| Week | Season | Weight | % of Annual |
+|------|--------|--------|-------------|
+| 25 | Summer low | 0.0076 | 0.76% |
+| 35 | Back-to-school | 0.0128 | 1.28% |
+| 47 | BFCM lead-in | 0.0727 | 7.27% |
+| 48 | Peak BFCM | 0.1015 | 10.15% |
+| 49 | Cyber week | 0.0883 | 8.83% |
+| 50 | Holiday shipping | 0.0963 | 9.63% |
+
+**Critical insight**: Week 48 has **13× more demand** than Week 25. A flat monthly rate would completely miss this.
+
+### Algorithm
+
+```
+1. annual_budget = SUM(budget) FROM budgets WHERE sku = :sku AND year = :year AND channel = 'total'
+   (Sum of all 12 monthly budgets for the SKU)
+
+2. Start from current week (EST timezone)
+
+3. For each week until inventory depleted:
+   weekly_demand = annual_budget × weekly_weights[week]
+   daily_demand = weekly_demand / 7
+
+   - If inventory covers the week: consume and continue
+   - If inventory runs out mid-week: calculate partial days
+
+4. Return total days until stockout
+```
+
+### Database Schema
+
+```sql
+weekly_weights (
+  week INTEGER PRIMARY KEY,  -- 1-52
+  weight NUMERIC(18,16) NOT NULL,  -- decimal weight
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+)
+-- Constraint: SUM(weight) ≈ 1.0
+```
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `weekly_weights` table | Stores 52 seasonal weights |
+| `lib/doi.ts` | `calculateDOI()` function using weekly weights |
+| `app/api/inventory/route.ts` | Fetches weights, computes annual budget, calls calculateDOI |
+
+### Why This Design?
+
+**Monthly budgets stay as-is** — They're the source of truth for budget tracking, variance, and pace.
+
+**Weekly weights are separate** — They model the *shape* of demand within a year, not the total volume.
+
+**Annual budget × weight = weekly demand** — This converts a flat annual number into a seasonal curve.
+
+**Source**: `lib/doi.ts`, `supabase/migrations/20260115_create_weekly_weights.sql`
 
 ---
 
