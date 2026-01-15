@@ -255,10 +255,14 @@ export async function GET(request: NextRequest) {
              c.total_revenue > 0
     );
 
-    // Total B2B customers with order history (denominator for churn calculations)
-    // Uses order_count > 0 to match wholesale API definition - excludes customers with
-    // stale last_sale_date but no actual transactions
-    const totalB2BWithOrders = enrichedCustomers.filter((c) => c.order_count > 0).length;
+    // Total B2B customers (denominator for churn calculations)
+    // Must match health funnel filters: has order history, has revenue, has sale date
+    // This ensures Total = Active + At Risk + Churning + Churned
+    const totalB2BWithOrders = enrichedCustomers.filter(
+      (c) => c.order_count > 0 &&
+             c.total_revenue > 0 &&
+             c.days_since_last_order !== null
+    ).length;
 
     // Group churned by year with pool-shrinking methodology
     // Pool shrinks each year as customers churn out
