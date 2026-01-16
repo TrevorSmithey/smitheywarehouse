@@ -44,16 +44,15 @@ export async function GET(request: Request) {
     );
   }
 
-  // Check for full sync flag
+  // Check for sync mode flags
   const url = new URL(request.url);
   const isFullSync = url.searchParams.get("full") === "true";
+  const cursorParam = url.searchParams.get("cursor"); // Allow starting from specific cursor for recovery
 
   try {
     if (!hasNetSuiteCredentials()) {
       return NextResponse.json({ error: "Missing NetSuite credentials" }, { status: 500 });
     }
-
-    console.log(`[NETSUITE] Starting line items sync (${isFullSync ? 'FULL' : 'incremental'}, cursor-based pagination)...`);
 
     // Pre-fetch all valid transaction IDs from our DB
     // This prevents FK violations by filtering line items for non-existent transactions
@@ -70,8 +69,43 @@ export async function GET(request: Request) {
     const validTxnIds = new Set(validTxnData?.map(t => t.ns_transaction_id) || []);
     console.log(`[NETSUITE] Loaded ${validTxnIds.size} valid transaction IDs`);
 
+    // Determine starting cursor:
+    // 1. If cursor param provided, use it (for manual recovery)
+    // 2. If full sync requested, start from 0
+    // 3. Otherwise, resume from last sync's cursor (truly incremental)
+    let startingCursor = 0;
+    if (cursorParam) {
+      startingCursor = parseInt(cursorParam, 10);
+      console.log(`[NETSUITE] Starting from manual cursor: ${startingCursor}`);
+    } else if (!isFullSync) {
+      // Load last successful cursor from sync_logs
+      const { data: lastLog } = await supabase
+        .from("sync_logs")
+        .select("details")
+        .eq("sync_type", "netsuite_lineitems")
+        .in("status", ["success", "partial"])
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (lastLog?.details?.last_cursor) {
+        startingCursor = lastLog.details.last_cursor;
+        console.log(`[NETSUITE] Resuming from last cursor: ${startingCursor}`);
+      }
+    }
+
+    const syncMode = cursorParam
+      ? `recovery from ${startingCursor}`
+      : isFullSync
+        ? "FULL"
+        : startingCursor > 0
+          ? `incremental from ${startingCursor}`
+          : "initial full";
+
+    console.log(`[NETSUITE] Starting line items sync (${syncMode}, cursor-based pagination)...`);
+
     const limit = 200;
-    let lastTransactionId = 0; // Start from the beginning (t.id > 0)
+    let lastTransactionId = startingCursor;
     let totalFetched = 0;
     let totalFiltered = 0; // Records skipped due to missing transaction
     let totalUpserted = 0;
