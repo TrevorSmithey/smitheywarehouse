@@ -75,33 +75,55 @@ export const DOOR_BENCHMARKS = {
 } as const;
 
 /**
- * Top 20 SKUs by revenue share (B2B only, Jul-Dec 2025).
- * Captures ~90% of B2B revenue.
+ * SKU mix by revenue share (B2B only, Full Year 2025).
+ * Based on $5.93M total B2B revenue Jan-Dec 2025.
+ * Covers ~75% of B2B revenue (top cookware + accessories + lids).
  *
  * IMPORTANT: sku_name must match canonical SKU_DISPLAY_NAMES from lib/shiphero.ts
  * See BUSINESS_LOGIC.md "SKU Reference Table" for official SKU → Internal Name mapping.
  */
 export const DEFAULT_SKU_MIX: Omit<ForecastSkuMix, "id" | "forecast_id">[] = [
-  { sku: "Smith-CI-Skil12", sku_name: "12Trad", revenue_share_pct: 0.197, avg_unit_price: 118 },
-  { sku: "Smith-CI-Skil10", sku_name: "10Trad", revenue_share_pct: 0.113, avg_unit_price: 94 },
-  { sku: "Smith-CI-Skil14", sku_name: "14Dual", revenue_share_pct: 0.080, avg_unit_price: 130 },
-  { sku: "Smith-CI-Griddle18", sku_name: "Double Burner Griddle", revenue_share_pct: 0.078, avg_unit_price: 167 },
-  { sku: "Smith-CI-DSkil11", sku_name: "11Deep", revenue_share_pct: 0.069, avg_unit_price: 124 },
-  { sku: "Smith-CS-Deep12", sku_name: "Deep Farm", revenue_share_pct: 0.055, avg_unit_price: 181 },
-  { sku: "Smith-CI-Dutch5", sku_name: "5.5 Dutch", revenue_share_pct: 0.048, avg_unit_price: 173 },
-  { sku: "Smith-CI-Chef10", sku_name: "10Chef", revenue_share_pct: 0.045, avg_unit_price: 85 },
-  { sku: "Smith-CI-Skil8", sku_name: "8Chef", revenue_share_pct: 0.040, avg_unit_price: 63 },
-  { sku: "Smith-CS-Farm12", sku_name: "Farmhouse Skillet", revenue_share_pct: 0.033, avg_unit_price: 171 },
-  { sku: "Smith-CI-Grill12", sku_name: "12Grill", revenue_share_pct: 0.031, avg_unit_price: 119 },
-  { sku: "Smith-CI-Flat12", sku_name: "12Flat", revenue_share_pct: 0.030, avg_unit_price: 75 },
-  { sku: "Smith-CI-Dutch7", sku_name: "7.25 Dutch", revenue_share_pct: 0.028, avg_unit_price: 203 },
-  { sku: "Smith-CS-WokM", sku_name: "Wok", revenue_share_pct: 0.028, avg_unit_price: 182 },
-  { sku: "Smith-CI-Dual12", sku_name: "12Dual", revenue_share_pct: 0.027, avg_unit_price: 119 },
-  { sku: "Smith-CI-TradSkil14", sku_name: "14Trad", revenue_share_pct: 0.026, avg_unit_price: 131 },
-  { sku: "Smith-CS-OvalM", sku_name: "Oval Roaster", revenue_share_pct: 0.022, avg_unit_price: 167 },
-  { sku: "Smith-CS-Farm9", sku_name: "Little Farm", revenue_share_pct: 0.021, avg_unit_price: 115 },
-  { sku: "Smith-CS-RRoastM", sku_name: "Round Roaster", revenue_share_pct: 0.015, avg_unit_price: 166 },
-  { sku: "Smith-CS-Fish", sku_name: "Fish Skillet", revenue_share_pct: 0.014, avg_unit_price: 164 },
+  // === CAST IRON COOKWARE ===
+  { sku: "Smith-CI-Skil12", sku_name: "12Trad", revenue_share_pct: 0.117, avg_unit_price: 123 },
+  { sku: "Smith-CI-Skil10", sku_name: "10Trad", revenue_share_pct: 0.063, avg_unit_price: 98 },
+  { sku: "Smith-CI-Skil14", sku_name: "14Dual", revenue_share_pct: 0.048, avg_unit_price: 137 },
+  { sku: "Smith-CI-Griddle18", sku_name: "Double Burner Griddle", revenue_share_pct: 0.040, avg_unit_price: 173 },
+  { sku: "Smith-CI-DSkil11", sku_name: "11Deep", revenue_share_pct: 0.040, avg_unit_price: 125 },
+  { sku: "Smith-CI-Chef10", sku_name: "10Chef", revenue_share_pct: 0.031, avg_unit_price: 86 },
+  { sku: "Smith-CI-Dutch5", sku_name: "5.5 Dutch", revenue_share_pct: 0.031, avg_unit_price: 174 },
+  { sku: "Smith-CI-Skil8", sku_name: "8Chef", revenue_share_pct: 0.026, avg_unit_price: 65 },
+  { sku: "Smith-CI-Dutch7", sku_name: "7.25 Dutch", revenue_share_pct: 0.020, avg_unit_price: 207 },
+  { sku: "Smith-CI-Flat12", sku_name: "12Flat", revenue_share_pct: 0.019, avg_unit_price: 78 },
+  { sku: "Smith-CI-Tradskil14", sku_name: "14Trad", revenue_share_pct: 0.019, avg_unit_price: 136 },
+  { sku: "Smith-CI-Grill12", sku_name: "12Grill", revenue_share_pct: 0.019, avg_unit_price: 122 },
+  { sku: "Smith-CI-Dual12", sku_name: "12Dual", revenue_share_pct: 0.019, avg_unit_price: 123 },
+  { sku: "Smith-CI-Dutch4", sku_name: "4 Dutch", revenue_share_pct: 0.010, avg_unit_price: 127 },
+  { sku: "Smith-CI-Skil6", sku_name: "6Skillet", revenue_share_pct: 0.007, avg_unit_price: 46 },
+  { sku: "Smith-CI-Flat10", sku_name: "10Flat", revenue_share_pct: 0.005, avg_unit_price: 68 },
+  { sku: "Smith-CI-Dual6", sku_name: "6Dual", revenue_share_pct: 0.004, avg_unit_price: 46 },
+
+  // === CARBON STEEL COOKWARE ===
+  { sku: "Smith-CS-Deep12", sku_name: "Deep Farm", revenue_share_pct: 0.033, avg_unit_price: 192 },
+  { sku: "Smith-CS-Farm12", sku_name: "Farmhouse Skillet", revenue_share_pct: 0.022, avg_unit_price: 176 },
+  { sku: "Smith-CS-WokM", sku_name: "Wok", revenue_share_pct: 0.020, avg_unit_price: 192 },
+  { sku: "Smith-CS-OvalM", sku_name: "Oval Roaster", revenue_share_pct: 0.014, avg_unit_price: 172 },
+  { sku: "Smith-CS-Farm9", sku_name: "Little Farm", revenue_share_pct: 0.014, avg_unit_price: 118 },
+  { sku: "Smith-CS-RRoastM", sku_name: "Round Roaster", revenue_share_pct: 0.010, avg_unit_price: 171 },
+  { sku: "Smith-CS-Round17N", sku_name: "17 Round", revenue_share_pct: 0.009, avg_unit_price: 220 },
+  { sku: "Smith-CS-Fish", sku_name: "Fish Skillet", revenue_share_pct: 0.005, avg_unit_price: 174 },
+
+  // === ACCESSORIES ===
+  { sku: "Smith-AC-SpatB1", sku_name: "Mighty Spat", revenue_share_pct: 0.009, avg_unit_price: 23 },
+  { sku: "Smith-AC-Scrub1", sku_name: "Chainmail Scrubber", revenue_share_pct: 0.007, avg_unit_price: 10 },
+  { sku: "Smith-AC-SpatW1", sku_name: "Slotted Spat", revenue_share_pct: 0.006, avg_unit_price: 17 },
+  { sku: "Smith-AC-Sleeve2", sku_name: "Long Sleeve", revenue_share_pct: 0.004, avg_unit_price: 14 },
+  { sku: "Smith-AC-Sleeve1", sku_name: "Short Sleeve", revenue_share_pct: 0.004, avg_unit_price: 13 },
+  { sku: "Smith-AC-CareKit", sku_name: "Care Kit", revenue_share_pct: 0.004, avg_unit_price: 32 },
+
+  // === GLASS LIDS ===
+  { sku: "Smith-AC-Glid12", sku_name: "12Lid", revenue_share_pct: 0.006, avg_unit_price: 27 },
+  { sku: "Smith-AC-Glid14", sku_name: "14Lid", revenue_share_pct: 0.005, avg_unit_price: 29 },
+  { sku: "Smith-AC-Glid10", sku_name: "10Lid", revenue_share_pct: 0.004, avg_unit_price: 24 },
 ];
 
 /**
