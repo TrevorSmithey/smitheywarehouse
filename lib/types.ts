@@ -1839,3 +1839,195 @@ export interface Announcement {
   created_at: string;
   is_archived: boolean;
 }
+
+// ============================================================
+// Wholesale Forecast Types (Driver Tab)
+// ============================================================
+
+/**
+ * Forecast status workflow:
+ * - draft: Work in progress, not yet approved
+ * - active: Current budget (only one per fiscal year)
+ * - archived: Superseded by newer version
+ */
+export type ForecastStatus = "draft" | "active" | "archived";
+
+/**
+ * Core forecast record with annual budgets and door-level drivers.
+ * Immutable versioning: edits create new rows with incremented version.
+ */
+export interface WholesaleForecast {
+  id: string;
+  fiscal_year: number;
+  version: number;
+  created_at: string;
+  created_by: string | null;
+  status: ForecastStatus;
+
+  // B2B Revenue Targets (quarterly)
+  b2b_q1_target: number;
+  b2b_q2_target: number;
+  b2b_q3_target: number;
+  b2b_q4_target: number;
+
+  // Corporate Revenue Targets (quarterly)
+  corp_q1_target: number;
+  corp_q2_target: number;
+  corp_q3_target: number;
+  corp_q4_target: number;
+
+  // Door-level driver assumptions
+  existing_doors_start: number | null;
+  new_doors_target: number | null;
+  expected_churn_doors: number | null;
+  organic_growth_pct: number | null;       // e.g., 0.11 = 11%
+  new_door_first_year_yield: number | null;
+
+  // Revision tracking
+  revision_note: string | null;
+  parent_forecast_id: string | null;
+
+  // Computed fields (from DB view or API)
+  b2b_annual_target?: number;
+  corp_annual_target?: number;
+  projected_ending_doors?: number;
+}
+
+/**
+ * SKU mix assumptions for unit forecasting.
+ * revenue_share_pct should sum to 1.0 across all SKUs in a forecast.
+ */
+export interface ForecastSkuMix {
+  id: string;
+  forecast_id: string;
+  sku: string;
+  sku_name: string | null;
+  revenue_share_pct: number;    // e.g., 0.197 = 19.7%
+  avg_unit_price: number;       // AUP for this SKU
+}
+
+/**
+ * Quarterly actuals vs budget comparison
+ */
+export interface ForecastQuarterActuals {
+  quarter: 1 | 2 | 3 | 4;
+  b2b_target: number;
+  b2b_actual: number;
+  b2b_variance: number;
+  b2b_variance_pct: number;
+  corp_target: number;
+  corp_actual: number;
+  corp_variance: number;
+  corp_variance_pct: number;
+  is_complete: boolean;         // True if quarter has ended
+  days_elapsed: number;
+  days_total: number;
+}
+
+/**
+ * Door driver scenario analysis result
+ */
+export interface ForecastDoorScenario {
+  scenario_name: string;
+  existing_doors_start: number;
+  expected_churn: number;
+  new_doors: number;
+  organic_growth_pct: number;
+  new_door_yield: number;
+  // Computed outputs
+  ending_doors: number;
+  existing_book_revenue: number;
+  new_door_revenue: number;
+  total_implied_revenue: number;
+  gap_to_target: number;
+  is_achievable: boolean;
+}
+
+/**
+ * Monthly unit forecast by SKU
+ */
+export interface ForecastMonthlyUnits {
+  month: string;               // Short month name: "Jan", "Feb", etc.
+  sku: string;
+  sku_name: string | null;
+  units: number;
+  revenue: number;
+  confidence_pct: number;      // Confidence interval width (e.g., 10 = ±10%)
+}
+
+/**
+ * Forecast revision history entry (lightweight)
+ */
+export interface ForecastRevision {
+  id: string;
+  fiscal_year: number;
+  version: number;
+  status: ForecastStatus;
+  created_at: string;
+  created_by: string | null;
+  revision_note: string | null;
+  b2b_total: number;
+  corp_total: number;
+}
+
+/**
+ * API response for the Driver tab
+ */
+export interface ForecastResponse {
+  // Current active forecast (or latest draft if none active)
+  forecast: WholesaleForecast | null;
+
+  // SKU mix for current forecast
+  skuMix: ForecastSkuMix[];
+
+  // Quarterly actuals comparison
+  quarterlyActuals: ForecastQuarterActuals[];
+
+  // Scenario analysis (computed from drivers)
+  scenarios: ForecastDoorScenario[];
+
+  // Monthly unit forecast (computed from revenue + SKU mix)
+  monthlyUnits: ForecastMonthlyUnits[];
+
+  // Revision history
+  revisions: ForecastRevision[];
+
+  // Summary stats
+  stats: {
+    b2b_annual_target: number;
+    b2b_ytd_actual: number;
+    b2b_ytd_variance_pct: number;
+    b2b_pacing: "ahead" | "on_track" | "behind";
+    corp_annual_target: number;
+    corp_ytd_actual: number;
+    corp_ytd_variance_pct: number;
+    corp_pacing: "ahead" | "on_track" | "behind";
+    current_doors: number;
+    projected_ending_doors: number;
+  } | null;
+
+  // Metadata
+  lastSynced: string | null;
+}
+
+/**
+ * Input type for creating/updating a forecast
+ */
+export interface ForecastCreateInput {
+  fiscal_year: number;
+  status: ForecastStatus;
+  b2b_q1_target: number;
+  b2b_q2_target: number;
+  b2b_q3_target: number;
+  b2b_q4_target: number;
+  corp_q1_target: number;
+  corp_q2_target: number;
+  corp_q3_target: number;
+  corp_q4_target: number;
+  existing_doors_start?: number;
+  new_doors_target?: number;
+  expected_churn_doors?: number;
+  organic_growth_pct?: number;
+  new_door_first_year_yield?: number;
+  revision_note?: string;
+}

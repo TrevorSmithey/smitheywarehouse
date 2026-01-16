@@ -55,7 +55,11 @@ npm install          # If node_modules missing
 npm run build        # Must pass - catches type errors
 npm run lint         # Must pass - catches code issues
 
-# 3. Only then commit
+# 3. Check for unlimited Supabase queries (Pattern E - causes silent data loss)
+grep -rn "\.from(" app/api/ | grep "\.select(" | grep -v ".limit(" | head -10
+# If ANY results appear, add .limit(QUERY_LIMITS.X) before committing!
+
+# 4. Only then commit
 git add <files>
 git commit -m "message"
 ```
@@ -63,6 +67,8 @@ git commit -m "message"
 **If validation fails:** Fix the errors. Do not commit broken code.
 
 **If validation can't run:** Tell the user and do not proceed until resolved.
+
+**If grep finds unlimited queries:** Add explicit limits from `QUERY_LIMITS` in `lib/constants.ts`. This is non-negotiable - unlimited queries cause silent data truncation.
 
 ### Commit Messages
 
@@ -91,6 +97,40 @@ Every operation must either:
 2. **Fail loudly** — Throw error, log failure, alert user
 
 There is no third option. Silent failures corrupt data and erode trust.
+
+### The Second Directive: No Unlimited Queries
+
+**Every Supabase `.from().select()` MUST have an explicit `.limit()` from `QUERY_LIMITS`.**
+
+This is not optional. This is not "usually." This is ALWAYS.
+
+Supabase silently returns only 1000 rows by default. No error. No warning. Just wrong data. This has caused 15+ bugs in this codebase.
+
+```typescript
+// WRONG - Silent truncation at 1000 rows (S332239 was invisible because of this)
+const { data } = await supabase.from("restorations").select("*");
+
+// RIGHT - Explicit limit + truncation detection
+import { QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
+
+const { data } = await supabase
+  .from("restorations")
+  .select("*")
+  .limit(QUERY_LIMITS.RESTORATIONS);
+
+checkQueryLimit(data?.length || 0, QUERY_LIMITS.RESTORATIONS, "restorations");
+```
+
+**Before writing ANY Supabase query:**
+1. Check `lib/constants.ts` for existing limit constant
+2. If none exists, add one with 3x current data volume headroom
+3. Add `checkQueryLimit()` call after the query
+
+**Quick verification:**
+```bash
+# Find queries missing limits - MUST return empty before commit
+grep -rn "\.from(" app/api/ | grep "\.select(" | grep -v ".limit(" | head -10
+```
 
 ### Pattern 1: API Calls Must Handle Failure
 

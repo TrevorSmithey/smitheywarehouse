@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useDashboard } from "../layout";
 import { getAuthHeaders } from "@/lib/auth";
-import type { WholesaleResponse, WholesalePeriod, LeadsResponse, DoorHealthResponse } from "@/lib/types";
+import type { WholesaleResponse, WholesalePeriod, LeadsResponse, DoorHealthResponse, ForecastResponse } from "@/lib/types";
 
 // ============================================================================
 // CONTEXT FOR SHARED STATE
@@ -24,6 +24,10 @@ interface SalesContextType {
   doorHealthData: DoorHealthResponse | null;
   doorHealthLoading: boolean;
   doorHealthError: string | null;
+  // Forecast data
+  forecastData: ForecastResponse | null;
+  forecastLoading: boolean;
+  forecastError: string | null;
   // Period selector (shared for wholesale)
   period: WholesalePeriod;
   setPeriod: (period: WholesalePeriod) => void;
@@ -31,6 +35,7 @@ interface SalesContextType {
   refreshWholesale: () => void;
   refreshLeads: () => void;
   refreshDoorHealth: () => void;
+  refreshForecast: () => Promise<void>; // MED-3: Returns promise for awaiting
 }
 
 const SalesContext = createContext<SalesContextType | null>(null);
@@ -55,7 +60,8 @@ export default function SalesLayout({
   const pathname = usePathname();
   const isLeads = pathname === "/sales/leads";
   const isDoorHealth = pathname === "/sales/door-health";
-  const isWholesale = !isLeads && !isDoorHealth;
+  const isDriver = pathname === "/sales/driver";
+  const isWholesale = !isLeads && !isDoorHealth && !isDriver;
   const { setLastRefresh, setIsRefreshing, setTriggerRefresh } = useDashboard();
 
   // Wholesale state
@@ -73,6 +79,11 @@ export default function SalesLayout({
   const [doorHealthData, setDoorHealthData] = useState<DoorHealthResponse | null>(null);
   const [doorHealthLoading, setDoorHealthLoading] = useState(false);
   const [doorHealthError, setDoorHealthError] = useState<string | null>(null);
+
+  // Forecast state
+  const [forecastData, setForecastData] = useState<ForecastResponse | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastError, setForecastError] = useState<string | null>(null);
 
   // Fetch wholesale data
   const fetchWholesale = useCallback(async () => {
@@ -152,16 +163,45 @@ export default function SalesLayout({
     }
   }, [setLastRefresh, setIsRefreshing]);
 
+  // Fetch forecast data
+  const fetchForecast = useCallback(async () => {
+    try {
+      setForecastLoading(true);
+      setForecastError(null);
+      setIsRefreshing(true);
+      const year = new Date().getFullYear();
+      const res = await fetch(`/api/wholesale/forecast?year=${year}&history=true`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch forecast data (${res.status})`);
+      }
+      const result: ForecastResponse = await res.json();
+      setForecastData(result);
+      setLastRefresh(new Date());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error loading forecast data";
+      console.error("Forecast fetch error:", message);
+      setForecastError(message);
+    } finally {
+      setForecastLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [setLastRefresh, setIsRefreshing]);
+
   // Combined refresh for the current tab
   const refresh = useCallback(() => {
     if (isLeads) {
       fetchLeads();
     } else if (isDoorHealth) {
       fetchDoorHealth();
+    } else if (isDriver) {
+      fetchForecast();
     } else {
       fetchWholesale();
     }
-  }, [isLeads, isDoorHealth, fetchLeads, fetchDoorHealth, fetchWholesale]);
+  }, [isLeads, isDoorHealth, isDriver, fetchLeads, fetchDoorHealth, fetchForecast, fetchWholesale]);
 
   // Register refresh handler with parent layout
   useEffect(() => {
@@ -181,15 +221,18 @@ export default function SalesLayout({
       if (!wholesaleData && !wholesaleLoading) {
         fetchWholesale();
       }
+    } else if (isDriver && !forecastData && !forecastLoading) {
+      fetchForecast();
     } else if (isWholesale && !wholesaleData && !wholesaleLoading) {
       fetchWholesale();
     }
   }, [
-    isLeads, isWholesale, isDoorHealth,
+    isLeads, isWholesale, isDoorHealth, isDriver,
     leadsData, leadsLoading,
     wholesaleData, wholesaleLoading,
     doorHealthData, doorHealthLoading,
-    fetchLeads, fetchWholesale, fetchDoorHealth,
+    forecastData, forecastLoading,
+    fetchLeads, fetchWholesale, fetchDoorHealth, fetchForecast,
   ]);
 
   // Refetch wholesale when period changes
@@ -211,16 +254,21 @@ export default function SalesLayout({
     doorHealthData,
     doorHealthLoading,
     doorHealthError,
+    forecastData,
+    forecastLoading,
+    forecastError,
     period,
     setPeriod,
     refreshWholesale: fetchWholesale,
     refreshLeads: fetchLeads,
     refreshDoorHealth: fetchDoorHealth,
+    refreshForecast: fetchForecast,
   }), [
     wholesaleData, wholesaleLoading, wholesaleError,
     leadsData, leadsLoading, leadsError,
     doorHealthData, doorHealthLoading, doorHealthError,
-    period, fetchWholesale, fetchLeads, fetchDoorHealth,
+    forecastData, forecastLoading, forecastError,
+    period, fetchWholesale, fetchLeads, fetchDoorHealth, fetchForecast,
   ]);
 
   return (
@@ -258,6 +306,16 @@ export default function SalesLayout({
               }`}
             >
               Doors
+            </Link>
+            <Link
+              href="/sales/driver"
+              className={`text-sm font-medium transition-all pb-2 border-b-2 -mb-[10px] ${
+                isDriver
+                  ? "text-text-primary border-accent-blue"
+                  : "text-text-muted hover:text-text-secondary border-transparent"
+              }`}
+            >
+              Driver
             </Link>
           </div>
         </div>

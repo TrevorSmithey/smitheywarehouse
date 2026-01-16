@@ -59,6 +59,48 @@ const THRESHOLDS = {
 };
 ```
 
+### Active Doors (Universal Metric)
+
+**Added 2026-01-16**: Canonical definition for "Active Doors" across ALL Sales tabs.
+
+**Definition**: B2B wholesale customers who are actively buying or recoverable (not yet churned).
+
+**Formula**: `Active Doors = Healthy + At Risk + Churning` (excludes Churned)
+
+**SQL Conditions** (ALL must be true):
+```sql
+is_inactive = false              -- Not marked inactive
+is_corporate = false             -- B2B only, not corporate gifting
+ns_customer_id NOT IN (2501)     -- Exclude D2C aggregates/test accounts
+lifetime_orders > 0              -- Has placed at least one order
+lifetime_revenue > 0             -- Has generated actual revenue
+days_since_last_order < 365      -- Not churned (ordered within past year)
+```
+
+**Why this matters**: This is the number of real wholesale accounts you're actively working with. It's the denominator for churn rate, the basis for door driver forecasting, and the KPI for sales team performance.
+
+**CRITICAL: Cross-Tab Consistency**
+This metric MUST show the same number on:
+- Door Health tab (hero metric: "432 total")
+- Driver tab ("Active Doors" card)
+- Wholesale tab (if displayed)
+- Any future tabs using "active doors"
+
+If these numbers don't match, it's a BUG.
+
+**What it excludes**:
+- Prospects (customers with 0 orders)
+- Churned doors (365+ days since last order)
+- Corporate customers (tracked separately)
+- Inactive customers (marked in system)
+
+**Source**: `app/api/door-health/route.ts:281-283`
+
+```typescript
+// The canonical calculation:
+const activeDoors = funnel.active + funnel.atRisk + funnel.churning;
+```
+
 ### Churn Rate (Rolling 12-Month)
 
 **Added 2026-01-15**: Primary business health metric.
@@ -265,6 +307,96 @@ Not physical products - excluded from inventory counts and draft order line item
 - `Smith-Eng` - Engraving service
 
 **Source**: `lib/constants.ts:73`
+
+### SKU Reference Table (Canonical)
+
+**SKU is the universal key.** All systems (Shopify, ShipHero, NetSuite, internal dashboards) link via SKU. This table defines the official SKU → Internal Name mapping from `nomenclature.xlsx`.
+
+**IMPORTANT**: All SKU listings must use these internal names, grouped by product class in this order.
+
+#### Cast Iron
+
+| SKU | Internal Name | Sort Order |
+|-----|---------------|------------|
+| `Smith-CI-Skil8` | 8Chef | 1 |
+| `Smith-CI-Chef10` | 10Chef | 2 |
+| `Smith-CI-Flat10` | 10Flat | 3 |
+| `Smith-CI-Flat12` | 12Flat | 4 |
+| `Smith-CI-Skil6` | 6Trad | 5 |
+| `Smith-CI-Skil10` | 10Trad | 6 |
+| `Smith-CI-Skil12` | 12Trad | 7 |
+| `Smith-CI-TradSkil14` | 14Trad | 8 |
+| `Smith-CI-Skil14` | 14Dual | 9 |
+| `Smith-CI-DSkil11` | 11Deep | 10 |
+| `Smith-CI-Grill12` | 12Grill | 11 |
+| `Smith-CI-Dutch4` | 3.5 Dutch | 12 |
+| `Smith-CI-Dutch5` | 5.5 Dutch | 13 |
+| `Smith-CI-Dutch7` | 7.25 Dutch | 14 |
+| `Smith-CI-Dual6` | 6Dual | 15 |
+| `Smith-CI-Griddle18` | Double Burner Griddle | 16 |
+| `Smith-CI-Dual12` | 12Dual | 17 |
+| `Smith-CI-Sauce1` | Sauce Pan | 18 |
+
+#### Carbon Steel
+
+| SKU | Internal Name | Sort Order |
+|-----|---------------|------------|
+| `Smith-CS-Farm12` | Farmhouse Skillet | 101 |
+| `Smith-CS-Deep12` | Deep Farm | 102 |
+| `Smith-CS-RRoastM` | Round Roaster | 103 |
+| `Smith-CS-OvalM` | Oval Roaster | 104 |
+| `Smith-CS-WokM` | Wok | 105 |
+| `Smith-CS-Round17N` | Paella Pan | 106 |
+| `Smith-CS-Farm9` | Little Farm | 107 |
+| `Smith-CS-Fish` | Fish Skillet | 108 |
+
+#### Accessories
+
+| SKU | Internal Name | Sort Order |
+|-----|---------------|------------|
+| `Smith-AC-Scrub1` | Chainmail Scrubber | 201 |
+| `Smith-AC-FGph` | Leather Potholder | 202 |
+| `Smith-AC-Sleeve1` | Short Sleeve | 203 |
+| `Smith-AC-Sleeve2` | Long Sleeve | 204 |
+| `Smith-AC-SpatW1` | Slotted Spat | 205 |
+| `Smith-AC-SpatB1` | Mighty Spat | 206 |
+| `Smith-AC-PHTLg` | Suede Potholder | 207 |
+| `Smith-AC-KeeperW` | Salt Keeper | 208 |
+| `Smith-AC-Season` | Seasoning Oil | 209 |
+| `Smith-AC-CareKit` | Care Kit | 210 |
+| `Smith-Bottle1` | Bottle Opener | 211 |
+
+#### Glass Lids
+
+| SKU | Internal Name | Sort Order |
+|-----|---------------|------------|
+| `Smith-AC-Glid10` | 10Lid | 301 |
+| `Smith-AC-Glid12` | 12Lid | 302 |
+| `Smith-AC-Glid14` | 14Lid | 303 |
+| `Smith-AC-CSLid12` | CS 12 Lid | 304 |
+
+### SKU Display Rules
+
+1. **Always use Internal Name** (not verbose descriptions like "12\" Traditional Skillet")
+2. **Always group by Product Class**: Cast Iron → Carbon Steel → Accessories → Glass Lids
+3. **Always sort within class** using the Sort Order from this table
+4. **SKU is case-insensitive** for lookup but use canonical casing for display
+
+**Implementation**:
+
+```typescript
+// Get display name from SKU
+import { getDisplayName } from "@/lib/shiphero";
+const name = getDisplayName("Smith-CI-Skil12"); // → "12Trad"
+
+// Sort SKUs by canonical order
+import { sortSkusByCanonicalOrder } from "@/lib/constants";
+const sorted = skus.sort((a, b) => sortSkusByCanonicalOrder(a.sku, b.sku));
+```
+
+**Sources**:
+- `lib/shiphero.ts:311-385` (SKU_DISPLAY_NAMES - canonical mapping from nomenclature.xlsx)
+- `lib/constants.ts:259-305` (SKU_SORT_ORDER - canonical budget spreadsheet order)
 
 ---
 

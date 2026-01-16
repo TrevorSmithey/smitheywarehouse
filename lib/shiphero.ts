@@ -328,6 +328,7 @@ export const SKU_DISPLAY_NAMES: Record<string, string> = {
   "Smith-CI-Flat10": "10Flat",
   "Smith-CI-Grill12": "12Grill",
   "Smith-CI-Griddle18": "Double Burner Griddle",
+  "Smith-CI-Sauce1": "Sauce Pan",
   // Carbon Steel
   "Smith-CS-WokM": "Wok",
   "Smith-CS-RroastM": "Round Roaster",
@@ -343,6 +344,7 @@ export const SKU_DISPLAY_NAMES: Record<string, string> = {
   "Smith-AC-Glid12": "12Lid",
   "Smith-AC-Glid11": "11Lid",
   "Smith-AC-Glid10": "10Lid",
+  "Smith-AC-CSLid12": "CS 12 Lid",
   // Accessories
   "Smith-Bottle1": "Bottle Opener",
   "Smith-AC-SpatW1": "Slotted Spat",
