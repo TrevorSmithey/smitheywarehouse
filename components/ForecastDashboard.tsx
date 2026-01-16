@@ -49,6 +49,7 @@ import {
   CORPORATE_ENGRAVING,
   MONTHLY_WITHIN_QUARTER,
   BLENDED_AUP,
+  DEFAULT_SKU_MIX,
 } from "@/lib/forecasting";
 import { sortSkusByCanonicalOrder } from "@/lib/constants";
 
@@ -493,7 +494,7 @@ function SkuUnitForecastTable({
 }
 
 // =============================================================================
-// METHODOLOGY SECTION (Single Collapsible)
+// METHODOLOGY SECTION (Single Collapsible - Thorough Documentation)
 // =============================================================================
 
 function ForecastMethodology() {
@@ -513,7 +514,7 @@ function ForecastMethodology() {
               Methodology & Assumptions
             </h3>
             <p className="text-xs text-text-tertiary mt-0.5">
-              Data sources, calculations, and business logic reference
+              Complete reference: formulas, data sources, calculations, and validation
             </p>
           </div>
         </div>
@@ -526,151 +527,549 @@ function ForecastMethodology() {
 
       {/* All content shows at once when expanded */}
       {isExpanded && (
-        <div className="px-5 pb-5 border-t border-border/30 pt-4 space-y-6">
+        <div className="px-5 pb-5 border-t border-border/30 pt-4 space-y-8">
 
-          {/* Overview */}
+          {/* ============================================================== */}
+          {/* SECTION 1: MODEL OVERVIEW */}
+          {/* ============================================================== */}
           <div>
-            <p className="text-sm text-text-secondary">
-              This forecast models B2B wholesale revenue across two distinct channels:{" "}
-              <span className="text-text-primary font-medium">Traditional B2B</span>{" "}
-              (retail partners, door-based) and{" "}
-              <span className="text-text-primary font-medium">Corporate</span>{" "}
-              (gifting programs, event-based). B2B is predictable (door-driven, ~2.6% quarterly variance).
-              Corporate is volatile (event-driven, ~12% quarterly variance in Q4).
-            </p>
-          </div>
-
-          {/* Seasonality - Both channels side by side */}
-          <div>
-            <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-              Quarterly Seasonality (3-Year Avg)
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">1</span>
+              Model Overview
             </h4>
-            <div className="grid grid-cols-2 gap-4">
-              {/* B2B */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-3 h-3 text-accent-blue" />
-                  <span className="text-xs font-medium text-text-secondary">B2B</span>
+            <div className="bg-bg-tertiary/30 rounded-lg p-4 space-y-3">
+              <p className="text-sm text-text-secondary">
+                This forecast models <strong>B2B wholesale revenue</strong> across two fundamentally different channels:
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-bg-secondary rounded-lg p-3 border-l-2 border-accent-blue">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="w-4 h-4 text-accent-blue" />
+                    <span className="font-medium text-text-primary text-sm">Traditional B2B</span>
+                  </div>
+                  <ul className="text-xs text-text-secondary space-y-1">
+                    <li>• <strong>Driver:</strong> Active retail partner doors</li>
+                    <li>• <strong>Behavior:</strong> Predictable, door-count driven</li>
+                    <li>• <strong>Variance:</strong> Low (~2.6% quarterly std dev)</li>
+                    <li>• <strong>Forecasting:</strong> Door economics model</li>
+                  </ul>
                 </div>
-                <div className="grid grid-cols-4 gap-1">
-                  {(["q1", "q2", "q3", "q4"] as const).map((q) => (
-                    <div key={q} className="bg-bg-tertiary/50 rounded p-2 text-center">
-                      <div className="text-[10px] text-text-tertiary uppercase">{q}</div>
-                      <div className="text-sm font-semibold text-text-primary">
-                        {(B2B_SEASONALITY[q] * 100).toFixed(0)}%
-                      </div>
-                    </div>
-                  ))}
+                <div className="bg-bg-secondary rounded-lg p-3 border-l-2 border-amber-400">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 className="w-4 h-4 text-amber-400" />
+                    <span className="font-medium text-text-primary text-sm">Corporate</span>
+                  </div>
+                  <ul className="text-xs text-text-secondary space-y-1">
+                    <li>• <strong>Driver:</strong> Large gifting events/programs</li>
+                    <li>• <strong>Behavior:</strong> Volatile, event-driven</li>
+                    <li>• <strong>Variance:</strong> High (~12% quarterly std dev in Q4)</li>
+                    <li>• <strong>Forecasting:</strong> Seasonality + pipeline</li>
+                  </ul>
                 </div>
               </div>
-              {/* Corporate */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Building2 className="w-3 h-3 text-amber-400" />
-                  <span className="text-xs font-medium text-text-secondary">Corporate</span>
-                </div>
-                <div className="grid grid-cols-4 gap-1">
-                  {(["q1", "q2", "q3", "q4"] as const).map((q) => (
-                    <div key={q} className={`bg-bg-tertiary/50 rounded p-2 text-center ${q === "q4" ? "ring-1 ring-amber-400/30" : ""}`}>
-                      <div className="text-[10px] text-text-tertiary uppercase">{q}</div>
-                      <div className="text-sm font-semibold text-text-primary">
-                        {(CORP_SEASONALITY[q] * 100).toFixed(0)}%
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="text-xs text-text-tertiary mt-2 p-2 bg-bg-tertiary/50 rounded">
+                <strong>Why separate?</strong> These channels have different economics. B2B revenue scales with doors (controllable).
+                Corporate depends on large accounts placing bulk orders (harder to predict). Blending them produces misleading forecasts.
               </div>
             </div>
           </div>
 
-          {/* Door Economics */}
+          {/* ============================================================== */}
+          {/* SECTION 2: SEASONALITY PATTERNS */}
+          {/* ============================================================== */}
           <div>
-            <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-              Door Economics (B2B)
-            </h4>
-            <div className="grid grid-cols-4 gap-2">
-              <div className="bg-bg-tertiary/50 rounded-lg p-2">
-                <div className="text-[10px] text-text-tertiary">Retention</div>
-                <div className="text-lg font-semibold text-status-good">
-                  {(DOOR_BENCHMARKS.avgRetentionRate * 100).toFixed(0)}%
-                </div>
-              </div>
-              <div className="bg-bg-tertiary/50 rounded-lg p-2">
-                <div className="text-[10px] text-text-tertiary">Churn</div>
-                <div className="text-lg font-semibold text-status-bad">
-                  {(DOOR_BENCHMARKS.avgChurnRate * 100).toFixed(0)}%
-                </div>
-              </div>
-              <div className="bg-bg-tertiary/50 rounded-lg p-2">
-                <div className="text-[10px] text-text-tertiary">Organic Growth</div>
-                <div className="text-lg font-semibold text-text-primary">
-                  {(DOOR_BENCHMARKS.sameStoreGrowth * 100).toFixed(0)}%
-                </div>
-              </div>
-              <div className="bg-bg-tertiary/50 rounded-lg p-2">
-                <div className="text-[10px] text-text-tertiary">New Door Yield</div>
-                <div className="text-lg font-semibold text-text-primary">
-                  ${(DOOR_BENCHMARKS.newDoorFirstYearYield / 1000).toFixed(0)}K
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Corporate Engraving - Critical callout */}
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-            <h4 className="text-xs font-medium text-amber-400 uppercase tracking-wider mb-2">
-              Corporate Engraving (Critical for Unit Projections)
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">2</span>
+              Quarterly Seasonality Patterns
             </h4>
             <p className="text-xs text-text-secondary mb-3">
-              SMITH-ENG is a <strong>service</strong>, not a physical product. Separate engraving revenue from physical products for accurate unit counts.
+              Based on 3-year historical averages (2023-2025). Standard deviation shows prediction confidence.
             </p>
-            <div className="grid grid-cols-4 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-6">
+              {/* B2B Seasonality */}
               <div>
-                <div className="text-text-tertiary">Physical Rev</div>
-                <div className="font-semibold text-text-primary">{(CORPORATE_ENGRAVING.physicalRevenueShare * 100).toFixed(0)}%</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-accent-blue" />
+                    <span className="text-xs font-medium text-text-primary">B2B Seasonality</span>
+                  </div>
+                  <span className="text-[10px] text-status-good bg-status-good/10 px-1.5 py-0.5 rounded">Low Variance</span>
+                </div>
+                <div className="space-y-1">
+                  {[
+                    { q: "q1" as const, label: "Q1 (Jan-Mar)", stdDev: 2.6 },
+                    { q: "q2" as const, label: "Q2 (Apr-Jun)", stdDev: 1.3 },
+                    { q: "q3" as const, label: "Q3 (Jul-Sep)", stdDev: 3.4 },
+                    { q: "q4" as const, label: "Q4 (Oct-Dec)", stdDev: 2.2 },
+                  ].map(({ q, label, stdDev }) => (
+                    <div key={q} className="flex items-center gap-2">
+                      <div className="w-20 text-[10px] text-text-tertiary">{label}</div>
+                      <div className="flex-1 h-5 bg-bg-tertiary/50 rounded overflow-hidden">
+                        <div
+                          className="h-full bg-accent-blue/60 rounded"
+                          style={{ width: `${B2B_SEASONALITY[q] * 100 * 2.5}%` }}
+                        />
+                      </div>
+                      <div className="w-10 text-xs font-semibold text-text-primary text-right">
+                        {(B2B_SEASONALITY[q] * 100).toFixed(0)}%
+                      </div>
+                      <div className="w-12 text-[10px] text-text-tertiary">±{stdDev}%</div>
+                    </div>
+                  ))}
+                </div>
               </div>
+              {/* Corporate Seasonality */}
               <div>
-                <div className="text-text-tertiary">Engraving Rev</div>
-                <div className="font-semibold text-amber-400">{(CORPORATE_ENGRAVING.revenueShare * 100).toFixed(0)}%</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-medium text-text-primary">Corporate Seasonality</span>
+                  </div>
+                  <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">High Variance</span>
+                </div>
+                <div className="space-y-1">
+                  {[
+                    { q: "q1" as const, label: "Q1 (Jan-Mar)", stdDev: 4.4 },
+                    { q: "q2" as const, label: "Q2 (Apr-Jun)", stdDev: 0.4 },
+                    { q: "q3" as const, label: "Q3 (Jul-Sep)", stdDev: 10.7 },
+                    { q: "q4" as const, label: "Q4 (Oct-Dec)", stdDev: 12.0 },
+                  ].map(({ q, label, stdDev }) => (
+                    <div key={q} className="flex items-center gap-2">
+                      <div className="w-20 text-[10px] text-text-tertiary">{label}</div>
+                      <div className="flex-1 h-5 bg-bg-tertiary/50 rounded overflow-hidden">
+                        <div
+                          className={`h-full rounded ${q === "q4" ? "bg-amber-400/60" : "bg-amber-400/40"}`}
+                          style={{ width: `${Math.min(CORP_SEASONALITY[q] * 100 * 1.7, 100)}%` }}
+                        />
+                      </div>
+                      <div className="w-10 text-xs font-semibold text-text-primary text-right">
+                        {(CORP_SEASONALITY[q] * 100).toFixed(0)}%
+                      </div>
+                      <div className={`w-12 text-[10px] ${stdDev > 5 ? "text-amber-400" : "text-text-tertiary"}`}>
+                        ±{stdDev}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <div className="text-text-tertiary">Attach Rate</div>
-                <div className="font-semibold text-text-primary">{(CORPORATE_ENGRAVING.attachRate * 100).toFixed(1)}%</div>
+            </div>
+            {/* Monthly Within-Quarter Distribution */}
+            <div className="mt-4 p-3 bg-bg-tertiary/30 rounded-lg">
+              <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+                Monthly Distribution Within Quarter
               </div>
-              <div>
-                <div className="text-text-tertiary">Physical AUP</div>
-                <div className="font-semibold text-status-good">${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)}</div>
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <span className="text-text-secondary">Q1-Q3 (Default):</span>{" "}
+                  <span className="font-mono text-text-primary">
+                    M1: {(MONTHLY_WITHIN_QUARTER.default[0] * 100).toFixed(0)}% →
+                    M2: {(MONTHLY_WITHIN_QUARTER.default[1] * 100).toFixed(0)}% →
+                    M3: {(MONTHLY_WITHIN_QUARTER.default[2] * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div>
+                  <span className="text-text-secondary">Q4 (Holiday):</span>{" "}
+                  <span className="font-mono text-text-primary">
+                    Oct: {(MONTHLY_WITHIN_QUARTER.q4[0] * 100).toFixed(0)}% →
+                    Nov: {(MONTHLY_WITHIN_QUARTER.q4[1] * 100).toFixed(0)}% →
+                    Dec: {(MONTHLY_WITHIN_QUARTER.q4[2] * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+              <div className="text-[10px] text-text-tertiary mt-2">
+                Quarters are slightly back-weighted. Q4 is more pronounced due to holiday gifting push in December.
               </div>
             </div>
           </div>
 
-          {/* Data Sources & Validation - Compact */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                Data Sources
-              </h4>
-              <div className="space-y-1 text-xs text-text-secondary">
-                <div>• Actuals: ns_wholesale_transactions (NetSuite sync)</div>
-                <div>• Doors: ns_wholesale_customers.is_inactive = false</div>
-                <div>• Corporate: is_corporate = true <span className="text-status-bad">(NOT category)</span></div>
+          {/* ============================================================== */}
+          {/* SECTION 3: DOOR ECONOMICS MODEL */}
+          {/* ============================================================== */}
+          <div>
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">3</span>
+              Door Economics Model (B2B Only)
+            </h4>
+            <p className="text-xs text-text-secondary mb-3">
+              B2B revenue is fundamentally driven by <strong>door count</strong> (active retail partners).
+              This model calculates implied revenue from door dynamics.
+            </p>
+
+            {/* Benchmark Constants */}
+            <div className="grid grid-cols-5 gap-2 mb-4">
+              <div className="bg-bg-tertiary/50 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-text-tertiary mb-1">Retention Rate</div>
+                <div className="text-xl font-bold text-status-good">
+                  {(DOOR_BENCHMARKS.avgRetentionRate * 100).toFixed(0)}%
+                </div>
+                <div className="text-[10px] text-text-tertiary">YoY door retention</div>
+              </div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-text-tertiary mb-1">Churn Rate</div>
+                <div className="text-xl font-bold text-status-bad">
+                  {(DOOR_BENCHMARKS.avgChurnRate * 100).toFixed(0)}%
+                </div>
+                <div className="text-[10px] text-text-tertiary">Annual door loss</div>
+              </div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-text-tertiary mb-1">Organic Growth</div>
+                <div className="text-xl font-bold text-text-primary">
+                  {(DOOR_BENCHMARKS.sameStoreGrowth * 100).toFixed(0)}%
+                </div>
+                <div className="text-[10px] text-text-tertiary">Same-store revenue growth</div>
+              </div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-text-tertiary mb-1">New Door Yield</div>
+                <div className="text-xl font-bold text-accent-blue">
+                  ${(DOOR_BENCHMARKS.newDoorFirstYearYield / 1000).toFixed(0)}K
+                </div>
+                <div className="text-[10px] text-text-tertiary">First-year avg revenue</div>
+              </div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-3 text-center">
+                <div className="text-[10px] text-text-tertiary mb-1">Returning Yield</div>
+                <div className="text-xl font-bold text-text-primary">
+                  ${(DOOR_BENCHMARKS.returningDoorAvgYield / 1000).toFixed(1)}K
+                </div>
+                <div className="text-[10px] text-text-tertiary">Mature door avg revenue</div>
               </div>
             </div>
-            <div>
-              <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                Sanity Checks
-              </h4>
-              <div className="space-y-1 text-xs text-text-secondary">
-                <div>• Q4 = 35-40% B2B, 55-60% Corp</div>
-                <div>• Corp engraving ≈ 15% of corp revenue</div>
-                <div>• Corp physical AUP ≈ $14-15, not $120</div>
+
+            {/* Revenue Calculation Formula */}
+            <div className="bg-bg-tertiary/30 rounded-lg p-4">
+              <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
+                Door-Implied Revenue Formula
+              </div>
+              <div className="font-mono text-xs bg-bg-secondary p-3 rounded border border-border/30 space-y-2">
+                <div className="text-text-secondary">
+                  <span className="text-accent-blue">retained_doors</span> = existing_doors - (existing_doors × churn_rate)
+                </div>
+                <div className="text-text-secondary">
+                  <span className="text-accent-blue">existing_book_revenue</span> = retained_doors × returning_yield × (1 + organic_growth)
+                </div>
+                <div className="text-text-secondary">
+                  <span className="text-accent-blue">new_door_revenue</span> = new_doors × new_door_yield × 0.5
+                  <span className="text-text-tertiary ml-2">// 50% seasonality factor (acquired throughout year)</span>
+                </div>
+                <div className="text-text-primary font-semibold border-t border-border/30 pt-2 mt-2">
+                  <span className="text-status-good">total_implied_revenue</span> = existing_book_revenue + new_door_revenue
+                </div>
+              </div>
+              <div className="text-[10px] text-text-tertiary mt-2">
+                Compare implied revenue to target. If gap is negative, door plan exceeds target (good).
+                If positive, need more doors or higher organic growth.
               </div>
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="text-xs text-text-tertiary pt-2 border-t border-border/20">
-            Last updated: January 2026 • See <code className="px-1 py-0.5 bg-bg-tertiary rounded">BUSINESS_LOGIC.md</code> for full documentation
+          {/* ============================================================== */}
+          {/* SECTION 4: CORPORATE ENGRAVING ECONOMICS */}
+          {/* ============================================================== */}
+          <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">4</span>
+              Corporate Engraving Economics
+              <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded ml-2">CRITICAL FOR UNIT PROJECTIONS</span>
+            </h4>
+
+            <div className="space-y-4">
+              {/* The Problem */}
+              <div className="bg-bg-secondary rounded-lg p-3">
+                <div className="text-xs font-medium text-status-bad mb-2">⚠️ The Problem</div>
+                <p className="text-xs text-text-secondary">
+                  Corporate customers order <strong>engraved products</strong> for gifting. The SKU <code className="px-1 bg-bg-tertiary rounded">SMITH-ENG</code> is an
+                  <strong> engraving service</strong>, not a physical product. If you calculate units from total corporate revenue using
+                  the standard AUP (~$120), you'll get <strong>dramatically wrong unit counts</strong>.
+                </p>
+              </div>
+
+              {/* The Economics */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs font-medium text-text-tertiary mb-2">Revenue Composition</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-status-good"></div>
+                      <span className="text-xs text-text-secondary">Physical Products:</span>
+                      <span className="text-xs font-semibold text-text-primary">
+                        {(CORPORATE_ENGRAVING.physicalRevenueShare * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                      <span className="text-xs text-text-secondary">Engraving Service:</span>
+                      <span className="text-xs font-semibold text-amber-400">
+                        {(CORPORATE_ENGRAVING.revenueShare * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-text-tertiary mb-2">Key Metrics</div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-text-secondary">Engraving Attach Rate:</span>
+                      <span className="font-semibold text-text-primary">{(CORPORATE_ENGRAVING.attachRate * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-text-secondary">Avg Engraving Price:</span>
+                      <span className="font-semibold text-amber-400">${CORPORATE_ENGRAVING.averagePrice.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-text-secondary">Physical Product AUP:</span>
+                      <span className="font-semibold text-status-good">${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* The Formula */}
+              <div className="bg-bg-tertiary/50 rounded-lg p-3">
+                <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+                  Correct Unit Projection Formula
+                </div>
+                <div className="font-mono text-xs space-y-1">
+                  <div className="text-text-secondary">
+                    <span className="text-status-good">physical_revenue</span> = corp_revenue × {(CORPORATE_ENGRAVING.physicalRevenueShare * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-text-secondary">
+                    <span className="text-status-good">physical_units</span> = physical_revenue ÷ ${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)}
+                  </div>
+                  <div className="text-text-secondary">
+                    <span className="text-amber-400">engraving_units</span> = physical_units × {(CORPORATE_ENGRAVING.attachRate * 100).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Example Calculation */}
+              <div className="bg-bg-secondary rounded-lg p-3 border border-border/30">
+                <div className="text-xs font-medium text-text-tertiary mb-2">Example: $1M Corporate Revenue Target</div>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <div className="text-status-bad line-through text-text-tertiary mb-1">❌ Wrong (using blended AUP):</div>
+                    <div className="text-text-secondary">$1M ÷ $120 = <span className="font-semibold">8,333 units</span></div>
+                  </div>
+                  <div>
+                    <div className="text-status-good mb-1">✓ Correct (separated):</div>
+                    <div className="text-text-secondary">
+                      Physical: ${(1000000 * CORPORATE_ENGRAVING.physicalRevenueShare / 1000).toFixed(0)}K ÷ ${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)} = <span className="font-semibold text-status-good">{Math.round(1000000 * CORPORATE_ENGRAVING.physicalRevenueShare / CORPORATE_ENGRAVING.physicalAUP).toLocaleString()} units</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* SECTION 5: SKU MIX & UNIT PROJECTIONS */}
+          {/* ============================================================== */}
+          <div>
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">5</span>
+              SKU Mix & Unit Projections
+            </h4>
+            <p className="text-xs text-text-secondary mb-3">
+              B2B unit projections use a <strong>SKU mix</strong> to distribute monthly revenue across products.
+              Each SKU has a revenue share and average unit price.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                <div className="text-xs font-medium text-text-tertiary mb-2">Mix Coverage</div>
+                <div className="text-2xl font-bold text-text-primary">~75%</div>
+                <div className="text-[10px] text-text-secondary">
+                  Top 35 SKUs cover ~75% of B2B revenue. Remaining 25% is long-tail products.
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                <div className="text-xs font-medium text-text-tertiary mb-2">Blended AUP (Fallback)</div>
+                <div className="text-2xl font-bold text-text-primary">${BLENDED_AUP}</div>
+                <div className="text-[10px] text-text-secondary">
+                  Used when SKU-specific price is missing. Based on weighted average of all SKUs.
+                </div>
+              </div>
+            </div>
+
+            {/* Unit Calculation Formula */}
+            <div className="bg-bg-tertiary/30 rounded-lg p-4">
+              <div className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+                Unit Projection Formula (per SKU)
+              </div>
+              <div className="font-mono text-xs bg-bg-secondary p-3 rounded border border-border/30 space-y-1">
+                <div className="text-text-secondary">
+                  <span className="text-accent-blue">sku_revenue</span> = monthly_revenue × sku_revenue_share_pct
+                </div>
+                <div className="text-text-secondary">
+                  <span className="text-accent-blue">sku_units</span> = sku_revenue ÷ sku_avg_unit_price
+                </div>
+              </div>
+              <div className="text-[10px] text-text-tertiary mt-2">
+                Confidence bands: Major SKUs ({">"} 5% share) ±10%, Mid-tier (2-5%) ±15%, Minor ({"<"} 2%) ±20%
+              </div>
+            </div>
+
+            {/* Top SKUs Preview */}
+            <div className="mt-4">
+              <div className="text-xs font-medium text-text-tertiary mb-2">Top 5 B2B SKUs by Revenue Share</div>
+              <div className="space-y-1">
+                {DEFAULT_SKU_MIX.slice(0, 5).map((sku, i) => (
+                  <div key={sku.sku} className="flex items-center gap-2 text-xs">
+                    <span className="w-4 text-text-tertiary">{i + 1}.</span>
+                    <span className="w-32 font-medium text-text-primary truncate">{sku.sku_name}</span>
+                    <div className="flex-1 h-2 bg-bg-tertiary/50 rounded overflow-hidden">
+                      <div
+                        className="h-full bg-accent-blue/60 rounded"
+                        style={{ width: `${sku.revenue_share_pct * 100 * 8}%` }}
+                      />
+                    </div>
+                    <span className="w-12 text-right font-semibold">{(sku.revenue_share_pct * 100).toFixed(1)}%</span>
+                    <span className="w-12 text-right text-text-tertiary">${sku.avg_unit_price}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* SECTION 6: DATA SOURCES */}
+          {/* ============================================================== */}
+          <div>
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">6</span>
+              Data Sources & Queries
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                  <div className="text-xs font-medium text-text-primary mb-2">Revenue Actuals</div>
+                  <div className="text-[10px] text-text-secondary space-y-1">
+                    <div>• <strong>Table:</strong> ns_wholesale_transactions</div>
+                    <div>• <strong>Filter:</strong> transaction_type IN (&apos;CashSale&apos;, &apos;CustInvc&apos;)</div>
+                    <div>• <strong>Value:</strong> foreign_total (absolute value)</div>
+                    <div>• <strong>Sync:</strong> NetSuite daily (6am EST)</div>
+                  </div>
+                </div>
+                <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                  <div className="text-xs font-medium text-text-primary mb-2">Door Count</div>
+                  <div className="text-[10px] text-text-secondary space-y-1">
+                    <div>• <strong>Table:</strong> ns_wholesale_customers</div>
+                    <div>• <strong>Filter:</strong> is_inactive = false</div>
+                    <div>• <strong>Excludes:</strong> is_corporate = true</div>
+                    <div>• <strong>Count:</strong> Distinct active B2B customers</div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                  <div className="text-xs font-medium text-text-primary mb-2">Corporate Flag</div>
+                  <div className="text-[10px] text-text-secondary space-y-1">
+                    <div>• <strong>Correct:</strong> <code className="bg-bg-tertiary px-1 rounded">is_corporate = true</code></div>
+                    <div className="text-status-bad">• <strong>Deprecated:</strong> category = &apos;Corporate&apos; or &apos;4&apos;</div>
+                    <div>• <strong>Note:</strong> Legacy category field is unreliable</div>
+                  </div>
+                </div>
+                <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                  <div className="text-xs font-medium text-text-primary mb-2">Forecast Storage</div>
+                  <div className="text-[10px] text-text-secondary space-y-1">
+                    <div>• <strong>Table:</strong> wholesale_forecasts</div>
+                    <div>• <strong>Versioning:</strong> Immutable (status = &apos;active&apos; or &apos;archived&apos;)</div>
+                    <div>• <strong>SKU Mix:</strong> wholesale_forecast_sku_mix (per forecast)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* SECTION 7: KNOWN LIMITATIONS */}
+          {/* ============================================================== */}
+          <div>
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">7</span>
+              Known Limitations
+            </h4>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="bg-status-bad/5 border border-status-bad/20 rounded-lg p-3">
+                <div className="font-medium text-status-bad mb-1">Corporate Unpredictability</div>
+                <div className="text-text-secondary">
+                  Corporate Q4 has ±12% variance. Large accounts can materially shift actuals.
+                  Use pipeline visibility for better estimates.
+                </div>
+              </div>
+              <div className="bg-status-bad/5 border border-status-bad/20 rounded-lg p-3">
+                <div className="font-medium text-status-bad mb-1">New Door Timing</div>
+                <div className="text-text-secondary">
+                  Model assumes 50% seasonality factor for new doors. Actual timing varies.
+                  Q1 acquisitions yield more than Q4.
+                </div>
+              </div>
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                <div className="font-medium text-amber-400 mb-1">SKU Mix Drift</div>
+                <div className="text-text-secondary">
+                  Mix is based on prior year data. Product launches or discontinuations
+                  may shift the distribution.
+                </div>
+              </div>
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                <div className="font-medium text-amber-400 mb-1">Price Changes</div>
+                <div className="text-text-secondary">
+                  AUPs are historical averages. Price increases/decreases not automatically
+                  reflected in projections.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* SECTION 8: SANITY CHECKS */}
+          {/* ============================================================== */}
+          <div>
+            <h4 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-status-good/20 text-status-good flex items-center justify-center text-xs font-bold">8</span>
+              Sanity Checks & Validation
+            </h4>
+            <p className="text-xs text-text-secondary mb-3">
+              Use these benchmarks to validate forecast outputs. If numbers fall outside these ranges, investigate.
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                <div className="text-xs font-medium text-text-tertiary mb-2">Seasonality Sanity</div>
+                <div className="space-y-1 text-[10px] text-text-secondary">
+                  <div>• B2B Q4: 35-40% of annual</div>
+                  <div>• Corp Q4: 55-65% of annual</div>
+                  <div>• Corp Q2 should be smallest (~6%)</div>
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                <div className="text-xs font-medium text-text-tertiary mb-2">AUP Sanity</div>
+                <div className="space-y-1 text-[10px] text-text-secondary">
+                  <div>• B2B blended: $100-140</div>
+                  <div>• Corp physical: $12-18</div>
+                  <div>• Corp blended (wrong): ~$15-20</div>
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/30 rounded-lg p-3">
+                <div className="text-xs font-medium text-text-tertiary mb-2">Door Math Sanity</div>
+                <div className="space-y-1 text-[10px] text-text-secondary">
+                  <div>• Retention: 80-85%</div>
+                  <div>• New door yield: $5-8K first year</div>
+                  <div>• Returning yield: $10-13K</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ============================================================== */}
+          {/* FOOTER */}
+          {/* ============================================================== */}
+          <div className="pt-4 border-t border-border/30">
+            <div className="flex items-center justify-between text-xs text-text-tertiary">
+              <div>
+                <strong>Last Updated:</strong> January 2026 • <strong>Data Period:</strong> 2023-2025 (3-year historical)
+              </div>
+              <div>
+                Full documentation: <code className="px-1.5 py-0.5 bg-bg-tertiary rounded">BUSINESS_LOGIC.md</code> &amp; <code className="px-1.5 py-0.5 bg-bg-tertiary rounded">lib/forecasting.ts</code>
+              </div>
+            </div>
           </div>
         </div>
       )}
