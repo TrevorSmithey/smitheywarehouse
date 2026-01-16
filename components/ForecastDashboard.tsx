@@ -493,49 +493,15 @@ function SkuUnitForecastTable({
 }
 
 // =============================================================================
-// METHODOLOGY ACCORDION SECTION
+// METHODOLOGY SECTION (Single Collapsible)
 // =============================================================================
-
-function MethodologySection({
-  title,
-  icon,
-  children,
-  defaultOpen = false,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
-
-  return (
-    <div className="border-b border-border/20 last:border-b-0">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-bg-tertiary/30 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-text-muted">{icon}</span>
-          <span className="text-sm font-medium text-text-primary">{title}</span>
-        </div>
-        {isOpen ? (
-          <ChevronUp className="w-4 h-4 text-text-muted" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-text-muted" />
-        )}
-      </button>
-      {isOpen && <div className="px-4 pb-4">{children}</div>}
-    </div>
-  );
-}
 
 function ForecastMethodology() {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="bg-bg-secondary rounded-xl border border-border/30 overflow-hidden">
-      {/* Header */}
+      {/* Header - Clickable to expand/collapse */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full px-5 py-4 flex items-center justify-between hover:bg-bg-tertiary/20 transition-colors"
@@ -558,422 +524,154 @@ function ForecastMethodology() {
         )}
       </button>
 
-      {/* Collapsible Content */}
+      {/* All content shows at once when expanded */}
       {isExpanded && (
-        <div className="border-t border-border/30">
+        <div className="px-5 pb-5 border-t border-border/30 pt-4 space-y-6">
+
           {/* Overview */}
-          <MethodologySection
-            title="Overview"
-            icon={<Info className="w-4 h-4" />}
-            defaultOpen={true}
-          >
-            <div className="space-y-3 text-sm text-text-secondary">
-              <p>
-                This forecast models B2B wholesale revenue across two distinct channels:{" "}
-                <span className="text-text-primary font-medium">Traditional B2B</span>{" "}
-                (retail partners, door-based) and{" "}
-                <span className="text-text-primary font-medium">Corporate</span>{" "}
-                (gifting programs, event-based).
-              </p>
-              <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                <p className="text-xs text-text-tertiary mb-2 font-medium uppercase tracking-wider">
-                  Key Insight
-                </p>
-                <p className="text-sm">
-                  These channels have fundamentally different economics. B2B is predictable
-                  (door-driven, ~2.6% quarterly variance). Corporate is volatile (event-driven,
-                  ~12% quarterly variance in Q4).
-                </p>
-              </div>
-            </div>
-          </MethodologySection>
+          <div>
+            <p className="text-sm text-text-secondary">
+              This forecast models B2B wholesale revenue across two distinct channels:{" "}
+              <span className="text-text-primary font-medium">Traditional B2B</span>{" "}
+              (retail partners, door-based) and{" "}
+              <span className="text-text-primary font-medium">Corporate</span>{" "}
+              (gifting programs, event-based). B2B is predictable (door-driven, ~2.6% quarterly variance).
+              Corporate is volatile (event-driven, ~12% quarterly variance in Q4).
+            </p>
+          </div>
 
-          {/* Seasonality */}
-          <MethodologySection
-            title="Quarterly Seasonality"
-            icon={<TrendingUp className="w-4 h-4" />}
-          >
-            <div className="space-y-4">
-              <p className="text-sm text-text-secondary">
-                Seasonality patterns based on 3-year historical averages (2023-2025).
-              </p>
-
-              {/* B2B Seasonality Table */}
+          {/* Seasonality - Both channels side by side */}
+          <div>
+            <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
+              Quarterly Seasonality (3-Year Avg)
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              {/* B2B */}
               <div>
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2 flex items-center gap-2">
-                  <Users className="w-3 h-3" /> B2B Seasonality
-                </h4>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-3 h-3 text-accent-blue" />
+                  <span className="text-xs font-medium text-text-secondary">B2B</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
                   {(["q1", "q2", "q3", "q4"] as const).map((q) => (
-                    <div
-                      key={q}
-                      className="bg-bg-tertiary/50 rounded-lg p-3 text-center"
-                    >
-                      <div className="text-xs text-text-tertiary uppercase mb-1">
-                        {q.toUpperCase()}
-                      </div>
-                      <div className="text-lg font-semibold text-text-primary">
+                    <div key={q} className="bg-bg-tertiary/50 rounded p-2 text-center">
+                      <div className="text-[10px] text-text-tertiary uppercase">{q}</div>
+                      <div className="text-sm font-semibold text-text-primary">
                         {(B2B_SEASONALITY[q] * 100).toFixed(0)}%
                       </div>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-text-tertiary mt-2">
-                  Low variance (σ 1.3-3.4%) — highly predictable
-                </p>
               </div>
-
-              {/* Corporate Seasonality Table */}
+              {/* Corporate */}
               <div>
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2 flex items-center gap-2">
-                  <Building2 className="w-3 h-3" /> Corporate Seasonality
-                </h4>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Building2 className="w-3 h-3 text-amber-400" />
+                  <span className="text-xs font-medium text-text-secondary">Corporate</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
                   {(["q1", "q2", "q3", "q4"] as const).map((q) => (
-                    <div
-                      key={q}
-                      className={`bg-bg-tertiary/50 rounded-lg p-3 text-center ${
-                        q === "q4" ? "ring-1 ring-amber-400/30" : ""
-                      }`}
-                    >
-                      <div className="text-xs text-text-tertiary uppercase mb-1">
-                        {q.toUpperCase()}
-                      </div>
-                      <div className="text-lg font-semibold text-text-primary">
+                    <div key={q} className={`bg-bg-tertiary/50 rounded p-2 text-center ${q === "q4" ? "ring-1 ring-amber-400/30" : ""}`}>
+                      <div className="text-[10px] text-text-tertiary uppercase">{q}</div>
+                      <div className="text-sm font-semibold text-text-primary">
                         {(CORP_SEASONALITY[q] * 100).toFixed(0)}%
                       </div>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-text-tertiary mt-2">
-                  High Q4 variance (σ 12%) — corporate gifting is event-driven
-                </p>
-              </div>
-
-              {/* Monthly Distribution */}
-              <div className="bg-bg-tertiary/30 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                  Monthly Within-Quarter Distribution
-                </h4>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <span className="text-text-tertiary">Q1-Q3:</span>{" "}
-                    <span className="text-text-primary">
-                      {MONTHLY_WITHIN_QUARTER.default.map((p) => `${(p * 100).toFixed(0)}%`).join(" → ")}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-text-tertiary">Q4:</span>{" "}
-                    <span className="text-text-primary">
-                      {MONTHLY_WITHIN_QUARTER.q4.map((p) => `${(p * 100).toFixed(0)}%`).join(" → ")}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs text-text-tertiary mt-2">
-                  Back-weighted within quarters (later months heavier)
-                </p>
               </div>
             </div>
-          </MethodologySection>
+          </div>
 
           {/* Door Economics */}
-          <MethodologySection
-            title="Door Economics (B2B)"
-            icon={<Layers className="w-4 h-4" />}
-          >
-            <div className="space-y-4">
-              <p className="text-sm text-text-secondary">
-                B2B revenue is modeled bottom-up from door (retail partner) economics.
-              </p>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Retention Rate</div>
-                  <div className="text-xl font-semibold text-status-good">
-                    {(DOOR_BENCHMARKS.avgRetentionRate * 100).toFixed(0)}%
-                  </div>
-                  <div className="text-xs text-text-muted">doors return YoY</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Churn Rate</div>
-                  <div className="text-xl font-semibold text-status-bad">
-                    {(DOOR_BENCHMARKS.avgChurnRate * 100).toFixed(0)}%
-                  </div>
-                  <div className="text-xs text-text-muted">annual churn</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Organic Growth</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    {(DOOR_BENCHMARKS.sameStoreGrowth * 100).toFixed(0)}%
-                  </div>
-                  <div className="text-xs text-text-muted">from retained doors</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">New Door Yield</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    ${DOOR_BENCHMARKS.newDoorFirstYearYield.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-text-muted">first year avg</div>
+          <div>
+            <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
+              Door Economics (B2B)
+            </h4>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="bg-bg-tertiary/50 rounded-lg p-2">
+                <div className="text-[10px] text-text-tertiary">Retention</div>
+                <div className="text-lg font-semibold text-status-good">
+                  {(DOOR_BENCHMARKS.avgRetentionRate * 100).toFixed(0)}%
                 </div>
               </div>
-
-              <div className="bg-bg-tertiary/30 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                  B2B Revenue Formula
-                </h4>
-                <div className="text-xs font-mono bg-bg-tertiary/50 rounded p-2 text-text-secondary">
-                  <div>Existing Book = (Doors − Churn) × ${DOOR_BENCHMARKS.returningDoorAvgYield.toLocaleString()} × (1 + {(DOOR_BENCHMARKS.sameStoreGrowth * 100).toFixed(0)}%)</div>
-                  <div className="mt-1">New Revenue = New Doors × ${DOOR_BENCHMARKS.newDoorFirstYearYield.toLocaleString()} × 50%*</div>
-                  <div className="mt-2 text-text-tertiary">*50% seasonality factor (acquired evenly through year)</div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-2">
+                <div className="text-[10px] text-text-tertiary">Churn</div>
+                <div className="text-lg font-semibold text-status-bad">
+                  {(DOOR_BENCHMARKS.avgChurnRate * 100).toFixed(0)}%
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-2">
+                <div className="text-[10px] text-text-tertiary">Organic Growth</div>
+                <div className="text-lg font-semibold text-text-primary">
+                  {(DOOR_BENCHMARKS.sameStoreGrowth * 100).toFixed(0)}%
+                </div>
+              </div>
+              <div className="bg-bg-tertiary/50 rounded-lg p-2">
+                <div className="text-[10px] text-text-tertiary">New Door Yield</div>
+                <div className="text-lg font-semibold text-text-primary">
+                  ${(DOOR_BENCHMARKS.newDoorFirstYearYield / 1000).toFixed(0)}K
                 </div>
               </div>
             </div>
-          </MethodologySection>
+          </div>
 
-          {/* Corporate Engraving */}
-          <MethodologySection
-            title="Corporate Engraving Economics"
-            icon={<Building2 className="w-4 h-4" />}
-          >
-            <div className="space-y-4">
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-amber-400 uppercase tracking-wider mb-1">
-                  Critical for Unit Projections
-                </h4>
-                <p className="text-sm text-text-secondary">
-                  Corporate engraving (SMITH-ENG) is a <strong>service</strong>, not a physical product.
-                  Unit projections must separate engraving revenue from physical product revenue.
-                </p>
+          {/* Corporate Engraving - Critical callout */}
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+            <h4 className="text-xs font-medium text-amber-400 uppercase tracking-wider mb-2">
+              Corporate Engraving (Critical for Unit Projections)
+            </h4>
+            <p className="text-xs text-text-secondary mb-3">
+              SMITH-ENG is a <strong>service</strong>, not a physical product. Separate engraving revenue from physical products for accurate unit counts.
+            </p>
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              <div>
+                <div className="text-text-tertiary">Physical Rev</div>
+                <div className="font-semibold text-text-primary">{(CORPORATE_ENGRAVING.physicalRevenueShare * 100).toFixed(0)}%</div>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Physical Revenue</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    {(CORPORATE_ENGRAVING.physicalRevenueShare * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-text-muted">of corporate total</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Engraving Revenue</div>
-                  <div className="text-xl font-semibold text-amber-400">
-                    {(CORPORATE_ENGRAVING.revenueShare * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-text-muted">service revenue</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Attach Rate</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    {(CORPORATE_ENGRAVING.attachRate * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-text-muted">units engraved</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Engraving Price</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    ${CORPORATE_ENGRAVING.averagePrice.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-text-muted">avg per item</div>
-                </div>
+              <div>
+                <div className="text-text-tertiary">Engraving Rev</div>
+                <div className="font-semibold text-amber-400">{(CORPORATE_ENGRAVING.revenueShare * 100).toFixed(0)}%</div>
               </div>
-
-              <div className="bg-bg-tertiary/30 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                  Physical AUP Comparison
-                </h4>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-text-tertiary">Blended AUP:</span>{" "}
-                    <span className="text-status-bad line-through">${BLENDED_AUP}</span>
-                    <span className="text-xs text-text-muted ml-1">(wrong for planning)</span>
-                  </div>
-                  <div>
-                    <span className="text-text-tertiary">Physical AUP:</span>{" "}
-                    <span className="text-status-good font-medium">${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)}</span>
-                    <span className="text-xs text-text-muted ml-1">(use this)</span>
-                  </div>
-                </div>
+              <div>
+                <div className="text-text-tertiary">Attach Rate</div>
+                <div className="font-semibold text-text-primary">{(CORPORATE_ENGRAVING.attachRate * 100).toFixed(1)}%</div>
               </div>
-
-              <div className="bg-bg-tertiary/30 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                  Example: $1M Corporate Target
-                </h4>
-                <div className="text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">Physical Revenue:</span>
-                    <span className="text-text-primary">$846,000 (84.6%)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">Engraving Revenue:</span>
-                    <span className="text-text-primary">$154,000 (15.4%)</span>
-                  </div>
-                  <div className="flex justify-between border-t border-border/30 pt-1 mt-1">
-                    <span className="text-text-tertiary">Physical Units:</span>
-                    <span className="text-text-primary font-medium">58,587</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">Engraving Operations:</span>
-                    <span className="text-text-primary">8,437 (14.4% attach)</span>
-                  </div>
-                </div>
+              <div>
+                <div className="text-text-tertiary">Physical AUP</div>
+                <div className="font-semibold text-status-good">${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)}</div>
               </div>
             </div>
-          </MethodologySection>
+          </div>
 
-          {/* SKU Mix */}
-          <MethodologySection
-            title="SKU Mix & Unit Projections"
-            icon={<Layers className="w-4 h-4" />}
-          >
-            <div className="space-y-4">
-              <p className="text-sm text-text-secondary">
-                Unit projections use historical SKU mix to distribute revenue across products.
-                Top 10 SKUs account for ~60% of B2B revenue.
-              </p>
-
-              <div className="bg-bg-tertiary/30 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                  Unit Calculation
-                </h4>
-                <div className="text-xs font-mono bg-bg-tertiary/50 rounded p-2 text-text-secondary">
-                  <div>SKU Revenue = Monthly Revenue × SKU Revenue Share %</div>
-                  <div className="mt-1">SKU Units = SKU Revenue ÷ SKU Avg Unit Price</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">B2B Blended AUP</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    ${BLENDED_AUP}
-                  </div>
-                  <div className="text-xs text-text-muted">fallback price</div>
-                </div>
-                <div className="bg-bg-tertiary/50 rounded-lg p-3">
-                  <div className="text-xs text-text-tertiary mb-1">Corp Physical AUP</div>
-                  <div className="text-xl font-semibold text-text-primary">
-                    ${CORPORATE_ENGRAVING.physicalAUP.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-text-muted">excl. engraving</div>
-                </div>
-              </div>
-
-              <div className="bg-bg-tertiary/30 rounded-lg p-3">
-                <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
-                  Confidence Ranges
-                </h4>
-                <div className="space-y-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-16 text-text-tertiary">&gt;5% share:</span>
-                    <span className="px-2 py-0.5 bg-status-good/20 text-status-good rounded">±10%</span>
-                    <span className="text-text-muted">High volume, more data</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-16 text-text-tertiary">2-5%:</span>
-                    <span className="px-2 py-0.5 bg-status-warning/20 text-status-warning rounded">±15%</span>
-                    <span className="text-text-muted">Moderate volume</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-16 text-text-tertiary">&lt;2%:</span>
-                    <span className="px-2 py-0.5 bg-status-bad/20 text-status-bad rounded">±20%</span>
-                    <span className="text-text-muted">Lower volume, more variance</span>
-                  </div>
-                </div>
+          {/* Data Sources & Validation - Compact */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+                Data Sources
+              </h4>
+              <div className="space-y-1 text-xs text-text-secondary">
+                <div>• Actuals: ns_wholesale_transactions (NetSuite sync)</div>
+                <div>• Doors: ns_wholesale_customers.is_inactive = false</div>
+                <div>• Corporate: is_corporate = true <span className="text-status-bad">(NOT category)</span></div>
               </div>
             </div>
-          </MethodologySection>
-
-          {/* Data Sources */}
-          <MethodologySection
-            title="Data Sources"
-            icon={<History className="w-4 h-4" />}
-          >
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 gap-2 text-xs">
-                <div className="flex items-start gap-3 p-2 bg-bg-tertiary/30 rounded">
-                  <span className="text-accent-blue font-medium w-24">Actuals</span>
-                  <span className="text-text-secondary">
-                    ns_wholesale_transactions → real-time NetSuite sync
-                  </span>
-                </div>
-                <div className="flex items-start gap-3 p-2 bg-bg-tertiary/30 rounded">
-                  <span className="text-accent-blue font-medium w-24">Door Count</span>
-                  <span className="text-text-secondary">
-                    ns_wholesale_customers.is_inactive = false → active B2B doors
-                  </span>
-                </div>
-                <div className="flex items-start gap-3 p-2 bg-bg-tertiary/30 rounded">
-                  <span className="text-accent-blue font-medium w-24">Seasonality</span>
-                  <span className="text-text-secondary">
-                    3-year average (2023-2025) from ns_wholesale_transactions
-                  </span>
-                </div>
-                <div className="flex items-start gap-3 p-2 bg-bg-tertiary/30 rounded">
-                  <span className="text-accent-blue font-medium w-24">SKU Mix</span>
-                  <span className="text-text-secondary">
-                    ns_wholesale_line_items aggregated by revenue share
-                  </span>
-                </div>
-                <div className="flex items-start gap-3 p-2 bg-bg-tertiary/30 rounded">
-                  <span className="text-accent-blue font-medium w-24">Corp Filter</span>
-                  <span className="text-text-secondary">
-                    ns_wholesale_customers.is_corporate = true (NOT category)
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-xs text-text-tertiary">
-                Last methodology update: January 2026. See{" "}
-                <code className="px-1 py-0.5 bg-bg-tertiary rounded">BUSINESS_LOGIC.md</code>{" "}
-                for full documentation.
+            <div>
+              <h4 className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+                Sanity Checks
+              </h4>
+              <div className="space-y-1 text-xs text-text-secondary">
+                <div>• Q4 = 35-40% B2B, 55-60% Corp</div>
+                <div>• Corp engraving ≈ 15% of corp revenue</div>
+                <div>• Corp physical AUP ≈ $14-15, not $120</div>
               </div>
             </div>
-          </MethodologySection>
+          </div>
 
-          {/* Validation Checklist */}
-          <MethodologySection
-            title="Validation Checklist"
-            icon={<CheckCircle className="w-4 h-4" />}
-          >
-            <div className="space-y-2">
-              <div className="text-xs text-text-secondary mb-3">
-                Before trusting any projection, verify these sanity checks:
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-start gap-2">
-                  <span className="text-status-good">✓</span>
-                  <span className="text-text-secondary">
-                    Q4 should be 35-40% of B2B annual, 55-60% of Corporate annual
-                  </span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-status-good">✓</span>
-                  <span className="text-text-secondary">
-                    Corporate engraving should be ~15% of corporate revenue
-                  </span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-status-good">✓</span>
-                  <span className="text-text-secondary">
-                    Physical AUP for Corporate should be ~$14-15, not $120+ (blended)
-                  </span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-status-good">✓</span>
-                  <span className="text-text-secondary">
-                    Door retention should be 80-85% (if lower, investigate data)
-                  </span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-status-good">✓</span>
-                  <span className="text-text-secondary">
-                    YTD actuals should roughly match seasonality expectations
-                  </span>
-                </div>
-              </div>
-            </div>
-          </MethodologySection>
+          {/* Footer */}
+          <div className="text-xs text-text-tertiary pt-2 border-t border-border/20">
+            Last updated: January 2026 • See <code className="px-1 py-0.5 bg-bg-tertiary rounded">BUSINESS_LOGIC.md</code> for full documentation
+          </div>
         </div>
       )}
     </div>
