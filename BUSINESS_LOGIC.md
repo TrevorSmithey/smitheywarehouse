@@ -724,6 +724,180 @@ Customer lifespan categorization (for churn analysis):
 
 ---
 
+## Wholesale Forecasting (B2B + Corporate)
+
+### Overview
+
+Wholesale revenue comes from two distinct channels with different economics:
+
+| Channel | Description | Buying Pattern | % of Wholesale |
+|---------|-------------|----------------|----------------|
+| **B2B** | Wholesale retailers (stores that resell) | Recurring, seasonal | ~85% |
+| **Corporate** | Corporate gifting (companies buying for employees/clients) | One-time/annual, highly seasonal | ~15% |
+
+**Critical insight**: These channels have different SKU mixes, different seasonality, and different unit economics. You cannot use a single blended mix for accurate unit projections.
+
+### B2B SKU Mix (lib/forecasting.ts)
+
+Based on Full Year 2025 B2B transaction data ($5.93M revenue).
+
+**Top 5 by Revenue**:
+| SKU | Revenue % | AUP |
+|-----|-----------|-----|
+| SMITH-CI-SKIL12 (12Trad) | 11.7% | $123 |
+| SMITH-CI-SKIL10 (10Trad) | 6.3% | $98 |
+| SMITH-CI-SKIL14 (14Dual) | 4.8% | $137 |
+| SMITH-CI-GRIDDLE18 | 4.0% | $173 |
+| SMITH-CI-DSKIL11 (11Deep) | 4.0% | $125 |
+
+**Blended B2B AUP**: ~$120 (weighted average across all SKUs)
+
+**Source**: `lib/forecasting.ts:85-127` (DEFAULT_SKU_MIX)
+
+### Corporate SKU Mix & Engraving (Added 2026-01-16)
+
+Based on 2024-Present corporate transaction data ($1.95M revenue, 114K physical units).
+
+**The Engraving Factor**:
+
+Corporate customers frequently order **engraved** products for gifting. Engraving (SMITH-ENG) is a **service**, not a physical product, but it appears as a line item in transactions.
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Engraving % of Corp Revenue** | 15.4% | $301K of $1.95M |
+| **Engraving Attach Rate** | 14.4% | 14.4% of physical units get engraved |
+| **Engraving AUP** | $18.31 | Average engraving price |
+| **Physical Product AUP** | $14.44 | Excluding engraving |
+
+**Why This Matters for Unit Projections**:
+
+If you use a blended AUP that includes engraving as "units", you'll overcount physical products:
+
+```
+WRONG (blended):
+  $1M corporate revenue ÷ $14.93 blended AUP = 66,976 "units"
+  ❌ Includes 8,400+ engraving "units" that aren't physical products
+
+CORRECT (separated):
+  $1M × 84.6% physical share = $846K physical revenue
+  $846K ÷ $14.44 physical AUP = 58,543 physical units (what production builds)
+  58,543 × 14.4% attach rate = 8,433 engravings (engraving capacity needed)
+```
+
+**Corporate Physical SKU Mix (Top 5)**:
+
+| SKU | Revenue % | AUP | Notes |
+|-----|-----------|-----|-------|
+| SMITH-CI-SKIL12 | 22.0% | $66 | Lower AUP = corporate discount |
+| SMITH-CI-SKIL10 | 16.2% | $41 | Lower AUP = corporate discount |
+| SMITH-CI-CHEF10 | 6.7% | $52 | |
+| SMITH-CI-DUTCH7 | 5.6% | $88 | |
+| SMITH-CI-DUAL12 | 4.4% | $121 | |
+
+**Note**: Corporate AUPs are lower than B2B because corporate orders receive volume discounts.
+
+### Forecasting Constants (lib/forecasting.ts)
+
+```typescript
+// B2B Seasonality (3-year average 2023-2025)
+export const B2B_SEASONALITY = {
+  q1: 0.20,  // 20%
+  q2: 0.21,  // 21%
+  q3: 0.22,  // 22%
+  q4: 0.37,  // 37% - holiday push
+};
+
+// Corporate Seasonality (highly variable, std dev 10-12%)
+export const CORP_SEASONALITY = {
+  q1: 0.20,  // 20%
+  q2: 0.06,  // 6% - summer lull
+  q3: 0.16,  // 16%
+  q4: 0.58,  // 58% - holiday gifting
+};
+
+// Engraving Economics (corporate-specific)
+export const CORPORATE_ENGRAVING = {
+  attachRate: 0.144,        // 14.4% of physical units get engraved
+  averagePrice: 18.31,      // $ per engraving
+  revenueShare: 0.154,      // Engraving is 15.4% of corporate revenue
+};
+```
+
+### Unit Projection Methodology
+
+**For B2B Revenue Targets**:
+```
+1. Apply B2B seasonality to get quarterly targets
+2. Use DEFAULT_SKU_MIX revenue shares × quarterly revenue = SKU revenue
+3. SKU units = SKU revenue ÷ SKU avg_unit_price
+4. Sum all SKU units = total B2B units
+```
+
+**For Corporate Revenue Targets**:
+```
+1. Apply CORP_SEASONALITY to get quarterly targets
+2. Separate physical (84.6%) from engraving (15.4%) revenue
+3. Physical units = physical revenue ÷ physical AUP ($14.44)
+4. Engraving units = physical units × attach rate (14.4%)
+5. Total corporate units = physical units (for production)
+   + engraving capacity = engraving units (for engraving team)
+```
+
+### Door Driver Economics (B2B Only)
+
+| Metric | Value | Source |
+|--------|-------|--------|
+| **Retention Rate** | 83% | 2023-2024 cohort analysis |
+| **Annual Churn** | 17% | 1 - retention |
+| **Organic Growth** | 11% | Same-store revenue growth from retained doors |
+| **New Door First Year Yield** | $6,000 | 2024 average (conservative) |
+| **Returning Door Avg Yield** | $11,500 | Historical estimate |
+
+**Door-Based Revenue Projection**:
+```
+Retained doors = Starting doors × (1 - churn rate)
+Existing book revenue = Retained doors × returning_yield × (1 + organic_growth)
+New door revenue = New doors × new_door_yield × 0.5 (partial year factor)
+Total implied revenue = Existing book + New door revenue
+```
+
+**Source**: `lib/forecasting.ts:253-303` (computeDoorScenario)
+
+### Customer Concentration (Corporate)
+
+Corporate revenue is more concentrated than B2B:
+
+| Rank | Customer | % of Corporate Revenue |
+|------|----------|------------------------|
+| 1 | Ruhlin Group | 15.7% |
+| 2 | Initiative Abu Dhabi | 6.5% |
+| 3 | Choate Construction | 3.6% |
+| Top 10 | Combined | ~42% |
+
+**Implication**: Corporate forecasts have higher variance due to customer concentration. A single large order can swing quarterly results significantly.
+
+### Data Sources
+
+| Metric | Table | Query Pattern |
+|--------|-------|---------------|
+| B2B Actuals | `ns_wholesale_transactions` | `is_corporate = false` |
+| Corporate Actuals | `ns_wholesale_transactions` | `is_corporate = true` |
+| SKU Line Items | `ns_wholesale_line_items` | Join on `ns_transaction_id` |
+| Current Door Count | `ns_wholesale_customers` | `is_corporate = false AND is_inactive = false AND lifetime_orders > 0` |
+
+### Validation (Run Quarterly)
+
+1. **SKU Mix Drift**: Compare current quarter SKU revenue % to stored mix. Flag >5% deviation.
+2. **Engraving Attach Rate**: Recalculate from trailing 12 months. Flag >2% deviation.
+3. **Seasonality Check**: Compare actual quarterly distribution to constants. Flag >10% deviation.
+4. **Door Economics**: Validate retention rate and yields against actuals.
+
+**Scripts**:
+- `scripts/corporate-sku-mix.mjs` - Regenerate corporate SKU analysis
+- `scripts/check-corp-mix.mjs` - Quick data completeness check
+
+---
+
 ## Query Limits
 
 All centralized in `lib/constants.ts`. When adding new queries, add limit constants there.

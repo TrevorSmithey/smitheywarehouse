@@ -133,6 +133,69 @@ export const DEFAULT_SKU_MIX: Omit<ForecastSkuMix, "id" | "forecast_id">[] = [
 export const BLENDED_AUP = 120;
 
 // ============================================================================
+// CORPORATE ENGRAVING ECONOMICS (Added 2026-01-16)
+// ============================================================================
+
+/**
+ * Corporate-specific engraving economics.
+ *
+ * Corporate customers frequently order engraved products for gifting.
+ * Engraving (SMITH-ENG) is a SERVICE, not a physical product.
+ *
+ * For accurate unit projections:
+ * - Separate physical products from engraving revenue
+ * - Use physical AUP for production planning
+ * - Use attach rate for engraving capacity planning
+ *
+ * Based on 2024-Present corporate transaction data ($1.95M revenue).
+ * See BUSINESS_LOGIC.md "Wholesale Forecasting" for full methodology.
+ */
+export const CORPORATE_ENGRAVING = {
+  /** 14.4% of physical corporate units get engraved */
+  attachRate: 0.144,
+
+  /** Average engraving price ($18.31) */
+  averagePrice: 18.31,
+
+  /** Engraving is 15.4% of total corporate revenue */
+  revenueShare: 0.154,
+
+  /** Physical products are 84.6% of corporate revenue */
+  physicalRevenueShare: 0.846,
+
+  /** Physical product AUP (excluding engraving) */
+  physicalAUP: 14.44,
+} as const;
+
+/**
+ * Compute corporate unit projection from revenue target.
+ * Separates physical units (for production) from engraving (for capacity).
+ *
+ * @param corporateRevenue - Target corporate revenue
+ * @returns Physical units, engraving units, and totals
+ */
+export function computeCorporateUnits(corporateRevenue: number): {
+  physicalRevenue: number;
+  engravingRevenue: number;
+  physicalUnits: number;
+  engravingUnits: number;
+  totalRevenue: number;
+} {
+  const physicalRevenue = corporateRevenue * CORPORATE_ENGRAVING.physicalRevenueShare;
+  const engravingRevenue = corporateRevenue * CORPORATE_ENGRAVING.revenueShare;
+  const physicalUnits = Math.round(physicalRevenue / CORPORATE_ENGRAVING.physicalAUP);
+  const engravingUnits = Math.round(physicalUnits * CORPORATE_ENGRAVING.attachRate);
+
+  return {
+    physicalRevenue: Math.round(physicalRevenue),
+    engravingRevenue: Math.round(engravingRevenue),
+    physicalUnits,
+    engravingUnits,
+    totalRevenue: corporateRevenue,
+  };
+}
+
+// ============================================================================
 // CALCULATION FUNCTIONS
 // ============================================================================
 
