@@ -64,7 +64,7 @@ async function checkTracking() {
       .eq("status", "in_transit")
       .gte("shipped_at", trackingStartDate)
       .or(`checked_at.is.null,checked_at.lt.${oneHourAgo.toISOString()}`)
-      .limit(200); // Process in batches - 200/hour clears backlog in ~5 days
+      .limit(400); // Process 400/hour - clears 8k backlog in ~20 hours
 
     if (fetchError) {
       console.error("Error fetching shipments:", fetchError);

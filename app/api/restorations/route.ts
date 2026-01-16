@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth/server";
+import { QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -319,12 +320,17 @@ export async function GET(request: NextRequest) {
       query = query.is("archived_at", null);
     }
 
-    const { data: restorations, error: restorationsError } = await query.order("created_at", { ascending: false });
+    const { data: restorations, error: restorationsError } = await query
+      .order("created_at", { ascending: false })
+      .limit(QUERY_LIMITS.RESTORATIONS);
 
     if (restorationsError) {
       console.error("[RESTORATIONS API] Error:", restorationsError);
       return NextResponse.json({ error: "Failed to fetch restorations" }, { status: 500 });
     }
+
+    // Check for truncation - silent data loss is a critical integrity failure
+    checkQueryLimit(restorations?.length || 0, QUERY_LIMITS.RESTORATIONS, "restorations");
 
     // =========================================================================
     // FETCH CUSTOMER EMAILS (for CS callouts)

@@ -141,24 +141,43 @@ export const QUERY_LIMITS = {
   WHOLESALE_CUSTOMERS: 2000, // ~749 customers with transactions, 3x buffer
   WHOLESALE_TRANSACTIONS_YTD: 10000, // ~3,298 YTD 2025, 3x buffer
   WHOLESALE_TRANSACTIONS_24M: 15000, // 24-month queries need more headroom
+
+  // Restorations API - restoration pipeline tracking
+  // Current count: ~1,815 non-archived. 3x buffer for growth.
+  // Added 2026-01-16 after S332239 was invisible due to silent truncation.
+  RESTORATIONS: 5000,
 } as const;
 
 /**
- * Check if query result was truncated and log warning
- * Returns true if data was likely truncated
+ * Check if query result was truncated or approaching limit.
+ * Returns true if data was likely truncated.
+ *
+ * Thresholds:
+ * - >= 100% of limit: CRITICAL - Data IS truncated
+ * - >= 80% of limit: WARNING - Approaching limit, increase soon
  */
 export function checkQueryLimit(
   resultCount: number,
   limit: number,
   queryName: string
 ): boolean {
+  const usagePercent = (resultCount / limit) * 100;
+
   if (resultCount >= limit) {
-    console.warn(
-      `[QUERY LIMIT WARNING] ${queryName}: Returned ${resultCount} rows (limit: ${limit}). ` +
-      `Data may be truncated! Consider increasing limit or implementing pagination.`
+    console.error(
+      `[QUERY LIMIT CRITICAL] ${queryName}: Returned ${resultCount} rows (limit: ${limit}). ` +
+      `DATA IS TRUNCATED! Increase limit in lib/constants.ts immediately.`
     );
     return true;
   }
+
+  if (usagePercent >= 80) {
+    console.warn(
+      `[QUERY LIMIT WARNING] ${queryName}: ${resultCount}/${limit} rows (${usagePercent.toFixed(0)}% of limit). ` +
+      `Approaching capacity - consider increasing limit in lib/constants.ts.`
+    );
+  }
+
   return false;
 }
 
@@ -191,3 +210,122 @@ export const WHOLESALE_THRESHOLDS = {
    */
   NEW_CUSTOMER_NURTURING: 4000,
 } as const;
+
+/**
+ * Budget Category Types
+ *
+ * Product categories for budget tracking and SKU organization.
+ */
+export type BudgetCategory = "cast_iron" | "carbon_steel" | "accessories" | "glass_lid";
+
+/**
+ * Category Display Names
+ *
+ * Human-readable names for each budget category.
+ */
+export const CATEGORY_DISPLAY_NAMES: Record<BudgetCategory, string> = {
+  cast_iron: "Cast Iron",
+  carbon_steel: "Carbon Steel",
+  accessories: "Accessories",
+  glass_lid: "Glass Lids",
+};
+
+/**
+ * Category Display Order
+ *
+ * Canonical order for displaying product categories.
+ * This order matches the budget spreadsheet and should be used globally.
+ */
+export const CATEGORY_ORDER: BudgetCategory[] = [
+  "cast_iron",
+  "carbon_steel",
+  "accessories",
+  "glass_lid",
+];
+
+/**
+ * SKU Sort Order
+ *
+ * Canonical sort order for SKUs within each category.
+ * Matches the budget spreadsheet row order exactly.
+ * Lower numbers appear first. Use this for consistent SKU ordering across:
+ * - Budget vs Actual dashboard
+ * - Forecast SKU Unit tables
+ * - Any other SKU listing
+ *
+ * Usage:
+ *   skus.sort((a, b) => (SKU_SORT_ORDER[a.sku.toLowerCase()] ?? 999) - (SKU_SORT_ORDER[b.sku.toLowerCase()] ?? 999))
+ */
+export const SKU_SORT_ORDER: Record<string, number> = {
+  // Cast Iron (order from budget spreadsheet)
+  "smith-ci-skil8": 1,      // 8Chef
+  "smith-ci-chef10": 2,     // 10Chef
+  "smith-ci-flat10": 3,     // 10Flat
+  "smith-ci-flat12": 4,     // 12Flat
+  "smith-ci-skil6": 5,      // 6Trad
+  "smith-ci-skil10": 6,     // 10Trad
+  "smith-ci-skil12": 7,     // 12Trad
+  "smith-ci-tradskil14": 8, // 14Trad
+  "smith-ci-skil14": 9,     // 14Dual
+  "smith-ci-dskil11": 10,   // 11Deep
+  "smith-ci-grill12": 11,   // 12Grill
+  "smith-ci-dutch4": 12,    // 3.5 Dutch
+  "smith-ci-dutch5": 13,    // 5.5 Dutch
+  "smith-ci-dutch7": 14,    // 7.25 Dutch
+  "smith-ci-dual6": 15,     // 6Dual
+  "smith-ci-griddle18": 16, // Double Burner Griddle
+  "smith-ci-dual12": 17,    // 12Dual
+  "smith-ci-sauce1": 18,    // Sauce Pan
+  // Carbon Steel (order from budget spreadsheet)
+  "smith-cs-farm12": 101,   // Farmhouse Skillet
+  "smith-cs-deep12": 102,   // Deep Farm
+  "smith-cs-rroastm": 103,  // Round Roaster
+  "smith-cs-ovalm": 104,    // Oval Roaster
+  "smith-cs-wokm": 105,     // Wok
+  "smith-cs-round17n": 106, // Paella Pan
+  "smith-cs-farm9": 107,    // Little Farm
+  "smith-cs-fish": 108,     // Fish Skillet
+  // Accessories (order from budget spreadsheet)
+  "smith-ac-scrub1": 201,   // Chainmail Scrubber
+  "smith-ac-fgph": 202,     // Leather Potholder
+  "smith-ac-sleeve1": 203,  // Short Sleeve
+  "smith-ac-sleeve2": 204,  // Long Sleeve
+  "smith-ac-spatw1": 205,   // Slotted Spat
+  "smith-ac-spatb1": 206,   // Mighty Spat
+  "smith-ac-phtlg": 207,    // Suede Potholder
+  "smith-ac-keeperw": 208,  // Salt Keeper
+  "smith-ac-season": 209,   // Seasoning Oil
+  "smith-ac-carekit": 210,  // Care Kit
+  "smith-bottle1": 211,     // Bottle Opener
+  // Glass Lids (order from budget spreadsheet)
+  "smith-ac-glid10": 301,   // 10Lid
+  "smith-ac-glid12": 302,   // 12Lid
+  "smith-ac-glid14": 303,   // 14Lid
+  "smith-ac-cslid12": 304,  // CS 12 Lid
+};
+
+/**
+ * Get canonical SKU sort key
+ *
+ * Returns the sort order for a given SKU code.
+ * Unknown SKUs return 999 to sort them at the end.
+ *
+ * @param sku - The SKU code (case-insensitive)
+ * @returns Sort order number (lower = earlier in list)
+ */
+export function getSkuSortOrder(sku: string): number {
+  return SKU_SORT_ORDER[sku.toLowerCase()] ?? 999;
+}
+
+/**
+ * Sort SKUs by canonical order
+ *
+ * Comparator function for sorting SKU arrays.
+ * Uses the canonical budget spreadsheet order.
+ *
+ * @example
+ * skus.sort((a, b) => sortSkusByCanonicalOrder(a.sku, b.sku))
+ */
+export function sortSkusByCanonicalOrder(skuA: string, skuB: string): number {
+  return getSkuSortOrder(skuA) - getSkuSortOrder(skuB);
+}

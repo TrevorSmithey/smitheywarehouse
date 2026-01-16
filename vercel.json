@@ -1,5 +1,8 @@
 {
   "functions": {
+    "app/api/tracking/check/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/cron/sync-netsuite-customers/route.ts": {
       "maxDuration": 300
     },
