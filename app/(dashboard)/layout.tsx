@@ -119,15 +119,16 @@ const TAB_GROUPS: Record<DashboardTab, string> = {
 };
 
 // Routes that belong to parent tabs (for sub-tab display)
-const INVENTORY_ROUTES = ["/inventory", "/fulfillment"];
+const INVENTORY_ROUTES = ["/inventory"];
 const PRODUCTION_ROUTES = ["/production", "/production-planning"];
 
 // Sub-tabs configuration
-const INVENTORY_SUB_TABS: DashboardTab[] = ["inventory", "fulfillment"];
+const INVENTORY_SUB_TABS: DashboardTab[] = ["inventory"];
 const PRODUCTION_SUB_TABS: DashboardTab[] = ["production-planning"];
 
 // Sub-tabs that appear under parent tabs (not in main nav)
-const SUB_TABS: DashboardTab[] = ["fulfillment", "production-planning"];
+// Note: fulfillment is now a top-level tab with its own sub-pages (action/analysis)
+const SUB_TABS: DashboardTab[] = ["production-planning"];
 
 export default function DashboardLayout({
   children,

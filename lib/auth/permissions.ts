@@ -82,6 +82,7 @@ export const DEFAULT_ROLE_DEFAULTS: Record<DashboardRole, DashboardTab> = {
  */
 export const DEFAULT_TAB_ORDER: DashboardTab[] = [
   "inventory",
+  "fulfillment",
   "production",
   "restoration",
   "budget",
@@ -93,7 +94,6 @@ export const DEFAULT_TAB_ORDER: DashboardTab[] = [
   "ecommerce",
   "pl",
   "production-planning",
-  "fulfillment",
 ];
 
 /**

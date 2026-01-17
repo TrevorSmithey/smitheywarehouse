@@ -279,6 +279,7 @@ export interface StuckShipment {
   days_since_shipped: number;
   days_without_scan: number;
   last_scan_location: string | null;
+  checked_at: string | null; // When EasyPost tracking was last verified
 }
 
 // Fulfillment lead time analytics

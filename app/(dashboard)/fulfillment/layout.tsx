@@ -68,7 +68,9 @@ export default function FulfillmentLayout({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const isTracking = pathname === "/fulfillment/tracking";
+  // Determine which sub-page is active
+  const isAction = pathname === "/fulfillment/action" || pathname === "/fulfillment";
+  const isAnalysis = pathname === "/fulfillment/analysis";
   const { setLastRefresh, setIsRefreshing, setTriggerRefresh } = useDashboard();
 
   // Metrics state
@@ -234,29 +236,29 @@ export default function FulfillmentLayout({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex gap-4 border-b border-border/30 pb-2">
             <Link
-              href="/fulfillment"
+              href="/fulfillment/action"
               className={`text-sm font-medium transition-all pb-2 border-b-2 ${
-                !isTracking
+                isAction
                   ? "text-text-primary border-accent-blue"
                   : "text-text-muted hover:text-text-secondary border-transparent"
               }`}
             >
-              Dashboard
+              Action
             </Link>
             <Link
-              href="/fulfillment/tracking"
+              href="/fulfillment/analysis"
               className={`text-sm font-medium transition-all pb-2 border-b-2 ${
-                isTracking
+                isAnalysis
                   ? "text-text-primary border-accent-blue"
                   : "text-text-muted hover:text-text-secondary border-transparent"
               }`}
             >
-              Tracking
+              Analysis
             </Link>
           </div>
 
-          {/* Date Range Selector - show on Tracking page (matches original behavior) */}
-          {isTracking && (
+          {/* Date Range Selector - show on Analysis page */}
+          {isAnalysis && (
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex gap-2">
                 {(["today", "yesterday", "3days", "7days", "30days", "custom"] as DateRangeOption[]).map((option) => {
