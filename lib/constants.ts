@@ -109,8 +109,9 @@ export const QUERY_LIMITS = {
   // Stuck shipments - 100 is reasonable for display
   STUCK_SHIPMENTS: 100,
 
-  // Transit data - 30k shipments over 30 days (peak: 1000/day delivered)
-  TRANSIT_DATA: 30000,
+  // Transit data - all shipments with actual carrier tracking data (no date limit)
+  // Shows most recent 100k delivered shipments with transit_days + delivery_state
+  TRANSIT_DATA: 100000,
 
   // Lead time data - 150k orders (peak season: 2000/day for 75 days)
   // Previous 50k limit would truncate during Q4

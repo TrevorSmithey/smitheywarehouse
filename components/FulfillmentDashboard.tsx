@@ -22,6 +22,7 @@ import type {
   SkuInQueue,
   OrderAging,
   DailyBacklog,
+  LeadTimeVsVolume,
 } from "@/lib/types";
 import {
   formatNumber,
@@ -379,6 +380,160 @@ function BacklogChart({
             />
           </AreaChart>
         </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
+function LeadTimeChart({
+  data,
+  loading,
+}: {
+  data: LeadTimeVsVolume[];
+  loading: boolean;
+}) {
+  if (data.length === 0) return null;
+
+  // Get unique dates and merge warehouse data into single rows for the line chart
+  const dateMap = new Map<string, { date: string; smithey: number | null; selery: number | null; smitheyOrders: number; seleryOrders: number }>();
+
+  for (const d of data) {
+    if (!dateMap.has(d.date)) {
+      dateMap.set(d.date, { date: d.date, smithey: null, selery: null, smitheyOrders: 0, seleryOrders: 0 });
+    }
+    const entry = dateMap.get(d.date)!;
+    if (d.warehouse === "smithey") {
+      entry.smithey = d.avgLeadTimeHours;
+      entry.smitheyOrders = d.orderCount;
+    } else {
+      entry.selery = d.avgLeadTimeHours;
+      entry.seleryOrders = d.orderCount;
+    }
+  }
+
+  // Sort by date ascending and format for chart
+  const chartData = [...dateMap.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => ({
+      ...d,
+      displayDate: format(parseLocalDate(d.date), "M/d"),
+    }));
+
+  // Calculate overall averages
+  const smitheyPoints = chartData.filter((d) => d.smithey !== null);
+  const seleryPoints = chartData.filter((d) => d.selery !== null);
+  const smitheyAvg = smitheyPoints.length > 0
+    ? smitheyPoints.reduce((sum, d) => sum + (d.smithey || 0), 0) / smitheyPoints.length
+    : 0;
+  const seleryAvg = seleryPoints.length > 0
+    ? seleryPoints.reduce((sum, d) => sum + (d.selery || 0), 0) / seleryPoints.length
+    : 0;
+
+  // Cap Y-axis at reasonable max (filter outliers visually)
+  const allValues = chartData.flatMap((d) => [d.smithey, d.selery]).filter((v): v is number => v !== null && v <= 120);
+  const maxLeadTime = Math.max(...allValues, 48) * 1.1;
+
+  return (
+    <div className="bg-bg-secondary rounded border border-border p-6 transition-all hover:border-border-hover">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 className="text-label font-medium text-text-tertiary flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5" />
+            FULFILLMENT LEAD TIME
+          </h3>
+          <p className="text-xs text-text-muted mt-1">
+            Average time from order placed to fulfilled (hours)
+          </p>
+        </div>
+        <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-0.5 bg-accent-blue rounded" />
+            <span className="text-text-secondary">Smithey</span>
+            <span className="text-text-muted">avg {Math.round(smitheyAvg)}h</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-0.5 bg-slate-500 rounded" />
+            <span className="text-text-secondary">Selery</span>
+            <span className="text-text-muted">avg {Math.round(seleryAvg)}h</span>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="h-[240px] flex items-center justify-center text-text-muted text-sm">
+          Loading...
+        </div>
+      ) : (
+        <>
+          <ResponsiveContainer width="100%" height={240}>
+            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <XAxis
+                dataKey="displayDate"
+                stroke="#64748B"
+                fontSize={11}
+                tickLine={false}
+                axisLine={{ stroke: "#1E293B" }}
+                dy={8}
+              />
+              <YAxis
+                stroke="#64748B"
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                width={40}
+                domain={[0, Math.ceil(maxLeadTime)]}
+                tickFormatter={(v) => `${Math.round(v)}h`}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "rgba(15, 23, 42, 0.95)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                }}
+                labelStyle={{ color: "#94A3B8", marginBottom: "4px", fontWeight: 500 }}
+                itemStyle={{ color: "#E2E8F0" }}
+              />
+              {/* 48h threshold */}
+              <ReferenceLine y={48} stroke="#F59E0B" strokeDasharray="5 5" strokeWidth={1} />
+              {/* 24h target */}
+              <ReferenceLine y={24} stroke="#10B981" strokeDasharray="5 5" strokeWidth={1} />
+              <Line
+                type="monotone"
+                dataKey="smithey"
+                name="Smithey"
+                stroke="#0EA5E9"
+                strokeWidth={2}
+                dot={{ fill: "#0EA5E9", r: 3, strokeWidth: 0 }}
+                activeDot={{ fill: "#0EA5E9", r: 5, strokeWidth: 2, stroke: "#0F172A" }}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="selery"
+                name="Selery"
+                stroke="#64748B"
+                strokeWidth={2}
+                dot={{ fill: "#64748B", r: 3, strokeWidth: 0 }}
+                activeDot={{ fill: "#64748B", r: 5, strokeWidth: 2, stroke: "#0F172A" }}
+                connectNulls
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+
+          {/* Legend */}
+          <div className="flex items-center justify-center gap-8 mt-4 pt-4 border-t border-border-subtle">
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-4 h-0.5 bg-status-good rounded" />
+              <span className="text-text-muted">24h target</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-4 h-0.5 bg-amber-500 rounded" />
+              <span className="text-text-muted">48h threshold</span>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -790,6 +945,13 @@ export function FulfillmentDashboard({
 
       <CollapsibleSection title="BACKLOG TREND" defaultOpen={false}>
         <BacklogChart backlog={metrics?.dailyBacklog || []} loading={loading} />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="LEAD TIME TREND" defaultOpen={false}>
+        <LeadTimeChart
+          data={metrics?.leadTimeVsVolume || []}
+          loading={loading}
+        />
       </CollapsibleSection>
     </>
   );

@@ -297,6 +297,26 @@ export interface FulfillmentLeadTime {
   trend_pct: number; // positive = slower, negative = faster
 }
 
+/**
+ * Lead Time vs Volume Correlation
+ *
+ * Daily aggregation for capacity planning scatter plot.
+ * Helps identify inflection points where order volume causes lead time expansion.
+ * Use case: "When do we need a second 3PL?"
+ *
+ * X-axis: orderCount (orders created that day)
+ * Y-axis: avgLeadTimeHours (avg fulfillment time for orders created that day)
+ */
+export interface LeadTimeVsVolume {
+  date: string; // YYYY-MM-DD
+  warehouse: "smithey" | "selery";
+  orderCount: number; // orders created that day
+  avgLeadTimeHours: number; // avg (fulfilled_at - created_at) in hours
+  minLeadTimeHours: number; // fastest order that day
+  maxLeadTimeHours: number; // slowest order that day
+  fulfilledCount: number; // how many of those orders have been fulfilled (for confidence)
+}
+
 // Transit time analytics
 export interface TransitAnalytics {
   warehouse: string;
@@ -341,6 +361,7 @@ export interface MetricsResponse {
   transitAnalytics: TransitAnalytics[];
   engravingQueue: EngravingQueue;
   orderAging: OrderAging[];
+  leadTimeVsVolume: LeadTimeVsVolume[]; // Capacity planning correlation data
   lastUpdated: string;
 }
 

@@ -17,6 +17,7 @@ import type {
   TransitAnalytics,
   EngravingQueue,
   OrderAging,
+  LeadTimeVsVolume,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -248,8 +249,9 @@ export async function GET(request: NextRequest) {
         .order("days_without_scan", { ascending: false })
         .limit(QUERY_LIMITS.STUCK_SHIPMENTS),
 
-      // Transit time data for delivered shipments - fixed 30-day window
-      // Uses transit30dStart to ensure sufficient data regardless of date selector
+      // Transit time data for delivered shipments - ALL with actual transit data
+      // No date filter: shows all shipments where we have real carrier transit data
+      // transit_days IS NOT NULL ensures only shipments with actual tracking data are included
       // Restoration orders excluded at query level
       supabase
         .from("shipments")
@@ -257,13 +259,14 @@ export async function GET(request: NextRequest) {
           order_id,
           transit_days,
           delivery_state,
+          delivered_at,
           orders!inner(warehouse, is_restoration)
         `)
         .eq("status", "delivered")
         .eq("orders.is_restoration", false)
         .not("transit_days", "is", null)
-        .gte("delivered_at", transit30dStart.toISOString())
-        .lte("delivered_at", now.toISOString())
+        .not("delivery_state", "is", null)
+        .order("delivered_at", { ascending: false })
         .limit(QUERY_LIMITS.TRANSIT_DATA),
 
       // Daily orders - will be fetched separately with pagination
@@ -504,6 +507,10 @@ export async function GET(request: NextRequest) {
     const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
     const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
 
+    // Process lead time vs volume correlation for capacity planning scatter plot
+    // Groups by creation date to show: "When we get X orders/day, what's our lead time?"
+    const leadTimeVsVolume = processLeadTimeVsVolume(leadTimeResult.data || []);
+
     // Process engraving queue from RPC result
     // RPC returns { total_units: number, order_count: number } directly
     const engravingRpcData = engravingQueueResult.data as { total_units: number; order_count: number } | null;
@@ -537,6 +544,7 @@ export async function GET(request: NextRequest) {
       transitAnalytics,
       engravingQueue,
       orderAging,
+      leadTimeVsVolume,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -951,6 +959,95 @@ function processFulfillmentLeadTime(
       trend_pct: Math.round(trendPct * 10) / 10,
     };
   });
+}
+
+/**
+ * Process Lead Time vs Volume correlation data for capacity planning.
+ *
+ * Groups fulfilled orders by CREATION DATE to answer:
+ * "On days when we received X orders, what was our average fulfillment lead time?"
+ *
+ * This enables scatter plot analysis:
+ * - X-axis: Daily order count (demand signal)
+ * - Y-axis: Average lead time for orders created that day
+ * - Colored by warehouse
+ *
+ * Use case: Find inflection point where volume exceeds capacity,
+ * causing lead time expansion - signals need for additional 3PL capacity.
+ */
+function processLeadTimeVsVolume(
+  data: Array<{
+    id: number;
+    warehouse: string | null;
+    created_at: string;
+    fulfilled_at: string;
+  }>
+): LeadTimeVsVolume[] {
+  // Key: "YYYY-MM-DD|warehouse" → aggregated data
+  const byDateWarehouse = new Map<
+    string,
+    {
+      leadTimes: number[];
+      date: string;
+      warehouse: "smithey" | "selery";
+    }
+  >();
+
+  for (const row of data) {
+    if (!row.warehouse || !row.created_at || !row.fulfilled_at) continue;
+
+    const warehouse = row.warehouse as "smithey" | "selery";
+    if (warehouse !== "smithey" && warehouse !== "selery") continue;
+
+    const created = new Date(row.created_at);
+    const fulfilled = new Date(row.fulfilled_at);
+    const leadTimeHours = (fulfilled.getTime() - created.getTime()) / (1000 * 60 * 60);
+
+    // Skip invalid lead times (negative or > 30 days)
+    if (leadTimeHours < 0 || leadTimeHours > 720) continue;
+
+    // Group by creation date (demand day), not fulfillment date
+    const dateStr = created.toISOString().split("T")[0];
+    const key = `${dateStr}|${warehouse}`;
+
+    if (!byDateWarehouse.has(key)) {
+      byDateWarehouse.set(key, {
+        leadTimes: [],
+        date: dateStr,
+        warehouse,
+      });
+    }
+
+    byDateWarehouse.get(key)!.leadTimes.push(leadTimeHours);
+  }
+
+  // Convert to array, calculate stats
+  const results: LeadTimeVsVolume[] = [];
+
+  for (const [, entry] of byDateWarehouse) {
+    const times = entry.leadTimes;
+    if (times.length === 0) continue;
+
+    const sum = times.reduce((a, b) => a + b, 0);
+    const avg = sum / times.length;
+    const min = Math.min(...times);
+    const max = Math.max(...times);
+
+    results.push({
+      date: entry.date,
+      warehouse: entry.warehouse,
+      orderCount: times.length,
+      avgLeadTimeHours: Math.round(avg * 10) / 10,
+      minLeadTimeHours: Math.round(min * 10) / 10,
+      maxLeadTimeHours: Math.round(max * 10) / 10,
+      fulfilledCount: times.length, // All orders in this dataset are fulfilled
+    });
+  }
+
+  // Sort by date descending (most recent first)
+  results.sort((a, b) => b.date.localeCompare(a.date));
+
+  return results;
 }
 
 // Process engraving queue - count unfulfilled engravings
