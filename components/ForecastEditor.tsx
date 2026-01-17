@@ -70,16 +70,44 @@ function formatCurrencyWhileTyping(value: string): string {
   return formatCurrency(num);
 }
 
-// Compute dynamic seasonality factor based on remaining months in year
-// Accounts for the fact that new doors acquired throughout the remaining period
-// will have varying amounts of time to generate revenue
-function computeNewDoorSeasonalityFactor(): number {
+// Compute factors for new door revenue contribution
+// Separates doors already acquired (YTD) from doors yet to be acquired (remaining)
+function computeNewDoorFactors(): {
+  acquiredFactor: number;      // Factor for doors acquired Jan → now (average contribution)
+  remainingFactor: number;     // Factor for doors acquired now → Dec (average contribution)
+  currentMonth: number;
+  monthsElapsed: number;
+  monthsRemaining: number;
+} {
   const currentMonth = new Date().getMonth() + 1; // 1-12
-  const monthsRemaining = 12 - currentMonth + 1;
-  // If doors acquired evenly over remaining months:
-  // - Door acquired in month M contributes (12 - M + 1) months of revenue
-  // - Average contribution = (monthsRemaining + 1) / 2 months out of 12
-  return (monthsRemaining + 1) / 2 / 12;
+  const monthsElapsed = currentMonth - 1; // Months completed (Jan=0, Feb=1, etc.)
+  const monthsRemaining = 12 - currentMonth + 1; // Including current month
+
+  // Acquired doors factor: doors acquired Jan → (currentMonth-1)
+  // Average months of contribution = sum(12, 11, ..., 12-monthsElapsed+1) / monthsElapsed
+  // = (12 + 12-monthsElapsed+1) * monthsElapsed / 2 / monthsElapsed
+  // = (24 - monthsElapsed + 1) / 2 / 12
+  // Simplified: average remaining months when acquired / 12
+  let acquiredFactor = 0;
+  if (monthsElapsed > 0) {
+    // Doors acquired in month M have (12 - M + 1) months to contribute
+    // For M = 1 to monthsElapsed, average = sum / count
+    const sumMonthsContributed = Array.from({ length: monthsElapsed }, (_, i) => 12 - i).reduce((a, b) => a + b, 0);
+    acquiredFactor = sumMonthsContributed / monthsElapsed / 12;
+  }
+
+  // Remaining doors factor: doors acquired currentMonth → Dec
+  // Each door acquired in month M contributes (12 - M + 1) months
+  const sumRemainingContribution = Array.from({ length: monthsRemaining }, (_, i) => monthsRemaining - i).reduce((a, b) => a + b, 0);
+  const remainingFactor = sumRemainingContribution / monthsRemaining / 12;
+
+  return {
+    acquiredFactor,
+    remainingFactor,
+    currentMonth,
+    monthsElapsed,
+    monthsRemaining,
+  };
 }
 
 // =============================================================================
@@ -111,6 +139,9 @@ export function ForecastEditor({
   const [newDoorsMajor, setNewDoorsMajor] = useState("");
   const [newDoorsMid, setNewDoorsMid] = useState("");
   const [newDoorsSmall, setNewDoorsSmall] = useState("");
+
+  // New doors acquired YTD (for mid-year revisions)
+  const [doorsAcquiredYTD, setDoorsAcquiredYTD] = useState("");
 
   // Revision note (required for updates)
   const [revisionNote, setRevisionNote] = useState("");
@@ -183,17 +214,53 @@ export function ForecastEditor({
     return Math.round(currentDoorCount * (pct / 100));
   }, [currentDoorCount, expectedChurnPct]);
 
-  // Dynamic seasonality factor based on remaining months in year
-  // January: ~54% (full year ahead), July: ~29%, December: ~8%
-  const newDoorSeasonalityFactor = useMemo(() => computeNewDoorSeasonalityFactor(), []);
+  // Dynamic seasonality factors based on current month
+  // Splits calculation between doors already acquired and doors remaining
+  const doorFactors = useMemo(() => computeNewDoorFactors(), []);
 
-  // Implied new door revenue by segment (using dynamic factor)
+  // Parse doors acquired YTD
+  const acquiredCount = parseInt(doorsAcquiredYTD) || 0;
+
+  // Remaining doors to acquire
+  const remainingDoors = Math.max(0, totalNewDoors - acquiredCount);
+
+  // Blended yield per door (weighted by segment targets)
+  const blendedYieldPerDoor = useMemo(() => {
+    if (totalNewDoors === 0) return 0;
+    const majorDoors = parseInt(newDoorsMajor) || 0;
+    const midDoors = parseInt(newDoorsMid) || 0;
+    const smallDoors = parseInt(newDoorsSmall) || 0;
+    return (majorDoors * segmentYields.major + midDoors * segmentYields.mid + smallDoors * segmentYields.small) / totalNewDoors;
+  }, [newDoorsMajor, newDoorsMid, newDoorsSmall, totalNewDoors, segmentYields]);
+
+  // New door revenue split: acquired vs remaining
   const newDoorRevenue = useMemo(() => {
-    const major = (parseInt(newDoorsMajor) || 0) * segmentYields.major * newDoorSeasonalityFactor;
-    const mid = (parseInt(newDoorsMid) || 0) * segmentYields.mid * newDoorSeasonalityFactor;
-    const small = (parseInt(newDoorsSmall) || 0) * segmentYields.small * newDoorSeasonalityFactor;
-    return { major, mid, small, total: major + mid + small };
-  }, [newDoorsMajor, newDoorsMid, newDoorsSmall, segmentYields, newDoorSeasonalityFactor]);
+    // Acquired doors: use acquired factor (higher - they've had more time)
+    const acquiredRevenue = acquiredCount * blendedYieldPerDoor * doorFactors.acquiredFactor;
+
+    // Remaining doors: use remaining factor (lower - less time in year)
+    const remainingRevenue = remainingDoors * blendedYieldPerDoor * doorFactors.remainingFactor;
+
+    // Also compute per-segment for display (using weighted factors)
+    const weightedFactor = totalNewDoors > 0
+      ? (acquiredCount * doorFactors.acquiredFactor + remainingDoors * doorFactors.remainingFactor) / totalNewDoors
+      : doorFactors.remainingFactor;
+
+    const major = (parseInt(newDoorsMajor) || 0) * segmentYields.major * weightedFactor;
+    const mid = (parseInt(newDoorsMid) || 0) * segmentYields.mid * weightedFactor;
+    const small = (parseInt(newDoorsSmall) || 0) * segmentYields.small * weightedFactor;
+
+    return {
+      major,
+      mid,
+      small,
+      total: acquiredRevenue + remainingRevenue,
+      acquiredRevenue,
+      remainingRevenue,
+      acquiredCount,
+      remainingCount: remainingDoors,
+    };
+  }, [acquiredCount, remainingDoors, blendedYieldPerDoor, doorFactors, newDoorsMajor, newDoorsMid, newDoorsSmall, segmentYields, totalNewDoors]);
 
   // Ending doors
   const endingDoors = currentDoorCount - expectedChurnDoors + totalNewDoors;
@@ -526,6 +593,37 @@ export function ForecastEditor({
                   )}
                 </div>
               </div>
+
+              {/* Doors Acquired YTD - for mid-year planning */}
+              <div className="mt-4 p-3 bg-accent-blue/5 border border-accent-blue/20 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-accent-blue">
+                    Doors Acquired YTD
+                  </label>
+                  <span className="text-[10px] text-text-muted">
+                    Month {doorFactors.currentMonth} of 12
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  max={totalNewDoors}
+                  value={doorsAcquiredYTD}
+                  onChange={(e) => setDoorsAcquiredYTD(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 bg-bg-primary border border-border/30 rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue"
+                />
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                  <div className="text-text-muted">
+                    Acquired: <span className="text-text-primary font-medium">{acquiredCount}</span>
+                    <span className="text-text-tertiary"> ({Math.round(doorFactors.acquiredFactor * 100)}% factor)</span>
+                  </div>
+                  <div className="text-text-muted">
+                    Remaining: <span className="text-text-primary font-medium">{remainingDoors}</span>
+                    <span className="text-text-tertiary"> ({Math.round(doorFactors.remainingFactor * 100)}% factor)</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Summary Calculations - Door Math */}
@@ -576,11 +674,25 @@ export function ForecastEditor({
 
               <div className="h-px bg-border/30" />
 
-              {/* New Door Revenue */}
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">+ New Door Revenue ({Math.round(newDoorSeasonalityFactor * 100)}% factor)</span>
-                <span className="font-medium text-accent-blue">+{formatCompact(newDoorRevenue.total)}</span>
-              </div>
+              {/* New Door Revenue - split by acquired vs remaining */}
+              {acquiredCount > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">+ Acquired Doors ({acquiredCount} × {Math.round(doorFactors.acquiredFactor * 100)}%)</span>
+                  <span className="font-medium text-status-good">+{formatCompact(newDoorRevenue.acquiredRevenue)}</span>
+                </div>
+              )}
+              {remainingDoors > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">+ Remaining Doors ({remainingDoors} × {Math.round(doorFactors.remainingFactor * 100)}%)</span>
+                  <span className="font-medium text-accent-blue">+{formatCompact(newDoorRevenue.remainingRevenue)}</span>
+                </div>
+              )}
+              {acquiredCount === 0 && remainingDoors === 0 && totalNewDoors > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">+ New Door Revenue ({Math.round(doorFactors.remainingFactor * 100)}% factor)</span>
+                  <span className="font-medium text-accent-blue">+{formatCompact(newDoorRevenue.total)}</span>
+                </div>
+              )}
 
               <div className="h-px bg-border/30" />
 
@@ -619,7 +731,7 @@ export function ForecastEditor({
                   </div>
                   {gapToTarget > 0 && (
                     <div className="text-[10px] text-status-bad/80 mt-1">
-                      To close this gap: Need ~{Math.ceil(gapToTarget / (DOOR_BENCHMARKS.newDoorFirstYearYield * newDoorSeasonalityFactor))} more new doors
+                      To close this gap: Need ~{Math.ceil(gapToTarget / (DOOR_BENCHMARKS.newDoorFirstYearYield * doorFactors.remainingFactor))} more new doors
                       {existingDoorTotalRevenue > 0 && ` or ${((gapToTarget / existingDoorTotalRevenue) * 100).toFixed(1)}% more organic growth`}
                     </div>
                   )}
