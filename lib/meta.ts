@@ -224,7 +224,7 @@ export class MetaClient {
       if (response.status === 429 && attempt < retries) {
         // Meta rate limit headers
         const retryAfter = response.headers.get("Retry-After");
-        let waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 30 * Math.pow(2, attempt);
+        const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 30 * Math.pow(2, attempt);
 
         console.log(`[META] Rate limited, waiting ${waitSeconds}s before retry...`);
         await new Promise((r) => setTimeout(r, waitSeconds * 1000));

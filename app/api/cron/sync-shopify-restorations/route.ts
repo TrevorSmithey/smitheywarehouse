@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // Parse options
-    let options: SyncOptions = { mode: "recent", days: 90 };
+    const options: SyncOptions = { mode: "recent", days: 90 };
     try {
       const body = await request.json();
       if (body.mode === "full" || body.mode === "recent") {

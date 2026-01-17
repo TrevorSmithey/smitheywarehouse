@@ -143,7 +143,7 @@ function transformCheckout(checkout: ShopifyAbandonedCheckout) {
 
   // Determine recovery status
   let recoveryStatus: "abandoned" | "recovered" = "abandoned";
-  let recoveredOrderId: number | null = null;
+  const recoveredOrderId: number | null = null;
 
   // If completed_at is set, it was recovered (completed checkout becomes an order)
   if (checkout.completed_at) {

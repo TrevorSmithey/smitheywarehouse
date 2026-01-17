@@ -92,7 +92,7 @@ async function importForecasts() {
 
   // Parse product rows (row 2+)
   const forecasts: ForecastRow[] = [];
-  let unmapped: string[] = [];
+  const unmapped: string[] = [];
 
   for (let row = 2; row < data.length; row++) {
     const rowData = data[row] as (string | number)[];

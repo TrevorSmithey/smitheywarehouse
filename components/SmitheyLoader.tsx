@@ -141,7 +141,7 @@ export function AnimatedQuail({ size = "md", state = "idle" }: AnimatedQuailProp
 
 export default function SmitheyLoader({ message, size = "md" }: SmitheyLoaderProps) {
   const [displayMessage, setDisplayMessage] = useState(
-    message || LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]
+    () => message || LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]
   );
 
   // Rotate messages every 3 seconds if no custom message

@@ -569,7 +569,7 @@ function B2BGrowthChart({
           className="text-[10px] uppercase tracking-widest text-text-tertiary"
         />
         <span className="text-xs text-text-muted">
-          {latestCount} total · <span className="text-emerald-400">+{totalGrowth}%</span> since Q1 '24
+          {latestCount} total · <span className="text-emerald-400">+{totalGrowth}%</span> since Q1 &apos;24
         </span>
       </div>
       <div className="flex-1 min-h-[144px]">

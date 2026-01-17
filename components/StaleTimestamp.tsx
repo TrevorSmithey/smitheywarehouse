@@ -15,6 +15,7 @@
 
 "use client";
 
+import { useMemo } from "react";
 import { AlertTriangle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/lib/auth";
@@ -40,21 +41,27 @@ export function StaleTimestamp({
 }: StaleTimestampProps) {
   const { isAdmin } = useAuth();
 
+  // Compute staleness state - memoized to avoid calling Date.now() on every render
+  const { syncDate, isStale, isWarning, colorClass } = useMemo(() => {
+    if (!date) {
+      return { syncDate: null, isStale: false, isWarning: false, colorClass: "text-text-muted" };
+    }
+    const sd = new Date(date);
+    const hoursSinceSync = (Date.now() - sd.getTime()) / (1000 * 60 * 60);
+    const stale = hoursSinceSync > staleThreshold;
+    const warning = hoursSinceSync > warningThreshold && hoursSinceSync <= staleThreshold;
+    const color = stale
+      ? "text-status-bad"
+      : warning
+      ? "text-status-warning"
+      : "text-text-muted";
+    return { syncDate: sd, isStale: stale, isWarning: warning, colorClass: color };
+  }, [date, staleThreshold, warningThreshold]);
+
   // Only visible to admins
   if (!isAdmin) return null;
 
-  if (!date) return null;
-
-  const syncDate = new Date(date);
-  const hoursSinceSync = (Date.now() - syncDate.getTime()) / (1000 * 60 * 60);
-  const isStale = hoursSinceSync > staleThreshold;
-  const isWarning = hoursSinceSync > warningThreshold && hoursSinceSync <= staleThreshold;
-
-  const colorClass = isStale
-    ? "text-status-bad"
-    : isWarning
-    ? "text-status-warning"
-    : "text-text-muted";
+  if (!syncDate) return null;
 
   return (
     <span className={`text-[10px] flex items-center gap-1 ${colorClass} ${className}`}>
