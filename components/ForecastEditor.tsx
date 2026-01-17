@@ -62,6 +62,26 @@ function parseNumericInput(value: string): number {
   return parseFloat(cleaned) || 0;
 }
 
+// Format value as currency while typing (strips non-numeric, adds $ and commas)
+function formatCurrencyWhileTyping(value: string): string {
+  const numericOnly = value.replace(/[^0-9]/g, "");
+  if (numericOnly === "") return "";
+  const num = parseInt(numericOnly, 10);
+  return formatCurrency(num);
+}
+
+// Compute dynamic seasonality factor based on remaining months in year
+// Accounts for the fact that new doors acquired throughout the remaining period
+// will have varying amounts of time to generate revenue
+function computeNewDoorSeasonalityFactor(): number {
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+  const monthsRemaining = 12 - currentMonth + 1;
+  // If doors acquired evenly over remaining months:
+  // - Door acquired in month M contributes (12 - M + 1) months of revenue
+  // - Average contribution = (monthsRemaining + 1) / 2 months out of 12
+  return (monthsRemaining + 1) / 2 / 12;
+}
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -163,13 +183,17 @@ export function ForecastEditor({
     return Math.round(currentDoorCount * (pct / 100));
   }, [currentDoorCount, expectedChurnPct]);
 
-  // Implied new door revenue by segment
+  // Dynamic seasonality factor based on remaining months in year
+  // January: ~54% (full year ahead), July: ~29%, December: ~8%
+  const newDoorSeasonalityFactor = useMemo(() => computeNewDoorSeasonalityFactor(), []);
+
+  // Implied new door revenue by segment (using dynamic factor)
   const newDoorRevenue = useMemo(() => {
-    const major = (parseInt(newDoorsMajor) || 0) * segmentYields.major * 0.5; // 50% seasonality factor
-    const mid = (parseInt(newDoorsMid) || 0) * segmentYields.mid * 0.5;
-    const small = (parseInt(newDoorsSmall) || 0) * segmentYields.small * 0.5;
+    const major = (parseInt(newDoorsMajor) || 0) * segmentYields.major * newDoorSeasonalityFactor;
+    const mid = (parseInt(newDoorsMid) || 0) * segmentYields.mid * newDoorSeasonalityFactor;
+    const small = (parseInt(newDoorsSmall) || 0) * segmentYields.small * newDoorSeasonalityFactor;
     return { major, mid, small, total: major + mid + small };
-  }, [newDoorsMajor, newDoorsMid, newDoorsSmall, segmentYields]);
+  }, [newDoorsMajor, newDoorsMid, newDoorsSmall, segmentYields, newDoorSeasonalityFactor]);
 
   // Ending doors
   const endingDoors = currentDoorCount - expectedChurnDoors + totalNewDoors;
@@ -324,7 +348,7 @@ export function ForecastEditor({
                 <input
                   type="text"
                   value={b2bAnnualTarget}
-                  onChange={(e) => setB2bAnnualTarget(e.target.value)}
+                  onChange={(e) => setB2bAnnualTarget(formatCurrencyWhileTyping(e.target.value))}
                   placeholder="e.g., $8,000,000"
                   className="w-full px-3 py-2 bg-bg-tertiary border border-border/30 rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue"
                 />
@@ -342,7 +366,7 @@ export function ForecastEditor({
                 <input
                   type="text"
                   value={corpAnnualTarget}
-                  onChange={(e) => setCorpAnnualTarget(e.target.value)}
+                  onChange={(e) => setCorpAnnualTarget(formatCurrencyWhileTyping(e.target.value))}
                   placeholder="e.g., $1,200,000"
                   className="w-full px-3 py-2 bg-bg-tertiary border border-border/30 rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue"
                 />
@@ -554,7 +578,7 @@ export function ForecastEditor({
 
               {/* New Door Revenue */}
               <div className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">+ New Door Revenue (50% factor)</span>
+                <span className="text-text-secondary">+ New Door Revenue ({Math.round(newDoorSeasonalityFactor * 100)}% factor)</span>
                 <span className="font-medium text-accent-blue">+{formatCompact(newDoorRevenue.total)}</span>
               </div>
 
@@ -595,7 +619,7 @@ export function ForecastEditor({
                   </div>
                   {gapToTarget > 0 && (
                     <div className="text-[10px] text-status-bad/80 mt-1">
-                      To close this gap: Need ~{Math.ceil(gapToTarget / (DOOR_BENCHMARKS.newDoorFirstYearYield * 0.5))} more new doors
+                      To close this gap: Need ~{Math.ceil(gapToTarget / (DOOR_BENCHMARKS.newDoorFirstYearYield * newDoorSeasonalityFactor))} more new doors
                       {existingDoorTotalRevenue > 0 && ` or ${((gapToTarget / existingDoorTotalRevenue) * 100).toFixed(1)}% more organic growth`}
                     </div>
                   )}
