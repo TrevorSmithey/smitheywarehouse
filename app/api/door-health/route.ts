@@ -34,13 +34,9 @@ import type {
 // Dud rate maturity window (2× median reorder interval of 67 days)
 const DUD_MATURITY_DAYS = 133;
 
-// Hardcoded customer IDs to exclude - MUST MATCH wholesale API
-// These are D2C/retail aggregates that pollute B2B data
-const HARDCODED_EXCLUDED_IDS = [
-  2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
-];
-
-// Helper to build exclusion list combining hardcoded IDs and DB-flagged test accounts
+// Helper to fetch excluded customer IDs from DB (is_excluded=true)
+// Database is the SINGLE SOURCE OF TRUTH for exclusions (no more hardcoded IDs)
+// Includes: D2C aggregates (2501), test stores, etc.
 async function getExcludedCustomerIds(
   supabase: ReturnType<typeof createServiceClient>
 ): Promise<number[]> {
@@ -50,11 +46,12 @@ async function getExcludedCustomerIds(
     .eq("is_excluded", true);
 
   if (error) {
-    console.warn("[DOOR-HEALTH] Failed to fetch excluded customers from DB:", error.message);
+    console.error("[DOOR-HEALTH] Failed to fetch excluded customers from DB:", error.message);
+    // Return empty array - queries will include all customers, which is safer than hardcoding
+    return [];
   }
 
-  const dbExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
-  return [...new Set([...HARDCODED_EXCLUDED_IDS, ...dbExcludedIds])];
+  return (excludedFromDB || []).map((c) => c.ns_customer_id);
 }
 
 export const dynamic = "force-dynamic";
@@ -140,28 +137,42 @@ export async function GET(request: NextRequest) {
     // Get excluded customer IDs (hardcoded + DB-flagged) - MUST MATCH wholesale API
     const excludedIds = await getExcludedCustomerIds(supabase);
 
-    // Fetch all B2B customers (exclude corporate)
-    // Using last_sale_date (current/transactional) NOT last_order_date (stale/sync)
-    // CRITICAL: Only use `is_corporate` - is_corporate_gifting does NOT exist in DB schema
-    // Updated 2026-01-15: Added was_churned for reactivation tracking
-    // NOTE: Door Health dashboard INCLUDES inactive customers to track churn metrics
-    // Other dashboards filter is_inactive=true, but this one needs full visibility
-    const { data: rawCustomers, error: fetchError } = await supabase
-      .from("ns_wholesale_customers")
-      .select(`
-        ns_customer_id,
-        company_name,
-        first_sale_date,
-        last_sale_date,
-        lifetime_revenue,
-        lifetime_orders,
-        is_corporate,
-        is_inactive,
-        is_manually_churned,
-        yoy_revenue_change_pct,
-        was_churned
-      `)
-      .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS);
+    // Parallel queries:
+    // 1. Raw customers (for detailed processing - includes inactive for churn visibility)
+    // 2. Active door count from view (SINGLE SOURCE OF TRUTH for hero metric)
+    const [customerFetchResult, activeDoorCountResult] = await Promise.all([
+      // Fetch all B2B customers (exclude corporate)
+      // Using last_sale_date (current/transactional) NOT last_order_date (stale/sync)
+      // CRITICAL: Only use `is_corporate` - is_corporate_gifting does NOT exist in DB schema
+      // Updated 2026-01-15: Added was_churned for reactivation tracking
+      // NOTE: Door Health dashboard INCLUDES inactive customers to track churn metrics
+      // Other dashboards filter is_inactive=true, but this one needs full visibility
+      supabase
+        .from("ns_wholesale_customers")
+        .select(`
+          ns_customer_id,
+          company_name,
+          first_sale_date,
+          last_sale_date,
+          lifetime_revenue,
+          lifetime_orders,
+          is_corporate,
+          is_inactive,
+          is_manually_churned,
+          yoy_revenue_change_pct,
+          was_churned
+        `)
+        .limit(QUERY_LIMITS.WHOLESALE_CUSTOMERS),
+      // Active door count from view (SINGLE SOURCE OF TRUTH)
+      // v_b2b_customers view handles all filtering and computes is_active_door
+      // This ensures alignment between Wholesale and Door Health dashboards
+      supabase
+        .from("v_b2b_customers")
+        .select("is_active_door", { count: "exact" })
+        .eq("is_active_door", true),
+    ]);
+
+    const { data: rawCustomers, error: fetchError } = customerFetchResult;
 
     if (fetchError) {
       console.error("[DOOR-HEALTH] Fetch error:", fetchError);
@@ -185,6 +196,15 @@ export async function GET(request: NextRequest) {
     const excludedIdSet = new Set(excludedIds);
     const b2bCustomers = (rawCustomers || []).filter(
       (c) => !c.is_corporate && !excludedIdSet.has(c.ns_customer_id) && (c.lifetime_orders || 0) > 0
+    );
+
+    // Track manually churned customers BEFORE enrichment
+    // These customers are marked as churned regardless of their days since last order
+    // Must be used in funnel calculation to match the view's is_active_door logic
+    const manuallyChurnedIds = new Set<number>(
+      b2bCustomers
+        .filter((c) => c.is_manually_churned === true)
+        .map((c) => c.ns_customer_id)
     );
 
     // Enrich each customer with computed fields
@@ -235,10 +255,20 @@ export async function GET(request: NextRequest) {
     // Customers with no last_sale_date are excluded (never ordered = not a "door")
     // Customers with $0 revenue are excluded (cancelled/draft order = never a real customer)
     // Updated 2026-01-15: Track reactivated customers (was_churned=true but now active)
+    // Updated 2026-01-17: Manually churned customers go to churned bucket regardless of days
+    // This aligns with v_b2b_customers view's is_active_door logic
     enrichedCustomers.forEach((c) => {
       const days = c.days_since_last_order;
       if (days === null) return; // Skip customers with no order history
       if (c.total_revenue <= 0) return; // Skip $0 revenue - not a real customer
+
+      // CRITICAL: Manually churned customers are always counted as churned
+      // This matches the view's is_active_door logic and ensures funnel sums to activeDoors
+      const isManuallyChurned = manuallyChurnedIds.has(c.ns_customer_id);
+      if (isManuallyChurned) {
+        funnel.churned++;
+        return; // Skip other bucket logic
+      }
 
       // Count reactivated: previously churned but now NOT churned (came back)
       // These customers count toward their current bucket AND are flagged as reactivated
@@ -261,13 +291,17 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Filter to churned customers only (>= 365 days)
+    // Filter to churned customers only
+    // Includes: (1) time-based churned (>= 365 days) OR (2) manually marked churned
     // Must have revenue > 0 to count as churned - $0 revenue means they were never a real customer
     // (cancelled order, draft order, 100% discount, etc.)
     const churnedCustomers = enrichedCustomers.filter(
-      (c) => c.days_since_last_order !== null &&
-             c.days_since_last_order >= THRESHOLDS.CHURNED &&
-             c.total_revenue > 0
+      (c) => c.total_revenue > 0 && (
+        // Time-based churn
+        (c.days_since_last_order !== null && c.days_since_last_order >= THRESHOLDS.CHURNED) ||
+        // Manual churn override
+        manuallyChurnedIds.has(c.ns_customer_id)
+      )
     );
 
     // Total B2B customers - ALL TIME (for churn rate denominator)
@@ -278,9 +312,11 @@ export async function GET(request: NextRequest) {
              c.days_since_last_order !== null
     ).length;
 
-    // Active Doors = customers we're currently working with (NOT churned)
-    // This is the HERO metric: healthy + at-risk + churning
-    const activeDoors = funnel.active + funnel.atRisk + funnel.churning;
+    // Active Doors from v_b2b_customers view (SINGLE SOURCE OF TRUTH)
+    // The view computes is_active_door: days < 365 AND NOT is_manually_churned
+    // This is the canonical definition used by BOTH Wholesale and Door Health dashboards
+    // Fallback to local calculation if view query fails (defensive, should never happen)
+    const activeDoors = activeDoorCountResult.count ?? (funnel.active + funnel.atRisk + funnel.churning);
 
     // Group churned by year with pool-shrinking methodology
     // Pool shrinks each year as customers churn out

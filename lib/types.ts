@@ -1333,6 +1333,8 @@ export interface WholesaleResponse {
   corporateCustomers: WholesaleCustomer[];
   // Churned customers - 365+ days since last order (excludes corporate/major accounts)
   churnedCustomers: WholesaleCustomer[];
+  // Unclassified customers - is_corporate_gifting IS NULL, need manual classification
+  unclassifiedCustomers: WholesaleCustomer[];
   // Recent transactions
   recentTransactions: WholesaleTransaction[];
   // Top SKUs

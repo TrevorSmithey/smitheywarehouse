@@ -213,25 +213,19 @@ For backward compatibility, API responses include `is_corporate_gifting`:
 - PATCH requests use `is_corporate_gifting` field
 - Both columns exist in database; update `is_corporate_gifting`, read either
 
-### Additional Detection Signals
+### Classification Workflow
 
-Beyond the `is_corporate` flag, `lib/corporate-detection.ts` provides heuristic detection for **flagging candidates**:
+New customers with revenue appear in the **"Needs Classification"** table in the Wholesale Dashboard.
+Sales team reviews and classifies each as:
+- **B2B** (wholesale) → `is_corporate_gifting = false`
+- **Corporate** (gifting) → `is_corporate_gifting = true`
 
-**Primary Signal (95% accurate)**: `customer.taxable = true`
-- In NetSuite, `taxable = true` means no resale certificate on file
+Classification happens via the dashboard UI (PATCH to `/api/wholesale/customer/[id]`).
+Once classified, customers move to the appropriate dashboard section.
+
+**Key Indicator**: `customer.taxable = true` suggests corporate (no resale certificate).
 - True wholesale customers are tax-exempt (they resell the goods)
 - If buying at wholesale pricing but taxable → likely corporate gifting
-
-**Secondary Signals**: Company name patterns
-- Legal entity suffixes: Inc, LLC, Corp, Ltd, Co
-- Professional services: Associates, Group, Partners, Enterprises
-- Business types: Consulting, Solutions, Agency, Firm
-- Real estate/construction: Realty, Properties, Development
-- Financial: Capital, Financial, Wealth, Insurance
-
-**Source**: `lib/corporate-detection.ts`
-
-These heuristics suggest customers to review, but the final decision is always manual via `is_corporate_gifting`.
 
 ### Database History
 

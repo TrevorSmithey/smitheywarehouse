@@ -29,12 +29,6 @@ import { QUERY_LIMITS, checkQueryLimit } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Hardcoded customer IDs to exclude from wholesale analytics
-// These are D2C/retail aggregates that pollute B2B data
-const HARDCODED_EXCLUDED_IDS = [
-  2501, // "Smithey Shopify Customer" - D2C retail aggregate, not a real wholesale customer
-];
-
 // Type-safe customer ID parser - handles both string and number from DB
 // Supabase can return numeric columns as strings in some edge cases
 function parseCustomerId(id: unknown): number {
@@ -43,7 +37,9 @@ function parseCustomerId(id: unknown): number {
   return 0;
 }
 
-// Helper to build exclusion list combining hardcoded IDs and DB-flagged test accounts
+// Helper to fetch excluded customer IDs from DB (is_excluded=true)
+// Database is the SINGLE SOURCE OF TRUTH for exclusions (no more hardcoded IDs)
+// Includes: D2C aggregates (2501), test stores, etc.
 async function getExcludedCustomerIds(supabase: ReturnType<typeof createServiceClient>): Promise<number[]> {
   const { data: excludedFromDB, error } = await supabase
     .from("ns_wholesale_customers")
@@ -51,11 +47,12 @@ async function getExcludedCustomerIds(supabase: ReturnType<typeof createServiceC
     .eq("is_excluded", true);
 
   if (error) {
-    console.warn("[WHOLESALE] Failed to fetch excluded customers from DB, using hardcoded list only:", error.message);
+    console.error("[WHOLESALE] Failed to fetch excluded customers from DB:", error.message);
+    // Return empty array - queries will include all customers, which is safer than hardcoding
+    return [];
   }
 
-  const dbExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
-  return [...new Set([...HARDCODED_EXCLUDED_IDS, ...dbExcludedIds])];
+  return (excludedFromDB || []).map((c) => c.ns_customer_id);
 }
 
 // Helper to determine customer segment based on revenue
@@ -185,6 +182,7 @@ export async function GET(request: NextRequest) {
       transactionsResult,
       prevTransactionsResult,
       skuResult,
+      activeDoorCountResult,
     ] = await Promise.all([
       // Monthly aggregated stats (last 24 months for YoY)
       supabase.rpc("get_wholesale_monthly_stats"),
@@ -222,6 +220,13 @@ export async function GET(request: NextRequest) {
         .select("*")
         .order("total_revenue", { ascending: false })
         .limit(50),
+      // Active door count from view (SINGLE SOURCE OF TRUTH)
+      // v_b2b_customers view handles all filtering and computes is_active_door
+      // This ensures alignment between Wholesale and Door Health dashboards
+      supabase
+        .from("v_b2b_customers")
+        .select("is_active_door", { count: "exact" })
+        .eq("is_active_door", true),
     ]);
 
     // Check for potential data truncation (CRITICAL: silent data loss prevention)
@@ -318,10 +323,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate monthly corporate vs regular revenue breakdown
-    // Build customer category map for revenue breakdown
-    const customerCategoryMapForMonthly = new Map<number, string>();
+    // Build customer is_corporate map for revenue breakdown
+    // Uses DB computed `is_corporate` column (from is_corporate_gifting flag) - NOT NetSuite category
+    // This ensures revenue split matches customer filtering (Snake River Farms = B2B, not Corporate)
+    const customerCorporateMap = new Map<number, boolean>();
     for (const c of customersResult.data || []) {
-      customerCategoryMapForMonthly.set(parseCustomerId(c.ns_customer_id), c.category || "");
+      customerCorporateMap.set(parseCustomerId(c.ns_customer_id), c.is_corporate === true);
     }
 
     // Query all transactions from the last 24 months for monthly breakdown
@@ -348,9 +355,8 @@ export async function GET(request: NextRequest) {
       // Use YYYY-MM format to match RPC output (primary path)
       const monthKey = txn.tran_date.substring(0, 7); // YYYY-MM format
       const revenue = parseFloat(txn.foreign_total) || 0;
-      // Add parseInt to handle potential string type from Supabase
-      const category = customerCategoryMapForMonthly.get(parseCustomerId(txn.ns_customer_id));
-      const isCorporate = category === "Corporate" || category === "4";
+      // Use is_corporate flag (from DB computed column) instead of NetSuite category
+      const isCorporate = customerCorporateMap.get(parseCustomerId(txn.ns_customer_id)) ?? false;
 
       const existing = monthlyRevenueBreakdown.get(monthKey) || { corporate: 0, regular: 0 };
       if (isCorporate) {
@@ -687,19 +693,20 @@ export async function GET(request: NextRequest) {
 
     // Active customers = unique customers with transactions in period, EXCLUDING corporate
     // Must match total_customers which also excludes corporate for consistent "X of Y" display
+    // Uses is_corporate flag via customerCorporateMap built earlier
     const currentPeriodCustomers = new Set(
       (transactionsResult.data || [])
         .filter((t) => {
-          const category = customerCategoryMapForMonthly.get(t.ns_customer_id);
-          return category !== "Corporate" && category !== "4";
+          const isCorporate = customerCorporateMap.get(t.ns_customer_id) ?? false;
+          return !isCorporate;
         })
         .map((t) => t.ns_customer_id)
     ).size;
     const prevPeriodCustomers = new Set(
       (prevTransactionsResult.data || [])
         .filter((t) => {
-          const category = customerCategoryMapForMonthly.get(t.ns_customer_id);
-          return category !== "Corporate" && category !== "4";
+          const isCorporate = customerCorporateMap.get(t.ns_customer_id) ?? false;
+          return !isCorporate;
         })
         .map((t) => t.ns_customer_id)
     ).size;
@@ -782,16 +789,12 @@ export async function GET(request: NextRequest) {
 
     // ========================================================================
     // REVENUE BY BUSINESS TYPE (Corporate vs Standard B2B)
-    // Uses the 'category' field from NetSuite to identify corporate customers
+    // Uses is_corporate flag (DB computed column) - NOT NetSuite category
+    // This ensures revenue split matches customer filtering throughout the dashboard
     // ========================================================================
 
-    // Build a map of customer_id -> category from the raw customers data
-    const customerCategoryMap = new Map<number, string>();
-    for (const c of customersResult.data || []) {
-      customerCategoryMap.set(parseCustomerId(c.ns_customer_id), c.category || "");
-    }
-
     // Calculate revenue breakdown by type for current period
+    // Reuses customerCorporateMap built earlier for monthly breakdown
     let corporateRevenue = 0;
     let corporateOrderCount = 0;
     const corporateCustomerIds = new Set<number>();
@@ -800,10 +803,10 @@ export async function GET(request: NextRequest) {
     const standardB2BCustomerIds = new Set<number>();
 
     for (const t of transactionsResult.data || []) {
-      const category = customerCategoryMap.get(t.ns_customer_id);
+      const isCorporate = customerCorporateMap.get(t.ns_customer_id) ?? false;
       const revenue = parseFloat(t.foreign_total) || 0;
 
-      if (category === "Corporate" || category === "4") {
+      if (isCorporate) {
         corporateRevenue += revenue;
         corporateOrderCount++;
         corporateCustomerIds.add(t.ns_customer_id);
@@ -815,14 +818,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate previous period B2B-only metrics for AOV YoY comparison
-    // EXCLUDES corporate gifting - same logic as current period
+    // EXCLUDES corporate gifting - uses is_corporate flag for consistency
     let prevStandardB2BRevenue = 0;
     let prevStandardB2BOrderCount = 0;
     for (const t of prevTransactionsResult.data || []) {
-      const category = customerCategoryMap.get(t.ns_customer_id);
+      const isCorporate = customerCorporateMap.get(t.ns_customer_id) ?? false;
       const revenue = parseFloat(t.foreign_total) || 0;
       // Skip corporate customers
-      if (category !== "Corporate" && category !== "4") {
+      if (!isCorporate) {
         prevStandardB2BRevenue += revenue;
         prevStandardB2BOrderCount++;
       }
@@ -852,10 +855,18 @@ export async function GET(request: NextRequest) {
       },
     };
 
+    // Active B2B customers from v_b2b_customers view (SINGLE SOURCE OF TRUTH)
+    // The view computes is_active_door: days < 365 AND NOT is_manually_churned
+    // This is the canonical definition used by BOTH Wholesale and Door Health dashboards
+    // Fallback to local calculation if view query fails (defensive, should never happen)
+    const activeDoorCount = activeDoorCountResult.count ?? b2bCustomers.filter((c) =>
+      c.retention_health !== "churned" && !c.is_manually_churned
+    ).length;
+
     const stats: WholesaleStats = {
       total_revenue: currentPeriodRevenue,
       total_orders: currentPeriodOrders,
-      total_customers: b2bCustomers.length, // B2B customers who have ordered (excludes never-ordered prospects)
+      total_customers: activeDoorCount, // From v_b2b_customers view (SINGLE SOURCE OF TRUTH)
       active_customers: currentPeriodCustomers,
       // AOV uses B2B-only data (excludes corporate) for accurate comparison
       avg_order_value: currentB2BAOV,
@@ -906,6 +917,25 @@ export async function GET(request: NextRequest) {
         c.order_count > 0 // Must have ordered at some point
       )
       .sort((a, b) => b.total_revenue - a.total_revenue); // Highest value first - these are win-back opportunities
+
+    // Unclassified customers - is_corporate_gifting IS NULL (never explicitly classified)
+    // These need manual review to determine if B2B or Corporate
+    // Only show customers with revenue (actual paying accounts need classification)
+    // Sorted by most recent activity first (prioritize active accounts)
+    const unclassifiedCustomerIds = new Set<number>(
+      (customersResult.data || [])
+        .filter((c) => c.is_corporate_gifting === null && (c.lifetime_revenue || 0) > 0)
+        .map((c) => parseCustomerId(c.ns_customer_id))
+    );
+    const unclassifiedCustomers = customers
+      .filter((c) => unclassifiedCustomerIds.has(c.ns_customer_id))
+      .sort((a, b) => {
+        // Sort by last activity (most recent first), then by revenue
+        const aDate = a.last_sale_date ? new Date(a.last_sale_date).getTime() : 0;
+        const bDate = b.last_sale_date ? new Date(b.last_sale_date).getTime() : 0;
+        if (bDate !== aDate) return bDate - aDate;
+        return b.total_revenue - a.total_revenue;
+      });
 
     // ========================================================================
     // NEW CUSTOMER ACQUISITION - TRAILING 365 DAYS (T365)
@@ -1175,6 +1205,7 @@ export async function GET(request: NextRequest) {
       newCustomers,
       corporateCustomers,
       churnedCustomers,
+      unclassifiedCustomers,
       recentTransactions,
       topSkus,
       newCustomerAcquisition,
