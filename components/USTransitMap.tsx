@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { MapPin, TrendingUp, TrendingDown, Zap } from "lucide-react";
 import type { TransitAnalytics, StateTransitStats } from "@/lib/types";
 import { US_STATES } from "@/lib/us-states";
+import { formatNumber } from "@/lib/dashboard-utils";
 
 type ViewMode = "combined" | "smithey" | "selery";
 
@@ -77,22 +79,21 @@ function generateGradientCSS(): string {
 // Gradient legend bar - extracted to module level to avoid re-creation on render
 function GradientLegend() {
   return (
-    <div className="flex flex-col items-center gap-2 mt-6 pt-6 border-t border-border/50">
-      <div className="text-xs text-text-muted font-medium tracking-wider uppercase">
+    <div className="flex flex-col items-center gap-2 mt-6 pt-4 border-t border-border/30">
+      <div className="text-[10px] text-text-muted font-semibold tracking-[0.15em] uppercase">
         Transit Time (Days)
       </div>
-      <div className="flex items-center gap-3 w-full max-w-md">
-        <span className="text-xs font-semibold text-emerald-400">Fast</span>
+      <div className="flex items-center gap-3 w-full max-w-sm">
+        <span className="text-[10px] font-medium text-status-good">Fast</span>
         <div
-          className="flex-1 h-3 rounded-full"
+          className="flex-1 h-2 rounded-full"
           style={{
             background: generateGradientCSS(),
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)'
           }}
         />
-        <span className="text-xs font-semibold text-red-400">Slow</span>
+        <span className="text-[10px] font-medium text-status-bad">Slow</span>
       </div>
-      <div className="flex justify-between w-full max-w-md text-xs text-text-muted px-8">
+      <div className="flex justify-between w-full max-w-sm text-[10px] text-text-tertiary px-6">
         <span>1d</span>
         <span>2d</span>
         <span>3d</span>
@@ -100,6 +101,95 @@ function GradientLegend() {
         <span>5d</span>
         <span>6d</span>
         <span>7d+</span>
+      </div>
+    </div>
+  );
+}
+
+// Summary stats component
+function TransitSummary({
+  stateMap,
+  avgDays,
+  totalDelivered,
+}: {
+  stateMap: Record<string, StateTransitStats | CombinedStateData>;
+  avgDays: number;
+  totalDelivered: number;
+}) {
+  // Find fastest and slowest states
+  const statesWithData = Object.entries(stateMap)
+    .filter(([, data]) => data.shipment_count >= 10) // Only states with meaningful sample size
+    .sort((a, b) => a[1].avg_transit_days - b[1].avg_transit_days);
+
+  const fastestStates = statesWithData.slice(0, 3);
+  const slowestStates = statesWithData.slice(-3).reverse();
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* Overall Average */}
+      <div className="bg-bg-tertiary/30 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Zap className="w-3.5 h-3.5 text-accent-blue" />
+          <span className="text-[10px] uppercase tracking-[0.15em] text-text-muted">
+            Avg Transit
+          </span>
+        </div>
+        <div className="text-3xl font-bold tabular-nums text-text-primary">
+          {avgDays}d
+        </div>
+        <div className="text-xs text-text-muted mt-1">
+          {formatNumber(totalDelivered)} deliveries
+        </div>
+      </div>
+
+      {/* Fastest States */}
+      <div className="bg-bg-tertiary/30 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <TrendingUp className="w-3.5 h-3.5 text-status-good" />
+          <span className="text-[10px] uppercase tracking-[0.15em] text-text-muted">
+            Fastest States
+          </span>
+        </div>
+        <div className="space-y-1">
+          {fastestStates.map(([abbr, data]) => (
+            <div key={abbr} className="flex items-center justify-between">
+              <span className="text-xs text-text-secondary">
+                {US_STATES[abbr]?.name || abbr}
+              </span>
+              <span className="text-xs font-medium text-status-good tabular-nums">
+                {data.avg_transit_days}d
+              </span>
+            </div>
+          ))}
+          {fastestStates.length === 0 && (
+            <div className="text-xs text-text-muted">No data yet</div>
+          )}
+        </div>
+      </div>
+
+      {/* Slowest States */}
+      <div className="bg-bg-tertiary/30 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <TrendingDown className="w-3.5 h-3.5 text-status-warning" />
+          <span className="text-[10px] uppercase tracking-[0.15em] text-text-muted">
+            Slowest States
+          </span>
+        </div>
+        <div className="space-y-1">
+          {slowestStates.map(([abbr, data]) => (
+            <div key={abbr} className="flex items-center justify-between">
+              <span className="text-xs text-text-secondary">
+                {US_STATES[abbr]?.name || abbr}
+              </span>
+              <span className="text-xs font-medium text-status-warning tabular-nums">
+                {data.avg_transit_days}d
+              </span>
+            </div>
+          ))}
+          {slowestStates.length === 0 && (
+            <div className="text-xs text-text-muted">No data yet</div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -177,10 +267,13 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
   const hasData = analytics.some((a) => a.total_delivered > 0);
   if (!hasData && !loading) {
     return (
-      <div className="bg-bg-secondary rounded-xl border border-border p-8">
-        <h3 className="text-sm font-semibold tracking-wider text-text-tertiary uppercase mb-4">
-          Transit Time by Region
-        </h3>
+      <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <MapPin className="w-4 h-4 text-text-muted" />
+          <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+            US TRANSIT MAP
+          </h3>
+        </div>
         <div className="text-sm text-text-muted py-12 text-center">
           No delivery data yet
         </div>
@@ -310,25 +403,33 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
   };
 
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border p-6 transition-all hover:border-border-hover">
+    <div className="bg-bg-secondary rounded-xl border border-border/30 p-6">
       {/* Header with view toggle */}
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-sm font-semibold tracking-wider text-text-tertiary uppercase">
-          Transit Time by Region
-        </h3>
-        <div className="flex items-center gap-1 bg-bg-primary/60 backdrop-blur rounded-lg p-1">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-text-muted" />
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+              US TRANSIT MAP
+            </h3>
+          </div>
+          <p className="text-xs text-text-tertiary mt-1">
+            Average delivery times by state
+          </p>
+        </div>
+        <div className="flex gap-1">
           {[
-            { id: "combined", label: "Combined" },
+            { id: "combined", label: "All" },
             { id: "smithey", label: "Smithey" },
             { id: "selery", label: "Selery" },
           ].map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setViewMode(id as ViewMode)}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
                 viewMode === id
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25"
-                  : "text-text-muted hover:text-text-primary hover:bg-white/5"
+                  ? "bg-accent-blue text-white"
+                  : "text-text-tertiary hover:text-text-secondary hover:bg-white/5"
               }`}
             >
               {label}
@@ -340,14 +441,22 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
       {loading ? (
         <div className="h-[400px] flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin" />
             <span className="text-sm text-text-muted">Loading map data...</span>
           </div>
         </div>
       ) : (
         <>
           {viewMode === "combined" && (
-            <div className="space-y-8">
+            <div className="space-y-6">
+              {/* Summary Stats */}
+              <TransitSummary
+                stateMap={combinedData.stateMap}
+                avgDays={combinedData.avgDays}
+                totalDelivered={combinedData.totalDelivered}
+              />
+
+              {/* Main Map */}
               {renderSingleMap(
                 "ALL WAREHOUSES",
                 combinedData.stateMap,
@@ -355,8 +464,10 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
                 combinedData.totalDelivered,
                 true
               )}
-              <div className="pt-6 border-t border-border/50">
-                <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-4">
+
+              {/* Warehouse Comparison */}
+              <div className="pt-6 border-t border-border/30">
+                <div className="text-[10px] font-semibold text-text-tertiary uppercase tracking-[0.15em] mb-4">
                   Warehouse Comparison
                 </div>
                 {renderComparisonMaps()}
@@ -365,23 +476,37 @@ export function USTransitMap({ analytics, loading }: USTransitMapProps) {
           )}
 
           {viewMode === "smithey" && dataByWarehouse["smithey"] && (
-            renderSingleMap(
-              "SMITHEY WAREHOUSE",
-              dataByWarehouse["smithey"].stateMap,
-              dataByWarehouse["smithey"].avgDays,
-              dataByWarehouse["smithey"].totalDelivered,
-              true
-            )
+            <div className="space-y-6">
+              <TransitSummary
+                stateMap={dataByWarehouse["smithey"].stateMap}
+                avgDays={dataByWarehouse["smithey"].avgDays}
+                totalDelivered={dataByWarehouse["smithey"].totalDelivered}
+              />
+              {renderSingleMap(
+                "SMITHEY WAREHOUSE",
+                dataByWarehouse["smithey"].stateMap,
+                dataByWarehouse["smithey"].avgDays,
+                dataByWarehouse["smithey"].totalDelivered,
+                true
+              )}
+            </div>
           )}
 
           {viewMode === "selery" && dataByWarehouse["selery"] && (
-            renderSingleMap(
-              "SELERY WAREHOUSE",
-              dataByWarehouse["selery"].stateMap,
-              dataByWarehouse["selery"].avgDays,
-              dataByWarehouse["selery"].totalDelivered,
-              true
-            )
+            <div className="space-y-6">
+              <TransitSummary
+                stateMap={dataByWarehouse["selery"].stateMap}
+                avgDays={dataByWarehouse["selery"].avgDays}
+                totalDelivered={dataByWarehouse["selery"].totalDelivered}
+              />
+              {renderSingleMap(
+                "SELERY WAREHOUSE",
+                dataByWarehouse["selery"].stateMap,
+                dataByWarehouse["selery"].avgDays,
+                dataByWarehouse["selery"].totalDelivered,
+                true
+              )}
+            </div>
           )}
 
           <GradientLegend />

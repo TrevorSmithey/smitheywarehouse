@@ -116,6 +116,9 @@ export async function GET(request: NextRequest) {
     const prevRangeEnd = new Date(rangeStart.getTime() - 1); // 1ms before current range start
     const prevRangeStart = new Date(prevRangeEnd.getTime() - rangeDuration);
 
+    // Lead time trend uses fixed 90-day lookback for meaningful trend analysis
+    const leadTimeRangeStart = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
     // Use EST/EDT for "today" calculations (Smithey is US-based)
     // Proper timezone handling that accounts for DST
     const estFormatter = new Intl.DateTimeFormat("en-US", {
@@ -241,6 +244,7 @@ export async function GET(request: NextRequest) {
           shipped_at,
           days_without_scan,
           last_scan_location,
+          checked_at,
           orders!inner(order_name, warehouse, is_restoration)
         `)
         .eq("status", "in_transit")
@@ -249,38 +253,36 @@ export async function GET(request: NextRequest) {
         .order("days_without_scan", { ascending: false })
         .limit(QUERY_LIMITS.STUCK_SHIPMENTS),
 
-      // Transit time data for delivered shipments - ALL with actual transit data
-      // No date filter: shows all shipments where we have real carrier transit data
-      // transit_days IS NOT NULL ensures only shipments with actual tracking data are included
+      // Transit time data for delivered shipments
+      // Origin: orders.warehouse | Destination: orders.shipping_province_code | Time: shipments.transit_days
       // Restoration orders excluded at query level
       supabase
         .from("shipments")
         .select(`
           order_id,
           transit_days,
-          delivery_state,
           delivered_at,
-          orders!inner(warehouse, is_restoration)
+          orders!inner(warehouse, is_restoration, shipping_province_code)
         `)
         .eq("status", "delivered")
         .eq("orders.is_restoration", false)
         .not("transit_days", "is", null)
-        .not("delivery_state", "is", null)
+        .not("orders.shipping_province_code", "is", null)
         .order("delivered_at", { ascending: false })
         .limit(QUERY_LIMITS.TRANSIT_DATA),
 
       // Daily orders - will be fetched separately with pagination
       Promise.resolve({ data: [] }),
 
-      // Fulfillment lead time data - filtered by selected date range
-      // Limit increased from 10000 to 50000 - peak periods can have 20k+ fulfilled orders in 30 days
+      // Fulfillment lead time data - fixed 90-day lookback for trend analysis
+      // Independent of date picker to show meaningful patterns over time
       // Restoration orders excluded at query level
       supabase
         .from("orders")
         .select("id, warehouse, created_at, fulfilled_at")
         .not("fulfilled_at", "is", null)
-        .gte("fulfilled_at", rangeStart.toISOString())
-        .lte("fulfilled_at", rangeEnd.toISOString())
+        .gte("fulfilled_at", leadTimeRangeStart.toISOString())
+        .lte("fulfilled_at", now.toISOString())
         .eq("canceled", false)
         .eq("is_restoration", false)
         .not("warehouse", "is", null)
@@ -503,9 +505,9 @@ export async function GET(request: NextRequest) {
     const dailyOrders = processDailyOrders(dailyOrdersData);
 
     // Process fulfillment lead time analytics - restoration already filtered at query level
-    // Calculate midpoint of range for trend comparison
-    const rangeMidpoint = new Date(rangeStart.getTime() + (rangeEnd.getTime() - rangeStart.getTime()) / 2);
-    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], rangeMidpoint);
+    // Calculate midpoint of 90-day range for trend comparison
+    const leadTimeMidpoint = new Date(leadTimeRangeStart.getTime() + (now.getTime() - leadTimeRangeStart.getTime()) / 2);
+    const fulfillmentLeadTime = processFulfillmentLeadTime(leadTimeResult.data || [], leadTimeMidpoint);
 
     // Process lead time vs volume correlation for capacity planning scatter plot
     // Groups by creation date to show: "When we get X orders/day, what's our lead time?"
@@ -730,6 +732,7 @@ interface StuckShipmentRow {
   shipped_at: string;
   days_without_scan: number;
   last_scan_location: string | null;
+  checked_at: string | null;
   orders: {
     order_name: string;
     warehouse: string | null;
@@ -756,15 +759,16 @@ function processStuckShipments(data: any[], now: Date): StuckShipment[] {
         days_since_shipped: daysSinceShipped,
         days_without_scan: row.days_without_scan,
         last_scan_location: row.last_scan_location,
+        checked_at: row.checked_at,
       };
     });
 }
 
 interface TransitDataRow {
   transit_days: number;
-  delivery_state: string | null;
   orders: {
     warehouse: string | null;
+    shipping_province_code: string | null;
   } | null;
 }
 
@@ -791,8 +795,9 @@ function processTransitAnalytics(data: any[]): TransitAnalytics[] {
     whData.totalDays += typedRow.transit_days;
     whData.count++;
 
-    // Aggregate by state
-    const state = typedRow.delivery_state?.toUpperCase() || "UNKNOWN";
+    // Destination state from order's shipping address
+    const state = typedRow.orders?.shipping_province_code?.toUpperCase();
+    if (!state) continue;
     const stateData = whData.byState.get(state) || { totalDays: 0, count: 0 };
     stateData.totalDays += typedRow.transit_days;
     stateData.count++;

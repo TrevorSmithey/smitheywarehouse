@@ -1,24 +1,23 @@
 "use client";
 
-import { FulfillmentDashboard } from "@/components/FulfillmentDashboard";
-import { useFulfillment } from "./layout";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
+/**
+ * Fulfillment Index Page
+ *
+ * Redirects to /fulfillment/action (the default sub-page)
+ */
 export default function FulfillmentPage() {
-  const {
-    metrics,
-    loading,
-    dateRangeOption,
-    setDateRangeOption,
-    chartData,
-  } = useFulfillment();
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/fulfillment/action");
+  }, [router]);
 
   return (
-    <FulfillmentDashboard
-      metrics={metrics}
-      loading={loading}
-      dateRangeOption={dateRangeOption}
-      onDateRangeChange={setDateRangeOption}
-      chartData={chartData}
-    />
+    <div className="flex items-center justify-center min-h-[200px]">
+      <div className="w-6 h-6 border-2 border-accent-blue border-t-transparent rounded-full animate-spin" />
+    </div>
   );
 }
