@@ -31,27 +31,8 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Hardcoded D2C aggregate to exclude from all wholesale queries
-// MUST MATCH door-health API for consistent Active Doors metric
-const HARDCODED_EXCLUDED_IDS = [2501];
-
-// Helper to build exclusion list combining hardcoded IDs and DB-flagged test accounts
-// MUST MATCH door-health API exactly for universal Active Doors metric
-async function getExcludedCustomerIds(
-  supabase: ReturnType<typeof createServiceClient>
-): Promise<number[]> {
-  const { data: excludedFromDB, error } = await supabase
-    .from("ns_wholesale_customers")
-    .select("ns_customer_id")
-    .eq("is_excluded", true);
-
-  if (error) {
-    console.warn("[FORECAST API] Failed to fetch excluded customers from DB:", error.message);
-  }
-
-  const dbExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
-  return [...new Set([...HARDCODED_EXCLUDED_IDS, ...dbExcludedIds])];
-}
+// NOTE: HARDCODED_EXCLUDED_IDS removed - exclusions now handled by v_b2b_customers view
+// The view filters: is_inactive=false, is_excluded=false, is_corporate=false, lifetime_orders>0
 
 /**
  * GET /api/wholesale/forecast
@@ -227,26 +208,14 @@ export async function GET(request: NextRequest) {
       }));
     }
 
-    // Fetch current door count using UNIVERSAL Active Doors definition
-    // See BUSINESS_LOGIC.md "Active Doors (Universal Metric)" - MUST match Door Health tab
-    // Active Doors = Healthy + At Risk + Churning (excludes Churned)
-    // CRITICAL: Use last_sale_date with date math, NOT the stale days_since_last_order column
-    // Door Health computes days dynamically from last_sale_date - we must match exactly
-    const excludedIds = await getExcludedCustomerIds(supabase);
-    const churned365DaysAgo = new Date();
-    churned365DaysAgo.setDate(churned365DaysAgo.getDate() - 365);
-    const churnCutoffDate = churned365DaysAgo.toISOString().split("T")[0];
-
+    // Fetch current door count from v_b2b_customers view (SINGLE SOURCE OF TRUTH)
+    // See BUSINESS_LOGIC.md "Active Doors (Universal Metric)"
+    // The view already filters: is_inactive, is_excluded, is_corporate, lifetime_orders>0
+    // and computes is_active_door which respects is_manually_churned
     const { count: currentDoorCount } = await supabase
-      .from("ns_wholesale_customers")
+      .from("v_b2b_customers")
       .select("*", { count: "exact", head: true })
-      .neq("is_inactive", true)
-      .eq("is_corporate", false)
-      .not("ns_customer_id", "in", `(${excludedIds.join(",")})`)
-      .gt("lifetime_orders", 0)          // Has placed at least one order
-      .gt("lifetime_revenue", 0)         // Has generated actual revenue
-      .not("last_sale_date", "is", null) // Must have a last sale date
-      .gt("last_sale_date", churnCutoffDate); // Not churned (ordered within 365 days)
+      .eq("is_active_door", true);
 
     const response: ForecastResponse = {
       forecast,
@@ -634,26 +603,34 @@ async function fetchQuarterlyActuals(
 
   const results: ForecastQuarterActuals[] = [];
 
-  // Fetch customer corporate flag mapping
+  // Fetch customer corporate flag mapping (use is_excluded for filtering, matching v_b2b_customers view)
   const { data: customers } = await supabase
     .from("ns_wholesale_customers")
-    .select("ns_customer_id, is_corporate, category")
-    .not("ns_customer_id", "in", `(${HARDCODED_EXCLUDED_IDS.join(",")})`);
+    .select("ns_customer_id, is_corporate, is_excluded")
+    .neq("is_excluded", true);
 
+  // Build set for corporate customers
   // IMPORTANT: Use ONLY is_corporate flag per BUSINESS_LOGIC.md lines 154-157
-  // DO NOT use category === "Corporate" or category === "4" (deprecated, unreliable)
   const corporateCustomerIds = new Set(
     (customers || [])
       .filter((c) => c.is_corporate === true)
       .map((c) => c.ns_customer_id)
   );
 
+  // Get all excluded IDs from DB for transaction filtering
+  const { data: excludedFromDB } = await supabase
+    .from("ns_wholesale_customers")
+    .select("ns_customer_id")
+    .eq("is_excluded", true);
+
+  const allExcludedIds = (excludedFromDB || []).map((c) => c.ns_customer_id);
+
   for (const q of quarters) {
     // Fetch transactions for this quarter with exact count to detect truncation
+    // Filter out excluded customers using the is_excluded flag from customer table
     const { data: transactions, error, count: totalCount } = await supabase
       .from("ns_wholesale_transactions")
       .select("ns_customer_id, foreign_total", { count: "exact" })
-      .not("ns_customer_id", "in", `(${HARDCODED_EXCLUDED_IDS.join(",")})`)
       .gte("tran_date", q.start)
       .lte("tran_date", q.end)
       .limit(QUERY_LIMITS.WHOLESALE_TRANSACTIONS_YTD);
@@ -672,14 +649,19 @@ async function fetchQuarterlyActuals(
     );
 
     // Calculate B2B vs Corporate revenue
+    // Filter out excluded customers in the loop since we can't join on transaction table
     let b2bActual = 0;
     let corpActual = 0;
 
     for (const txn of transactions || []) {
-      const revenue = parseFloat(txn.foreign_total) || 0;
       const customerId = typeof txn.ns_customer_id === "string"
         ? parseInt(txn.ns_customer_id)
         : txn.ns_customer_id;
+
+      // Skip excluded customers (matches v_b2b_customers view filtering)
+      if (allExcludedIds.includes(customerId)) continue;
+
+      const revenue = parseFloat(txn.foreign_total) || 0;
 
       if (corporateCustomerIds.has(customerId)) {
         corpActual += revenue;
