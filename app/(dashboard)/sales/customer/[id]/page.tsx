@@ -371,26 +371,31 @@ interface SparklineChartProps {
 
 function SparklineChart({ orderHistory }: SparklineChartProps) {
   const chartData = useMemo(() => {
-    const monthMap = new Map<string, number>();
+    // Generate actual last 24 months from today (covers both T12 and Prior T12 periods)
+    const months: { month: string; revenue: number }[] = [];
+    const now = new Date();
 
+    for (let i = 23; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      months.push({ month: key, revenue: 0 });
+    }
+
+    // Fill in actual revenue for months that have orders
     orderHistory.forEach((order) => {
       const date = new Date(order.tran_date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      monthMap.set(key, (monthMap.get(key) || 0) + order.foreign_total);
+      const monthEntry = months.find((m) => m.month === key);
+      if (monthEntry) {
+        monthEntry.revenue += Math.round(order.foreign_total);
+      }
     });
 
-    return Array.from(monthMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([month, revenue]) => ({
-        month,
-        revenue: Math.round(revenue),
-      }));
+    return months;
   }, [orderHistory]);
 
-  if (chartData.length < 2) {
-    return null;
-  }
+  // Calculate max for Y domain (ensure minimum of 100 so flat $0 line shows properly)
+  const maxRevenue = Math.max(...chartData.map((d) => d.revenue), 100);
 
   return (
     <div className="h-24">
@@ -403,7 +408,7 @@ function SparklineChart({ orderHistory }: SparklineChartProps) {
             </linearGradient>
           </defs>
           <XAxis dataKey="month" hide />
-          <YAxis hide domain={["dataMin", "dataMax"]} />
+          <YAxis hide domain={[0, maxRevenue]} />
           <Tooltip
             contentStyle={{
               backgroundColor: "#12151F",
@@ -895,7 +900,7 @@ export default function CustomerDetailPage() {
           {/* Sparkline */}
           <div className="pt-4 border-t border-border/10">
             <div className="text-[10px] uppercase tracking-wider text-text-muted mb-3">
-              Monthly Revenue (12 Months)
+              Trailing 24 Months
             </div>
             <SparklineChart orderHistory={orderHistory} />
           </div>
