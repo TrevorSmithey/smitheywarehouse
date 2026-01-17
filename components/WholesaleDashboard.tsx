@@ -1413,6 +1413,98 @@ function CorporateCustomersSection({ customers }: { customers: WholesaleCustomer
 }
 
 // ============================================================================
+// UNCLASSIFIED CUSTOMERS - Needs B2B vs Corporate classification
+// ============================================================================
+
+function UnclassifiedCustomersSection({
+  customers,
+  onClassify,
+}: {
+  customers: WholesaleCustomer[];
+  onClassify: (customerId: number, isCorporate: boolean) => Promise<void>;
+}) {
+  const [classifying, setClassifying] = useState<number | null>(null);
+
+  const handleClassify = async (customerId: number, isCorporate: boolean) => {
+    setClassifying(customerId);
+    try {
+      await onClassify(customerId, isCorporate);
+    } finally {
+      setClassifying(null);
+    }
+  };
+
+  if (!customers || customers.length === 0) return null;
+
+  return (
+    <div className="bg-bg-secondary rounded-xl border border-status-warning/30 overflow-hidden h-[400px] flex flex-col">
+      <div className="px-5 py-4 border-b border-border/20 flex items-center justify-between bg-status-warning/5 shrink-0">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-status-warning" />
+          <h3 className="text-[10px] uppercase tracking-[0.2em] text-status-warning font-semibold">
+            NEEDS CLASSIFICATION
+          </h3>
+        </div>
+        <span className="text-[10px] text-status-warning font-medium">
+          {customers.length} customer{customers.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="px-5 py-2 border-b border-border/10 bg-bg-tertiary/30 shrink-0">
+        <div className="text-[10px] text-text-muted">
+          New customers with revenue need classification. Mark as <span className="text-accent-blue font-medium">B2B</span> (wholesale) or <span className="text-amber-400 font-medium">Corporate</span> (gifting).
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+        {customers.map((customer) => (
+          <div
+            key={customer.ns_customer_id}
+            className="flex items-center justify-between px-5 py-3 border-b border-border/10 hover:bg-white/[0.02] transition-colors"
+          >
+            <Link
+              href={`/sales/customer/${customer.ns_customer_id}`}
+              className="flex-1 min-w-0 mr-4"
+            >
+              <div className="text-sm text-text-primary truncate font-medium hover:text-accent-blue transition-colors">
+                {customer.company_name}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] text-text-muted">
+                  {formatCurrencyFull(customer.total_revenue)} · {customer.order_count} order{customer.order_count !== 1 ? "s" : ""}
+                </span>
+                {customer.last_sale_date && (
+                  <span className="text-[10px] text-text-tertiary">
+                    Last: {format(new Date(customer.last_sale_date), "MMM d")}
+                  </span>
+                )}
+              </div>
+            </Link>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => handleClassify(customer.ns_customer_id, false)}
+                disabled={classifying === customer.ns_customer_id}
+                className="text-[10px] font-medium px-3 py-1.5 rounded-md bg-accent-blue/10 text-accent-blue border border-accent-blue/20 hover:bg-accent-blue/20 disabled:opacity-50 transition-colors"
+              >
+                {classifying === customer.ns_customer_id ? "..." : "B2B"}
+              </button>
+              <button
+                onClick={() => handleClassify(customer.ns_customer_id, true)}
+                disabled={classifying === customer.ns_customer_id}
+                className="text-[10px] font-medium px-3 py-1.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+              >
+                {classifying === customer.ns_customer_id ? "..." : "Corp"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // SEGMENT INTELLIGENCE - Actionable Business Intelligence
 // ============================================================================
 
@@ -1993,6 +2085,38 @@ export function WholesaleDashboard({
     fetchInsights();
   }, [data]);
 
+  // Track classified customers locally for immediate UI update
+  const [classifiedIds, setClassifiedIds] = useState<Set<number>>(new Set());
+
+  // Handler to classify a customer as B2B or Corporate
+  const handleClassifyCustomer = async (customerId: number, isCorporate: boolean) => {
+    try {
+      const res = await fetch(`/api/wholesale/customer/${customerId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ is_corporate_gifting: isCorporate }),
+      });
+      if (!res.ok) throw new Error("Failed to classify customer");
+      // Mark as classified locally (removes from unclassified list)
+      setClassifiedIds((prev) => new Set([...prev, customerId]));
+      // Optionally refresh data to get updated lists
+      onRefresh?.();
+    } catch (error) {
+      console.error("Failed to classify customer:", error);
+      // Could show a toast error here
+    }
+  };
+
+  // Filter out already-classified customers from the unclassified list
+  const unclassifiedCustomers = useMemo(() => {
+    return (data?.unclassifiedCustomers || []).filter(
+      (c) => !classifiedIds.has(c.ns_customer_id)
+    );
+  }, [data?.unclassifiedCustomers, classifiedIds]);
+
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "desc" ? "asc" : "desc");
@@ -2439,6 +2563,17 @@ export function WholesaleDashboard({
           </div>
         )}
       </div>
+
+      {/* ================================================================
+          UNCLASSIFIED CUSTOMERS - Needs B2B vs Corporate classification
+          Only shows if there are customers needing classification
+          ================================================================ */}
+      {unclassifiedCustomers.length > 0 && (
+        <UnclassifiedCustomersSection
+          customers={unclassifiedCustomers}
+          onClassify={handleClassifyCustomer}
+        />
+      )}
 
       {/* ================================================================
           ROW 2: RECENT TRANSACTIONS + CORPORATE GIFTING (Side by Side)

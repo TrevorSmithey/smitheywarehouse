@@ -918,6 +918,25 @@ export async function GET(request: NextRequest) {
       )
       .sort((a, b) => b.total_revenue - a.total_revenue); // Highest value first - these are win-back opportunities
 
+    // Unclassified customers - is_corporate_gifting IS NULL (never explicitly classified)
+    // These need manual review to determine if B2B or Corporate
+    // Only show customers with revenue (actual paying accounts need classification)
+    // Sorted by most recent activity first (prioritize active accounts)
+    const unclassifiedCustomerIds = new Set<number>(
+      (customersResult.data || [])
+        .filter((c) => c.is_corporate_gifting === null && (c.lifetime_revenue || 0) > 0)
+        .map((c) => parseCustomerId(c.ns_customer_id))
+    );
+    const unclassifiedCustomers = customers
+      .filter((c) => unclassifiedCustomerIds.has(c.ns_customer_id))
+      .sort((a, b) => {
+        // Sort by last activity (most recent first), then by revenue
+        const aDate = a.last_sale_date ? new Date(a.last_sale_date).getTime() : 0;
+        const bDate = b.last_sale_date ? new Date(b.last_sale_date).getTime() : 0;
+        if (bDate !== aDate) return bDate - aDate;
+        return b.total_revenue - a.total_revenue;
+      });
+
     // ========================================================================
     // NEW CUSTOMER ACQUISITION - TRAILING 365 DAYS (T365)
     // Compare new customers acquired in last 365 days vs prior 365 days (period-over-period)
@@ -1186,6 +1205,7 @@ export async function GET(request: NextRequest) {
       newCustomers,
       corporateCustomers,
       churnedCustomers,
+      unclassifiedCustomers,
       recentTransactions,
       topSkus,
       newCustomerAcquisition,
