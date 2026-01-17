@@ -418,6 +418,20 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
     return filtered;
   }, [groupedRestorations, searchTerm]);
 
+  // Compute alerts from restorations data - must be before early return
+  const restorations = data?.restorations || [];
+  const alerts = useMemo(() => ({
+    deliveredNotReceived: restorations.filter(
+      r => r.status === "delivered_warehouse" && r.days_in_status > 2
+    ).length,
+    atRestorationTooLong: restorations.filter(
+      r => r.status === "at_restoration" && r.days_in_status > 14
+    ).length,
+    timeoutCandidates: restorations.filter(
+      r => r.total_days > 56 && !["shipped", "delivered", "cancelled"].includes(r.status)
+    ).length,
+  }), [restorations]);
+
   // Loading skeleton
   if (loading && !data) {
     return (
@@ -451,20 +465,6 @@ export function RestorationPipeline({ data, loading, onRefresh }: RestorationPip
   const needsToRestoration = filteredGroups["processing"]?.length || 0;
   const needsShipping = filteredGroups["outbound"]?.length || 0;
   const totalActionable = needsCheckIn + needsToRestoration + needsShipping;
-
-  // Compute alerts from restorations data
-  const restorations = data?.restorations || [];
-  const alerts = useMemo(() => ({
-    deliveredNotReceived: restorations.filter(
-      r => r.status === "delivered_warehouse" && r.days_in_status > 2
-    ).length,
-    atRestorationTooLong: restorations.filter(
-      r => r.status === "at_restoration" && r.days_in_status > 14
-    ).length,
-    timeoutCandidates: restorations.filter(
-      r => r.total_days > 56 && !["shipped", "delivered", "cancelled"].includes(r.status)
-    ).length,
-  }), [restorations]);
 
   // Get cycle time trend direction
   const monthlyData = stats?.monthlyVolume || [];

@@ -748,7 +748,7 @@ function ForecastMethodology() {
                 </div>
                 <div className="text-text-secondary">
                   <span className="text-accent-blue">new_door_revenue</span> = new_doors × new_door_yield × 0.5
-                  <span className="text-text-tertiary ml-2">// 50% seasonality factor (acquired throughout year)</span>
+                  <span className="text-text-tertiary ml-2">(50% seasonality factor - acquired throughout year)</span>
                 </div>
                 <div className="text-text-primary font-semibold border-t border-border/30 pt-2 mt-2">
                   <span className="text-status-good">total_implied_revenue</span> = existing_book_revenue + new_door_revenue
@@ -778,7 +778,7 @@ function ForecastMethodology() {
                 <p className="text-xs text-text-secondary">
                   Corporate customers order <strong>engraved products</strong> for gifting. The SKU <code className="px-1 bg-bg-tertiary rounded">SMITH-ENG</code> is an
                   <strong> engraving service</strong>, not a physical product. If you calculate units from total corporate revenue using
-                  the standard AUP (~$120), you'll get <strong>dramatically wrong unit counts</strong>.
+                  the standard AUP (~$120), you&apos;ll get <strong>dramatically wrong unit counts</strong>.
                 </p>
               </div>
 

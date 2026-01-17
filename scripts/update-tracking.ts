@@ -34,7 +34,7 @@ async function main() {
   console.log(`\nUsing endpoint: ${BASE_URL}/api/tracking/check`);
 
   let totalUpdated = 0;
-  let totalErrors: string[] = [];
+  const totalErrors: string[] = [];
   let batchCount = 0;
   let noMoreShipments = false;
 

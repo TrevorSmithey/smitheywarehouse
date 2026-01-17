@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
 const https = require('https');
 const key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwZmtweG95dWNvY3JpaWZ1dGZ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDg3MjY3MiwiZXhwIjoyMDgwNDQ4NjcyfQ.LWItXKQ9KBeb4KQN-5nqYrAOSJdBgjAX5booH38alGg';
 const baseUrl = 'https://rpfkpxoyucocriifutfy.supabase.co/rest/v1';

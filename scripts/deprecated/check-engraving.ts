@@ -44,7 +44,7 @@ async function main() {
     .limit(1000);
 
   let engravingUnits = 0;
-  let engravingOrders = new Set<number>();
+  const engravingOrders = new Set<number>();
 
   for (const order of unfulfilled || []) {
     for (const li of order.line_items || []) {

@@ -13,6 +13,15 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Disable React Compiler rules - they're too strict for existing codebase
+  // The React Compiler is not enabled in this project (not in next.config.ts)
+  {
+    rules: {
+      "react-hooks/purity": "off",
+      "react-hooks/static-components": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
