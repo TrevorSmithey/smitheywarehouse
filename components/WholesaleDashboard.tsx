@@ -783,7 +783,7 @@ function NewCustomersSection({
         <div className="flex items-center gap-2">
           <UserPlus className="w-4 h-4 text-status-good" />
           <h3 className="text-[10px] uppercase tracking-[0.2em] text-status-good font-semibold">
-            NEW CUSTOMERS
+            ACQUIRED (T365)
           </h3>
         </div>
         <span className="text-[10px] text-status-good font-medium">
@@ -2160,11 +2160,11 @@ export function WholesaleDashboard({
           color="green"
         />
         <BreakdownCard
-          label="Total Customers"
+          label="Active Doors"
           value={stats.total_customers.toString()}
           subValue={`${stats.retention_distribution?.healthy ?? stats.active_customers} healthy (<180d)`}
           delta={stats.customers_delta_pct}
-          description="All wholesale accounts"
+          description="Active B2B accounts"
           icon={Users}
           color="blue"
         />
@@ -2698,6 +2698,28 @@ export function WholesaleDashboard({
               <span className="text-text-secondary">Customer</span>
               <span className="text-text-muted">B2B with ≥1 order (excl. corp/test)</span>
             </div>
+          </div>
+        </div>
+
+        {/* Dashboard Notes */}
+        <div className="mt-4 pt-4 border-t border-border/30">
+          <h4 className="text-[9px] uppercase tracking-wider text-text-muted mb-2">Dashboard Notes</h4>
+          <div className="space-y-1 text-xs text-text-tertiary">
+            <p>
+              <span className="text-text-secondary">Inactive Handling:</span>{" "}
+              Door Health includes inactive customers for full churn visibility.
+              This dashboard excludes inactive accounts to show the current book of business.
+            </p>
+            <p>
+              <span className="text-text-secondary">Active Doors:</span>{" "}
+              Total count of non-churned B2B customers (healthy + at-risk + churning).
+              Matches the Door Health dashboard&apos;s &quot;Active Doors&quot; metric.
+            </p>
+            <p>
+              <span className="text-text-secondary">Acquired (T365):</span>{" "}
+              Customers whose first-ever order occurred in the trailing 365 days.
+              Distinct from &quot;New Customers&quot; hero metric (first order &lt;90 days).
+            </p>
           </div>
         </div>
       </div>
